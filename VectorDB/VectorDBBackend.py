@@ -38,7 +38,7 @@ class VectorApi:
 
         Args:
             app (Flask): 现有的 Flask app 实例。
-            service (VectorDBService): *已经就绪*的 VectorDB 实例。
+            service (VectorDBService): *已经就绪*的 VectorDBService 实例。
         """
         self.app = app
         self.service = service
@@ -122,7 +122,7 @@ class VectorApi:
 
     def get_status(self):
         """
-        (前端使用) 检查后端 VectorDB 的状态。
+        (前端使用) 检查后端 VectorDBService 的状态。
         """
         status_info = self.service.get_status()
         return jsonify(status_info)
@@ -148,8 +148,11 @@ class VectorApi:
         (前端使用) 浏览一个 store 中的数据 (分页)。
         """
         store_name = request.args.get('store_name')
-        limit = int(request.args.get('limit', 10))
-        offset = int(request.args.get('offset', 0))
+        try:
+            limit = int(request.args.get('limit', 10))
+            offset = int(request.args.get('offset', 0))
+        except ValueError:
+            return jsonify({"error": "limit 和 offset 必须是整数"}), 400
 
         store = self._get_store_or_404(store_name)
         if not store:
@@ -157,31 +160,40 @@ class VectorApi:
 
         try:
             # .get() 是 ChromaDB 的原生方法
-            # VectorStoreManager 没有 browse()，我们直接访问 collection
             total_count = store.count()
             results = store.collection.get(
                 limit=limit,
                 offset=offset,
-                include=["metadatas", "documents"]
+                include=["metadatas", "documents", "embeddings"]
             )
 
-            # (需求) 将数据格式化以便前端清晰显示
             formatted_data = []
+
+            # 检查 embeddings 列表是否存在
+            embeddings_list = results.get('embeddings')
+
             for i in range(len(results['ids'])):
+
+                embedding_data = None
+                # 检查 embeddings_list 是否存在，并且当前项不为 None
+                if len(embeddings_list) > 0 and embeddings_list[i] is not None:
+                    embedding_data = embeddings_list[i].tolist()
+
                 formatted_data.append({
                     "chunk_id": results['ids'][i],
                     "document": results['documents'][i],
-                    "metadata": results['metadatas'][i]
+                    "metadata": results['metadatas'][i],
+                    "embedding": embedding_data
                 })
 
             return jsonify({
+                "data": formatted_data,
                 "total_count": total_count,
                 "limit": limit,
-                "offset": offset,
-                "data": formatted_data
+                "offset": offset
             })
         except Exception as e:
-            return jsonify({"error": f"浏览失败: {e}"}), 500
+            return jsonify({"error": f"浏览失败: {str(e)}"}), 500
 
     def search(self):
         """

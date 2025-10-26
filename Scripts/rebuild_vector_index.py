@@ -93,7 +93,7 @@ def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStore
                     continue
 
                 # 1. Process 'intelligence_full_text'
-                raw_data = doc.get('APPENDIX', {}).get('RAW_DATA')
+                raw_data = doc.get('RAW_DATA', '')
                 if raw_data:
                     store_full_text.add_document(str(raw_data), uuid)
 
