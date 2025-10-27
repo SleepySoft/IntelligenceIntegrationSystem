@@ -154,6 +154,21 @@
 
 ## 环境配置及部署运行
 
+#### 依赖软件
+
++ MongoDB
+
+程序使用MongoDB数据库存储情报文档，这是一个NoSql数据库，请在官网下载：
+> 
+> https://www.mongodb.com/products/self-managed/community-edition
+> 
+
+同时建议安装mongodb tools，用以导出及导出数据库（从某个版本开始命令行工具不再和MongoDB主程序打包）：
+> 
+> https://www.mongodb.com/try/download/database-tools
+> 
+
+
 #### 程序部署
 
 ```
