@@ -37,7 +37,7 @@ class VectorDBService:
     This class should be instantiated ONCE at application startup.
     """
 
-    def __init__(self, db_path: str, model_name: str, store_config: List[dict]):
+    def __init__(self, db_path: str, model_name: str, store_config: Optional[List[dict]] = None):
         """
         Starts the non-blocking initialization of shared resources.
 

@@ -58,6 +58,7 @@ def connect_to_mongo() -> Optional["MongoClient"]:
 def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStoreManager):
     """
     Fetches all data from MongoDB and rebuilds the vector indexes.
+    (Updated with robust batch processing)
     """
     # Lazy import
     from tqdm import tqdm
@@ -82,39 +83,66 @@ def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStore
     processed_count = 0
     skipped_count = 0
 
-    # Using 'upsert' in add_document is idempotent, so we just process all.
+    batch_size = 500  # 每次从 Mongo 拉取 500 个文档
+    last_id = None  # 跟踪上一批的最后一个 _id
+
+    # 使用 'upsert' in add_document 是幂等的，所以我们只是处理所有。
     with tqdm(total=total_docs, desc="Rebuilding Indexes") as pbar:
-        for doc in collection.find():
+        while True:
+            # 1. 构建查询以获取下一批
+            query = {}
+            if last_id:
+                query['_id'] = {'$gt': last_id}
+
+            # 2. 拉取一个批次 (这是一个短暂、全新的游标)
             try:
-                uuid = doc.get('UUID')
-                if not uuid:
-                    skipped_count += 1
-                    pbar.update(1)
-                    continue
-
-                # 1. Process 'intelligence_full_text'
-                raw_data = doc.get('RAW_DATA', {}).get('content')
-                if raw_data:
-                    store_full_text.add_document(str(raw_data), uuid)
-
-                # 2. Process 'intelligence_summary'
-                title = doc.get('EVENT_TITLE', '') or ''
-                brief = doc.get('EVENT_BRIEF', '') or ''
-                text = doc.get('EVENT_TEXT', '') or ''
-
-                text_summary = f"{title}\n{brief}\n{text}".strip()
-
-                if text_summary:
-                    store_summary.add_document(text_summary, uuid)
-
-                processed_count += 1
-
+                batch_docs = list(
+                    collection.find(query)
+                    .sort('_id', 1)  # 必须按 _id 排序
+                    .limit(batch_size)
+                )
             except Exception as e:
-                print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
-                skipped_count += 1
+                print(f"\nFATAL: Error fetching batch from MongoDB: {e}")
+                print(traceback.format_exc())
+                break  # 退出 while 循环
 
-            finally:
-                pbar.update(1)
+            # 3. 检查是否所有批次都已处理完毕
+            if not batch_docs:
+                break  # 没有更多文档了，退出 while 循环
+
+            # 4. (这是你的原始逻辑) 循环处理内存中的这一小批文档
+            for doc in batch_docs:
+                try:
+                    uuid = doc.get('UUID')
+                    if not uuid:
+                        skipped_count += 1
+                        continue  # 继续处理批次中的下一个文档
+
+                    # 1. Process 'intelligence_full_text'
+                    raw_data = doc.get('RAW_DATA', {}).get('content')
+                    if raw_data:
+                        store_full_text.add_document(str(raw_data), uuid)
+
+                    # 2. Process 'intelligence_summary'
+                    title = doc.get('EVENT_TITLE', '') or ''
+                    brief = doc.get('EVENT_BRIEF', '') or ''
+                    text = doc.get('EVENT_TEXT', '') or ''
+
+                    text_summary = f"{title}\n{brief}\n{text}".strip()
+
+                    if text_summary:
+                        store_summary.add_document(text_summary, uuid)
+
+                    processed_count += 1
+
+                except Exception as e:
+                    print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
+                    skipped_count += 1
+
+                finally:
+                    pbar.update(1)
+
+            last_id = batch_docs[-1]['_id']
 
     print("\n--- Rebuild Complete ---")
     print(f"Successfully processed/updated: {processed_count}")
