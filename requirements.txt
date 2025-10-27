@@ -22,6 +22,16 @@ json_repair
 backoff
 
 ##############################
+### Vector DB
+##############################
+hf_xet
+chromadb==1.2.1
+onnxruntime
+# onnxruntime-gpu
+sentence_transformers
+langchain_text_splitters
+
+##############################
 ### Network Requests & Parsing
 ##############################
 requests==2.32.3             # HTTP requests library (includes SOCKS proxy support)
