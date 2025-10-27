@@ -14,6 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.RecommendationManager import RecommendationManager
+from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
 from prompts import ANALYSIS_PROMPT, SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.OpenAIClient import OpenAICompatibleAPI
@@ -52,7 +53,7 @@ class IntelligenceHub:
 
     def __init__(self, *,
                  ref_url: str = 'http://locohost:8080',
-                 db_vector: Optional[object] = None,
+                 vector_db_service: Optional[VectorDBService] = None,
                  db_cache: Optional[MongoDBStorage] = None,
                  db_archive: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
@@ -60,16 +61,17 @@ class IntelligenceHub:
         """
         Init IntelligenceHub.
         :param ref_url: The reference url for sub-resource url generation.
-        :param db_vector: Vector DB for text RAG indexing.
+        :param self.vector_db_service: Vector DB for text RAG indexing.
         :param db_cache: The mongodb for caching collected data.
         :param db_archive: The mongodb for archiving processed data.
+        :param db_recommendation: The mongodb for storing recommendation data.
         :param ai_client: The openai-like client for data processing.
         """
 
         # ---------------- Parameters ----------------
 
         self.reference_url = ref_url
-        self.vector_db_idx = db_vector
+        self.vector_db_service = vector_db_service
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
         self.mongo_db_recommendation = db_recommendation
@@ -151,8 +153,7 @@ class IntelligenceHub:
         self.scheduler.start_scheduler()
 
     def _load_vector_db(self):
-        if self.vector_db_idx:
-            self.vector_db_idx.load()
+        pass
 
     def _load_unarchived_data(self):
         """Load unarchived data into a queue, compatible with both old and new archival markers."""
@@ -220,9 +221,6 @@ class IntelligenceHub:
         # self._save_to_file(unprocessed, 'pending_tasks.json')
 
     def _cleanup_resources(self):
-        if self.vector_db_idx:
-            self.vector_db_idx.save()
-
         if self.mongo_db_cache:
             self.mongo_db_cache.close()
 
@@ -617,10 +615,7 @@ class IntelligenceHub:
     # ---------------------------- Archive Related ----------------------------
 
     def _index_archived_data(self, data: dict):
-        if self.vector_db_idx:
-            self.vector_db_idx.add_text(data['UUID'], data['EVENT_TEXT'])
-            # TODO: Decrease save frequency.
-            self.vector_db_idx.save()
+        pass
 
     def _cache_original_data(self, data: dict):
         try:

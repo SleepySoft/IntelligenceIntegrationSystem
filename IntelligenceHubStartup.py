@@ -22,7 +22,7 @@ from ServiceComponent.RSSPublisher import RSSPublisher
 # from Tools.VectorDatabase import VectorDatabase
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
-
+from VectorDB.VectorDBService import VectorDBService
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -67,6 +67,22 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
         proxies=ai_service_proxies
     )
 
+    # ------------------------------- Vector DB --------------------------------
+
+    vector_enabled = config.get('intelligence_hub.vectordb.enabled', False)
+    vector_db_path = config.get('intelligence_hub.vectordb.vector_db_path', '')
+    embedding_model_name = config.get('intelligence_hub.vectordb.embedding_model_name', '')
+    vector_stores = config.get('intelligence_hub.vectordb.stores', [])
+
+    if vector_enabled and vector_db_path and embedding_model_name:
+        vector_db_service = VectorDBService(
+            db_path = vector_db_path,
+            model_name = embedding_model_name,
+            store_config = vector_stores
+        )
+    else:
+        vector_db_service = None
+
     # ------------------------------- Core: IHub -------------------------------
 
     ref_host_url = config.get('intelligence_hub_web_service.service.host_url', 'http://127.0.0.1:5000')
@@ -79,7 +95,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     hub = IntelligenceHub(
         ref_url=ref_host_url,
 
-        # db_vector=VectorDatabase('IntelligenceIndex'),
+        vector_db_service=vector_db_service,
 
         db_cache=MongoDBStorage(
             host=mongodb_host,

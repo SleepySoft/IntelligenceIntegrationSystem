@@ -10,8 +10,8 @@ for managing and accessing vector stores.
 - VectorStoreManager: A lightweight wrapper for a *single* collection.
 """
 
-import threading
 import time
+import threading
 from typing import List, Dict, Any, Union, Optional
 
 # --- Global State for Shared Resources ---
@@ -19,6 +19,7 @@ from typing import List, Dict, Any, Union, Optional
 _SHARED_COMPONENTS = {
     "client": None,
     "model": None,
+    "stores": {},
     "status": "initializing",  # States: initializing, ready, error
     "error": None
 }
@@ -36,7 +37,7 @@ class VectorDBService:
     This class should be instantiated ONCE at application startup.
     """
 
-    def __init__(self, db_path: str, model_name: str):
+    def __init__(self, db_path: str, model_name: str, store_config: List[dict]):
         """
         Starts the non-blocking initialization of shared resources.
 
@@ -56,12 +57,12 @@ class VectorDBService:
             # (Requirement 1) Start initialization in a single background thread
             _init_thread = threading.Thread(
                 target=self._initialize,
-                args=(db_path, model_name),
+                args=(db_path, model_name, store_config or []),
                 daemon=True
             )
             _init_thread.start()
 
-    def _initialize(self, db_path: str, model_name: str):
+    def _initialize(self, db_path: str, model_name: str, store_config: List[dict]):
         """
         [Background Thread] Performs lazy imports and heavy-lifting.
         """
@@ -81,10 +82,22 @@ class VectorDBService:
             model = SentenceTransformer(model_name)
             print(f"[VectorService BG]: SentenceTransformer model loaded.")
 
-            # 3. Safely update the global shared state
+            # 3. Init preset stores
+            print(f"[VectorService BG]: Creating vector stores...")
+            stores = { config['collection_name']: VectorStoreManager(
+                chroma_client=client,
+                embedding_model=model,
+                collection_name=config['collection_name'],
+                chunk_size=config['chunk_size'],
+                chunk_overlap=config['chunk_overlap']
+            ) for config in store_config }
+            print(f"[VectorService BG]: Vector stores created, store count {len(stores)}.")
+
+            # 4. Safely update the global shared state
             with _init_lock:
                 _SHARED_COMPONENTS["client"] = client
                 _SHARED_COMPONENTS["model"] = model
+                _SHARED_COMPONENTS["stores"] = stores
                 _SHARED_COMPONENTS["status"] = "ready"
 
             print(f"[VectorService BG]: All shared components are ready.")
@@ -134,15 +147,18 @@ class VectorDBService:
 
             client = _SHARED_COMPONENTS["client"]
             model = _SHARED_COMPONENTS["model"]
+            stores = _SHARED_COMPONENTS["stores"]
 
-        # Create the lightweight manager. This is fast.
-        return VectorStoreManager(
-            chroma_client=client,
-            embedding_model=model,
-            collection_name=collection_name,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
+            if collection_name not in stores:
+                stores[collection_name] = VectorStoreManager(
+                    chroma_client=client,
+                    embedding_model=model,
+                    collection_name=collection_name,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
+            store = stores[collection_name]
+        return store
 
 
 class VectorStoreManager:

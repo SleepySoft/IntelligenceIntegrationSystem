@@ -15,10 +15,23 @@
     },
 
     "vectordb": {
-      "enabled": false,
+      "enabled": true,
       "vector_db_path": "IISVectorDB",
-      "embedding_model_name": "paraphrase-multilingual-MiniLM-L12-v2"
-    }
+      "embedding_model_name": "paraphrase-multilingual-MiniLM-L12-v2",
+      "stores": [
+        {
+          "collection_name": "intelligence_full_text",
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "description": "Index of raw data full text."
+        },
+        {
+          "collection_name": "intelligence_summary",
+          "chunk_size": 256,
+          "chunk_overlap": 30,
+          "description": "Index of processed data 'EVENT_TITLE' + 'EVENT_BRIEF' + 'EVENT_TEXT'."
+        }
+      ]
   },
 
   "ai_service_rotator": {
