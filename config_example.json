@@ -2,19 +2,9 @@
   "intelligence_hub": {
 
     "ai_service": {
-      "url": "https://api.siliconflow.cn/v1",
-      "token": "sk-",
+      "url": "https://api.siliconflow.cn",
+      "token": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
       "model": "deepseek-ai/DeepSeek-R1"
-    },
-
-    "ai_service2": {
-      "url": "https://generativelanguage.googleapis.com/v1beta/openai",
-      "token": "AIza",
-      "model": "models/gemini-2.0-pro-exp",
-      "proxies": {
-        "http": "http://127.0.0.1:10809",
-        "https": "http://127.0.0.1:10809"
-      }
     },
 
     "mongodb": {
@@ -22,13 +12,19 @@
       "port": 27017,
       "user": "",
       "password": ""
+    },
+
+    "vectordb": {
+      "enabled": false,
+      "vector_db_path": "IISVectorDB",
+      "embedding_model_name": "paraphrase-multilingual-MiniLM-L12-v2"
     }
   },
 
   "ai_service_rotator": {
     "enabled": false,
     "key_file": "siliconflow_keys.txt",
-    "threshold": "12.0"
+    "threshold": 0.5
   },
 
   "intelligence_hub_web_service": {
@@ -62,8 +58,6 @@
     "submit_ihub_url": "http://127.0.0.1:5000",
 
     "cn_site_proxy": {
-      "http": "",
-      "https": ""
     },
 
     "global_site_proxy": {
