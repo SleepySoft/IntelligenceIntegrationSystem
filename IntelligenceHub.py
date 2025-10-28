@@ -95,8 +95,8 @@ class IntelligenceHub:
         self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
         self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
-        self.vector_db_summary = None
-        self.vector_db_full_text = None
+        self.vector_db_summary: Optional[VectorStoreManager] = None
+        self.vector_db_full_text: Optional[VectorStoreManager] = None
 
         self.scheduler = AdvancedScheduler(logger=logging.getLogger('Scheduler'))
         # TODO: This cache seems to be ugly.
@@ -301,6 +301,35 @@ class IntelligenceHub:
             threshold=threshold, skip=skip, limit=limit)
         return result, total
 
+    def vector_search_intelligence(self,
+                                   text: str,
+                                   in_summary: bool = True,
+                                   in_fulltext: bool = False,
+                                   top_n: int = 10,
+                                   score_threshold: float = 0.5) -> List[Tuple[str, float, str]]:
+        summary_result = []
+        fulltext_result = []
+
+        if in_summary and self.vector_db_summary:
+            summary_result = self.vector_db_summary.search(text, top_n, score_threshold)
+        if in_fulltext and self.vector_db_full_text:
+            fulltext_result = self.vector_db_full_text.search(text, top_n, score_threshold)
+
+        combined_results = summary_result + fulltext_result
+
+        best_records = {}
+        for result in combined_results:
+            doc_id = result["doc_id"]
+            score = result["score"]
+
+            if doc_id not in best_records or score > best_records[doc_id][0]:
+                best_records[doc_id] = (score, result["chunk_text"])
+
+        # [(doc_id, score, chunk_text)]
+        result_list = [(doc_id, record[0], record[1]) for doc_id, record in best_records.items()]
+
+        return result_list
+
     def get_intelligence_summary(self) -> Tuple[int, str]:
         query_engine = self.archive_db_query_engine
         summary = query_engine.get_intelligence_summary()
@@ -444,6 +473,7 @@ class IntelligenceHub:
                 # --------------------------------- AI Aggressive with Retry ---------------------------------
 
                 # TODO: 暂时不做，因为需要考虑的事情太多，且消耗token，后续可以考虑采用小模型实现。
+                # TODO: 20251028 - 绝妙的主意：使用向量搜索来查找近似内容，减少聚合分析的工作量。
                 #
                 # history_data_brief = self._get_cached_data_brief()
                 # aggressive_result = aggressive_by_ai(self.open_ai_client, AGGRESSIVE_PROMPT, result, history_data_brief)

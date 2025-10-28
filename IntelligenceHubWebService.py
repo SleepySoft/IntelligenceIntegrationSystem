@@ -5,7 +5,7 @@ import traceback
 import uuid
 import logging
 from functools import wraps
-from typing import List
+from typing import List, Tuple
 
 import datetime
 import threading
@@ -252,29 +252,29 @@ class IntelligenceHubWebService:
 
         # ---------------------------------------------------- Pages ---------------------------------------------------
 
-        @app.route('/rssfeed.xml', methods=['GET'])
-        def rssfeed_api():
-            try:
-                count = request.args.get('count', default=100, type=int)
-                threshold = request.args.get('threshold', default=6, type=int)
-
-                intelligences, _ = self.intelligence_hub.query_intelligence(
-                    threshold = threshold, skip = 0, limit = count)
-
-                try:
-                    rss_items = self._articles_to_rss_items(intelligences)
-                    feed_xml = self.rss_publisher.generate_feed(
-                        'IIS',
-                        '/intelligence',
-                        'IIS Processed Intelligence',
-                        rss_items)
-                    return feed_xml
-                except Exception as e:
-                    logger.error(f"Rss Feed API error: {str(e)}", stack_info=True)
-                    return 'Error'
-            except Exception as e:
-                logger.error(f'rssfeed_api() error: {str(e)}', stack_info=True)
-                return 'Error'
+        # @app.route('/rssfeed.xml', methods=['GET'])
+        # def rssfeed_api():
+        #     try:
+        #         count = request.args.get('count', default=100, type=int)
+        #         threshold = request.args.get('threshold', default=6, type=int)
+        #
+        #         intelligences, _ = self.intelligence_hub.query_intelligence(
+        #             threshold = threshold, skip = 0, limit = count)
+        #
+        #         try:
+        #             rss_items = self._articles_to_rss_items(intelligences)
+        #             feed_xml = self.rss_publisher.generate_feed(
+        #                 'IIS',
+        #                 '/intelligence',
+        #                 'IIS Processed Intelligence',
+        #                 rss_items)
+        #             return feed_xml
+        #         except Exception as e:
+        #             logger.error(f"Rss Feed API error: {str(e)}", stack_info=True)
+        #             return 'Error'
+        #     except Exception as e:
+        #         logger.error(f'rssfeed_api() error: {str(e)}', stack_info=True)
+        #         return 'Error'
 
         @app.route('/intelligences', methods=['GET'])
         def intelligences_list_api():
@@ -303,6 +303,12 @@ class IntelligenceHubWebService:
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         @WebServiceAccessManager.login_required
         def intelligences_query_api():
+            # TODO: 从参数中获取信息，使用以下的接口进行向量搜索；mongodb搜索和向量搜索二选一。
+            #       无论是哪种搜索，都要考虑翻页问题。
+            # self.intelligence_hub.vector_search_intelligence(
+            #     text='', in_summary=True, in_fulltext=True, top_n=10, score_threshold=0.5
+            # )
+
             form_data = request.form if request.method == 'POST' else {}
 
             # Parse form data
@@ -345,6 +351,88 @@ class IntelligenceHubWebService:
                 error = f"Query error: {str(e)}"
                 logger.error(error)
                 return ''
+
+        @app.route('/intelligences/query2', methods=['GET', 'POST'])
+        @WebServiceAccessManager.login_required
+        def intelligences_query_api2():
+            # 1. 收参：优先 JSON，其次 form，最后 query-string
+            if request.method == 'POST':
+                data = request.get_json(silent=True) or request.form
+            else:
+                data = request.args
+
+            # 2. 基础分页/过滤参数
+            def _split(v: str) -> List[str]:
+                return [x.strip() for x in v.split(',') if x.strip()]
+
+            params = {
+                'start_time': data.get('start_time', ''),
+                'end_time': data.get('end_time', ''),
+                'locations': _split(data.get('locations', '')),
+                'peoples': _split(data.get('peoples', '')),
+                'organizations': _split(data.get('organizations', '')),
+                'page': int(data.get('page', 1)),
+                'per_page': int(data.get('per_page', 10)),
+                # 模式开关
+                'search_mode': data.get('search_mode', 'mongo'),  # 'mongo' | 'vector'
+                # 向量模式专用
+                'keywords': data.get('keywords', ''),
+                'in_summary': data.get('in_summary', 'true').lower() == 'true',
+                'in_fulltext': data.get('in_fulltext', 'false').lower() == 'true',
+                'score_threshold': float(data.get('score_threshold', 0.5)),
+            }
+
+            try:
+                if params['search_mode'] == 'vector':
+                    results, total = _do_vector_search(params)
+                else:
+                    results, total = _do_mongo_search(params)
+                return render_query_page(params, results, total)
+            except Exception as e:
+                logger.exception("intelligences_query_api error")
+                return jsonify({'error': str(e)}), 500
+
+        def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
+            """走 Mongo 过滤"""
+            query = {}
+            if p['start_time'] and p['end_time']:
+                query['period'] = (
+                    datetime.datetime.fromisoformat(p['start_time']),
+                    datetime.datetime.fromisoformat(p['end_time'])
+                )
+            for field in ('locations', 'peoples', 'organizations'):
+                if p[field]:
+                    query[field] = p[field]
+
+            skip = (p['page'] - 1) * p['per_page']
+            return self.intelligence_hub.query_intelligence(
+                skip=skip, limit=p['per_page'], **query)
+
+        def _do_vector_search(p: dict) -> Tuple[List[dict], int]:
+            """走向量召回 + 内存分页"""
+            if not p['keywords']:
+                return [], 0
+
+            top_n = p['page'] * p['per_page']  # 先多拿一点
+            raw: List[Tuple[str, float, str]] = self.intelligence_hub.vector_search_intelligence(
+                text=p['keywords'],
+                in_summary=p['in_summary'],
+                in_fulltext=p['in_fulltext'],
+                top_n=top_n,
+                score_threshold=p['score_threshold']
+            )
+
+            # 分页
+            start = (p['page'] - 1) * p['per_page']
+            end = start + p['per_page']
+            page_items = raw[start:end]
+
+            # 把元组转成 dict，方便模板渲染
+            results = [
+                {'doc_id': doc_id, 'score': score, 'chunk': chunk}
+                for doc_id, score, chunk in page_items
+            ]
+            return results, len(raw)  # total 为向量去重后的总数
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):
