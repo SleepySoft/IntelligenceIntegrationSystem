@@ -512,16 +512,18 @@ class IntelligenceHub:
         if self.vector_db_service is not None:
             logger.info('Waiting for vector DB init...')
             while not self.shutdown_flag.is_set():
-                if self.vector_db_service.get_status() == "initializing":
-                    continue
-                if self.vector_db_service.get_status() != "ready":
+                status = self.vector_db_service.get_status().get('status', '')
+                if status == "ready":
                     self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
                     self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
                     logger.info('Vector DB init successful.')
-                else:
+                elif status == 'error':
                     self.vector_db_service = None
                     # self.vector_db_summary and self.vector_db_full_text are also None
                     logger.error('Vector DB init fail.')
+                else:
+                    time.sleep(1)
+                    continue
                 break
 
         # -------------------------------------- Post process loop --------------------------------------
