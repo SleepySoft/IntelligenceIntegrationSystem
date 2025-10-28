@@ -27,10 +27,21 @@
 > 本程序只通过RSS抓取公开新闻，原因在于这类新闻抓取难度小（本身就是给RSS阅读器的公开信息），且法律风险低。
 
 程序中由[ServiceEngine.py](ServiceEngine.py)**启动**并驱动[CrawlTasks](CrawlTasks)目录下的抓取模块，
-该服务框架会监控该目录下的文件更新并重新加载更新后的模块。
+> 
+> 该服务框架会监控该目录下的文件更新并重新加载更新后的模块。
+> 
 
 当前各个抓取模块主要通过[CommonFeedsCrawFlow.py](Workflow/CommonFeedsCrawFlow.py)这个通用流程进行抓取并将抓取内容提交到IntelligenceHub。
-抓取模块通过partial构建偏函数供抓取流程调用。
+> 
+> 抓取模块通过partial构建偏函数供抓取流程调用。
+>
+> 实际上采集数据只需要按照 ```class CollectedData``` 定义格式将数据通过 POST 提交到 ```/collect``` 这个端点的网络服务即可。
+> 唯一需要注意的是如果设置了安全Token，则提交数据时要将该凭据附上。至于数据的来源，IHub并不关心。
+> 
+> 使用通用流程的好处在于增加一个RSS源抓取非常方便，并且通用流程中实现了抓取记录和防重复抓取的功能。
+> 
+> 如果想抓取非RSS源，或者需要抓取的网页需要特殊技术，则需要自己实现抓取器。同时注意法律风险。
+> 
 
 当前实现的抓取方式有：
 
@@ -51,6 +62,7 @@
   > 注意gunicorn仅支持Linux。
   > 
   > 该文件不包含业务代码，几乎全部由AI生成，没有阅读的必要。如果对启动原理不理解，可以去搜索WSGI的机制。
+  > 
 
 > IHub的处理流程请参见：[IIS_Diagram.drawio](doc/IIS_Diagram.drawio)
 
@@ -63,29 +75,40 @@
 已知的问题为：
 
 1. 该prompt在小模型（甚至于65b）上表现不佳。
+> 
 > 在小模型上AI通常不按规定格式输出，有可能是prompt + 文章内容太长，使AI无法集中注意力的缘故。
 > 
 > 正式部署的环境使用的是满血云服务，这是一笔不小的开支。
+> 
 
 2. AI评分还是过于宽松，没有达到我的期望。
+> 
 > 对于一些非情报新闻，AI还是给出了6分的评价，尽管我在prompt中强调不含情报的数据应该抛弃，但效果不佳。
 > 
 > 对于情报的评分偏高，我理想中80%的新闻应当处于6分及以下的区间。
+> 
 
 + [IntelligenceAnalyzerProxy.py](ServiceComponent/IntelligenceAnalyzerProxy.py)
-
+>
 > AI分析实现的主要文件。调用AI Client，组织数据、使用prompt进行分析，并解析和返回结果。
+> 
+> 值得一提的是，自从使用了json_repair后，python的解析率几乎100%。接下来我会尝试在小模型上使用constrained decoding，看是否能提升表现。
+>
 
 + [OpenAIClient.py](Tools/OpenAIClient.py)
-
+>
 > OpenAI兼容的API Client
+> 
 
 + [AIServiceRotator.py](ServiceComponent/AIServiceRotator.py)
 + [AiServiceBalanceQuery.py](Tools/AiServiceBalanceQuery.py)
-
+> 
 > 为了节约成本，程序可以使用硅基流动刷邀请的14元余额的矿渣账号进行分析。
 > 
 > 这两个模块实现查询余额，并根据余额情况对Token进行自动选择和轮转的功能。
+>
+> 已知问题：SF的API在换KEY后在一段时间内会一直503，新启用的KEY可能要先预热（不确定）。当前的解决方案是指数退避。
+> 
 
 
 ### 内容发布
@@ -93,15 +116,18 @@
 如前所述，网络服务由[IntelligenceHubWebService.py](IntelligenceHubWebService.py)提供。包含以下内容：
 
 + 登录与鉴权
-    > 由 WebServiceAccessManager 和 [UserManager.py](ServiceComponent%2FUserManager.py) 进行管理。其中：
+    > 由 WebServiceAccessManager 和 [UserManager.py](ServiceComponent/UserManager.py) 进行管理。其中：
     >  
     > + API Token位于配置文件中：[config_example.json](config_example.json)
     > + 登录与注销的页面分别为：'/login'，'/logout'
+    > + 用户信息保存在Authentication.db，通过[UserManagerConsole.py](Scripts/UserManagerConsole.py)管理用户。
 
 + WebAPI
     > '/api'接口：采用 [ArbitraryRPC.py](MyPythonUtility/ArbitraryRPC.py) ，不用额外编码或配置即可调用Stub的所有函数，同时支持任意层次的转发调用。
     > 
-    > '/collect'接口：旧设计，未来可能会被弃用。
+    > '/collect'接口：收集采集情报。
+    > 
+    > 其它API接口：子功能，如Log、统计、监控等等，由对应模块注册路由。
     >
 
 + 网页
@@ -117,15 +143,18 @@
     > 
     > [ArticleTableRender.py](ServiceComponent/ArticleTableRender.py)：文章列表项。
     > 
+    > 子功能页面，由对应模块提供，前后端分离。这里就不列出了，详见登录后的管理页面。
+    > 
 
 ### 存储
 
 程序会生成以下内容：
 
 + 情报存储（主要）
-  > MongoDB，数据库名：IntelligenceIntegrationSystem。包含两个记录：
+  > MongoDB，数据库名：IntelligenceIntegrationSystem。包含三个记录：
   > + intelligence_cached：Collector提交的采集到的原始新闻数据。
   > + intelligence_archived：经过处理并归档的数据。
+  > + 
 
 + 向量数据库
   > 供向量查询，保留。
