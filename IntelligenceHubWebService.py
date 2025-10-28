@@ -303,58 +303,6 @@ class IntelligenceHubWebService:
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         @WebServiceAccessManager.login_required
         def intelligences_query_api():
-            # TODO: 从参数中获取信息，使用以下的接口进行向量搜索；mongodb搜索和向量搜索二选一。
-            #       无论是哪种搜索，都要考虑翻页问题。
-            # self.intelligence_hub.vector_search_intelligence(
-            #     text='', in_summary=True, in_fulltext=True, top_n=10, score_threshold=0.5
-            # )
-
-            form_data = request.form if request.method == 'POST' else {}
-
-            # Parse form data
-            params = {
-                'start_time': form_data.get('start_time', ''),
-                'end_time': form_data.get('end_time', ''),
-                'locations': form_data.get('locations', ''),
-                'peoples': form_data.get('peoples', ''),
-                'organizations': form_data.get('organizations', ''),
-                # 'keywords': form_data.get('keywords', ''),
-                'page': int(form_data.get('page', 1)),
-                'per_page': int(form_data.get('per_page', 10))
-            }
-
-            # Convert to query parameters
-            query_params = {}
-            if params['start_time'] and params['end_time']:
-                query_params['period'] = (
-                    datetime.datetime.fromisoformat(params['start_time']),
-                    datetime.datetime.fromisoformat(params['end_time'])
-                )
-
-            for field in ['locations', 'peoples', 'organizations']:
-                if params[field]:
-                    query_params[field] = [x.strip() for x in params[field].split(',')]
-
-            # if params['keywords']:
-            #     query_params['keywords'] = params['keywords']
-
-            # Add pagination
-            skip = (params['page'] - 1) * params['per_page']
-            query_params.update({'skip': skip, 'limit': params['per_page']})
-
-            # Execute query
-            try:
-                results, total_results = self.intelligence_hub.query_intelligence(**query_params)
-                # Render HTML response
-                return render_query_page(params, results, total_results)
-            except Exception as e:
-                error = f"Query error: {str(e)}"
-                logger.error(error)
-                return ''
-
-        @app.route('/intelligences/query2', methods=['GET', 'POST'])
-        @WebServiceAccessManager.login_required
-        def intelligences_query_api2():
             # 1. 收参：优先 JSON，其次 form，最后 query-string
             if request.method == 'POST':
                 data = request.get_json(silent=True) or request.form

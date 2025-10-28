@@ -126,6 +126,9 @@ class VectorDBService:
         """
         Gets a VectorStoreManager (a collection handle).
 
+        This method is thread-safe and uses double-checked locking
+        to avoid holding the global lock during I/O operations.
+
         This method will FAIL if the service is not 'ready'.
         The caller MUST check get_status() before calling this.
 
@@ -145,20 +148,37 @@ class VectorDBService:
                     f"Check get_status() before calling get_store()."
                 )
 
+            stores = _SHARED_COMPONENTS["stores"]
+            store = stores.get(collection_name)
+
+        if store:
+            return store
+
+        try:
             client = _SHARED_COMPONENTS["client"]
             model = _SHARED_COMPONENTS["model"]
-            stores = _SHARED_COMPONENTS["stores"]
 
-            if collection_name not in stores:
-                stores[collection_name] = VectorStoreManager(
-                    chroma_client=client,
-                    embedding_model=model,
-                    collection_name=collection_name,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
-                )
-            store = stores[collection_name]
-        return store
+            new_store = VectorStoreManager(
+                chroma_client=client,
+                embedding_model=model,
+                collection_name=collection_name,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to create VectorStoreManager for {collection_name}: {e}")
+
+        with _init_lock:
+            # 检查在我们创建 new_store 的期间，
+            # 是否有另一个线程也创建了它并抢先放入了 dict
+            store = stores.get(collection_name)
+
+            if store:
+                return store  # 返回另一个线程创建的实例
+
+            # 否则，保存我们新创建的实例
+            stores[collection_name] = new_store
+            return new_store
 
 
 class VectorStoreManager:
