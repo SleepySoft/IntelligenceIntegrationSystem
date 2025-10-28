@@ -95,13 +95,12 @@ class IntelligenceHub:
         self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
         self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
+        self.vector_db_summary = None
+        self.vector_db_full_text = None
+
         self.scheduler = AdvancedScheduler(logger=logging.getLogger('Scheduler'))
         # TODO: This cache seems to be ugly.
         # self.intelligence_cache = IntelligenceCache(self.mongo_db_archive, 6, 2000, None)       # datetime.timedelta(days=1)
-
-        # self.recommendations = []
-        # self.recommendation_data = []       # List of dict: ''
-        # self.generating_recommendation = False
 
         self.recommendations_manager = RecommendationManager(
             query_engine = self.archive_db_query_engine,
@@ -478,6 +477,25 @@ class IntelligenceHub:
                 self.original_queue.task_done()
 
     def _post_process_worker(self):
+        # ---------------- If a vector database is specified, wait until it is ready ----------------
+
+        if self.vector_db_service is not None:
+            logger.info('Waiting for vector DB init...')
+            while not self.shutdown_flag.is_set():
+                if self.vector_db_service.get_status() == "initializing":
+                    continue
+                if self.vector_db_service.get_status() != "ready":
+                    self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
+                    self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
+                    logger.info('Vector DB init successful.')
+                else:
+                    self.vector_db_service = None
+                    # self.vector_db_summary and self.vector_db_full_text are also None
+                    logger.error('Vector DB init fail.')
+                break
+
+        # -------------------------------------- Post process loop --------------------------------------
+
         while not self.shutdown_flag.is_set():
             try:
                 try:
@@ -501,7 +519,32 @@ class IntelligenceHub:
                 data['APPENDIX'][APPENDIX_MAX_RATE_CLASS] = max_key
                 data['APPENDIX'][APPENDIX_MAX_RATE_SCORE] = max_value
 
-                # -------------------- Post Process: Archive, Indexing, To RSS, ... --------------------
+                # ------------------------------- Post Process: Indexing -------------------------------
+
+                if self.vector_db_service:
+                    vec_start = time.time()
+
+                    _uuid = data.get('UUID')
+
+                    if self.vector_db_summary is not None:
+                        title = data.get('EVENT_TITLE', '') or ''
+                        brief = data.get('EVENT_BRIEF', '') or ''
+                        text = data.get('EVENT_TEXT', '') or ''
+
+                        text_summary = f"{title}\n{brief}\n{text}".strip()
+                        if text_summary:
+                            self.vector_db_summary.add_document(text_summary, _uuid)
+
+                    if self.vector_db_full_text is not None:
+                        raw_data = data.get('RAW_DATA', {}).get('content')
+                        if raw_data:
+                            self.vector_db_full_text.add_document(str(raw_data), _uuid)
+
+                    time_spent_seconds = time.time() - vec_start
+                    time_spent_milliseconds = time_spent_seconds * 1000
+                    logger.debug(f"Message {data['UUID']} vectorized, time-spending: {time_spent_milliseconds:.2f} ms")
+
+                # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
 
                 try:
                     self._archive_processed_data(data)
@@ -522,6 +565,8 @@ class IntelligenceHub:
                     self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ERROR)
                 finally:
                     self.processed_queue.task_done()
+
+                # ---------------------------------------------------------------------------------------
             except queue.Empty:
                 continue
 

@@ -65,3 +65,8 @@ ARCHIVED_FLAG_DROP= 'D'
 ARCHIVED_FLAG_ERROR = 'E'
 ARCHIVED_FLAG_RETRY = 'R'
 ARCHIVED_FLAG_ARCHIVED= 'A'
+
+
+VECTOR_DB_SUMMARY = 'intelligence_summary'
+VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
+
