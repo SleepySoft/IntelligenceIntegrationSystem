@@ -199,6 +199,22 @@
 > 
 
 
+#### 创建与激活虚拟环境（可选）
+
+本项目建议使用python版本为3.10以上。当然，不创建虚拟环境，直接使用系统默认的python环境也不是不行。
+
+所谓python虚拟环境，其实非常简单，它就是一个目录，当你切换到这个虚拟环境时，使用的解析器、安装的库、使用的库，都仅限于该目录下，从而和其它环境隔离。
+
+知道这个原理后，大家应该能想到：使用pycharm时，选择已创建的虚拟环境其实就是选择这个目录下的python.exe。
+
+创建虚拟环境主要有三种方法：
++ 原生的venv
++ Anaconda（及其兼容方法）
++ uv
+
+......
+
+
 #### 程序部署
 
 ```
@@ -219,6 +235,9 @@ python -m venv .venv
 
 # Switch to venv
 .venv/Scripts/activate.bat
+
+# Old pip version will not support utf-8, so upgrade to newest pip first.
+python.exe -m pip install --upgrade pip
 
 # Install dependency
 pip install -r requirements.txt

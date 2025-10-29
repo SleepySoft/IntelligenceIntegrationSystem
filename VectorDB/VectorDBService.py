@@ -203,9 +203,10 @@ class VectorStoreManager:
 
         self.client = chroma_client
         self.model = embedding_model
+        self.collection_name = collection_name
 
         self.collection = self.client.get_or_create_collection(
-            name=collection_name,
+            name=self.collection_name,
             metadata={"hnsw:space": "cosine"}
         )
 
@@ -215,7 +216,25 @@ class VectorStoreManager:
             separators=["\n\n", "\n", "。", "！", "？", ". ", " ", ""]
         )
 
-        print(f"[VectorStoreManager] Handle created for collection: '{collection_name}'")
+        print(f"[VectorStoreManager] Handle created for collection: '{self.collection_name}'")
+
+    def clear_collection(self):
+        """
+        Deletes and recreates the collection to clear all data.
+        """
+        print(f"Attempting to clear collection: '{self.collection_name}'...")
+        try:
+            self.client.delete_collection(name=self.collection_name)
+            print(f"Deleted collection '{self.collection_name}'.")
+        except Exception as e:
+            print(f"Note: Could not delete collection '{self.collection_name}' (might not exist): {e}")
+
+        # Recreate it
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+        print(f"Recreated collection '{self.collection_name}'.")
 
     def vectorize_text(self, text: Union[str, List[str]]) -> "np.ndarray":
         """Vectorizes text without saving."""
@@ -251,6 +270,25 @@ class VectorStoreManager:
         except Exception as e:
             print(f"Error upserting document {doc_id}: {e}")
             return []
+
+    def document_exists(self, doc_id: str) -> bool:
+        """
+        Checks if any chunks associated with a specific original_doc_id exist.
+        This is a lightweight check.
+        """
+        try:
+            results = self.collection.get(
+                where={"original_doc_id": doc_id},
+                limit=1,
+                include=[]  # We only need to know if *anything* is returned
+            )
+            # If 'ids' list is not empty, it means we found at least one chunk.
+            return len(results['ids']) > 0
+        except Exception as e:
+            print(f"Error checking existence for doc_id {doc_id}: {e}")
+            # Fail-safe: If we can't check, assume it doesn't exist
+            # to ensure data is processed (at risk of duplication).
+            return False
 
     def delete_document(self, doc_id: str) -> bool:
         """Deletes all chunks associated with a single document ID."""

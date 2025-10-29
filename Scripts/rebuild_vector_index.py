@@ -55,15 +55,35 @@ def connect_to_mongo() -> Optional["MongoClient"]:
 
 # --- Core Logic Functions ---
 
-def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStoreManager):
+def func_rebuild(
+        store_full_text: VectorStoreManager,
+        store_summary: VectorStoreManager,
+        mode: str = "incremental"
+    ):
     """
     Fetches all data from MongoDB and rebuilds the vector indexes.
-    (Updated with robust batch processing)
+    (Updated with robust batch processing and incremental/recreate modes)
+
+    Args:
+        store_full_text: VectorStoreManager for full text.
+        store_summary: VectorStoreManager for summaries.
+        mode (str): 'incremental' (default) checks for existing UUIDs and skips them.
+                    'recreate' clears the collections before rebuilding.
     """
     # Lazy import
     from tqdm import tqdm
 
-    print("\n--- Starting Vector Index Rebuild ---")
+    print(f"\n--- Starting Vector Index Build (Mode: {mode}) ---")
+
+    # 1. (NEW) Handle mode
+    if mode == "recreate":
+        print("Mode 'recreate' selected. Clearing existing vector stores...")
+        store_full_text.clear_collection()
+        store_summary.clear_collection()
+        print("Vector stores cleared.")
+    elif mode != "incremental":
+        print(f"Warning: Unknown mode '{mode}'. Defaulting to 'incremental'.")
+        mode = "incremental"
 
     collection = connect_to_mongo()
     if collection is None:
@@ -76,18 +96,20 @@ def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStore
         total_docs = 0
 
     if total_docs == 0:
-        print("No documents found in MongoDB collection. Nothing to rebuild.")
+        print("No documents found in MongoDB collection. Nothing to build.")
         return
 
     print(f"Found {total_docs} documents to process.")
-    processed_count = 0
-    skipped_count = 0
+
+    added_count = 0
+    skipped_existing_count = 0
+    skipped_error_count = 0
 
     batch_size = 500  # 每次从 Mongo 拉取 500 个文档
     last_id = None  # 跟踪上一批的最后一个 _id
 
     # 使用 'upsert' in add_document 是幂等的，所以我们只是处理所有。
-    with tqdm(total=total_docs, desc="Rebuilding Indexes") as pbar:
+    with tqdm(total=total_docs, desc="Processing Documents") as pbar:
         while True:
             # 1. 构建查询以获取下一批
             query = {}
@@ -115,40 +137,58 @@ def func_rebuild(store_full_text: VectorStoreManager, store_summary: VectorStore
                 try:
                     uuid = doc.get('UUID')
                     if not uuid:
-                        skipped_count += 1
-                        continue  # 继续处理批次中的下一个文档
+                        skipped_error_count += 1
+                        pbar.update(1)
+                        continue
+
+                    # Incremental Check ---
+                    if mode == "incremental":
+                        # 检查任一 store 中是否存在此 UUID
+                        if store_full_text.document_exists(uuid) or store_summary.document_exists(uuid):
+                            skipped_existing_count += 1
+                            pbar.update(1)
+                            continue  # 跳过这个已存在的文档
+                    # --- End of New Logic ---
+
+                    doc_added_flag = False # 标记此文档是否产生了任何向量
 
                     # 1. Process 'intelligence_full_text'
                     raw_data = doc.get('RAW_DATA', {}).get('content')
                     if raw_data:
                         store_full_text.add_document(str(raw_data), uuid)
+                        doc_added_flag = True
 
                     # 2. Process 'intelligence_summary'
                     title = doc.get('EVENT_TITLE', '') or ''
                     brief = doc.get('EVENT_BRIEF', '') or ''
                     text = doc.get('EVENT_TEXT', '') or ''
-
                     text_summary = f"{title}\n{brief}\n{text}".strip()
 
                     if text_summary:
                         store_summary.add_document(text_summary, uuid)
+                        doc_added_flag = True
 
-                    processed_count += 1
+                    if doc_added_flag:
+                        added_count += 1
+                    else:
+                        # 有 UUID 但没有有效内容
+                        skipped_error_count += 1
 
                 except Exception as e:
                     print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
-                    skipped_count += 1
+                    skipped_error_count += 1
 
                 finally:
                     pbar.update(1)
 
             last_id = batch_docs[-1]['_id']
 
-    print("\n--- Rebuild Complete ---")
-    print(f"Successfully processed/updated: {processed_count}")
-    print(f"Skipped (e.g., no UUID): {skipped_count}")
-    print(f"Total chunks in '{COLLECTION_FULL_TEXT}': {store_full_text.count()}")
-    print(f"Total chunks in '{COLLECTION_SUMMARY}': {store_summary.count()}")
+    print("\n--- Build Complete ---")
+    print(f"Successfully added (new): {added_count}")
+    print(f"Skipped (already existing): {skipped_existing_count}")
+    print(f"Skipped (error/no UUID/no content): {skipped_error_count}")
+    print(f"Total chunks in '{store_full_text.collection_name}': {store_full_text.count()}")
+    print(f"Total chunks in '{store_summary.collection_name}': {store_summary.count()}")
 
 
 def func_search(store_full_text: VectorStoreManager, store_summary: VectorStoreManager):
@@ -222,32 +262,14 @@ def main():
         choices=['rebuild', 'search'],
         help="Action(s) to perform. 'rebuild' rebuilds the index. 'search' starts interactive search."
     )
+    # 添加一个标志来控制重建模式
+    parser.add_argument(
+        '--full',
+        action='store_true',  # 如果存在此标志，args.full 将为 True
+        help="If 'rebuild' is specified, perform a full (recreate) build. "
+             "Default is incremental."
+    )
     args = parser.parse_args()
-
-    # --- Handle Rebuild (Pre-delete) ---
-    if 'rebuild' in args.actions:
-        print("--- REBUILD ACTION REQUESTED ---")
-        confirm = input(
-            "ARE YOU SURE? This will DELETE existing data "
-            f"in '{COLLECTION_FULL_TEXT}' and '{COLLECTION_SUMMARY}'. (type 'yes' to confirm): "
-        )
-        if confirm.lower() == 'yes':
-            print("Proceeding with deletion...")
-            try:
-                # Lazy import chromadb just for this
-                import chromadb
-                temp_client = chromadb.PersistentClient(path=VECTOR_DB_PATH)
-                temp_client.delete_collection(name=COLLECTION_FULL_TEXT)
-                print(f"Deleted old collection: {COLLECTION_FULL_TEXT}")
-                temp_client.delete_collection(name=COLLECTION_SUMMARY)
-                print(f"Deleted old collection: {COLLECTION_SUMMARY}")
-            except Exception as e:
-                print(f"Note: Could not delete collections (may not exist): {e}")
-            print("Old collections cleared.")
-        else:
-            print("Rebuild cancelled.")
-            if 'search' not in args.actions:
-                sys.exit(0)
 
     # --- Initialize Service (Non-blocking) ---
     print("\n[Main]: Initializing vector service (non-blocking)...")
@@ -289,9 +311,36 @@ def main():
         sys.exit(1)
 
     # --- Route to Core Logic ---
-    if 'rebuild' in args.actions:
-        func_rebuild(store_full, store_summary)
 
+    # 1. 处理 Rebuild 动作
+    if 'rebuild' in args.actions:
+        build_mode = None  # 初始化
+
+        if args.full:
+            # --- 模式：Recreate (需要确认) ---
+            build_mode = "recreate"
+            print("--- FULL REBUILD ACTION REQUESTED ---")
+            confirm = input(
+                "ARE YOU SURE? This will DELETE existing data "
+                f"in '{COLLECTION_FULL_TEXT}' and '{COLLECTION_SUMMARY}'. (type 'yes' to confirm): "
+            )
+            if confirm.lower() == 'yes':
+                print("Proceeding with full rebuild...")
+            else:
+                print("Full rebuild cancelled.")
+                build_mode = None  # 阻止执行
+
+        else:
+            # --- 模式：Incremental (默认, 无需确认) ---
+            build_mode = "incremental"
+            print("--- INCREMENTAL REBUILD ACTION REQUESTED ---")
+
+        # 如果 build_mode 有效 (即 'incremental' 或 'recreate' 且已确认)
+        if build_mode:
+            func_rebuild(store_full, store_summary, mode=build_mode)
+
+    # 2. 处理 Search 动作
+    # 即使 rebuild 被取消，如果 search 被指定，它仍会运行
     if 'search' in args.actions:
         func_search(store_full, store_summary)
 
