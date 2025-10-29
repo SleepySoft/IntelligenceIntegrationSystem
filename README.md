@@ -139,9 +139,10 @@
     > 
     > [ArticleListRender.py](ServiceComponent/ArticleListRender.py)：文章列表页面。
     > 
-    > [ArticleQueryRender.py](ServiceComponent/ArticleQueryRender.py)：文章查询页面。
+    > [intelligence_query.html](templates/intelligence_query.html)：文章查询页面（20251029：重构为前后端分离）。
     > 
-    > [ArticleTableRender.py](ServiceComponent/ArticleTableRender.py)：文章列表项。
+    > （旧）[ArticleTableRender.py](ServiceComponent/ArticleTableRender.py)：文章列表项。
+    > （新）[intelligence_table.js](static/js/intelligence_table.js)：文章列表项。
     > 
     > 子功能页面，由对应模块提供，前后端分离。这里就不列出了，详见登录后的管理页面。
     > 

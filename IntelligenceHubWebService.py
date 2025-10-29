@@ -24,7 +24,6 @@ from MyPythonUtility.ArbitraryRPC import RPCService
 from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
 from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.ArticleRender import default_article_render
-from ServiceComponent.ArticleQueryRender import render_query_page
 from ServiceComponent.ArticleListRender import default_article_list_render
 from IntelligenceHub import CollectedData, IntelligenceHub, ProcessedData, APPENDIX_TIME_ARCHIVED
 from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware, time_str_to_datetime

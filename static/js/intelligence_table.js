@@ -11,12 +11,129 @@ let currentQueryState = {
     search_mode: document.querySelector('#search-mode-tabs .nav-link.active').dataset.mode
 };
 
-// 媒体来源数据库 (来自 article_source_enhancer_script)
+// 媒体来源数据库
+// domain: 用于匹配的关键域名
+// nameCN: 网站中文名
+// country: 所属国家/地区
+// flag: 对应的 Emoji 国旗
+// accessibleInChina: 在中国大陆是否可直接访问 (true: 是, false: 否)
 const mediaSources = [
-    // ... (你提供的长列表，此处省略以保持简洁) ...
+    // 美国 (USA)
     { domain: "wsj.com", nameCN: "华尔街日报", country: "USA", flag: "🇺🇸", accessibleInChina: false },
     { domain: "nytimes.com", nameCN: "纽约时报", country: "USA", flag: "🇺🇸", accessibleInChina: false },
-    // ... 确保你已将所有媒体源复制到此处
+    { domain: "voanews.com", nameCN: "美国之音", country: "USA", flag: "🇺🇸", accessibleInChina: false },
+    { domain: "washingtonpost.com", nameCN: "华盛顿邮报", country: "USA", flag: "🇺🇸", accessibleInChina: false },
+    { domain: "bloomberg.com", nameCN: "彭博社", country: "USA", flag: "🇺🇸", accessibleInChina: false },
+    { domain: "cnn.com", nameCN: "美国有线电视新闻网", country: "USA", flag: "🇺🇸", accessibleInChina: false },
+
+    // 英国 (UK)
+    { domain: "bbc.com", nameCN: "英国广播公司", country: "UK", flag: "🇬🇧", accessibleInChina: false },
+    { domain: "ft.com", nameCN: "金融时报", country: "UK", flag: "🇬🇧", accessibleInChina: false },
+    { domain: "economist.com", nameCN: "经济学人", country: "UK", flag: "🇬🇧", accessibleInChina: false },
+    { domain: "theguardian.com", nameCN: "卫报", country: "UK", flag: "🇬🇧", accessibleInChina: false },
+
+    // 加拿大 (Canada)
+    { domain: "rcinet.ca", nameCN: "加拿大国际广播电台", country: "Canada", flag: "🇨🇦", accessibleInChina: false },
+    { domain: "cbc.ca", nameCN: "加拿大广播公司", country: "Canada", flag: "🇨🇦", accessibleInChina: false },
+    { domain: "theglobeandmail.com", nameCN: "环球邮报", country: "Canada", flag: "🇨🇦", accessibleInChina: false },
+
+    // 法国 (France)
+    { domain: "rfi.fr", nameCN: "法国国际广播电台", country: "France", flag: "🇫🇷", accessibleInChina: false },
+    { domain: "afp.com", nameCN: "法新社", country: "France", flag: "🇫🇷", accessibleInChina: false },
+    { domain: "lemonde.fr", nameCN: "世界报", country: "France", flag: "🇫🇷", accessibleInChina: false },
+
+    // 德国 (Germany)
+    { domain: "dw.com", nameCN: "德国之声", country: "Germany", flag: "🇩🇪", accessibleInChina: false },
+    { domain: "dpa.com", nameCN: "德国新闻社", country: "Germany", flag: "🇩🇪", accessibleInChina: false },
+    { domain: "spiegel.de", nameCN: "明镜周刊", country: "Germany", flag: "🇩🇪", accessibleInChina: false },
+
+    // 澳大利亚 (Australia)
+    { domain: "abc.net.au", nameCN: "澳大利亚广播公司", country: "Australia", flag: "🇦🇺", accessibleInChina: false },
+    { domain: "smh.com.au", nameCN: "悉尼先驱晨报", country: "Australia", flag: "🇦🇺", accessibleInChina: false },
+
+    // 西班牙 (Spain)
+    { domain: "elpais.com", nameCN: "国家报", country: "Spain", flag: "🇪🇸", accessibleInChina: false },
+
+    // 意大利 (Italy)
+    { domain: "ansa.it", nameCN: "安莎通讯社", country: "Italy", flag: "🇮🇹", accessibleInChina: false },
+
+    // 国际 (International)
+    { domain: "investing.com", nameCN: "英为财情", country: "International", flag: "🌍", accessibleInChina: true },
+    { domain: "reuters.com", nameCN: "路透社", country: "International", flag: "🌍", accessibleInChina: false },
+    { domain: "apnews.com", nameCN: "美联社", country: "International", flag: "🌍", accessibleInChina: false },
+
+    // 卡塔尔 (Qatar)
+    { domain: "aljazeera.com", nameCN: "半岛电视台", country: "Qatar", flag: "🇶🇦", accessibleInChina: true },
+
+    // 阿联酋 (UAE)
+    { domain: "alarabiya.net", nameCN: "阿拉伯卫星电视台", country: "UAE", flag: "🇦🇪", accessibleInChina: true },
+    { domain: "gulfnews.com", nameCN: "海湾新闻", country: "UAE", flag: "🇦🇪", accessibleInChina: true },
+
+    // 以色列 (Israel)
+    { domain: "haaretz.com", nameCN: "国土报", country: "Israel", flag: "🇮🇱", accessibleInChina: true },
+    { domain: "jpost.com", nameCN: "耶路撒冷邮报", country: "Israel", flag: "🇮🇱", accessibleInChina: true },
+
+    // 土耳其 (Turkey)
+    { domain: "aa.com.tr", nameCN: "阿纳多卢通讯社", country: "Turkey", flag: "🇹🇷", accessibleInChina: true },
+
+    // 埃及 (Egypt)
+    { domain: "ahram.org.eg", nameCN: "金字塔报", country: "Egypt", flag: "🇪🇬", accessibleInChina: true },
+
+    // 俄罗斯 (Russia)
+    { domain: "sputniknews.com", nameCN: "卫星通讯社", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
+    { domain: "rt.com", nameCN: "今日俄罗斯", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
+    { domain: "tass.com", nameCN: "塔斯社", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
+    { domain: "ria.ru", nameCN: "俄新社", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
+    { domain: "kommersant.ru", nameCN: "生意人报", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
+
+    // 日本 (Japan)
+    { domain: "nhk.or.jp", nameCN: "日本广播协会", country: "Japan", flag: "🇯🇵", accessibleInChina: true },
+    { domain: "kyodonews.net", nameCN: "共同社", country: "Japan", flag: "🇯🇵", accessibleInChina: true },
+    { domain: "nikkei.com", nameCN: "日本经济新闻", country: "Japan", flag: "🇯🇵", accessibleInChina: true },
+    { domain: "asahi.com", nameCN: "朝日新闻", country: "Japan", flag: "🇯🇵", accessibleInChina: true },
+
+    // 新加坡 (Singapore)
+    { domain: "zaobao.com.sg", nameCN: "联合早报", country: "Singapore", flag: "🇸🇬", accessibleInChina: true },
+    { domain: "straitstimes.com", nameCN: "海峡时报", country: "Singapore", flag: "🇸🇬", accessibleInChina: true },
+
+    // 韩国 (South Korea)
+    { domain: "chosun.com", nameCN: "朝鲜日报", country: "South Korea", flag: "🇰🇷", accessibleInChina: true },
+    { domain: "joongang.co.kr", nameCN: "中央日报", country: "South Korea", flag: "🇰🇷", accessibleInChina: true },
+    { domain: "yna.co.kr", nameCN: "韩联社", country: "South Korea", flag: "🇰🇷", accessibleInChina: true },
+
+    // 印度 (India)
+    { domain: "ptinews.com", nameCN: "印度报业托拉斯", country: "India", flag: "🇮🇳", accessibleInChina: true },
+    { domain: "timesofindia.indiatimes.com", nameCN: "印度时报", country: "India", flag: "🇮🇳", accessibleInChina: true },
+
+    // 中国大陆 (China)
+    { domain: "xinhuanet.com", nameCN: "新华社", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "people.com.cn", nameCN: "人民日报", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "jiemian.com", nameCN: "界面新闻", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "thepaper.cn", nameCN: "澎湃新闻", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "infzm.com", nameCN: "南方周末", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "gmw.cn", nameCN: "光明网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "ce.cn", nameCN: "中国经济网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "81.cn", nameCN: "中国军网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "qstheory.cn", nameCN: "求是网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "bjnews.com.cn", nameCN: "新京报", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "chinanews.com", nameCN: "中国新闻网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+    { domain: "cnr.cn", nameCN: "中国广播网", country: "China", flag: "🇨🇳", accessibleInChina: true },
+
+    // 中国台湾 (Taiwan)
+    { domain: "cna.com.tw", nameCN: "中央通讯社", country: "Taiwan", flag: "🇹🇼", accessibleInChina: true },
+
+    // 巴西 (Brazil)
+    { domain: "folha.uol.com.br", nameCN: "圣保罗页报", country: "Brazil", flag: "🇧🇷", accessibleInChina: true },
+    { domain: "oglobo.globo.com", nameCN: "环球报", country: "Brazil", flag: "🇧🇷", accessibleInChina: true },
+
+    // 阿根廷 (Argentina)
+    { domain: "clarin.com", nameCN: "号角报", country: "Argentina", flag: "🇦🇷", accessibleInChina: true },
+    { domain: "lanacion.com.ar", nameCN: "民族报", country: "Argentina", flag: "🇦🇷", accessibleInChina: true },
+
+    // 智利 (Chile)
+    { domain: "emol.com", nameCN: "信使报", country: "Chile", flag: "🇨🇱", accessibleInChina: true },
+
+    // 哥伦比亚 (Colombia)
     { domain: "eltiempo.com", nameCN: "时代报", country: "Colombia", flag: "🇨🇴", accessibleInChina: true },
 ];
 
