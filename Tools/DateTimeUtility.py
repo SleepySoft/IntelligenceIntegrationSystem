@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import re
+import time
+
 import pytz
 import logging
 import datetime
@@ -217,6 +219,168 @@ def time_str_to_datetime(text: str) -> Optional[datetime.datetime]:
 
     logger.error(f"All parsing attempts failed for: {text}")
     return None
+
+
+# ------------------------------------------------------- Clock --------------------------------------------------------
+
+class Clock:
+    """A precision timer for measuring elapsed time with start/stop/freeze functionality."""
+
+    def __init__(self, start_flag: bool = True):
+        """
+        Initialize the Clock.
+
+        Args:
+            start_flag: If True, timer starts immediately. If False,
+                        all elapsed methods return 0 until started.
+        """
+        self.__start_time = time.time()  # Baseline timestamp for calculations
+        self.__start_flag = start_flag  # Controls whether timing is active
+        self.__freeze_time = None  # Stores frozen timestamp (if set)
+
+    def reset(self):
+        """Reset the timer: clear freeze, restart counting from now."""
+        self.__start_flag = True
+        self.__freeze_time = None
+        self.__start_time = time.time()  # Update baseline to current time
+
+    def start(self):
+        """Start or resume the timer."""
+        if not self.__start_flag:
+            # If resuming from stop, adjust start time to account for paused duration
+            if self.__freeze_time is not None:
+                self.__start_time = time.time() - (self.__freeze_time - self.__start_time)
+            self.__start_flag = True
+            self.__freeze_time = None
+
+    def stop(self):
+        """Stop the timer. Elapsed time will remain constant until started again."""
+        if self.__start_flag:
+            self.freeze()  # Capture current time as freeze point
+            self.__start_flag = False
+
+    def freeze(self):
+        """Freeze the current elapsed time. Future calls return this fixed value."""
+        if self.__start_flag:
+            self.__freeze_time = time.time()  # Capture timestamp at freeze
+
+    def unfreeze(self):
+        """Unfreeze the timer. Timing will resume from the frozen point."""
+        if self.__freeze_time is not None:
+            # Adjust start time to account for frozen duration
+            self.__start_time = time.time() - (self.__freeze_time - self.__start_time)
+            self.__freeze_time = None
+
+    def elapsed(self) -> float:
+        """
+        Calculate elapsed time in seconds (as float).
+
+        Returns:
+            0 if timer is stopped (start_flag=False).
+            Otherwise, seconds since start (or frozen time if applicable).
+        """
+        if not self.__start_flag:
+            return 0.0
+
+        # Use frozen time if set; otherwise use current time
+        base_time = self.__freeze_time if self.__freeze_time is not None else time.time()
+        return base_time - self.__start_time
+
+    def elapsed_s(self) -> int:
+        """Elapsed time in whole seconds (rounded). Returns 0 if stopped."""
+        return round(self.elapsed()) if self.__start_flag else 0
+
+    def elapsed_ms(self) -> int:
+        """Elapsed time in milliseconds (rounded). Returns 0 if stopped."""
+        return round(self.elapsed() * 1000) if self.__start_flag else 0
+
+
+# ------------------------------------------------------ Delayer -------------------------------------------------------
+
+class Delayer:
+    """A utility class for enforcing minimum time delays between operations."""
+
+    def __init__(self, delay_ms: int):
+        """
+        Initialize the Delayer with a specified minimum delay.
+
+        Args:
+            delay_ms: Minimum delay time in milliseconds (must be >= 0)
+
+        Raises:
+            ValueError: If delay_ms is negative
+        """
+        if delay_ms < 0:
+            raise ValueError("Delay time cannot be negative")
+
+        self.__delay_ms = delay_ms  # Minimum delay in milliseconds
+        self.__clock = Clock()  # Internal precision timer
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug(f"Delayer initialized with {delay_ms}ms delay")
+
+    def reset(self):
+        """Reset the internal timer to zero."""
+        self.__clock.reset()
+        self.logger.debug("Delayer timer reset")
+
+    def set_delay(self, new_delay_ms: int):
+        """
+        Update the minimum delay time.
+
+        Args:
+            new_delay_ms: New minimum delay in milliseconds (must be >= 0)
+
+        Raises:
+            ValueError: If new_delay_ms is negative
+        """
+        if new_delay_ms < 0:
+            raise ValueError("Delay time cannot be negative")
+
+        self.__delay_ms = new_delay_ms
+        self.logger.info(f"Delay time updated to {new_delay_ms}ms")
+
+    def is_delay_satisfied(self) -> bool:
+        """
+        Check if the minimum delay has been satisfied.
+
+        Returns:
+            True if elapsed time >= minimum delay, False otherwise
+        """
+        elapsed_ms = self.__clock.elapsed_ms()
+        satisfied = elapsed_ms >= self.__delay_ms
+        self.logger.debug(f"Delay satisfied: {satisfied} "
+                          f"(elapsed: {elapsed_ms}ms, required: {self.__delay_ms}ms)")
+        return satisfied
+
+    def delay(self) -> float:
+        """
+        Enforce the minimum delay by sleeping if necessary.
+
+        Returns:
+            Actual delay time applied in milliseconds (0 if no sleep needed)
+        """
+        elapsed_ms = self.__clock.elapsed_ms()
+        actual_delay = 0.0
+
+        # Sleep only if minimum delay not yet satisfied
+        if elapsed_ms < self.__delay_ms:
+            # Calculate remaining delay in seconds
+            remaining_delay_s = (self.__delay_ms - elapsed_ms) / 1000.0
+            actual_delay = self.__delay_ms - elapsed_ms
+
+            self.logger.debug(f"Sleeping for {actual_delay:.2f}ms "
+                              f"({remaining_delay_s:.4f}s)")
+            time.sleep(remaining_delay_s)
+
+        # Always reset after delay enforcement
+        self.__clock.reset()
+        self.logger.debug(f"Delay enforced. Actual delay: {actual_delay:.2f}ms")
+        return actual_delay
+
+    @property
+    def current_delay(self) -> int:
+        """Get the current minimum delay setting in milliseconds."""
+        return self.__delay_ms
 
 
 # ----------------------------------------------------------------------------------------------------------------------

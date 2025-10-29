@@ -18,7 +18,7 @@ from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
 from prompts import ANALYSIS_PROMPT, SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.OpenAIClient import OpenAICompatibleAPI
-from Tools.DateTimeUtility import time_str_to_datetime, get_aware_time
+from Tools.DateTimeUtility import time_str_to_datetime, get_aware_time, Clock
 from MyPythonUtility.DictTools import check_sanitize_dict
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceHubDefines import *
@@ -511,16 +511,17 @@ class IntelligenceHub:
 
         if self.vector_db_service is not None:
             logger.info('Waiting for vector DB init...')
+            clock = Clock()
             while not self.shutdown_flag.is_set():
                 status = self.vector_db_service.get_status().get('status', '')
                 if status == "ready":
                     self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
                     self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
-                    logger.info('Vector DB init successful.')
+                    logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
                 elif status == 'error':
                     self.vector_db_service = None
                     # self.vector_db_summary and self.vector_db_full_text are also None
-                    logger.error('Vector DB init fail.')
+                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_ms()}ms.')
                 else:
                     time.sleep(1)
                     continue
