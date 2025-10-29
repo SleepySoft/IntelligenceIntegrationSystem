@@ -8,7 +8,7 @@
 let currentQueryState = {
     page: 1,
     per_page: 10,
-    search_mode: 'vector' // 默认与激活的 tab 一致
+    search_mode: document.querySelector('#search-mode-tabs .nav-link.active').dataset.mode
 };
 
 // 媒体来源数据库 (来自 article_source_enhancer_script)
@@ -46,7 +46,7 @@ async function fetchResults(queryParams) {
 
     try {
         // B. 调用后端 API
-        const response = await fetch('/intelligences/query2', {
+        const response = await fetch('/intelligences/query', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -354,24 +354,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = Object.fromEntries(formData.entries());
 
         // 2. 构建与 active tab 一致的 payload
+
+        // 公共分页字段
         const payload = {
-            page: 1, // 新搜索总是从第1页开始
-            per_page: Number(params.per_page) || 10,
-            search_mode: currentQueryState.search_mode
+          page: 1,
+          per_page: Number(params.per_page) || 10,
+          search_mode: document.querySelector('#search-mode-tabs .nav-link.active').dataset.mode
         };
 
         if (payload.search_mode === 'vector') {
-            payload.keywords = params.keywords || "";
-            payload.score_threshold = Number(params.score_threshold) || 0.5;
-            // HTML checkbox.checked 返回布尔值, JSON.stringify 会处理
-            payload.in_summary = document.getElementById('in_summary').checked;
-            payload.in_fulltext = document.getElementById('in_fulltext').checked;
-        } else { // 'mongo'
-            if (params.start_time) payload.start_time = params.start_time;
-            if (params.end_time) payload.end_time = params.end_time;
-            if (params.locations) payload.locations = params.locations;
-            if (params.peoples) payload.peoples = params.peoples;
-            if (params.organizations) payload.organizations = params.organizations;
+          payload.keywords                = params.keywords || '';
+          payload.score_threshold         = Number(params.score_threshold) || 0.5;
+          payload.in_summary              = document.getElementById('in_summary').checked;
+          payload.in_fulltext             = document.getElementById('in_fulltext').checked;
+        } else {   // mongo
+          if (params.start_time)    payload.start_time    = params.start_time;
+          if (params.end_time)      payload.end_time      = params.end_time;
+          if (params.locations)     payload.locations     = params.locations;
+          if (params.peoples)       payload.peoples       = params.peoples;
+          if (params.organizations) payload.organizations = params.organizations;
         }
 
         // 3. 更新全局状态并发起请求
@@ -391,13 +392,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchResults(currentQueryState); // 使用当前状态重新获取
             }
         }
-    });
-
-    // 监听 Tab 切换
-    searchModeTabs.forEach(tab => {
-        tab.addEventListener('shown.bs.tab', (e) => {
-            currentQueryState.search_mode = e.target.dataset.mode;
-        });
     });
 
     // 定时更新时间背景 (来自共享脚本)

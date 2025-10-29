@@ -33,6 +33,47 @@ from Tools.RequestTracer import RequestTracer
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+from distutils.util import strtobool
+
+
+def to_bool(value, default=False):
+    """Safely convert various types to boolean.
+
+    Handles:
+    - Native bool values
+    - Strings: 'true', 'false', 'yes', 'no', 'on', 'off', '1', '0'
+    - Integers: 1 = True, 0 = False
+    - None: returns default
+
+    Args:
+        value: Value to convert
+        default: Default if conversion fails
+
+    Returns:
+        Converted boolean value
+    """
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, int):
+        return bool(value)
+
+    try:
+        # Handle string representations
+        return bool(strtobool(str(value).strip().lower()))
+    except (ValueError, AttributeError):
+        return default
+
+
+def only_summary_result(result: List[dict]):
+    summary_result = [
+        ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True) for data in result
+    ]
+    return summary_result
+
 
 def post_collected_intelligence(url: str, data: CollectedData, timeout=10) -> dict:
     """
@@ -303,42 +344,43 @@ class IntelligenceHubWebService:
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         @WebServiceAccessManager.login_required
         def intelligences_query_api():
-            # 1. 收参：优先 JSON，其次 form，最后 query-string
             if request.method == 'POST':
-                data = request.get_json(silent=True) or request.form
-            else:
-                data = request.args
+                try:
+                    data = request.get_json(silent=True) or request.form
+                    # data = request.args
 
-            # 2. 基础分页/过滤参数
-            def _split(v: str) -> List[str]:
-                return [x.strip() for x in v.split(',') if x.strip()]
+                    def _split(v: str) -> List[str]:
+                        return [x.strip() for x in v.split(',') if x.strip()]
 
-            params = {
-                'start_time': data.get('start_time', ''),
-                'end_time': data.get('end_time', ''),
-                'locations': _split(data.get('locations', '')),
-                'peoples': _split(data.get('peoples', '')),
-                'organizations': _split(data.get('organizations', '')),
-                'page': int(data.get('page', 1)),
-                'per_page': int(data.get('per_page', 10)),
-                # 模式开关
-                'search_mode': data.get('search_mode', 'mongo'),  # 'mongo' | 'vector'
-                # 向量模式专用
-                'keywords': data.get('keywords', ''),
-                'in_summary': data.get('in_summary', 'true').lower() == 'true',
-                'in_fulltext': data.get('in_fulltext', 'false').lower() == 'true',
-                'score_threshold': float(data.get('score_threshold', 0.5)),
-            }
+                    params = {
+                        'start_time': data.get('start_time', ''),
+                        'end_time': data.get('end_time', ''),
+                        'locations': _split(data.get('locations', '')),
+                        'peoples': _split(data.get('peoples', '')),
+                        'organizations': _split(data.get('organizations', '')),
+                        'page': int(data.get('page', 1)),
+                        'per_page': int(data.get('per_page', 10)),
+                        # 模式开关
+                        'search_mode': data.get('search_mode', 'mongo'),  # 'mongo' | 'vector'
+                        # 向量模式专用
+                        'keywords': data.get('keywords', ''),
+                        'in_summary': to_bool(data.get('in_summary'), default=True),
+                        'in_fulltext': to_bool(data.get('in_fulltext'), default=False),
+                        'score_threshold': float(data.get('score_threshold', 0.5)),
+                    }
 
-            try:
-                if params['search_mode'] == 'vector':
-                    results, total = _do_vector_search(params)
-                else:
-                    results, total = _do_mongo_search(params)
-                return render_query_page(params, results, total)
-            except Exception as e:
-                logger.exception("intelligences_query_api error")
-                return jsonify({'error': str(e)}), 500
+                    if params['search_mode'] == 'vector':
+                        results, total = _do_vector_search(params)
+                    else:
+                        results, total = _do_mongo_search(params)
+                    summary_result = only_summary_result(results)
+                    return jsonify({ 'results': summary_result, 'total': total })
+                except Exception as e:
+                    logger.exception("intelligences_query_api error")
+                    traceback.print_exc()
+                    return jsonify({'error': str(e)}), 500
+
+            return render_template('intelligence_query.html')
 
         def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
             """走 Mongo 过滤"""
