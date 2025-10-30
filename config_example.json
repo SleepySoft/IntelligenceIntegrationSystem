@@ -16,7 +16,7 @@
 
     "vectordb": {
       "enabled": true,
-      "vector_db_path": "IISVectorDB",
+      "vector_db_path": "vectordb",
       "embedding_model_name": "paraphrase-multilingual-MiniLM-L12-v2",
       "stores": [
         {

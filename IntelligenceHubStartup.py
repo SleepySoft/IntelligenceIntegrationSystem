@@ -5,6 +5,8 @@ import logging
 import datetime
 import threading
 import traceback
+from pathlib import Path
+
 from flask import Flask
 from typing import Tuple
 from functools import partial
@@ -53,6 +55,13 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     logger.info('Apply config: ')
     logger.info(config.dump_text())
 
+    # ---------------------------------- Path ----------------------------------
+
+    # TODO: All generated data will be put in this path. It's good for docker deployment.
+    data_path = os.path.join(self_path, 'data')
+
+    Path(data_path).mkdir(parents=True, exist_ok=True)
+
     # ------------------------------- AI Service -------------------------------
 
     ai_service_url = config.get('intelligence_hub.ai_service.url', OPEN_AI_API_BASE_URL_SELECT)
@@ -75,8 +84,13 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     vector_stores = config.get('intelligence_hub.vectordb.stores', [])
 
     if vector_enabled and vector_db_path and embedding_model_name:
+        # Start from here: put vector db in data path.
+        vector_db_path_abs = vector_db_path \
+            if os.path.isabs(vector_db_path) \
+            else os.path.join(data_path, vector_db_path)
+
         vector_db_service = VectorDBService(
-            db_path = vector_db_path,
+            db_path = vector_db_path_abs,
             model_name = embedding_model_name,
             store_config = vector_stores
         )
