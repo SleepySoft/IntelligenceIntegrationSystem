@@ -2483,7 +2483,8 @@ ai client需要包含以下功能，并提取一个公共接口：
 
 
 
-
+我的想法时无论是用户正常调用chat，还是管理器定时调用test_and_update_status（或换个名字），其逻辑和流程都是一样的，即通过一次普通调用测试client的问题并更新状态。
+所以理想情况应该是chat后统一处理和更新状态，test_and_update_status仅在chat长时间没调用时才去激活一次。
 
 
 

@@ -94,6 +94,10 @@ class BaseAIClient(ABC):
              model: Optional[str] = None,
              temperature: float = 0.7,
              max_tokens: int = 4096) -> Dict[str, Any]:
+
+        if self.status == ClientStatus.UNAVAILABLE:
+            return {'error': 'client_unavailable', 'message': 'Client is marked as unavailable.'}
+
         try:
             response = self.chat_completion_sync(messages, model, temperature, max_tokens)
 
@@ -361,7 +365,7 @@ class BaseAIClient(ABC):
             return
 
         try:
-            result = self.create_chat_completion_sync(
+            result = self.chat(
                 messages=[{"role": "user", "content": self.test_prompt}],
                 max_tokens=100
             )
