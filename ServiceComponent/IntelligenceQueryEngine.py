@@ -20,46 +20,73 @@ class IntelligenceQueryEngine:
     def __init__(self, db: MongoDBStorage):
         self.__mongo_db = db
 
-    def get_intelligence(self, _uuid: str) -> Optional[dict]:
+    def get_intelligence(self, _uuid: Union[str, List[str]]) -> Union[Optional[dict], List[dict]]:
         """Retrieve single intelligence entry by UUID
 
         Args:
-            _uuid (str): UUID string to query
+            _uuid (Union[str, List[str]]): UUID string or string list to query
 
         Returns:
-            Optional[dict]: Document dictionary if found, otherwise None
+            Union[Optional[dict], List[dict]]:
         """
+        is_list_input = isinstance(_uuid, (list, tuple))
+
         # Parameter validation
         if not _uuid:
             logger.error("UUID parameter is empty")
-            return None
+            return [] if is_list_input else None
 
         try:
             # Attempt to get database connection
             collection = self.__mongo_db.collection
             if collection is None:
                 logger.error("Database connection not initialized")
-                return None
+                return [] if is_list_input else None
 
-            # Build exact match UUID query
-            query = {"UUID": str(_uuid).lower()}
+            if is_list_input:
+                # 清理 UUID 列表：转为小写字符串，并过滤掉空值
+                sanitized_uuids = [str(u).lower() for u in _uuid if u]
 
-            # Execute query - get first match
-            doc = collection.find_one(query)
+                if not sanitized_uuids:
+                    logger.warning("Input list includes Empty/None UUID")
+                    return []
 
-            if doc is None:
-                logger.warning(f"No matching UUID found: {_uuid}")
-                return None
+                # 构建 MongoDB $in 查询
+                query = {"UUID": {"$in": sanitized_uuids}}
 
-            # Process document format
-            return self.process_document(doc)
+                # 执行查询（find 返回一个游标）
+                cursor = collection.find(query)
+
+                # 处理游标中的所有文档
+                results = [self.process_document(doc) for doc in cursor]
+
+                # (可选) 记录有多少请求的 UUID 未被找到
+                if len(results) < len(sanitized_uuids):
+                    found_uuids_set = {doc.get('UUID', '').lower() for doc in results}
+                    missing = [u for u in sanitized_uuids if u not in found_uuids_set]
+                    logger.warning(f"Not found UUID: {missing}")
+
+                return results
+            else:
+                # Build exact match UUID query
+                query = {"UUID": str(_uuid).lower()}
+
+                # Execute query - get first match
+                doc = collection.find_one(query)
+
+                if doc is None:
+                    logger.warning(f"No matching UUID found: {_uuid}")
+                    return None
+
+                # Process document format
+                return self.process_document(doc)
 
         except pymongo.errors.PyMongoError as e:
             logger.error(f"Database query failed: {str(e)}")
-            return None
+            return [] if is_list_input else None
         except Exception as e:
             logger.exception(f"Unknown error: {str(e)}")
-            return None
+            return [] if is_list_input else None
 
     def get_intelligence_summary(self) -> Dict[str, Union[int, Optional[str]]]:
         """

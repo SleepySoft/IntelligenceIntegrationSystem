@@ -372,8 +372,13 @@ class IntelligenceHubWebService:
                         results, total = _do_vector_search(params)
                     else:
                         results, total = _do_mongo_search(params)
-                    summary_result = only_summary_result(results)
-                    return jsonify({ 'results': summary_result, 'total': total })
+
+                    if not results:
+                        return jsonify({ 'results': [], 'total': total })
+                    else:
+                        summary_result = only_summary_result(results)
+                        return jsonify({ 'results': summary_result, 'total': total })
+
                 except Exception as e:
                     logger.exception("intelligences_query_api error")
                     traceback.print_exc()
@@ -416,12 +421,15 @@ class IntelligenceHubWebService:
             end = start + p['per_page']
             page_items = raw[start:end]
 
-            # 把元组转成 dict，方便模板渲染
-            results = [
-                {'doc_id': doc_id, 'score': score, 'chunk': chunk}
-                for doc_id, score, chunk in page_items
-            ]
-            return results, len(raw)  # total 为向量去重后的总数
+            # results = [
+            #     {'doc_id': doc_id, 'score': score, 'chunk': chunk}
+            #     for doc_id, score, chunk in page_items
+            # ]
+
+            uuids = [doc_id for doc_id, _, _ in page_items]
+            articles = self.intelligence_hub.get_intelligence(uuids)
+
+            return articles, len(raw)  # total 为向量去重后的总数
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):

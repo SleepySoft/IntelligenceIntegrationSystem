@@ -8,7 +8,7 @@ import pymongo
 import threading
 
 from attr import dataclass
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, Union
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
 
@@ -275,8 +275,14 @@ class IntelligenceHub:
 
     # -------------------------------------- Gets and Queries --------------------------------------
 
-    def get_intelligence(self, _uuid: str) -> dict:
-        query_engine = self.archive_db_query_engine
+    def get_intelligence(self,
+                         _uuid: Union[str, List[str]],
+                         db: str = 'archive'
+                         ) -> dict:
+        if db == 'cache':
+            query_engine = self.cache_db_query_engine
+        else:
+            query_engine = self.archive_db_query_engine
         return query_engine.get_intelligence(_uuid)
 
     def query_intelligence(self,
@@ -521,7 +527,7 @@ class IntelligenceHub:
                 elif status == 'error':
                     self.vector_db_service = None
                     # self.vector_db_summary and self.vector_db_full_text are also None
-                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_ms()}ms.')
+                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
                 else:
                     time.sleep(1)
                     continue
@@ -555,7 +561,7 @@ class IntelligenceHub:
                 # ------------------------------- Post Process: Indexing -------------------------------
 
                 if self.vector_db_service:
-                    vec_start = time.time()
+                    clock = Clock()
 
                     _uuid = data.get('UUID')
 
@@ -573,9 +579,7 @@ class IntelligenceHub:
                         if raw_data:
                             self.vector_db_full_text.add_document(str(raw_data), _uuid)
 
-                    time_spent_seconds = time.time() - vec_start
-                    time_spent_milliseconds = time_spent_seconds * 1000
-                    logger.debug(f"Message {data['UUID']} vectorized, time-spending: {time_spent_milliseconds:.2f} ms")
+                    logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
                 # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
 
