@@ -212,8 +212,55 @@
 + Anaconda（及其兼容方法）
 + uv
 
-......
+##### venv
 
+```
+# 创建虚拟环境
+# - 通常在项目目录下执行以下命令，虚拟环境的python版本跟你当前运行的python环境有关
+# - 对我来说，通常是在anaconda下创建一个指定版本python的虚拟环境，再使用这个虚拟环境创建venv
+# - （那为什么不直接用anaconda？好问题。）
+
+python -m venv .venv
+
+# 切换到该虚拟环境（接下来安装依赖前都需要先切换到该虚拟环境，下同）
+
+# ---- Windows ----
+.venv\Scripts\activate.bat
+
+# ----- Linux -----
+source .venv/Scripts/activate
+```
+
+##### Anaconda
+
+Anaconda好处是方便，缺点是重
+
+下载：https://www.anaconda.com/download
+
+```
+# 创建虚拟环境
+conda create -n iis python=3.10
+
+# 切换到该虚拟环境
+conda activate iis
+```
+
+##### uv
+
+这是现在流行的工具，非常轻量，而且快，不过我还不是很熟悉。以下内容来自AI。
+
+```
+# 安装uv
+pip install uv
+
+# 创建虚拟环境
+uv venv
+
+# 切换到该虚拟环境
+.venv\Scripts\activate.bat
+
+# 接下来可以使用pip install -r，也可以使用uv的方式安装依赖（自行查阅）。
+```
 
 #### 程序部署
 
@@ -224,17 +271,12 @@ git clone https://github.com/SleepySoft/IntelligenceIntegrationSystem.git
 # Enter this project dir
 cd IntelligenceIntegrationSystem
 
-# Check development branch
-git checkout dev
-
 # Important: Fetch sub modules
 git submodule update --init --recursive
 
-# Suggest python 3.10
-python -m venv .venv
-
-# Switch to venv
-.venv/Scripts/activate.bat
+# -------------------------------------------------------------------------------
+# ! Reference to above: Create virtual environment and switch to this environment
+# -------------------------------------------------------------------------------
 
 # Old pip version will not support utf-8, so upgrade to newest pip first.
 python.exe -m pip install --upgrade pip
