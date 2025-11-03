@@ -2536,6 +2536,12 @@ ai client需要包含以下功能，并提取一个公共接口：
 
 
 
+在这个类中，discover_channels里，_parse_sitemap_xml之前先检查 sitemap_url中的时间信息。如果不在时间范围内，则跳过。
+而且帮分析一下代码中通过lastmod判断时间的这个流程是否对减少无用抓取有效。
+只给出修改函数的代码。
+
+
+
 
 
 

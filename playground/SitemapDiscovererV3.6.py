@@ -613,6 +613,11 @@ class SitemapDiscoverer:
                 continue
             self.processed_sitemaps.add(sitemap_url)
 
+
+            # 在抓取(fetch)之前，先检查 URL 字符串本身
+            if not self._check_url_against_date_range(sitemap_url, start_date, end_date):
+                continue
+
             self._log(f"\n--- Analyzing index: {sitemap_url} ---")
             xml_content = self._get_content(sitemap_url)
 
@@ -688,6 +693,92 @@ class SitemapDiscoverer:
                 self._log(f"Error decoding XML: {e}")
                 return f"Error decoding XML: {e}"
         return f"Failed to fetch content from {url}"
+
+    def _check_url_against_date_range(self,
+                                      sitemap_url: str,
+                                      start_date: Optional[datetime.datetime],
+                                      end_date: Optional[datetime.datetime]) -> bool:
+        """
+        [新功能] 检查 sitemap URL 字符串本身是否包含日期信息，并判断是否在范围内。
+        返回 True (应该处理) 或 False (应该跳过)。
+        """
+        # 规则 1: 如果没有日期库或日期范围，无法过滤，必须处理。
+        if not date_parse or (not start_date and not end_date):
+            return True
+
+        # 规则 2: 尝试从 URL 中匹配日期
+        # 匹配: 2024-01-04 | 2025-November-1 | 2025 (必须紧跟 .xml)
+        pattern = r"(\d{4}-\d{2}-\d{2})|(\d{4}-[A-Za-z]+-\d{1,2})|(\d{4})(?=\.xml)"
+        match = re.search(pattern, sitemap_url)
+
+        # 规则 3: URL 中没有可识别的日期，必须处理 (依赖后续的 lastmod)
+        if not match:
+            return True
+
+        date_str = match.group(0)
+
+        try:
+            # --- 统一处理时区 (从 _parse_and_check_date 复制) ---
+            start_date_aware = start_date
+            if start_date and start_date.tzinfo is None:
+                start_date_aware = start_date.replace(tzinfo=datetime.timezone.utc)
+
+            end_date_aware = end_date
+            if end_date and end_date.tzinfo is None:
+                end_date_aware = end_date.replace(tzinfo=datetime.timezone.utc)
+            # --- 时区处理结束 ---
+
+            # 规则 4: 特殊处理纯年份 (例如 "2025")
+            if len(date_str) == 4 and date_str.isdigit():
+                year = int(date_str)
+                # 该 URL 代表的开始时间 (e.g., 2025-01-01 00:00:00)
+                sitemap_year_start = datetime.datetime(year, 1, 1, tzinfo=datetime.timezone.utc)
+                # 该 URL 代表的结束时间 (e.g., 2025-12-31 23:59:59)
+                sitemap_year_end = datetime.datetime(year + 1, 1, 1, tzinfo=datetime.timezone.utc) - datetime.timedelta(
+                    seconds=1)
+
+                # 4a: 如果用户的开始日期在这一年的结束之后 (e.g., 2026-01-01)，跳过
+                if start_date_aware and start_date_aware > sitemap_year_end:
+                    self._log(
+                        f"  > SKIPPING (URL): Year {date_str} is older than start date {start_date_aware.date()}", 1)
+                    return False
+
+                # 4b: 如果用户的结束日期在这一年的开始之前 (e.g., 2024-12-31)，跳过
+                if end_date_aware and end_date_aware < sitemap_year_start:
+                    self._log(
+                        f"  > SKIPPING (URL): Year {date_str} is newer than end date {end_date_aware.date()}", 1)
+                    return False
+
+                # 4c: 年份有重叠，处理
+                self._log(f"  > (URL) Year {date_str} overlaps with date range. Processing.", 1)
+                return True
+
+            # 规则 5: 处理标准日期 (YYYY-MM-DD 或 YYYY-Month-D)
+            sitemap_date = date_parse(date_str)
+            if sitemap_date.tzinfo is None:
+                sitemap_date = sitemap_date.replace(tzinfo=datetime.timezone.utc)
+
+            # 5a: 检查开始日期
+            if start_date_aware and sitemap_date < start_date_aware:
+                self._log(
+                    f"  > SKIPPING (URL): Date {sitemap_date.date()} is older than start date {start_date_aware.date()}",
+                    1)
+                return False
+
+            # 5b: 检查结束日期
+            if end_date_aware and sitemap_date > end_date_aware:
+                self._log(
+                    f"  > SKIPPING (URL): Date {sitemap_date.date()} is newer than end date {end_date_aware.date()}", 1)
+                return False
+
+            # 5c: 在范围内
+            self._log(f"  > (URL) Date {sitemap_date.date()} is within range. Processing.", 1)
+            return True
+
+        except Exception as e:
+            # 解析失败，宁可抓错也别放过
+            self._log(f"  > Warning: Could not parse date '{date_str}' from URL. Error: {e}. Processing anyway.", 1)
+            return True
 
 
 # =============================================================================
