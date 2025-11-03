@@ -176,92 +176,160 @@ class RequestsFetcher(Fetcher):
         self._log("Closing RequestsFetcher session.")
         self.session.close()
 
-
 class PlaywrightFetcher(Fetcher):
     """
-    Robust, slower fetcher using a real browser (Playwright).
-    Can be run in 'advanced' (basic patch) or 'stealth' (full patches) mode.
+    A robust, slower fetcher that uses a real browser (Playwright)
+    to bypass anti-bot measures.
+
+    It can be configured to run in two main modes:
+      1. 'Advanced' (stealth=False): Applies only a basic 'webdriver' patch.
+      2. 'Stealth' (stealth=True): Applies the full 'playwright-stealth'
+         patch suite to appear more human.
     """
 
-    def __init__(self, log_callback=print, stealth: bool = False):
+    def __init__(self,
+                 log_callback=print,
+                 stealth: bool = False,
+                 pause_browser: bool = False,
+                 render_page: bool = True):
         """
-        :param log_callback: Function to send log messages to.
-        :param stealth: Whether to apply the full 'playwright-stealth' patches.
+        Initializes the Playwright browser instance.
+
+        Args:
+            log_callback:
+                A callable (like print) to receive log messages.
+            stealth:
+                If True, apply full 'playwright-stealth' patches.
+                If False, apply only the basic 'webdriver' patch.
+            pause_browser:
+                If True, launches in 'headful' mode (not headless) and
+                calls `page.pause()` after navigation for debugging.
+            render_page:
+                If True, returns the final rendered HTML (`page.content()`).
+                If False, returns the raw network response (`response.body()`).
+                **Set to False to correctly download raw XML/JSON files.**
         """
         self._log = also_print(log_callback)
         self.stealth_mode = stealth
+        self.pause_browser = pause_browser
+        self.render_page = render_page
 
-        # Check if required libraries are available
+        # --- 1. Verify Library Availability ---
         if not sync_playwright:
             raise ImportError("Playwright is not installed.")
-        if stealth and (not sync_stealth and not Stealth):
+        if self.stealth_mode and (not sync_stealth and not Stealth):
             raise ImportError("Playwright-Stealth (v1 or v2) is not installed.")
 
+        # --- 2. Start Playwright and Launch Browser ---
         try:
             mode = "Stealth" if self.stealth_mode else "Advanced"
             self._log(f"Starting PlaywrightFetcher ({mode}, Slow)...")
+
+            # Browser is "headful" (not headless) only if debugging
+            headless_mode = not self.pause_browser
+
             self.playwright = sync_playwright().start()
-            self.browser = self.playwright.chromium.launch(headless=True)
-            self._log("Headless browser started.")
+            self.browser = self.playwright.chromium.launch(
+                headless=headless_mode
+            )
+
+            log_msg = "Headless browser started." if headless_mode \
+                      else "Headful browser started (pause_browser=True)."
+            self._log(log_msg)
+
         except Exception as e:
             self._log(f"Failed to start Playwright: {e}")
             self._log("Please ensure you have run 'python -m playwright install'")
             raise
 
     def get_content(self, url: str) -> Optional[bytes]:
+        """
+        Fetches content from a URL using the configured Playwright instance.
+        """
+        context = None  # Define context in outer scope for 'finally'
         try:
+            # --- 1. Create Browser Context and Page ---
             context = self.browser.new_context(
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
             )
             page = context.new_page()
 
-            # --- UPDATED: Conditional Stealth (v1 and v2) ---
+            # --- 2. Apply Browser Patches (Stealth or Basic) ---
             if self.stealth_mode:
-                # --- UPDATED: Conditional Stealth (v1 and v2) ---
-                if self.stealth_mode:
-                    if sync_stealth:
-                        # Use v2.x method
-                        self._log("Applying full stealth patches (v2 'sync_stealth')...")
-                        sync_stealth(page)
-                    elif Stealth:
-                        # Use v1.x method
-                        self._log("Applying full stealth patches (v1 'Stealth.run()')...")
-                        stealth_instance = Stealth()  # 1. 创建实例
-                        stealth_instance.apply_stealth_sync(page)  # 2. [修正] 调用 apply_stealth_sync 方法
-                    else:
-                        self._log("Stealth mode selected but no library found. Applying basic patch.")
-                        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                if sync_stealth:
+                    # Use v2.x method
+                    self._log("Applying full stealth patches (v2 'sync_stealth')...")
+                    # TODO: Doubt about this code
+                    sync_stealth(page)
+                elif Stealth:
+                    # Use v1.x method
+                    self._log("Applying full stealth patches (v1 'Stealth.apply_stealth_sync()')...")
+                    stealth_instance = Stealth()
+                    stealth_instance.apply_stealth_sync(page)
                 else:
-                    # Apply only the basic 'webdriver' patch (v3.2)
-                    self._log("Applying basic 'webdriver' patch...")
+                    self._log("Stealth mode selected but no library found. Applying basic patch.")
                     page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                # --- END UPDATED ---
+            else:
+                # "Advanced" mode: Apply only the basic 'webdriver' patch
+                self._log("Applying basic 'webdriver' patch...")
+                page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            # Navigate and wait for the page to be fully loaded
+            # --- 3. Navigate to the Page ---
             self._log(f"Navigating to {url}...")
-            page.goto(url, timeout=20000, wait_until='domcontentloaded')
-            self._log(f"Page loaded. Getting content...")
+            response = page.goto(url, timeout=20000, wait_until='domcontentloaded')
 
-            # Get the final content (after any JS execution/redirects)
-            content_str = page.content()
-            content_bytes = content_str.encode('utf-8')
+            # --- 4. Pause for Debugging (if enabled) ---
+            if self.pause_browser:
+                self._log("Browser is paused for debugging. Press 'Resume' in the Playwright inspector to continue.")
+                page.pause()
 
+            # --- 5. Validate the Response ---
+            if not response or not response.ok:
+                status = response.status if response else 'N/A'
+                self._log(f"[Playwright Error] Failed to get valid response. Status: {status}")
+                context.close()
+                return None
+
+            # --- 6. Get Content (Raw or Rendered) ---
+            content_bytes: Optional[bytes]
+            if self.render_page:
+                # Use page.content() to get the final, rendered HTML.
+                # This is what you see in "View Source" *after* JS has run.
+                # WARNING: This will get the browser's "XML Viewer" HTML,
+                # NOT the raw XML file itself.
+                self._log("Retrieving rendered page content (page.content())...")
+                content_str = page.content()
+                content_bytes = content_str.encode('utf-8')
+            else:
+                # Use response.body() to get the raw, unmodified network response.
+                # This is the *correct* way to get non-HTML content like
+                # XML sitemaps, JSON, or images.
+                self._log("Retrieving raw network response (response.body())...")
+                content_bytes = response.body()
+
+            # --- 7. Clean Up and Return ---
             context.close()
             return content_bytes
+
         except PlaywrightError as e:
+            # Handle Playwright-specific errors (e.g., timeouts)
             print(traceback.format_exc())
             self._log(f"[Playwright Error] Failed to fetch {url}: {e}")
-            if 'context' in locals() and context:
+            if context:
                 context.close()
             return None
         except Exception as e:
+            # Handle other unexpected errors
             print(traceback.format_exc())
             self._log(f"[General Error] Playwright failed: {e}")
-            if 'context' in locals() and context:
+            if context:
                 context.close()
             return None
 
     def close(self):
+        """
+        Shuts down the Playwright browser and stops the process.
+        """
         self._log("Closing PlaywrightFetcher browser...")
         if hasattr(self, 'browser') and self.browser:
             self.browser.close()
@@ -413,6 +481,12 @@ class SitemapDiscoverer:
             self.processed_sitemaps.add(sitemap_url)
             self._log(f"\n--- Analyzing index: {sitemap_url} ---")
             xml_content = self._get_content(sitemap_url)
+
+            print('------------------------------------------ XML ------------------------------------------')
+            xml_text = xml_content.decode('utf-8')
+            print(xml_text)
+            print('-----------------------------------------------------------------------------------------')
+
             if not xml_content:
                 self._log("  Failed to fetch, skipping.", 1)
                 continue
@@ -488,15 +562,15 @@ class ChannelDiscoveryWorker(QRunnable):
             if "Stealth (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
                 if not sync_stealth and not Stealth: raise ImportError("Playwright-Stealth not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True)
+                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True, render_page=False)
             elif "Advanced (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False)
+                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False, render_page=False)
             else:  # "Simple (Requests)"
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
             # 2. Create Discoverer, injecting the new fetcher
-            discoverer = SitemapDiscoverer(fetcher, verbose=False)
+            discoverer = SitemapDiscoverer(fetcher, verbose=True)
 
             # 3. Do the work
             channel_list = discoverer.discover_channels(self.homepage_url)
@@ -530,15 +604,15 @@ class ArticleListWorker(QRunnable):
             if "Stealth (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
                 if not sync_stealth and not Stealth: raise ImportError("Playwright-Stealth not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True)
+                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True, render_page=False)
             elif "Advanced (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False)
+                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False, render_page=False)
             else:  # "Simple (Requests)"
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
             # 2. Create Discoverer
-            discoverer = SitemapDiscoverer(fetcher, verbose=False)
+            discoverer = SitemapDiscoverer(fetcher, verbose=True)
 
             # 3. Do the work
             article_list = discoverer.get_articles_for_channel(self.channel_url)
@@ -582,7 +656,7 @@ class XmlContentWorker(QRunnable):
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
             # 2. Create Discoverer
-            discoverer = SitemapDiscoverer(fetcher, verbose=False)
+            discoverer = SitemapDiscoverer(fetcher, verbose=True)
 
             # 3. Do the work
             xml_string = discoverer.get_xml_content_str(self.url)
