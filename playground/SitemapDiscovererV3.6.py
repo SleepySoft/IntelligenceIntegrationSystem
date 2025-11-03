@@ -33,6 +33,13 @@ from typing import Set, List, Dict, Any, Optional, Deque
 from collections import deque
 import traceback
 from abc import ABC, abstractmethod
+import datetime
+try:
+    from dateutil.parser import parse as date_parse
+except ImportError:
+    print("!!! IMPORT ERROR: 'python-dateutil' not found.")
+    print("!!! Please install it for date filtering: pip install python-dateutil")
+    date_parse = None
 
 # --- Playwright Imports (with detailed error checking) ---
 try:
@@ -88,10 +95,12 @@ if not sync_playwright or (not sync_stealth and not Stealth):  # Check both
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QSplitter,
-    QTextEdit, QStatusBar, QTabWidget, QLabel, QFrame, QComboBox
+    QTextEdit, QStatusBar, QTabWidget, QLabel, QFrame, QComboBox,
+    QDateEdit, QCheckBox  # <-- Add QDateEdit and QCheckBox
 )
 from PyQt5.QtCore import (
-    Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer
+    Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer,
+    QDate
 )
 from PyQt5.QtGui import QFont, QIcon
 
@@ -350,6 +359,9 @@ class SitemapDiscoverer:
     v3: Decoupled from request logic.
     Requires a 'Fetcher' instance to be injected upon initialization.
     All network I/O is delegated to self.fetcher.
+
+    v3.7 (Refactor): Now includes date filtering to avoid processing
+    stale sitemap indexes.
     """
     NAMESPACES = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
 
@@ -368,6 +380,10 @@ class SitemapDiscoverer:
         self.to_process_queue: Deque[str] = deque()
         self.processed_sitemaps: Set[str] = set()
         self.log_messages: List[str] = []  # For GUI logging
+
+        # --- NEW: Check for dateutil library ---
+        if not date_parse:
+            self._log("[Warning] 'python-dateutil' not found. Date filtering will be disabled.")
 
     def _log(self, message: str, indent: int = 0):
         """Unified logging function."""
@@ -423,30 +439,125 @@ class SitemapDiscoverer:
             urljoin(base_url, '/sitemap.xml')
         ]
 
-    def _parse_sitemap_xml(self, xml_content: bytes, sitemap_url: str) -> Dict[str, List[str]]:
-        """Parses Sitemap XML content with a fallback mechanism."""
+    # --- NEW: Date parsing and checking helper ---
+    def _parse_and_check_date(self,
+                              lastmod_str: Optional[str],
+                              start_date: Optional[datetime.datetime],
+                              end_date: Optional[datetime.datetime]) -> bool:
+        """
+        Checks if a sitemap's lastmod date is within the desired range.
+        Returns True if it should be processed, False if it should be skipped.
+        """
+
+        # Rule 1: If no date library, we can't filter. Process everything.
+        if not date_parse:
+            return True
+
+            # Rule 2: If no date limits are set by the user, always process.
+        if not start_date and not end_date:
+            return True
+
+        # Rule 3: If the sitemap has no <lastmod>, process it (our fallback).
+        if not lastmod_str:
+            self._log("      > No <lastmod> date found. Including by default.", 3)
+            return True
+
+        try:
+            # Attempt to parse the date string (e.g., "2025-11-01T18:23:17+00:00")
+            sitemap_date = date_parse(lastmod_str)
+
+            # --- Timezone Handling (CRITICAL for correct comparison) ---
+            # Make sure sitemap_date is timezone-aware (assume UTC if naive)
+            if sitemap_date.tzinfo is None:
+                sitemap_date = sitemap_date.replace(tzinfo=datetime.timezone.utc)
+
+            # Make sure start_date is timezone-aware (assume UTC if naive)
+            start_date_aware = start_date
+            if start_date and start_date.tzinfo is None:
+                start_date_aware = start_date.replace(tzinfo=datetime.timezone.utc)
+
+            # Make sure end_date is timezone-aware (assume UTC if naive)
+            end_date_aware = end_date
+            if end_date and end_date.tzinfo is None:
+                end_date_aware = end_date.replace(tzinfo=datetime.timezone.utc)
+            # --- End Timezone Handling ---
+
+            # Rule 4: Check against start_date
+            if start_date_aware and sitemap_date < start_date_aware:
+                self._log(
+                    f"      > SKIPPING: Date {sitemap_date.date()} is older than start date {start_date_aware.date()}",
+                    3)
+                return False
+
+            # Rule 5: Check against end_date
+            if end_date_aware and sitemap_date > end_date_aware:
+                self._log(
+                    f"      > SKIPPING: Date {sitemap_date.date()} is newer than end date {end_date_aware.date()}", 3)
+                return False
+
+            # Rule 6: It's within range
+            self._log(f"      > Date {sitemap_date.date()} is within range. Including.", 3)
+            return True
+
+        except Exception as e:
+            # If parsing fails (e.g., "invalid date format"), process it just to be safe.
+            self._log(f"      > Warning: Could not parse date '{lastmod_str}'. Error: {e}. Including by default.", 3)
+            return True
+
+    # --- UPDATED: _parse_sitemap_xml now returns richer data ---
+    def _parse_sitemap_xml(self, xml_content: bytes, sitemap_url: str) -> Dict[str, List[Any]]:
+        """
+        Parses Sitemap XML content with a fallback mechanism.
+
+        Returns a dict:
+        {
+            'pages': List[str],  // List of page URLs
+            'sub_sitemaps': List[Dict[str, Optional[str]]] // List of {'loc': url, 'lastmod': date_str}
+        }
+        """
         pages: List[str] = []
-        sub_sitemaps: List[str] = []
+        # --- UPDATED: sub_sitemaps is now a list of dicts ---
+        sub_sitemaps: List[Dict[str, Optional[str]]] = []
+
         try:
             self._log("    Trying to parse with [ultimate-sitemap-parser]...", 1)
             parsed_sitemap = sitemap_from_str(xml_content.decode('utf-8', errors='ignore'))
+
             for page in parsed_sitemap.all_pages():
                 pages.append(page.url)
+
+            # --- UPDATED: Extract lastmod along with loc ---
             for sub_sitemap in parsed_sitemap.all_sub_sitemaps():
-                sub_sitemaps.append(sub_sitemap.url)
+                lastmod_str = sub_sitemap.lastmod.isoformat() if sub_sitemap.lastmod else None
+                sub_sitemaps.append({
+                    'loc': sub_sitemap.url,
+                    'lastmod': lastmod_str
+                })
             self._log(f"    [USP Success] Found {len(pages)} pages and {len(sub_sitemaps)} sub-sitemaps.", 1)
+
         except Exception as e:
             self._log(f"    [USP Failed] Library parsing error: {e}", 1)
             self._log("    --> Initiating [Manual ElementTree] fallback...", 1)
             try:
                 root = ET.fromstring(xml_content)
                 index_nodes = root.findall('ns:sitemap', self.NAMESPACES)
+
                 if index_nodes:
+                    # --- UPDATED: Extract lastmod along with loc ---
                     for node in index_nodes:
-                        loc = node.find('ns:loc', self.NAMESPACES)
-                        if loc is not None and loc.text:
-                            sub_sitemaps.append(loc.text)
+                        loc_node = node.find('ns:loc', self.NAMESPACES)
+                        lastmod_node = node.find('ns:lastmod', self.NAMESPACES)
+
+                        loc_text = loc_node.text if loc_node is not None and loc_node.text else None
+                        lastmod_text = lastmod_node.text if lastmod_node is not None and lastmod_node.text else None
+
+                        if loc_text:
+                            sub_sitemaps.append({
+                                'loc': loc_text,
+                                'lastmod': lastmod_text
+                            })
                     self._log(f"    [Manual Fallback] Found {len(sub_sitemaps)} sub-sitemaps.", 1)
+
                 url_nodes = root.findall('ns:url', self.NAMESPACES)
                 if url_nodes:
                     for node in url_nodes:
@@ -454,15 +565,31 @@ class SitemapDiscoverer:
                         if loc is not None and loc.text:
                             pages.append(loc.text)
                     self._log(f"    [Manual Fallback] Found {len(pages)} pages.", 1)
+
                 if not index_nodes and not url_nodes:
                     self._log("    [Manual Fallback] Failed: No <sitemap> or <url> tags found.", 1)
             except ET.ParseError as xml_e:
                 self._log(f"    [Manual Fallback] Failed: Could not parse XML. Error: {xml_e}", 1)
+
         return {'pages': pages, 'sub_sitemaps': sub_sitemaps}
 
-    def discover_channels(self, homepage_url: str) -> List[str]:
-        """STAGE 1: Discover all "channels" (leaf sitemaps containing articles)."""
+    # --- UPDATED: discover_channels now accepts dates and filters ---
+    def discover_channels(self,
+                          homepage_url: str,
+                          start_date: Optional[datetime.datetime] = datetime.datetime.now() - datetime.timedelta(days=7),
+                          end_date: Optional[datetime.datetime] = datetime.datetime.now()) -> List[str]:
+        """
+        STAGE 1: Discover all "channels" (leaf sitemaps containing articles).
+
+        :param homepage_url: The root URL of the website.
+        :param start_date: (Optional) The earliest date to include sitemaps from.
+        :param end_date: (Optional) The latest date to include sitemaps from.
+        """
         self._log(f"--- STAGE 1: Discovering Channels for {homepage_url} ---")
+        if start_date or end_date:
+            self._log(
+                f"Filtering sitemaps between: {start_date.date() if start_date else 'Beginning'} and {end_date.date() if end_date else 'Today'}")
+
         self.log_messages.clear()
         self.leaf_sitemaps.clear()
         self.to_process_queue.clear()
@@ -474,33 +601,65 @@ class SitemapDiscoverer:
             return []
 
         self.to_process_queue.extend(initial_sitemaps)
+
         while self.to_process_queue:
+            # --- UPDATED: Limit queue size to prevent infinite loops on bad sites ---
+            if len(self.to_process_queue) > 5000:
+                self._log("[Error] Queue size exceeds 5000. Aborting to prevent infinite loop.")
+                break
+
             sitemap_url = self.to_process_queue.popleft()
             if sitemap_url in self.processed_sitemaps:
                 continue
             self.processed_sitemaps.add(sitemap_url)
+
             self._log(f"\n--- Analyzing index: {sitemap_url} ---")
             xml_content = self._get_content(sitemap_url)
 
-            print('------------------------------------------ XML ------------------------------------------')
-            xml_text = xml_content.decode('utf-8')
-            print(xml_text)
-            print('-----------------------------------------------------------------------------------------')
+            # (Your debug print, you can remove this)
+            # print('------------------------------------------ XML ------------------------------------------')
+            # xml_text = xml_content.decode('utf-8') if xml_content else "NO CONTENT"
+            # print(xml_text)
+            # print('-----------------------------------------------------------------------------------------')
 
             if not xml_content:
                 self._log("  Failed to fetch, skipping.", 1)
                 continue
+
             parse_result = self._parse_sitemap_xml(xml_content, sitemap_url)
+
+            # --- UPDATED: This is the core filtering logic ---
             if parse_result['sub_sitemaps']:
-                self._log(f"  > Found {len(parse_result['sub_sitemaps'])} sub-indexes. Adding to queue.", 2)
-                self.to_process_queue.extend(parse_result['sub_sitemaps'])
+                self._log(f"  > Found {len(parse_result['sub_sitemaps'])} sub-indexes. Filtering by date...", 2)
+
+                valid_sitemaps_to_queue = []
+                for sitemap_info in parse_result['sub_sitemaps']:
+                    loc = sitemap_info['loc']
+                    lastmod = sitemap_info['lastmod']
+
+                    self._log(f"    - Checking: {loc}", 3)
+
+                    # Use the new helper function to decide
+                    if self._parse_and_check_date(lastmod, start_date, end_date):
+                        valid_sitemaps_to_queue.append(loc)
+
+                self._log(
+                    f"  > Queuing {len(valid_sitemaps_to_queue)} out of {len(parse_result['sub_sitemaps'])} sub-indexes.",
+                    2)
+                self.to_process_queue.extend(valid_sitemaps_to_queue)
+            # --- END UPDATED BLOCK ---
+
             if parse_result['pages']:
                 self._log(f"  > Found {len(parse_result['pages'])} pages. Marking as 'Channel'.", 2)
+                # This is a leaf node, so we just add it.
+                # The *date* of the sitemap file itself doesn't matter here,
+                # only that it contains article URLs.
                 self.leaf_sitemaps.add(sitemap_url)
 
         self._log(f"\nStage 1 Complete: Discovered {len(self.leaf_sitemaps)} total channels.")
         return list(self.leaf_sitemaps)
 
+    # --- (get_articles_for_channel & get_xml_content_str are unchanged) ---
     def get_articles_for_channel(self, channel_url: str) -> List[str]:
         """
         Helper for Stage 2 (Lazy Loading): Gets pages for ONE specific channel.
@@ -511,6 +670,8 @@ class SitemapDiscoverer:
         if not xml_content:
             return []
 
+        # Note: This *could* also be modified to filter articles by date
+        # but for now it just returns all articles from the channel.
         parse_result = self._parse_sitemap_xml(xml_content, channel_url)
         self._log(f"  > Found {len(parse_result['pages'])} articles.")
         return parse_result['pages']
@@ -543,14 +704,23 @@ class WorkerSignals(QObject):
     result = pyqtSignal(object)
     progress = pyqtSignal(str)  # For sending log messages
 
-
 class ChannelDiscoveryWorker(QRunnable):
     """Worker thread for Stage 1: Discovering all channels."""
 
-    def __init__(self, strategy_name: str, homepage_url: str):
+    def __init__(self,
+                 strategy_name: str,
+                 homepage_url: str,
+                 start_date: datetime.datetime,
+                 end_date: datetime.datetime,
+                 pause_browser: bool,
+                 render_page: bool):
         super(ChannelDiscoveryWorker, self).__init__()
         self.strategy_name = strategy_name
         self.homepage_url = homepage_url
+        self.start_date = start_date
+        self.end_date = end_date
+        self.pause_browser = pause_browser
+        self.render_page = render_page
         self.signals = WorkerSignals()
 
     def run(self):
@@ -562,18 +732,32 @@ class ChannelDiscoveryWorker(QRunnable):
             if "Stealth (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
                 if not sync_stealth and not Stealth: raise ImportError("Playwright-Stealth not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True, render_page=False)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=True,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page
+                )
             elif "Advanced (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False, render_page=False)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=False,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page
+                )
             else:  # "Simple (Requests)"
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
             # 2. Create Discoverer, injecting the new fetcher
             discoverer = SitemapDiscoverer(fetcher, verbose=True)
 
-            # 3. Do the work
-            channel_list = discoverer.discover_channels(self.homepage_url)
+            # 3. Do the work (passing in the dates)
+            channel_list = discoverer.discover_channels(
+                self.homepage_url,
+                start_date=self.start_date,
+                end_date=self.end_date
+            )
             self.signals.result.emit(channel_list)
 
         except Exception as e:
@@ -589,10 +773,16 @@ class ChannelDiscoveryWorker(QRunnable):
 class ArticleListWorker(QRunnable):
     """Worker thread for Stage 2 (Lazy Loading): Gets articles for one channel."""
 
-    def __init__(self, strategy_name: str, channel_url: str):
+    def __init__(self,
+                 strategy_name: str,
+                 channel_url: str,
+                 pause_browser: bool,
+                 render_page: bool):
         super(ArticleListWorker, self).__init__()
         self.strategy_name = strategy_name
         self.channel_url = channel_url
+        self.pause_browser = pause_browser
+        self.render_page = render_page
         self.signals = WorkerSignals()
 
     def run(self):
@@ -604,10 +794,20 @@ class ArticleListWorker(QRunnable):
             if "Stealth (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
                 if not sync_stealth and not Stealth: raise ImportError("Playwright-Stealth not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True, render_page=False)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=True,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page
+                )
             elif "Advanced (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False, render_page=False)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=False,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page
+                )
             else:  # "Simple (Requests)"
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
@@ -615,6 +815,9 @@ class ArticleListWorker(QRunnable):
             discoverer = SitemapDiscoverer(fetcher, verbose=True)
 
             # 3. Do the work
+            # Note: The 'render_page' option will affect XML parsing.
+            # The original code hardcoded 'render_page=False' here,
+            # but this change respects the user's checkbox selection.
             article_list = discoverer.get_articles_for_channel(self.channel_url)
             self.signals.result.emit({
                 'channel_url': self.channel_url,
@@ -633,10 +836,16 @@ class ArticleListWorker(QRunnable):
 class XmlContentWorker(QRunnable):
     """Worker thread to fetch raw XML content for the text viewer."""
 
-    def __init__(self, strategy_name: str, url: str):
+    def __init__(self,
+                 strategy_name: str,
+                 url: str,
+                 pause_browser: bool,
+                 render_page: bool):
         super(XmlContentWorker, self).__init__()
         self.strategy_name = strategy_name
         self.url = url
+        self.pause_browser = pause_browser
+        self.render_page = render_page
         self.signals = WorkerSignals()
 
     def run(self):
@@ -648,10 +857,20 @@ class XmlContentWorker(QRunnable):
             if "Stealth (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
                 if not sync_stealth and not Stealth: raise ImportError("Playwright-Stealth not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=True)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=True,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page  # Pass user's choice
+                )
             elif "Advanced (Playwright)" in self.strategy_name:
                 if not sync_playwright: raise ImportError("Playwright not installed.")
-                fetcher = PlaywrightFetcher(log_callback=log_callback, stealth=False)
+                fetcher = PlaywrightFetcher(
+                    log_callback=log_callback,
+                    stealth=False,
+                    pause_browser=self.pause_browser,
+                    render_page=self.render_page  # Pass user's choice
+                )
             else:  # "Simple (Requests)"
                 fetcher = RequestsFetcher(log_callback=log_callback)
 
@@ -686,16 +905,19 @@ class SitemapAnalyzerApp(QMainWindow):
         # --- Internal State ---
         # GUI no longer holds fetcher/discoverer. Only the strategy name.
         self.fetcher_strategy_name: str = "Simple (Requests)"
+        self.pause_browser: bool = False  # <-- NEW: Store fetcher option
+        self.render_page: bool = False  # <-- NEW: Store fetcher option
 
         self.thread_pool = QThreadPool()
         # Limit thread count to avoid overwhelming the system
         self.thread_pool.setMaxThreadCount(QThreadPool.globalInstance().maxThreadCount() // 2 + 1)
 
         self.channel_item_map: Dict[str, QTreeWidgetItem] = {}
+        self.log_history_view: Optional[QTextEdit] = None  # <-- NEW: Reference for log widget
 
         # --- Initialize UI ---
         self.init_ui()
-        self.setWindowTitle("Sitemap Channel Analyzer (v3.6 - v1 Stealth Fix)")  # Version bump
+        self.setWindowTitle("Sitemap Channel Analyzer (v3.7 - UI Update)")  # Version bump
         self.setWindowIcon(QIcon.fromTheme("internet-web-browser"))
         self.setGeometry(100, 100, 1200, 800)
 
@@ -712,9 +934,22 @@ class SitemapAnalyzerApp(QMainWindow):
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Enter website homepage URL (e.g., https://www.example.com)")
         self.url_input.returnPressed.connect(self.start_channel_discovery)
-        top_bar_layout.addWidget(self.url_input, 1)
+        top_bar_layout.addWidget(self.url_input, 1)  # Give URL input stretch factor
 
-        # --- Strategy Selector Dropdown ---
+        # --- REQ 1: Date Period Selectors ---
+        top_bar_layout.addWidget(QLabel("From:"))
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-7))
+        self.start_date_edit.setCalendarPopup(True)
+        top_bar_layout.addWidget(self.start_date_edit)
+
+        top_bar_layout.addWidget(QLabel("To:"))
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setDate(QDate.currentDate())
+        self.end_date_edit.setCalendarPopup(True)
+        top_bar_layout.addWidget(self.end_date_edit)
+
+        # --- Strategy Selector Dropdown (Original) ---
         strategy_label = QLabel("Strategy:")
         top_bar_layout.addWidget(strategy_label)
 
@@ -722,7 +957,7 @@ class SitemapAnalyzerApp(QMainWindow):
         self.strategy_combo.addItems([
             "Simple (Requests)",
             "Advanced (Playwright)",
-            "Stealth (Playwright)"  # --- NEW: Third option ---
+            "Stealth (Playwright)"
         ])
         if not sync_playwright:
             self.strategy_combo.model().item(1).setEnabled(False)
@@ -735,13 +970,30 @@ class SitemapAnalyzerApp(QMainWindow):
         self.strategy_combo.setCurrentIndex(0)  # Default to Simple
         top_bar_layout.addWidget(self.strategy_combo)
 
+        # --- REQ 2: Fetcher Option Checkboxes ---
+        self.pause_browser_check = QCheckBox("Pause Browser")
+        self.pause_browser_check.setToolTip("Pauses Playwright (in headful mode) for debugging.")
+        top_bar_layout.addWidget(self.pause_browser_check)
+
+        self.render_page_check = QCheckBox("Render Page")
+        self.render_page_check.setToolTip(
+            "Fetches final rendered HTML (slower) instead of raw network response (faster).\n"
+            "Warning: May break XML parsing if checked.")
+        top_bar_layout.addWidget(self.render_page_check)
+
+        # --- Analyze Button (Original) ---
         self.analyze_button = QPushButton("Analyze")
         self.analyze_button.clicked.connect(self.start_channel_discovery)
         top_bar_layout.addWidget(self.analyze_button)
 
         main_layout.addLayout(top_bar_layout)
 
+        # --- REQ 3 & 4: Resizable Panes ---
+        # Create a top-to-bottom splitter
+        vertical_splitter = QSplitter(Qt.Vertical)
+
         # --- 2. Main Content Splitter (Tree | Tabs) ---
+        # This is the original splitter, now it goes in the TOP pane
         self.main_splitter = QSplitter(Qt.Horizontal)
 
         # --- 2a. Left Side: Tree Widget ---
@@ -771,9 +1023,14 @@ class SitemapAnalyzerApp(QMainWindow):
         self.main_splitter.addWidget(self.tab_widget)
         self.main_splitter.setSizes([350, 850])
 
-        main_layout.addWidget(self.main_splitter, 1)
+        # Add the main content splitter to the TOP pane
+        vertical_splitter.addWidget(self.main_splitter)
 
-        # --- 3. Bottom: Python Filter Code ---
+        # --- 3. Bottom: Resizable (Code | Log) Splitter ---
+        # Create a new LEFT-to-RIGHT splitter for the BOTTOM pane
+        bottom_splitter = QSplitter(Qt.Horizontal)
+
+        # --- 3a. Bottom-Left: Python Filter Code (Original, but modified) ---
         filter_box = QFrame()
         filter_box.setFrameShape(QFrame.StyledPanel)
         filter_layout = QVBoxLayout(filter_box)
@@ -785,11 +1042,44 @@ class SitemapAnalyzerApp(QMainWindow):
         self.filter_code_text = QTextEdit()
         self.filter_code_text.setReadOnly(True)
         self.filter_code_text.setFont(QFont("Courier", 9))
-        self.filter_code_text.setFixedHeight(150)
         filter_layout.addWidget(self.filter_code_text)
-        main_layout.addWidget(filter_box)
 
-        # --- 4. Status Bar ---
+        # Add filter box to the bottom-left pane
+        bottom_splitter.addWidget(filter_box)
+
+        # --- 3b. REQ 4: Bottom-Right: Log History ---
+        log_box = QFrame()
+        log_box.setFrameShape(QFrame.StyledPanel)
+        log_layout = QVBoxLayout(log_box)
+        log_layout.setSpacing(5)
+        log_layout.setContentsMargins(5, 5, 5, 5)
+        log_label = QLabel("Log History:")
+        log_label.setStyleSheet("font-weight: bold;")
+        log_layout.addWidget(log_label)
+        self.log_history_view = QTextEdit()
+        self.log_history_view.setReadOnly(True)
+        self.log_history_view.setFont(QFont("Courier", 9))
+        self.log_history_view.setLineWrapMode(QTextEdit.NoWrap)
+        log_layout.addWidget(self.log_history_view)
+
+        # Add log box to the bottom-right pane
+        bottom_splitter.addWidget(log_box)
+
+        # Set initial size for the bottom (Code | Log) splitter
+        bottom_splitter.setSizes([600, 600])
+
+        # Add the bottom splitter to the BOTTOM pane
+        vertical_splitter.addWidget(bottom_splitter)
+
+        # Set initial size for the main (Top | Bottom) splitter
+        # This gives the bottom panel an initial height of ~150-200
+        vertical_splitter.setSizes([600, 200])
+
+        # Add the main vertical splitter (which contains everything) to the layout
+        # The '1' makes it stretch to fill the window
+        main_layout.addWidget(vertical_splitter, 1)
+
+        # --- 4. Status Bar (Unchanged) ---
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready. Enter a URL and select a strategy.")
@@ -802,14 +1092,25 @@ class SitemapAnalyzerApp(QMainWindow):
         self.url_input.setEnabled(not is_loading)
         self.analyze_button.setEnabled(not is_loading)
         self.tree_widget.setEnabled(not is_loading)
-        self.strategy_combo.setEnabled(not is_loading)  # Disable strategy combo
+        self.strategy_combo.setEnabled(not is_loading)
+
+        # --- NEW: Disable new controls ---
+        self.start_date_edit.setEnabled(not is_loading)
+        self.end_date_edit.setEnabled(not is_loading)
+        self.pause_browser_check.setEnabled(not is_loading)
+        self.render_page_check.setEnabled(not is_loading)
 
         if is_loading:
             self.status_bar.showMessage(message)
             self.analyze_button.setText("Loading...")
+            # Also log to history
+            if self.log_history_view:
+                self.log_history_view.append(f"--- {message} ---")
         else:
             self.status_bar.showMessage(message or "Ready.")
             self.analyze_button.setText("Analyze")
+            if self.log_history_view and message:
+                self.log_history_view.append(f"--- {message} ---")
 
     def clear_all_controls(self):
         """Reset the UI to its initial state."""
@@ -817,16 +1118,24 @@ class SitemapAnalyzerApp(QMainWindow):
         self.channel_item_map.clear()
         self.xml_viewer.clear()
         self.filter_code_text.clear()
+        if self.log_history_view:
+            self.log_history_view.clear()  # <-- NEW: Clear log history
         if self.web_view and QUrl:
             self.web_view.setUrl(QUrl("about:blank"))
         self.update_filter_code()
+
+    # --- NEW: Slot for Log History ---
+    def append_log_history(self, message: str):
+        """Appends a message to the log history text area."""
+        if self.log_history_view:
+            self.log_history_view.append(message)
 
     # --- Threaded Action Starters ---
 
     def start_channel_discovery(self):
         """
         Slot for 'Analyze' button.
-        Passes the *strategy name* to the worker.
+        Passes the *strategy name* and *options* to the worker.
         """
         url = self.url_input.text().strip()
         if not url:
@@ -839,19 +1148,36 @@ class SitemapAnalyzerApp(QMainWindow):
 
         self.clear_all_controls()
 
-        # Store the selected strategy name
+        # --- NEW: Get values from new UI elements ---
+        # Get dates (as datetime objects)
+        start_date = self.start_date_edit.dateTime().toPyDateTime()
+        end_date_qdt = self.end_date_edit.dateTime()
+        # Set end date to end-of-day
+        end_date = end_date_qdt.toPyDateTime().replace(hour=23, minute=59, second=59)
+
+        # Store the selected strategy name and options
         self.fetcher_strategy_name = self.strategy_combo.currentText()
+        self.pause_browser = self.pause_browser_check.isChecked()
+        self.render_page = self.render_page_check.isChecked()
 
         self.set_loading_state(True, f"Discovering channels for {url} using {self.fetcher_strategy_name}...")
 
-        # Pass the strategy *name*, not an instance
-        worker = ChannelDiscoveryWorker(self.fetcher_strategy_name, url)
+        # Pass all options to the worker
+        worker = ChannelDiscoveryWorker(
+            strategy_name=self.fetcher_strategy_name,
+            homepage_url=url,
+            start_date=start_date,
+            end_date=end_date,
+            pause_browser=self.pause_browser,
+            render_page=self.render_page
+        )
 
         # Connect signals
         worker.signals.result.connect(self.on_channel_discovery_result)
         worker.signals.finished.connect(self.on_channel_discovery_finished)
         worker.signals.error.connect(self.on_worker_error)
-        worker.signals.progress.connect(self.status_bar.showMessage)  # Connect progress
+        worker.signals.progress.connect(self.status_bar.showMessage)
+        worker.signals.progress.connect(self.append_log_history)  # <-- NEW: Connect to log
 
         self.thread_pool.start(worker)
 
@@ -865,12 +1191,18 @@ class SitemapAnalyzerApp(QMainWindow):
         channel_item.setExpanded(True)
         self.status_bar.showMessage(f"Loading articles for {channel_url}...")
 
-        # Pass the stored strategy name
-        worker = ArticleListWorker(self.fetcher_strategy_name, channel_url)
+        # Pass the stored strategy name and options
+        worker = ArticleListWorker(
+            strategy_name=self.fetcher_strategy_name,
+            channel_url=channel_url,
+            pause_browser=self.pause_browser,
+            render_page=self.render_page
+        )
         worker.signals.result.connect(self.on_article_list_result)
         worker.signals.finished.connect(self.on_worker_finished)  # Use generic finished
         worker.signals.error.connect(self.on_worker_error)
         worker.signals.progress.connect(self.status_bar.showMessage)
+        worker.signals.progress.connect(self.append_log_history)  # <-- NEW: Connect to log
 
         self.thread_pool.start(worker)
 
@@ -881,12 +1213,18 @@ class SitemapAnalyzerApp(QMainWindow):
         self.xml_viewer.setPlainText(f"Loading XML content from {url}...")
         self.tab_widget.setCurrentWidget(self.xml_viewer)
 
-        # Pass the stored strategy name
-        worker = XmlContentWorker(self.fetcher_strategy_name, url)
+        # Pass the stored strategy name and options
+        worker = XmlContentWorker(
+            strategy_name=self.fetcher_strategy_name,
+            url=url,
+            pause_browser=self.pause_browser,
+            render_page=self.render_page
+        )
         worker.signals.result.connect(self.on_xml_content_result)
         worker.signals.finished.connect(self.on_worker_finished)  # Use generic finished
         worker.signals.error.connect(self.on_worker_error)
         worker.signals.progress.connect(self.status_bar.showMessage)
+        worker.signals.progress.connect(self.append_log_history)  # <-- NEW: Connect to log
 
         self.thread_pool.start(worker)
 
@@ -967,13 +1305,22 @@ class SitemapAnalyzerApp(QMainWindow):
     def on_worker_error(self, error: tuple):
         """Slot for any worker's 'error' signal."""
         ex_type, message, tb = error
-        self.status_bar.showMessage(f"Error: {ex_type}: {message}")
+        error_msg = f"Error: {ex_type}: {message}"
+        self.status_bar.showMessage(error_msg)
+
+        # --- NEW: Log full error to history ---
+        if self.log_history_view:
+            self.log_history_view.append(f"--- Worker Error ---")
+            self.log_history_view.append(error_msg)
+            self.log_history_view.append(tb)  # Log full traceback
+            self.log_history_view.append(f"--------------------")
+
         print(f"--- Worker Error ---")
         print(tb)  # Print the full traceback to console
         print(f"--------------------")
 
         # If the main discovery fails, re-enable UI. Sub-tasks won't.
-        if "ChannelDiscoveryWorker" in str(ex_type):
+        if "ChannelDiscoveryWorker" in str(ex_type) or "ChannelDiscoveryWorker" in tb:
             self.set_loading_state(False, f"Error occurred. {message}")
 
     # --- UI Event Handlers ---
