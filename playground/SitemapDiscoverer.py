@@ -9,6 +9,13 @@ from typing import Set, List, Dict, Any, Optional, Deque
 
 # Required: pip install ultimate-sitemap-parser requests
 
+# =============================================================================
+#
+# SECTION 1: SitemapDiscoverer Class (The Backend Logic)
+# (v2: Updated with requests.Session and better Headers)
+#
+# =============================================================================
+
 class SitemapDiscoverer:
     """
     A general-purpose Sitemap Discoverer, refactored for two-stage operation.
@@ -68,11 +75,14 @@ class SitemapDiscoverer:
     for maximum compatibility and robustness.
     """
 
-    # --- 1. Configuration ---
-
-    # Must simulate a browser, or many sites will return 403 Forbidden
+    # --- 1. Configuration (v2: Expanded Headers) ---
+    # Mimic a real browser's headers as closely as possible
     HEADERS = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
     }
 
     # XML namespace for standard sitemaps
@@ -84,6 +94,12 @@ class SitemapDiscoverer:
         :param verbose: Whether to print detailed log messages.
         """
         self.verbose = verbose
+
+        # --- v2: Use a Session object ---
+        # A Session object persists cookies and connection settings,
+        # making our requests look much more like a real browser.
+        self.session = requests.Session()
+        self.session.headers.update(self.HEADERS)
 
         # --- State Properties ---
 
@@ -113,14 +129,25 @@ class SitemapDiscoverer:
     def _get_content(self, url: str) -> Optional[bytes]:
         """
         General-purpose content fetching function.
+        - v2: Uses self.session.get() instead of requests.get()
         - Returns bytes (for XML parsing)
         - Returns None (on failure)
         """
         try:
-            response = requests.get(url, headers=self.HEADERS, timeout=10)
+            # Use the session to make the request. Cookies are handled automatically.
+            # We add a 'Referer' header, which is common. We'll use the base URL.
+            parsed_url = urlparse(url)
+            referer = f"{parsed_url.scheme}://{parsed_url.netloc}/"
+
+            response = self.session.get(
+                url,
+                timeout=10,
+                headers={'Referer': referer}  # Add a referer for good measure
+            )
             response.raise_for_status()  # Ensure request was successful (e.g., 200 OK)
             return response.content
         except requests.exceptions.RequestException as e:
+            # This will now correctly catch 403 Forbidden errors
             self._log(f"[Request Error] Failed to fetch {url}: {e}", 1)
             return None
 
@@ -141,15 +168,15 @@ class SitemapDiscoverer:
         # Path 1: Check robots.txt (Preferred)
         robots_url = urljoin(base_url, '/robots.txt')
         self._log(f"Checking robots.txt: {robots_url}", 1)
-        robots_content = self._get_content(robots_url)
+        robots_content_bytes = self._get_content(robots_url)
 
         sitemap_urls = []
-        if robots_content:
+        if robots_content_bytes:
             try:
                 # Find all "Sitemap: ..." directives
                 sitemap_urls = re.findall(
                     r"^Sitemap:\s*(.+)$",
-                    robots_content.decode('utf-8', errors='ignore'),
+                    robots_content_bytes.decode('utf-8', errors='ignore'),
                     re.IGNORECASE | re.MULTILINE
                 )
                 sitemap_urls = [url.strip() for url in sitemap_urls]
@@ -249,6 +276,11 @@ class SitemapDiscoverer:
         :return: A list of "leaf" sitemap URLs (the "channels").
         """
         self._log(f"--- STAGE 1: Discovering Channels for {homepage_url} ---")
+        # Clear log for new session
+        self.log_messages.clear()
+        # Create a new session for each full discovery
+        self.session = requests.Session()
+        self.session.headers.update(self.HEADERS)
 
         # --- 0. Reset state ---
         self.leaf_sitemaps.clear()
@@ -357,6 +389,7 @@ class SitemapDiscoverer:
         """
         Helper for Stage 2 (Lazy Loading): Gets pages for ONE specific channel.
         """
+        self.log_messages.clear()
         self._log(f"--- STAGE 2: Fetching articles for {channel_url} ---")
         xml_content = self._get_content(channel_url)
         if not xml_content:
