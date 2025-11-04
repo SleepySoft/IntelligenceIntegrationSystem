@@ -375,7 +375,7 @@ class SitemapDiscoverer(IDiscoverer):
                 continue
 
             self._log(f"\n--- Analyzing index: {sitemap_url} ---")
-            xml_content = self._get_content(sitemap_url)
+            xml_content = self.fetcher.get_content(sitemap_url)
 
             # (Your debug print, you can remove this)
             # print('------------------------------------------ XML ------------------------------------------')
@@ -427,7 +427,7 @@ class SitemapDiscoverer(IDiscoverer):
         """
         self.log_messages.clear()
         self._log(f"--- STAGE 2: Fetching articles for {channel_url} ---")
-        xml_content = self._get_content(channel_url)
+        xml_content = self.fetcher.get_content(channel_url)
         if not xml_content:
             return []
 
@@ -441,7 +441,7 @@ class SitemapDiscoverer(IDiscoverer):
         """Helper to get raw XML as a string for display."""
         self.log_messages.clear()
         self._log(f"Fetching XML content for: {url}")
-        content = self._get_content(url)
+        content = self.fetcher.get_content(url)
         if content:
             try:
                 return content.decode('utf-8', errors='ignore')
@@ -671,7 +671,8 @@ class RSSDiscoverer(IDiscoverer):
     RSS and Atom feeds.
 
     Stage 1 (discover_channels): Scrapes a homepage to find <link> tags
-    pointing to RSS/Atom feeds.
+    pointing to RSS/Atom feeds. **If given a feed URL directly, it
+    returns that URL.**
 
     Stage 2 (get_articles_for_channel): Fetches a single RSS/Atom feed URL
     and parses it to extract all article links.
@@ -719,10 +720,11 @@ class RSSDiscoverer(IDiscoverer):
         It fetches the homepage, parses its HTML, and looks for
         <link rel="alternate"> tags matching known feed types.
 
-        Note: `start_date` and `end_date` are ignored in this implementation,
-        as HTML <link> tags do not typically have date metadata.
+        **MODIFICATION:** This function now also detects if the entry_point_url
+        is *already* an RSS/Atom feed. If so, it returns it directly.
 
         :param entry_point_url: The homepage URL (e.g., https://example.com)
+                                 OR a direct feed URL (e.g., https://example.com/feed.xml)
         :param start_date: (Optional) Ignored by this discoverer.
         :param end_date: (Optional) Ignored by this discoverer.
         :return: A list of discovered RSS/Atom feed URLs.
@@ -734,24 +736,36 @@ class RSSDiscoverer(IDiscoverer):
         self.log_messages.clear()
         found_feeds_set: Set[str] = set()
 
-        # 1. Fetch the homepage content
-        html_content_bytes = self.fetcher.get_content(entry_point_url)
-        if not html_content_bytes:
-            self._log(f"[Error] Failed to fetch homepage: {entry_point_url}", 1)
+        # 1. Fetch the content
+        content_bytes = self.fetcher.get_content(entry_point_url)
+        if not content_bytes:
+            self._log(f"[Error] Failed to fetch content: {entry_point_url}", 1)
             return []
 
         try:
-            html_content = html_content_bytes.decode('utf-8', errors='ignore')
+            content_str = content_bytes.decode('utf-8', errors='ignore')
         except Exception as e:
-            self._log(f"[Error] Failed to decode homepage content: {e}", 1)
+            self._log(f"[Error] Failed to decode content: {e}", 1)
             return []
 
-        # 2. Parse the HTML with BeautifulSoup
+        # 2. Check if the content is XML *before* trying to parse as HTML
+        # We strip leading whitespace to check the start of the document
+        content_start_check = content_str.lstrip()
+        if content_start_check.startswith(('<?xml', '<rss', '<feed')):
+            self._log(f"Input URL appears to be an XML feed directly.", 1)
+            self._log("Skipping HTML <link> tag discovery.", 2)
+            found_feeds_set.add(entry_point_url)
+            self._log(f"\nStage 1 Complete: Discovered 1 (self) RSS channel.")
+            return list(found_feeds_set)
+
+        self._log(f"Content does not look like XML. Proceeding with HTML parsing...", 1)
+
+        # 3. Parse the HTML with BeautifulSoup (only if it wasn't XML)
         try:
             self._log(f"Parsing HTML from {entry_point_url}...", 1)
-            soup = BeautifulSoup(html_content, 'html.parser')
+            soup = BeautifulSoup(content_str, 'html.parser')  # Use content_str
 
-            # 3. Find all <link rel="alternate"> tags
+            # 4. Find all <link rel="alternate"> tags
             link_tags = soup.find_all(
                 'link',
                 rel='alternate',
@@ -761,7 +775,7 @@ class RSSDiscoverer(IDiscoverer):
             if not link_tags:
                 self._log("No <link rel='alternate'> tags found.", 1)
 
-            # 4. Extract and resolve URLs
+            # 5. Extract and resolve URLs
             for tag in link_tags:
                 href = tag.get('href')
                 if not href:
@@ -785,6 +799,8 @@ class RSSDiscoverer(IDiscoverer):
         """
         STAGE 2: Fetches and parses a single RSS/Atom feed ("channel")
         to extract all individual article URLs it contains.
+
+        (This method was correct and did not need modification)
 
         :param channel_url: The URL of a single RSS/Atom feed.
         :return: A list of string URLs for individual articles.
@@ -811,17 +827,26 @@ class RSSDiscoverer(IDiscoverer):
         self._log("Parsing feed content with feedparser...", 1)
         feed_data = parse_feed(xml_content_str)
 
-        if feed_data.fatal or feed_data.errors:
-            self._log(f"[Warning] Errors during parsing: {feed_data.errors}", 1)
-            if feed_data.fatal:
-                return []
+        if not feed_data:
+            self._log(f"[Error] Failed to parse feed, 'feed_data' is None.", 1)
+            return []
+
+        # 检查 feedparser 的标准错误标志
+        if hasattr(feed_data, 'bozo') and feed_data.bozo:
+            self._log(f"[Warning] Feed is ill-formed (bozo=1). Errors: {feed_data.bozo_exception}", 1)
+            # 即使格式不佳，也经常可以继续
+
+        if not hasattr(feed_data, 'entries'):
+            self._log(f"[Error] Parsed feed data has no 'entries' attribute.", 1)
+            return []
 
         # 3. Extract the links from each entry
         for entry in feed_data.entries:
-            if entry.link and isinstance(entry.link, str):
+            if hasattr(entry, 'link') and entry.link and isinstance(entry.link, str):
                 article_urls.append(entry.link)
             else:
-                self._log(f"[Warning] Found entry without a valid link: '{entry.title}'", 2)
+                entry_title = entry.title if hasattr(entry, 'title') else 'N/A'
+                self._log(f"[Warning] Found entry without a valid link: '{entry_title}'", 2)
 
         self._log(f"  > Found {len(article_urls)} articles in this channel.")
         return article_urls

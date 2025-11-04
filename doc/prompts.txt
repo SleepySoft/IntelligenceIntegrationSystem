@@ -2547,7 +2547,39 @@ ai client需要包含以下功能，并提取一个公共接口：
 
 
 
+请同时帮我设计Extractor接口，以及其于crawl4ai、newspaper3k、Trafilatura等等工具的实现。唯一要求是最终返回markdown。
+同时我有一个不成熟的，简单的，基于dom选择器和各种清洗器的代码，请帮我重构，移除不需要的部分并加入这个体系。
 
 
+
+
+
+
+
+
+
+
+
+
+
+不需要给出完整实现，也不需要给出原本就存在的引用mock（假设已存在），只需要给出我要求的，需要更新的函数代码。
+
+
+
+我将给出一段界面的代码，请理解并分析，做以下改动，以便后续增加功能。
+1. 在顶部URL窗口后，时间输入控件前，增加Discoverer下拉选择，选项包括：[Sitemap、RSS、“列表智能分析（预留）”]。并根据选择实现Sitemap和RSS的channel及article显示，同样第一级为channel，下一级为文章。
+2. 在article preview页面内，浏览器上方，增加以下元素：
+    a. 网址输入和跳转按钮 - 当用户点击左侧树时，先将url更新到此处，再打开网页。
+    b. 抓取器选择，同顶部已实现部分。
+    c. 分析器（extractor）选择，包括[TrafilaturaExtractor、ReadabilityExtractor、Newspaper3kExtractor、GenericCSSExtractor、Crawl4AIExtractor]。
+    d. 分析器参数（按钮，因为不同分析器参数不一样，所以仅给一个配置界面的入口）
+    e. 开始分析
+3. 在article preview页面右侧增加一个可自由分割的只读文本框，用来显示分析结果（markdown的原始平文本）。
+4. 现在该界面不再是SitemapAnalyzerApp了，而一个抓取的playground和preview，取一个合适的名字。
+5. 根据界面选择，构建相应的类实例并执行，同时展示生成代码。
+
++ 注意：该需有有一定难度，请仔细设计，考虑扩展性，今后的改动会有两个方向：直接增加选项，以及插件化.
++ 所有文本注释使用英文。
++ 其它基于你的考虑，需要调整的地方。
 
 
