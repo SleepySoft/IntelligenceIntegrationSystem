@@ -471,6 +471,7 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         # --- 1. Top URL Input Bar (Refactored) ---
         top_bar_layout = QHBoxLayout()
+        top_bar_layout.setSpacing(10)
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("Enter website homepage URL (e.g., https://www.example.com)")
         top_bar_layout.addWidget(self.url_input, 1)
@@ -482,6 +483,13 @@ class CrawlerPlaygroundApp(QMainWindow):
         if "RSSDiscoverer" not in globals():
             self.discoverer_combo.model().item(1).setEnabled(False)
         self.discoverer_combo.model().item(2).setEnabled(False)  # WIP
+        # --- MODIFICATION: Add ToolTip to explain behavior ---
+        self.discoverer_combo.setToolTip(
+            "Select the discovery method:\n"
+            "- Sitemap: Finds sitemap.xml from the homepage.\n"
+            "- RSS: Finds <link rel='alternate'> RSS feeds from the homepage.\n\n"
+            "In both cases, enter the homepage URL."
+        )
         top_bar_layout.addWidget(self.discoverer_combo)
 
         # --- Date Period Selectors (Original) ---
@@ -603,26 +611,22 @@ class CrawlerPlaygroundApp(QMainWindow):
     def _create_article_preview_tab(self) -> QWidget:
         """Helper function to build the complex Article Preview tab."""
         # This 'main_widget' is what the tab.addTab() receives.
-        # We will put the splitter *directly* inside it.
         main_widget = QWidget()
         layout = QVBoxLayout(main_widget)
-        layout.setSpacing(0)  # No spacing, splitter will be the only widget
+        # --- MODIFICATION: Increase spacing ---
+        layout.setSpacing(5)
         layout.setContentsMargins(0, 5, 0, 0)  # Keep top margin
 
         # --- REQ 1 & 2: Create the main horizontal splitter ---
         self.article_splitter = QSplitter(Qt.Horizontal)
-
-        # --- FIX FOR PROBLEM 1 (Flicker) ---
-        # Set opaque resize to False. This stops the live-resizing
-        # of the webview, which causes the flickering bug.
-        # The widgets will only resize *after* the mouse is released.
-        self.article_splitter.setOpaqueResize(False)
+        self.article_splitter.setOpaqueResize(False)  # FIX for webview flicker
 
         # --- REQ 2: Build the Left Pane (URL Bar + Web View) ---
         left_pane_widget = QWidget()
         left_layout = QVBoxLayout(left_pane_widget)
         left_layout.setSpacing(5)
-        left_layout.setContentsMargins(0, 0, 2, 0)  # Small margin on the right
+        # --- MODIFICATION: Increase margin ---
+        left_layout.setContentsMargins(0, 0, 5, 0)
 
         left_toolbar = QToolBar("Article URL")
         left_toolbar.addWidget(QLabel("URL:"))
@@ -646,7 +650,8 @@ class CrawlerPlaygroundApp(QMainWindow):
         right_pane_widget = QWidget()
         right_layout = QVBoxLayout(right_pane_widget)
         right_layout.setSpacing(5)
-        right_layout.setContentsMargins(2, 0, 0, 0)  # Small margin on the left
+        # --- MODIFICATION: Increase margin ---
+        right_layout.setContentsMargins(5, 0, 0, 0)
 
         right_toolbar = QToolBar("Extractor Tools")
         right_toolbar.addWidget(QLabel("Fetcher:"))
@@ -662,6 +667,18 @@ class CrawlerPlaygroundApp(QMainWindow):
         if not sync_stealth and not Stealth:
             self.article_fetcher_combo.model().item(2).setEnabled(False)
         right_toolbar.addWidget(self.article_fetcher_combo)
+
+        # --- NEW: Add Pause/Render checkboxes for this specific fetcher ---
+        self.article_pause_check = QCheckBox("Pause")
+        self.article_pause_check.setToolTip("Pauses Playwright (in headful mode) for debugging.")
+        right_toolbar.addWidget(self.article_pause_check)
+
+        self.article_render_check = QCheckBox("Render")
+        self.article_render_check.setToolTip("Fetches final rendered HTML (slower) vs. raw response (faster).")
+        self.article_render_check.setChecked(True)  # Default to checked
+        right_toolbar.addWidget(self.article_render_check)
+        # --- END NEW ---
+
         right_toolbar.addSeparator()
 
         right_toolbar.addWidget(QLabel("Extractor:"))
@@ -681,7 +698,6 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.extractor_analyze_button = QPushButton("Analyze")
         right_toolbar.addWidget(self.extractor_analyze_button)
 
-        # Add a spacer to push all controls to the left
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         right_toolbar.addWidget(spacer)
@@ -895,9 +911,9 @@ class CrawlerPlaygroundApp(QMainWindow):
             extractor_name=extractor_name,
             url_to_extract=url,
             extractor_kwargs=extractor_kwargs,
-            # Use the *main* window's settings for pause/render
-            pause_browser=self.pause_browser_check.isChecked(),
-            render_page=self.render_page_check.isChecked()
+            # --- MODIFICATION: Use the Article Tab's checkboxes ---
+            pause_browser=self.article_pause_check.isChecked(),
+            render_page=self.article_render_check.isChecked()
         )
 
         worker.signals.result.connect(self.on_extraction_result)
@@ -1117,7 +1133,12 @@ class CrawlerPlaygroundApp(QMainWindow):
         code += f"article_url = \"{article_url}\"\n"
         code += f"article_fetcher_name = \"{article_fetcher}\"\n"
         code += f"extractor_name = \"{extractor_name}\"\n"
-        code += f"pause_for_extraction = {pause}\n"
+
+        # --- Read from the article tab's checkboxes ---
+        pause_for_extraction = self.article_pause_check.isChecked()
+        render_for_extraction = self.article_render_check.isChecked()
+
+        code += f"pause_for_extraction = {pause_for_extraction}\n"
         code += f"render_for_extraction = {render_for_extraction}\n"
 
         # TODO: Get this from settings dialog
