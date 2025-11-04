@@ -119,7 +119,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QSplitter,
     QTextEdit, QStatusBar, QTabWidget, QLabel, QFrame, QComboBox,
-    QDateEdit, QCheckBox, QToolBar
+    QDateEdit, QCheckBox, QToolBar, QSizePolicy
 )
 from PyQt5.QtCore import (
     Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer,
@@ -602,27 +602,54 @@ class CrawlerPlaygroundApp(QMainWindow):
 
     def _create_article_preview_tab(self) -> QWidget:
         """Helper function to build the complex Article Preview tab."""
+        # This 'main_widget' is what the tab.addTab() receives.
+        # We will put the splitter *directly* inside it.
         main_widget = QWidget()
         layout = QVBoxLayout(main_widget)
-        layout.setSpacing(5)
-        layout.setContentsMargins(0, 5, 0, 0)  # Add margin at the top
+        layout.setSpacing(0)  # No spacing, splitter will be the only widget
+        layout.setContentsMargins(0, 5, 0, 0)  # Keep top margin
 
-        # --- REQ 2: Article Toolbar ---
-        toolbar = QToolBar("Article Toolbar")
-        toolbar_layout = QHBoxLayout()
+        # --- REQ 1 & 2: Create the main horizontal splitter ---
+        self.article_splitter = QSplitter(Qt.Horizontal)
 
-        # 2a: URL Bar
-        toolbar.addWidget(QLabel("URL:"))
+        # --- FIX FOR PROBLEM 1 (Flicker) ---
+        # Set opaque resize to False. This stops the live-resizing
+        # of the webview, which causes the flickering bug.
+        # The widgets will only resize *after* the mouse is released.
+        self.article_splitter.setOpaqueResize(False)
+
+        # --- REQ 2: Build the Left Pane (URL Bar + Web View) ---
+        left_pane_widget = QWidget()
+        left_layout = QVBoxLayout(left_pane_widget)
+        left_layout.setSpacing(5)
+        left_layout.setContentsMargins(0, 0, 2, 0)  # Small margin on the right
+
+        left_toolbar = QToolBar("Article URL")
+        left_toolbar.addWidget(QLabel("URL:"))
         self.article_url_input = QLineEdit()
         self.article_url_input.setPlaceholderText("Select an article from the tree...")
-        toolbar.addWidget(self.article_url_input)
-
+        left_toolbar.addWidget(self.article_url_input)
         self.article_go_button = QPushButton("Go")
-        toolbar.addWidget(self.article_go_button)
-        toolbar.addSeparator()
+        left_toolbar.addWidget(self.article_go_button)
 
-        # 2b: Fetcher Select
-        toolbar.addWidget(QLabel("Fetcher:"))
+        left_layout.addWidget(left_toolbar)  # Add toolbar to left pane
+
+        if QWebEngineView:
+            self.web_view = QWebEngineView()
+        else:
+            self.web_view = QTextEdit("QWebEngineView not available. Install PyQtWebEngine.")
+            self.web_view.setReadOnly(True)
+
+        left_layout.addWidget(self.web_view, 1)  # Add webview to left pane (stretches)
+
+        # --- REQ 2: Build the Right Pane (Tools + Markdown View) ---
+        right_pane_widget = QWidget()
+        right_layout = QVBoxLayout(right_pane_widget)
+        right_layout.setSpacing(5)
+        right_layout.setContentsMargins(2, 0, 0, 0)  # Small margin on the left
+
+        right_toolbar = QToolBar("Extractor Tools")
+        right_toolbar.addWidget(QLabel("Fetcher:"))
         self.article_fetcher_combo = QComboBox()
         self.article_fetcher_combo.addItems([
             "Simple (Requests)",
@@ -634,50 +661,46 @@ class CrawlerPlaygroundApp(QMainWindow):
             self.article_fetcher_combo.model().item(2).setEnabled(False)
         if not sync_stealth and not Stealth:
             self.article_fetcher_combo.model().item(2).setEnabled(False)
-        toolbar.addWidget(self.article_fetcher_combo)
-        toolbar.addSeparator()
+        right_toolbar.addWidget(self.article_fetcher_combo)
+        right_toolbar.addSeparator()
 
-        # 2c: Extractor Select
-        toolbar.addWidget(QLabel("Extractor:"))
+        right_toolbar.addWidget(QLabel("Extractor:"))
         self.extractor_combo = QComboBox()
-        # Add available extractors
         available_extractors = sorted(EXTRACTOR_MAP.keys())
-        self.extractor_combo.addItems(available_extractors)
-        if not available_extractors:
+        if available_extractors:
+            self.extractor_combo.addItems(available_extractors)
+        else:
             self.extractor_combo.addItem("No Extractors Found")
             self.extractor_combo.setEnabled(False)
-        toolbar.addWidget(self.extractor_combo)
+        right_toolbar.addWidget(self.extractor_combo)
 
-        # 2d: Settings Button
         self.extractor_settings_button = QPushButton("Settings")
         self.extractor_settings_button.setEnabled(False)  # TODO: Implement settings dialog
-        toolbar.addWidget(self.extractor_settings_button)
+        right_toolbar.addWidget(self.extractor_settings_button)
 
-        # 2e: Analyze Button
         self.extractor_analyze_button = QPushButton("Analyze")
-        toolbar.addWidget(self.extractor_analyze_button)
+        right_toolbar.addWidget(self.extractor_analyze_button)
 
-        layout.addWidget(toolbar)
+        # Add a spacer to push all controls to the left
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        right_toolbar.addWidget(spacer)
 
-        # --- REQ 3: Browser / Markdown Splitter ---
-        self.article_splitter = QSplitter(Qt.Horizontal)
-
-        if QWebEngineView:
-            self.web_view = QWebEngineView()
-        else:
-            self.web_view = QTextEdit("QWebEngineView not available. Install PyQtWebEngine.")
-            self.web_view.setReadOnly(True)
+        right_layout.addWidget(right_toolbar)  # Add toolbar to right pane
 
         self.markdown_output_view = QTextEdit()
         self.markdown_output_view.setReadOnly(True)
         self.markdown_output_view.setFont(QFont("Courier", 10))
         self.markdown_output_view.setLineWrapMode(QTextEdit.NoWrap)
 
-        self.article_splitter.addWidget(self.web_view)
-        self.article_splitter.addWidget(self.markdown_output_view)
-        self.article_splitter.setSizes([800, 400])
+        right_layout.addWidget(self.markdown_output_view, 1)  # Add markdown view
 
-        layout.addWidget(self.article_splitter, 1)  # Give stretch
+        # --- Add panes to splitter ---
+        self.article_splitter.addWidget(left_pane_widget)
+        self.article_splitter.addWidget(right_pane_widget)
+        self.article_splitter.setSizes([800, 500])  # Adjust initial sizes
+
+        layout.addWidget(self.article_splitter, 1)  # Add splitter to main layout
         return main_widget
 
     def connect_signals(self):
