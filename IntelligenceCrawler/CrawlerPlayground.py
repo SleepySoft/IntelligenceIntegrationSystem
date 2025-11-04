@@ -144,7 +144,10 @@ except ImportError:
 #
 # =============================================================================
 
-def create_fetcher_instance(fetcher_name: str, log_callback, **kwargs) -> Fetcher:
+def create_fetcher_instance(fetcher_name: str,
+                            log_callback,
+                            proxy: Optional[str] = None,  # <-- NEW
+                            **kwargs) -> Fetcher:
     """Factory to create a fetcher instance based on its name."""
     stealth_mode = "Stealth" in fetcher_name
     pause = kwargs.get('pause_browser', False)
@@ -156,12 +159,16 @@ def create_fetcher_instance(fetcher_name: str, log_callback, **kwargs) -> Fetche
             raise ImportError("Playwright-Stealth not installed.")
         return PlaywrightFetcher(
             log_callback=log_callback,
+            proxy=proxy,  # <-- NEW
             stealth=stealth_mode,
             pause_browser=pause,
             render_page=render
         )
     else:  # "Simple (Requests)"
-        return RequestsFetcher(log_callback=log_callback)
+        return RequestsFetcher(
+            log_callback=log_callback,
+            proxy=proxy  # <-- NEW
+        )
 
 
 def create_discoverer_instance(discoverer_name: str, fetcher: Fetcher, log_callback) -> IDiscoverer:
@@ -212,6 +219,7 @@ class ChannelDiscoveryWorker(QRunnable):
                  homepage_url: str,
                  start_date: datetime.datetime,
                  end_date: datetime.datetime,
+                 proxy: Optional[str],  # <-- NEW
                  pause_browser: bool,
                  render_page: bool):
         super(ChannelDiscoveryWorker, self).__init__()
@@ -220,6 +228,7 @@ class ChannelDiscoveryWorker(QRunnable):
         self.homepage_url = homepage_url
         self.start_date = start_date
         self.end_date = end_date
+        self.proxy = proxy
         self.pause_browser = pause_browser
         self.render_page = render_page  # Note: This is for XML, may break parsing
         self.signals = WorkerSignals()
@@ -239,6 +248,7 @@ class ChannelDiscoveryWorker(QRunnable):
             fetcher = create_fetcher_instance(
                 self.fetcher_name,
                 log_callback,
+                proxy=self.proxy,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -270,12 +280,14 @@ class ArticleListWorker(QRunnable):
                  discoverer_name: str,
                  fetcher_name: str,
                  channel_url: str,
+                 proxy: Optional[str],
                  pause_browser: bool,
                  render_page: bool):
         super(ArticleListWorker, self).__init__()
         self.discoverer_name = discoverer_name
         self.fetcher_name = fetcher_name
         self.channel_url = channel_url
+        self.proxy = proxy
         self.pause_browser = pause_browser
         self.render_page = render_page
         self.signals = WorkerSignals()
@@ -293,6 +305,7 @@ class ArticleListWorker(QRunnable):
             fetcher = create_fetcher_instance(
                 self.fetcher_name,
                 log_callback,
+                proxy=self.proxy,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -324,12 +337,14 @@ class ChannelSourceWorker(QRunnable):
                  discoverer_name: str,  # Discoverer needed for get_content_str
                  fetcher_name: str,
                  url: str,
+                 proxy: Optional[str],
                  pause_browser: bool,
                  render_page: bool):
         super(ChannelSourceWorker, self).__init__()
         self.discoverer_name = discoverer_name
         self.fetcher_name = fetcher_name
         self.url = url
+        self.proxy = proxy
         self.pause_browser = pause_browser
         self.render_page = render_page
         self.signals = WorkerSignals()
@@ -347,6 +362,7 @@ class ChannelSourceWorker(QRunnable):
             fetcher = create_fetcher_instance(
                 self.fetcher_name,
                 log_callback,
+                proxy=self.proxy,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -374,6 +390,7 @@ class ExtractionWorker(QRunnable):
                  extractor_name: str,
                  url_to_extract: str,
                  extractor_kwargs: dict,
+                 proxy: Optional[str],
                  pause_browser: bool,
                  render_page: bool):
         super(ExtractionWorker, self).__init__()
@@ -381,6 +398,7 @@ class ExtractionWorker(QRunnable):
         self.extractor_name = extractor_name
         self.url_to_extract = url_to_extract
         self.extractor_kwargs = extractor_kwargs
+        self.proxy = proxy
         self.pause_browser = pause_browser
         self.render_page = render_page  # This SHOULD be respected
         self.signals = WorkerSignals()
@@ -395,6 +413,7 @@ class ExtractionWorker(QRunnable):
             fetcher = create_fetcher_instance(
                 self.fetcher_name,
                 log_callback,
+                proxy=self.proxy,
                 pause_browser=self.pause_browser,
                 render_page=self.render_page
             )
@@ -525,10 +544,18 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         self.render_page_check = QCheckBox("Render Page")
         self.render_page_check.setToolTip(
-            "Fetches final rendered HTML (slower).\n" \
-            "[Discovery] Will be forced OFF to ensure XML/RSS parsing.\n" \
+            "Fetches final rendered HTML (slower).\n"
+            "[Discovery] Will be forced OFF to ensure XML/RSS parsing.\n"
             "[Extraction] Will be used as set.")
         top_bar_layout.addWidget(self.render_page_check)
+
+        # --- NEW: Discovery Proxy Input ---
+        top_bar_layout.addWidget(QLabel("Proxy:"))
+        self.discovery_proxy_input = QLineEdit()
+        self.discovery_proxy_input.setPlaceholderText("e.g., http://user:pass@host:port")
+        # Give it a small stretch factor to fill remaining space
+        self.discovery_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
+        top_bar_layout.addWidget(self.discovery_proxy_input, 1)  # 1 stretch
 
         # --- Analyze Button (Original) ---
         self.analyze_button = QPushButton("Discover Channels")  # Renamed
@@ -613,20 +640,18 @@ class CrawlerPlaygroundApp(QMainWindow):
         # This 'main_widget' is what the tab.addTab() receives.
         main_widget = QWidget()
         layout = QVBoxLayout(main_widget)
-        # --- MODIFICATION: Increase spacing ---
         layout.setSpacing(5)
         layout.setContentsMargins(0, 5, 0, 0)  # Keep top margin
 
-        # --- REQ 1 & 2: Create the main horizontal splitter ---
+        # --- Create the main horizontal splitter ---
         self.article_splitter = QSplitter(Qt.Horizontal)
         self.article_splitter.setOpaqueResize(False)  # FIX for webview flicker
 
-        # --- REQ 2: Build the Left Pane (URL Bar + Web View) ---
+        # --- Build the Left Pane (URL Bar + Web View) ---
         left_pane_widget = QWidget()
         left_layout = QVBoxLayout(left_pane_widget)
         left_layout.setSpacing(5)
-        # --- MODIFICATION: Increase margin ---
-        left_layout.setContentsMargins(0, 0, 5, 0)
+        left_layout.setContentsMargins(0, 0, 5, 0)  # Right margin
 
         left_toolbar = QToolBar("Article URL")
         left_toolbar.addWidget(QLabel("URL:"))
@@ -644,17 +669,19 @@ class CrawlerPlaygroundApp(QMainWindow):
             self.web_view = QTextEdit("QWebEngineView not available. Install PyQtWebEngine.")
             self.web_view.setReadOnly(True)
 
-        left_layout.addWidget(self.web_view, 1)  # Add webview to left pane (stretches)
+        left_layout.addWidget(self.web_view, 1)  # Add webview (stretches)
 
-        # --- REQ 2: Build the Right Pane (Tools + Markdown View) ---
+        # --- Build the Right Pane (Tools + Markdown View) ---
         right_pane_widget = QWidget()
         right_layout = QVBoxLayout(right_pane_widget)
         right_layout.setSpacing(5)
-        # --- MODIFICATION: Increase margin ---
-        right_layout.setContentsMargins(5, 0, 0, 0)
+        right_layout.setContentsMargins(5, 0, 0, 0)  # Left margin
 
-        right_toolbar = QToolBar("Extractor Tools")
-        right_toolbar.addWidget(QLabel("Fetcher:"))
+        # --- MODIFICATION: Create TWO toolbars ---
+
+        # --- Toolbar 1: Fetcher Settings ---
+        fetcher_toolbar = QToolBar("Fetcher Tools")
+        fetcher_toolbar.addWidget(QLabel("Fetcher:"))
         self.article_fetcher_combo = QComboBox()
         self.article_fetcher_combo.addItems([
             "Simple (Requests)",
@@ -666,22 +693,31 @@ class CrawlerPlaygroundApp(QMainWindow):
             self.article_fetcher_combo.model().item(2).setEnabled(False)
         if not sync_stealth and not Stealth:
             self.article_fetcher_combo.model().item(2).setEnabled(False)
-        right_toolbar.addWidget(self.article_fetcher_combo)
+        fetcher_toolbar.addWidget(self.article_fetcher_combo)
 
-        # --- NEW: Add Pause/Render checkboxes for this specific fetcher ---
+        fetcher_toolbar.addWidget(QLabel("Proxy:"))
+        self.article_proxy_input = QLineEdit()
+        self.article_proxy_input.setPlaceholderText("e.g., socks5://user:pass@host:port")
+        self.article_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
+        fetcher_toolbar.addWidget(self.article_proxy_input)
+
         self.article_pause_check = QCheckBox("Pause")
         self.article_pause_check.setToolTip("Pauses Playwright (in headful mode) for debugging.")
-        right_toolbar.addWidget(self.article_pause_check)
+        fetcher_toolbar.addWidget(self.article_pause_check)
 
         self.article_render_check = QCheckBox("Render")
         self.article_render_check.setToolTip("Fetches final rendered HTML (slower) vs. raw response (faster).")
         self.article_render_check.setChecked(True)  # Default to checked
-        right_toolbar.addWidget(self.article_render_check)
-        # --- END NEW ---
+        fetcher_toolbar.addWidget(self.article_render_check)
 
-        right_toolbar.addSeparator()
+        # Add a spacer to push all fetcher controls to the left
+        fetcher_spacer = QWidget()
+        fetcher_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        fetcher_toolbar.addWidget(fetcher_spacer)
 
-        right_toolbar.addWidget(QLabel("Extractor:"))
+        # --- Toolbar 2: Extractor Settings ---
+        extractor_toolbar = QToolBar("Extractor Tools")
+        extractor_toolbar.addWidget(QLabel("Extractor:"))
         self.extractor_combo = QComboBox()
         available_extractors = sorted(EXTRACTOR_MAP.keys())
         if available_extractors:
@@ -689,27 +725,31 @@ class CrawlerPlaygroundApp(QMainWindow):
         else:
             self.extractor_combo.addItem("No Extractors Found")
             self.extractor_combo.setEnabled(False)
-        right_toolbar.addWidget(self.extractor_combo)
+        extractor_toolbar.addWidget(self.extractor_combo)
 
         self.extractor_settings_button = QPushButton("Settings")
         self.extractor_settings_button.setEnabled(False)  # TODO: Implement settings dialog
-        right_toolbar.addWidget(self.extractor_settings_button)
+        extractor_toolbar.addWidget(self.extractor_settings_button)
 
         self.extractor_analyze_button = QPushButton("Analyze")
-        right_toolbar.addWidget(self.extractor_analyze_button)
+        extractor_toolbar.addWidget(self.extractor_analyze_button)
 
-        spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        right_toolbar.addWidget(spacer)
+        # Add a spacer to push all extractor controls to the left
+        extractor_spacer = QWidget()
+        extractor_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        extractor_toolbar.addWidget(extractor_spacer)
 
-        right_layout.addWidget(right_toolbar)  # Add toolbar to right pane
+        # --- Add both toolbars to the right layout ---
+        right_layout.addWidget(fetcher_toolbar)
+        right_layout.addWidget(extractor_toolbar)
 
+        # --- Add Markdown view ---
         self.markdown_output_view = QTextEdit()
         self.markdown_output_view.setReadOnly(True)
         self.markdown_output_view.setFont(QFont("Courier", 10))
         self.markdown_output_view.setLineWrapMode(QTextEdit.NoWrap)
 
-        right_layout.addWidget(self.markdown_output_view, 1)  # Add markdown view
+        right_layout.addWidget(self.markdown_output_view, 1)  # Add markdown view (stretches)
 
         # --- Add panes to splitter ---
         self.article_splitter.addWidget(left_pane_widget)
@@ -823,12 +863,15 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.set_loading_state(True, f"Discovering {self.discoverer_name} channels for {url}...")
         self.update_generated_code()  # Update code snippet
 
+        proxy_str = self.discovery_proxy_input.text().strip() or None
+
         worker = ChannelDiscoveryWorker(
             discoverer_name=self.discoverer_name,
             fetcher_name=self.discovery_fetcher_name,
             homepage_url=url,
             start_date=start_date,
             end_date=end_date,
+            proxy=proxy_str,  # <-- NEW
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
@@ -849,13 +892,17 @@ class CrawlerPlaygroundApp(QMainWindow):
         channel_item.setExpanded(True)
         self.status_bar.showMessage(f"Loading articles for {channel_url}...")
 
+        proxy_str = self.discovery_proxy_input.text().strip() or None
+
         worker = ArticleListWorker(
             discoverer_name=self.discoverer_name,
             fetcher_name=self.discovery_fetcher_name,
             channel_url=channel_url,
+            proxy=proxy_str,  # <-- NEW
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
+
         worker.signals.result.connect(self.on_article_list_result)
         worker.signals.finished.connect(self.on_worker_finished)
         worker.signals.error.connect(self.on_worker_error)
@@ -869,13 +916,17 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.channel_source_viewer.setPlainText(f"Loading source from {url}...")
         self.tab_widget.setCurrentWidget(self.channel_source_viewer)
 
+        proxy_str = self.discovery_proxy_input.text().strip() or None
+
         worker = ChannelSourceWorker(
             discoverer_name=self.discoverer_name,
             fetcher_name=self.discovery_fetcher_name,
             url=url,
+            proxy=proxy_str,  # <-- NEW
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
+
         worker.signals.result.connect(self.on_channel_source_result)
         worker.signals.finished.connect(self.on_worker_finished)
         worker.signals.error.connect(self.on_worker_error)
@@ -906,12 +957,14 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.set_loading_state(True, f"Extracting {url} with {extractor_name}...")
         self.update_generated_code()  # Update code snippet
 
+        proxy_str = self.article_proxy_input.text().strip() or None
+
         worker = ExtractionWorker(
             fetcher_name=fetcher_name,
             extractor_name=extractor_name,
             url_to_extract=url,
             extractor_kwargs=extractor_kwargs,
-            # --- MODIFICATION: Use the Article Tab's checkboxes ---
+            proxy=proxy_str,  # <-- NEW
             pause_browser=self.article_pause_check.isChecked(),
             render_page=self.article_render_check.isChecked()
         )
@@ -1072,6 +1125,7 @@ class CrawlerPlaygroundApp(QMainWindow):
         fetcher_name = self.discovery_fetcher_combo.currentText()
         pause = self.pause_browser_check.isChecked()
         render = self.render_page_check.isChecked()  # This is the main window's
+        discovery_proxy = self.discovery_proxy_input.text().strip() or None
         url = self.url_input.text()
         start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
         end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
@@ -1088,8 +1142,9 @@ class CrawlerPlaygroundApp(QMainWindow):
         code += f"start_date = datetime.datetime.strptime(\"{start_date}\", \"%Y-%m-%d\")\n"
         code += f"end_date = datetime.datetime.strptime(\"{end_date}\", \"%Y-%m-%d\").replace(hour=23, minute=59)\n\n"
         code += "log_cb = print  # Use print for logging\n"
+        code += f"discovery_proxy = {repr(discovery_proxy)}\n"
         code += "fetcher = create_fetcher_instance(fetcher_name, log_cb, " \
-                f"pause_browser={pause}, render_page=False)\n"
+                f"proxy=discovery_proxy, pause_browser={pause}, render_page=False)\n"
         code += "discoverer = create_discoverer_instance(discoverer_name, fetcher, log_cb)\n"
         code += "channels = discoverer.discover_channels(homepage_url, start_date, end_date)\n"
         code += "print(f\"Found {len(channels)} channels.\")\n"
@@ -1136,10 +1191,11 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         # --- Read from the article tab's checkboxes ---
         pause_for_extraction = self.article_pause_check.isChecked()
-        render_for_extraction = self.article_render_check.isChecked()
+        article_proxy = self.article_proxy_input.text().strip() or None
 
         code += f"pause_for_extraction = {pause_for_extraction}\n"
         code += f"render_for_extraction = {render_for_extraction}\n"
+        code += f"article_proxy = {repr(article_proxy)}\n"
 
         # TODO: Get this from settings dialog
         extractor_kwargs = {}
@@ -1148,7 +1204,8 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         code += f"extractor_kwargs = {extractor_kwargs}\n\n"
         code += "article_fetcher = create_fetcher_instance(article_fetcher_name, log_cb, " \
-                f"pause_browser={pause}, render_page={render_for_extraction})\n"
+                f"proxy=article_proxy, pause_browser={pause_for_extraction}, " \
+                f"render_page={render_for_extraction})\n"
         code += "content = article_fetcher.get_content(article_url)\n"
         code += "extractor = create_extractor_instance(extractor_name, log_cb)\n"
         code += "markdown = extractor.extract(content, article_url, **extractor_kwargs)\n"
