@@ -59,8 +59,8 @@ except ImportError:
 try:
     from IntelligenceCrawler.Extractor import (
         IExtractor, TrafilaturaExtractor, ReadabilityExtractor,
-        Newspaper3kExtractor, GenericCSSExtractor, Crawl4AIExtractor
-    )
+        Newspaper3kExtractor, GenericCSSExtractor, Crawl4AIExtractor, ExtractionResult
+)
 
     # Store imported classes for factory
     EXTRACTOR_MAP = {
@@ -739,17 +739,45 @@ class CrawlerPlaygroundApp(QMainWindow):
         extractor_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         extractor_toolbar.addWidget(extractor_spacer)
 
+        # # --- Add both toolbars to the right layout ---
+        # right_layout.addWidget(fetcher_toolbar)
+        # right_layout.addWidget(extractor_toolbar)
+        #
+        # # --- Add Markdown view ---
+        # self.markdown_output_view = QTextEdit()
+        # self.markdown_output_view.setReadOnly(True)
+        # self.markdown_output_view.setFont(QFont("Courier", 10))
+        # self.markdown_output_view.setLineWrapMode(QTextEdit.NoWrap)
+        #
+        # right_layout.addWidget(self.markdown_output_view, 1)  # Add markdown view (stretches)
+
         # --- Add both toolbars to the right layout ---
         right_layout.addWidget(fetcher_toolbar)
         right_layout.addWidget(extractor_toolbar)
 
-        # --- Add Markdown view ---
+        # --- NEW: Vertical Splitter for Markdown and Metadata ---
+        self.output_splitter = QSplitter(Qt.Vertical)
+
+        # --- Markdown view (Top) ---
         self.markdown_output_view = QTextEdit()
         self.markdown_output_view.setReadOnly(True)
         self.markdown_output_view.setFont(QFont("Courier", 10))
         self.markdown_output_view.setLineWrapMode(QTextEdit.NoWrap)
+        self.markdown_output_view.setPlaceholderText("Extracted Markdown content will appear here...")
+        self.output_splitter.addWidget(self.markdown_output_view)
 
-        right_layout.addWidget(self.markdown_output_view, 1)  # Add markdown view (stretches)
+        # --- Metadata view (Bottom) ---
+        self.metadata_output_view = QTextEdit()  # <-- NEW WIDGET
+        self.metadata_output_view.setReadOnly(True)
+        self.metadata_output_view.setFont(QFont("Courier", 10))
+        self.metadata_output_view.setLineWrapMode(QTextEdit.NoWrap)
+        self.metadata_output_view.setPlaceholderText("Extracted metadata (JSON) will appear here...")
+        self.output_splitter.addWidget(self.metadata_output_view)
+
+        # Set initial sizes for the new splitter
+        self.output_splitter.setSizes([700, 300])  # 70% Markdown, 30% Meta
+
+        right_layout.addWidget(self.output_splitter, 1)  # Add splitter (stretches)
 
         # --- Add panes to splitter ---
         self.article_splitter.addWidget(left_pane_widget)
@@ -827,6 +855,7 @@ class CrawlerPlaygroundApp(QMainWindow):
             self.web_view.setUrl(QUrl("about:blank"))
         self.article_url_input.clear()
         self.markdown_output_view.clear()
+        self.metadata_output_view.clear()
         self.update_generated_code()
 
     def append_log_history(self, message: str):
@@ -954,6 +983,7 @@ class CrawlerPlaygroundApp(QMainWindow):
             extractor_kwargs = {'selectors': ['body'], 'exclude_selectors': ['nav', 'footer']}
 
         self.markdown_output_view.setPlainText(f"Starting analysis on {url}...")
+        self.metadata_output_view.setPlainText("Waiting for analysis to complete...")  # <-- NEW
         self.set_loading_state(True, f"Extracting {url} with {extractor_name}...")
         self.update_generated_code()  # Update code snippet
 
@@ -1040,9 +1070,30 @@ class CrawlerPlaygroundApp(QMainWindow):
         """Slot for ChannelSourceWorker 'result' signal."""
         self.channel_source_viewer.setPlainText(content_string)
 
-    def on_extraction_result(self, markdown_string: str):
+    def on_extraction_result(self, result: ExtractionResult):
         """Slot for ExtractionWorker 'result' signal."""
-        self.markdown_output_view.setPlainText(markdown_string)
+        import json
+
+        if result.error:
+            error_msg = f"--- EXTRACTION FAILED ---\n\n{result.error}"
+            self.markdown_output_view.setPlainText(error_msg)
+            self.metadata_output_view.setPlainText(error_msg)
+            self.append_log_history(f"[Error] Extraction failed: {result.error}")
+        else:
+            # Set Markdown content
+            self.markdown_output_view.setPlainText(result.markdown_content or "[No Markdown Content Extracted]")
+
+            # Set Metadata content (as pretty-printed JSON)
+            try:
+                metadata_str = json.dumps(
+                    result.metadata,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str  # Handle non-serializable types like datetime
+                )
+                self.metadata_output_view.setPlainText(metadata_str)
+            except Exception as e:
+                self.metadata_output_view.setPlainText(f"Could not serialize metadata: {e}\n\n{result.metadata}")
 
     def on_extraction_finished(self):
         """Slot for *ExtractionWorker* 'finished' signal."""

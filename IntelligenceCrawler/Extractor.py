@@ -64,6 +64,41 @@ try:
     from typing import TypeAlias
 except ImportError:
     from typing_extensions import TypeAlias
+# --- NEW: Pydantic model for a standardized extraction result ---
+try:
+    from pydantic import BaseModel, Field
+
+    print("Success: Imported 'pydantic'. IExtractor will use ExtractionResult.")
+except ImportError:
+    print("!!! FAILED to import 'pydantic'. ExtractionResult will be a dict.")
+    print("!!! Please install it: pip install pydantic")
+
+
+    # Define fallback classes if pydantic isn't available
+    # This allows the app to still run, albeit without type validation
+    class BaseModel:
+        def json(self, **kwargs):
+            import json
+            return json.dumps(self.__dict__, **kwargs)
+
+
+    def Field(default=None, **kwargs):
+        return default
+
+class ExtractionResult(BaseModel):
+    """
+    Standardized return object for all IExtractor implementations.
+    (所有 IExtractor 实现的标准返回对象。)
+    """
+    markdown_content: str = Field(default="", description="The main content in Markdown format.")
+    metadata: Dict[str, Any] = Field(default_factory=dict,
+                                     description="Extracted metadata (e.g., title, author, date).")
+    error: Optional[str] = Field(default=None, description="An error message if extraction failed.")
+
+    def __str__(self):
+        """Helper for printing metadata."""
+        import json
+        return json.dumps(self.metadata, indent=2, ensure_ascii=False, default=str)
 
 NormalizationForm: TypeAlias = Literal["NFC", "NFD", "NFKC", "NFKD"]
 
@@ -171,10 +206,10 @@ class IExtractor(ABC):
             print(log_msg)
 
     @abstractmethod
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
-        Extracts the main content from raw HTML bytes.
-        (从原始HTML字节中提取主要内容。)
+        Extracts the main content and metadata from raw HTML bytes.
+        (从原始HTML字节中提取主要内容和元数据。)
 
         :param content: The raw HTML content as bytes.
                         (作为字节的原始HTML内容。)
@@ -182,8 +217,8 @@ class IExtractor(ABC):
                     (原始URL（用于上下文和解析相对链接）。)
         :param kwargs: Implementation-specific options (e.g., CSS selectors).
                        (特定于实现的选项（例如CSS选择器）。)
-        :return: A string containing the extracted content in Markdown format.
-                 (一个包含Markdown格式的提取内容的字符串。)
+        :return: An ExtractionResult object containing markdown, metadata, and errors.
+                 (一个包含Markdown、元数据和错误的 ExtractionResult 对象。)
         """
         pass
 
@@ -202,7 +237,7 @@ class TrafilaturaExtractor(IExtractor):
     (这是一个高效的算法提取器，原生支持Markdown输出。)
     """
 
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
         Extracts content using trafilatura.
 
@@ -214,8 +249,9 @@ class TrafilaturaExtractor(IExtractor):
         """
         self._log(f"Extracting with TrafilaturaExtractor from {url}")
         if not trafilatura:
-            self._log("[Error] Trafilatura library not found.")
-            return ""
+            error_str = "[Error] Trafilatura library not found."
+            self._log(error_str)
+            return ExtractionResult(error=error_str)
 
         # Set defaults that align with returning Markdown
         kwargs.setdefault('output_format', 'markdown')
@@ -223,14 +259,52 @@ class TrafilaturaExtractor(IExtractor):
 
         try:
             # Trafilatura handles its own decoding
-            result = trafilatura.extract(content, url=url, **kwargs)
-            if result:
-                return sanitize_unicode_string(result)
-            return ""
+            # --- MODIFICATION: Ask Trafilatura for metadata ---
+            # We must extract to XML/lxml object first to get metadata
+            kwargs.pop('output_format', None)  # Remove output_format if present
+
+            # Use 'xml' to get a rich lxml object
+            lxml_object = trafilatura.extract(
+                content,
+                url=url,
+                output_format='xml',
+                include_links=True,
+                **kwargs
+            )
+
+            if lxml_object is None:
+                self._log("[Info] Trafilatura returned None.")
+                return ExtractionResult(error="Trafilatura failed to extract content.")
+
+            # Convert the LXML object to Markdown for the content
+            # We need html2text for this conversion
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.ignore_images = False
+            h.body_width = 0
+
+            html_string = lxml.etree.tostring(lxml_object, encoding='unicode')
+            markdown = h.handle(html_string)
+
+            # Extract metadata from the object's properties
+            metadata = {
+                'title': getattr(lxml_object, 'title', None),
+                'author': getattr(lxml_object, 'author', None),
+                'date': getattr(lxml_object, 'date', None),
+                'sitename': getattr(lxml_object, 'sitename', None),
+                'tags': getattr(lxml_object, 'tags', None),
+                'fingerprint': getattr(lxml_object, 'fingerprint', None),
+            }
+
+            return ExtractionResult(
+                markdown_content=sanitize_unicode_string(markdown),
+                metadata=metadata
+            )
         except Exception as e:
-            self._log(f"[Error] Trafilatura failed: {e}")
+            error_str = f"Trafilatura failed: {e}"
+            self._log(f"[Error] {error_str}")
             self._log(traceback.format_exc())
-            return ""
+            return ExtractionResult(error=error_str)
 
 
 class ReadabilityExtractor(IExtractor):
@@ -252,7 +326,7 @@ class ReadabilityExtractor(IExtractor):
         self.converter.ignore_images = False  # Markdown should include images
         self.converter.body_width = 0  # Don't wrap lines
 
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
         Extracts content using readability-lxml.
 
@@ -263,20 +337,28 @@ class ReadabilityExtractor(IExtractor):
         """
         self._log(f"Extracting with ReadabilityExtractor from {url}")
         if not Document:
-            self._log("[Error] readability-lxml library not found.")
-            return ""
+            error_str = "[Error] readability-lxml library not found."
+            self._log(error_str)
+            return ExtractionResult(error=error_str)
 
         try:
             html_str = content.decode('utf-8', errors='ignore')
             doc = Document(html_str)
             main_content_html = doc.summary()
 
+            # Try to get the title from the Document object
+            metadata = {'title': doc.title()}
+
             markdown = self.converter.handle(main_content_html)
-            return sanitize_unicode_string(markdown)
+            return ExtractionResult(
+                markdown_content=sanitize_unicode_string(markdown),
+                metadata=metadata
+            )
         except Exception as e:
-            self._log(f"[Error] Readability failed: {e}")
+            error_str = f"Readability failed: {e}"
+            self._log(f"[Error] {error_str}")
             self._log(traceback.format_exc())
-            return ""
+            return ExtractionResult(error=error_str)
 
 
 class Newspaper3kExtractor(IExtractor):
@@ -304,7 +386,7 @@ class Newspaper3kExtractor(IExtractor):
         self.converter.ignore_images = False
         self.converter.body_width = 0
 
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
         Extracts content using newspaper3k.
 
@@ -315,8 +397,9 @@ class Newspaper3kExtractor(IExtractor):
         """
         self._log(f"Extracting with Newspaper3kExtractor from {url}")
         if not Article:
-            self._log("[Error] newspaper3k library not found.")
-            return ""
+            error_str = "[Error] newspaper3k library not found."
+            self._log(error_str)
+            return ExtractionResult(error=error_str)
 
         try:
             html_str = content.decode('utf-8', errors='ignore')
@@ -329,14 +412,34 @@ class Newspaper3kExtractor(IExtractor):
                 return ""  # Failed to find content
 
             # Convert the main lxml node back to HTML
-            main_content_html = lxml.etree.tostring(article.top_node, encoding='unicode')
+            if article.top_node is None:
+                self._log("[Info] Newspaper3k could not find a top_node.")
+                return ExtractionResult(error="Newspaper3k failed to find content.")
 
+                # Convert the main lxml node back to HTML
+            main_content_html = lxml.etree.tostring(article.top_node, encoding='unicode')
             markdown = self.converter.handle(main_content_html)
-            return sanitize_unicode_string(markdown)
+
+            # --- MODIFICATION: Extract rich metadata ---
+            metadata = {
+                'title': article.title,
+                'authors': article.authors,
+                'publish_date': article.publish_date,
+                'top_image': article.top_image,
+                'movies': article.movies,
+                'keywords': article.keywords,
+                'summary': article.summary,
+            }
+
+            return ExtractionResult(
+                markdown_content=sanitize_unicode_string(markdown),
+                metadata=metadata
+            )
         except Exception as e:
-            self._log(f"[Error] Newspaper3k failed: {e}")
+            error_str = f"Newspaper3k failed: {e}"
+            self._log(f"[Error] {error_str}")
             self._log(traceback.format_exc())
-            return ""
+            return ExtractionResult(error=error_str)
 
 
 class GenericCSSExtractor(IExtractor):
@@ -357,7 +460,7 @@ class GenericCSSExtractor(IExtractor):
         self.converter.ignore_images = False
         self.converter.body_width = 0
 
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
         Extracts content using specific CSS selectors.
 
@@ -375,8 +478,9 @@ class GenericCSSExtractor(IExtractor):
         if isinstance(selectors, str):
             selectors = [selectors]
         elif not selectors:
-            self._log("[Error] GenericCSSExtractor requires 'selectors' argument in kwargs.")
-            return ""
+            error_str = "GenericCSSExtractor requires 'selectors' argument in kwargs."
+            self._log(f"[Error] {error_str}")
+            return ExtractionResult(error=error_str)
 
         exclude_selectors = kwargs.get('exclude_selectors', [])
         if isinstance(exclude_selectors, str):
@@ -411,12 +515,15 @@ class GenericCSSExtractor(IExtractor):
             ]
             full_markdown = '\n\n'.join(markdown_parts)
 
-            return sanitize_unicode_string(full_markdown)
+            return ExtractionResult(
+                markdown_content=sanitize_unicode_string(full_markdown),
+                metadata={'source': 'Generic CSS Selector'}
+            )
 
         except Exception as e:
-            self._log(f"[Error] GenericCSSExtractor failed: {e}")
-            self._log(traceback.format_exc())
-            return ""
+            error_str = f"GenericCSSExtractor failed: {e}"
+            self._log(f"[Error] {error_str}")
+            return ExtractionResult(error=error_str)
 
 
 class Crawl4AIExtractor(IExtractor):
@@ -439,7 +546,7 @@ class Crawl4AIExtractor(IExtractor):
         super().__init__(verbose)
         self.model_name = model_name
 
-    def extract(self, content: bytes, url: str, **kwargs) -> str:
+    def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
         Extracts content using crawl4ai's SmartExtractor.
 
@@ -451,8 +558,9 @@ class Crawl4AIExtractor(IExtractor):
         """
         self._log(f"Extracting with Crawl4AIExtractor from {url}")
         if not Crawler or not SmartExtractor:
-            self._log("[Error] crawl4ai library not found.")
-            return ""
+            error_str = "crawl4ai library not found."
+            self._log(f"[Error] {error_str}")
+            return ExtractionResult(error=error_str)
 
         self._log("[Warning] Crawl4AIExtractor ignores pre-fetched content and is re-fetching the URL.")
 
@@ -465,14 +573,20 @@ class Crawl4AIExtractor(IExtractor):
             crawler = Crawler(extractor=extractor)
             result = crawler.run(url)
 
-            if result and result.markdown:
-                # crawl4ai's output should already be clean,
-                # but an extra sanitize doesn't hurt.
-                return sanitize_unicode_string(result.markdown)
+            if result and (result.markdown or result.structured_data):
+                # crawl4ai returns markdown AND structured_data (which is our metadata)
+                metadata = result.structured_data or {}
+                metadata['source'] = 'Crawl4AI'
 
-            self._log("[Info] Crawl4AI ran but returned no markdown.")
-            return ""
+                return ExtractionResult(
+                    markdown_content=sanitize_unicode_string(result.markdown),
+                    metadata=metadata
+                )
+
+            self._log("[Info] Crawl4AI ran but returned no markdown or data.")
+            return ExtractionResult(error="Crawl4AI returned no content.")
         except Exception as e:
-            self._log(f"[Error] Crawl4AIExtractor failed: {e}")
+            error_str = f"Crawl4AIExtractor failed: {e}"
+            self._log(f"[Error] {error_str}")
             self._log(traceback.format_exc())
-            return ""
+            return ExtractionResult(error=error_str)
