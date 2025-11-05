@@ -2595,6 +2595,73 @@ ai client需要包含以下功能，并提取一个公共接口：
 
 
 
+作以下改动：fetcher的配置增加一个timeout，使用输入加上下调整控件，discoverer的fetcher timeout默认为10，extractor的默认为20。
+同时适当增加控件之间的左右间距。
+
+
+
+
+
+
+作以下改动：生成代码部分不要直接生成代码，而是将所有配置集中起来生成一个dict，将这个dict传入另一个独立可替换的函数中生成代码：
+
+crawl_params =
+{
+    "discoverer": {
+        "class": "RSSDiscoverer",
+        "args": {
+            "entry_point_url": "https://xxxxxxxx",
+            "start_date": datetime.datetime,
+            "end_date": datetime.datetime,
+        }
+
+        "fetcher":
+        {
+            "class": "PlaywrightFetcher",
+            "parameters":
+            {
+                "proxy": "socks5://xxxxxxxx",
+                "timeout_s": 10,
+                "stealth": True,
+                "pause_browser": False,
+                "render_page": True
+            }
+        }
+    },
+
+    "extractor": {
+        "class": "TrafilaturaExtractor",
+        "args": {
+            "entry_point_url": "https://xxxxxxxx",
+            "start_date": datetime.datetime,
+            "end_date": datetime.datetime,
+        },
+
+        "fetcher":
+        {
+            "class": "PlaywrightFetcher",
+            "parameters":
+            {
+                "proxy": "socks5://xxxxxxxx",
+                "timeout_s": 10,
+                "stealth": True,
+                "pause_browser": False,
+                "render_page": True
+            }
+        }
+    }
+}
+
+这样设计的用意在于，在调用时可以直接展开dict作为参数：
+
+（根据name动态选择具体的类，略）
+
+discoverer_fetcher_params = crawl_params["discoverer"]["fetcher"]["parameters"]
+discoverer_fetcher = PlaywrightFetcher(**discoverer_fetcher_params)
+
+discoverer_args = crawl_params["discoverer"][args]
+discoverer = RSSDiscoverer(discoverer_fetcher, **discoverer_args)
+
 
 
 

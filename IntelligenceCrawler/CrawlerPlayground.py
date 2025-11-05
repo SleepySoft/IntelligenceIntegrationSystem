@@ -119,7 +119,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QSplitter,
     QTextEdit, QStatusBar, QTabWidget, QLabel, QFrame, QComboBox,
-    QDateEdit, QCheckBox, QToolBar, QSizePolicy
+    QDateEdit, QCheckBox, QToolBar, QSizePolicy, QSpinBox
 )
 from PyQt5.QtCore import (
     Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer,
@@ -143,23 +143,32 @@ except ImportError:
 # (To create instances inside workers)
 #
 # =============================================================================
-
 def create_fetcher_instance(fetcher_name: str,
                             log_callback,
-                            proxy: Optional[str] = None,  # <-- NEW
+                            proxy: Optional[str] = None,
+                            timeout: int = 10,  # <-- NEW (in seconds)
                             **kwargs) -> Fetcher:
-    """Factory to create a fetcher instance based on its name."""
+    """
+    Factory to create a fetcher instance based on its name.
+    (工厂函数：根据名称创建 fetcher 实例。)
+    """
     stealth_mode = "Stealth" in fetcher_name
     pause = kwargs.get('pause_browser', False)
     render = kwargs.get('render_page', False)
+
+    # We assume the Fetcher classes have been modified to accept 'timeout'
+    # in their __init__ and apply it appropriately (e.g., to self.timeout).
+    # (我们假设 Fetcher 类已被修改以在 __init__ 中接受 'timeout'。)
 
     if "Playwright" in fetcher_name:
         if not sync_playwright: raise ImportError("Playwright not installed.")
         if stealth_mode and (not sync_stealth and not Stealth):
             raise ImportError("Playwright-Stealth not installed.")
+
         return PlaywrightFetcher(
             log_callback=log_callback,
-            proxy=proxy,  # <-- NEW
+            proxy=proxy,
+            timeout_s=timeout,  # <-- NEW (pass ms)
             stealth=stealth_mode,
             pause_browser=pause,
             render_page=render
@@ -167,7 +176,8 @@ def create_fetcher_instance(fetcher_name: str,
     else:  # "Simple (Requests)"
         return RequestsFetcher(
             log_callback=log_callback,
-            proxy=proxy  # <-- NEW
+            proxy=proxy,
+            timeout_s=timeout
         )
 
 
@@ -219,7 +229,8 @@ class ChannelDiscoveryWorker(QRunnable):
                  homepage_url: str,
                  start_date: datetime.datetime,
                  end_date: datetime.datetime,
-                 proxy: Optional[str],  # <-- NEW
+                 proxy: Optional[str],
+                 timeout: int,
                  pause_browser: bool,
                  render_page: bool):
         super(ChannelDiscoveryWorker, self).__init__()
@@ -229,6 +240,7 @@ class ChannelDiscoveryWorker(QRunnable):
         self.start_date = start_date
         self.end_date = end_date
         self.proxy = proxy
+        self.timeout = timeout
         self.pause_browser = pause_browser
         self.render_page = render_page  # Note: This is for XML, may break parsing
         self.signals = WorkerSignals()
@@ -249,6 +261,7 @@ class ChannelDiscoveryWorker(QRunnable):
                 self.fetcher_name,
                 log_callback,
                 proxy=self.proxy,
+                timeout=self.timeout,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -281,6 +294,7 @@ class ArticleListWorker(QRunnable):
                  fetcher_name: str,
                  channel_url: str,
                  proxy: Optional[str],
+                 timeout: int,
                  pause_browser: bool,
                  render_page: bool):
         super(ArticleListWorker, self).__init__()
@@ -288,6 +302,7 @@ class ArticleListWorker(QRunnable):
         self.fetcher_name = fetcher_name
         self.channel_url = channel_url
         self.proxy = proxy
+        self.timeout = timeout
         self.pause_browser = pause_browser
         self.render_page = render_page
         self.signals = WorkerSignals()
@@ -306,6 +321,7 @@ class ArticleListWorker(QRunnable):
                 self.fetcher_name,
                 log_callback,
                 proxy=self.proxy,
+                timeout=self.timeout,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -338,6 +354,7 @@ class ChannelSourceWorker(QRunnable):
                  fetcher_name: str,
                  url: str,
                  proxy: Optional[str],
+                 timeout: int,
                  pause_browser: bool,
                  render_page: bool):
         super(ChannelSourceWorker, self).__init__()
@@ -345,6 +362,7 @@ class ChannelSourceWorker(QRunnable):
         self.fetcher_name = fetcher_name
         self.url = url
         self.proxy = proxy
+        self.timeout = timeout
         self.pause_browser = pause_browser
         self.render_page = render_page
         self.signals = WorkerSignals()
@@ -356,13 +374,14 @@ class ChannelSourceWorker(QRunnable):
 
             # 1. Create Fetcher
             if self.render_page:
-                log_callback("[Warning] 'Render Page' is enabled for Channel Source, " \
+                log_callback("[Warning] 'Render Page' is enabled for Channel Source, "
                              "this may fail XML/RSS parsing. Forcing False.")
 
             fetcher = create_fetcher_instance(
                 self.fetcher_name,
                 log_callback,
                 proxy=self.proxy,
+                timeout=self.timeout,
                 pause_browser=self.pause_browser,
                 render_page=False  # Force False for discovery
             )
@@ -391,6 +410,7 @@ class ExtractionWorker(QRunnable):
                  url_to_extract: str,
                  extractor_kwargs: dict,
                  proxy: Optional[str],
+                 timeout: int,
                  pause_browser: bool,
                  render_page: bool):
         super(ExtractionWorker, self).__init__()
@@ -399,6 +419,7 @@ class ExtractionWorker(QRunnable):
         self.url_to_extract = url_to_extract
         self.extractor_kwargs = extractor_kwargs
         self.proxy = proxy
+        self.timeout = timeout
         self.pause_browser = pause_browser
         self.render_page = render_page  # This SHOULD be respected
         self.signals = WorkerSignals()
@@ -414,6 +435,7 @@ class ExtractionWorker(QRunnable):
                 self.fetcher_name,
                 log_callback,
                 proxy=self.proxy,
+                timeout=self.timeout,
                 pause_browser=self.pause_browser,
                 render_page=self.render_page
             )
@@ -549,17 +571,42 @@ class CrawlerPlaygroundApp(QMainWindow):
             "[Extraction] Will be used as set.")
         top_bar_layout.addWidget(self.render_page_check)
 
+        top_bar_layout.addSpacing(5)  # Add small space
+        top_bar_layout.addWidget(QLabel("Timeout(s):"))
+        self.discovery_timeout_spin = QSpinBox()
+        self.discovery_timeout_spin.setRange(1, 300)  # 1s to 5min
+        self.discovery_timeout_spin.setValue(10)  # Default 10
+        self.discovery_timeout_spin.setToolTip("Fetcher timeout in seconds for discovery.")
+        top_bar_layout.addWidget(self.discovery_timeout_spin)
+
+        top_bar_layout.addSpacing(15)  # Add larger space
+
         # --- NEW: Discovery Proxy Input ---
+
+        # top_bar_layout.addWidget(QLabel("Proxy:"))
+        # self.discovery_proxy_input = QLineEdit()
+        # self.discovery_proxy_input.setPlaceholderText("e.g., http://user:pass@host:port")
+        # # Give it a small stretch factor to fill remaining space
+        # self.discovery_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
+        # top_bar_layout.addWidget(self.discovery_proxy_input, 1)  # 1 stretch
+        #
+        # # --- Analyze Button (Original) ---
+        # self.analyze_button = QPushButton("Discover Channels")  # Renamed
+        # top_bar_layout.addWidget(self.analyze_button)
+
         top_bar_layout.addWidget(QLabel("Proxy:"))
         self.discovery_proxy_input = QLineEdit()
         self.discovery_proxy_input.setPlaceholderText("e.g., http://user:pass@host:port")
-        # Give it a small stretch factor to fill remaining space
         self.discovery_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
-        top_bar_layout.addWidget(self.discovery_proxy_input, 1)  # 1 stretch
+        top_bar_layout.addWidget(self.discovery_proxy_input)  # Remove stretch
 
-        # --- Analyze Button (Original) ---
+        # --- MODIFICATION: Add stretch to push button to the right ---
+        top_bar_layout.addStretch(1)
+
         self.analyze_button = QPushButton("Discover Channels")  # Renamed
+        self.analyze_button.setStyleSheet("padding: 5px 10px;")  # Add padding
         top_bar_layout.addWidget(self.analyze_button)
+
         main_layout.addLayout(top_bar_layout)
 
         # --- Top-to-Bottom splitter ---
@@ -681,6 +728,7 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         # --- Toolbar 1: Fetcher Settings ---
         fetcher_toolbar = QToolBar("Fetcher Tools")
+        fetcher_toolbar.layout().setSpacing(5)  # <-- MODIFICATION: Add spacing
         fetcher_toolbar.addWidget(QLabel("Fetcher:"))
         self.article_fetcher_combo = QComboBox()
         self.article_fetcher_combo.addItems([
@@ -710,13 +758,23 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.article_render_check.setChecked(True)  # Default to checked
         fetcher_toolbar.addWidget(self.article_render_check)
 
+        # --- NEW: Extraction Timeout ---
+        fetcher_toolbar.addWidget(QLabel("Timeout(s):"))
+        self.article_timeout_spin = QSpinBox()
+        self.article_timeout_spin.setRange(1, 300)
+        self.article_timeout_spin.setValue(20)  # Default 20
+        self.article_timeout_spin.setToolTip("Fetcher timeout in seconds for extraction.")
+        fetcher_toolbar.addWidget(self.article_timeout_spin)
+
         # Add a spacer to push all fetcher controls to the left
         fetcher_spacer = QWidget()
         fetcher_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         fetcher_toolbar.addWidget(fetcher_spacer)
 
         # --- Toolbar 2: Extractor Settings ---
+        # --- Toolbar 2: Extractor Settings ---
         extractor_toolbar = QToolBar("Extractor Tools")
+        extractor_toolbar.layout().setSpacing(5)  # <-- MODIFICATION: Add spacing
         extractor_toolbar.addWidget(QLabel("Extractor:"))
         self.extractor_combo = QComboBox()
         available_extractors = sorted(EXTRACTOR_MAP.keys())
@@ -893,6 +951,7 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.update_generated_code()  # Update code snippet
 
         proxy_str = self.discovery_proxy_input.text().strip() or None
+        timeout_sec = self.discovery_timeout_spin.value()
 
         worker = ChannelDiscoveryWorker(
             discoverer_name=self.discoverer_name,
@@ -900,7 +959,8 @@ class CrawlerPlaygroundApp(QMainWindow):
             homepage_url=url,
             start_date=start_date,
             end_date=end_date,
-            proxy=proxy_str,  # <-- NEW
+            proxy=proxy_str,
+            timeout=timeout_sec,
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
@@ -922,12 +982,14 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.status_bar.showMessage(f"Loading articles for {channel_url}...")
 
         proxy_str = self.discovery_proxy_input.text().strip() or None
+        timeout_sec = self.discovery_timeout_spin.value()
 
         worker = ArticleListWorker(
             discoverer_name=self.discoverer_name,
             fetcher_name=self.discovery_fetcher_name,
             channel_url=channel_url,
-            proxy=proxy_str,  # <-- NEW
+            proxy=proxy_str,
+            timeout=timeout_sec,
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
@@ -946,12 +1008,14 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.tab_widget.setCurrentWidget(self.channel_source_viewer)
 
         proxy_str = self.discovery_proxy_input.text().strip() or None
+        timeout_sec = self.discovery_timeout_spin.value()
 
         worker = ChannelSourceWorker(
             discoverer_name=self.discoverer_name,
             fetcher_name=self.discovery_fetcher_name,
             url=url,
-            proxy=proxy_str,  # <-- NEW
+            proxy=proxy_str,
+            timeout=timeout_sec,
             pause_browser=self.pause_browser,
             render_page=self.render_page
         )
@@ -988,13 +1052,15 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.update_generated_code()  # Update code snippet
 
         proxy_str = self.article_proxy_input.text().strip() or None
+        timeout_sec = self.article_timeout_spin.value()
 
         worker = ExtractionWorker(
             fetcher_name=fetcher_name,
             extractor_name=extractor_name,
             url_to_extract=url,
             extractor_kwargs=extractor_kwargs,
-            proxy=proxy_str,  # <-- NEW
+            proxy=proxy_str,
+            timeout=timeout_sec,
             pause_browser=self.article_pause_check.isChecked(),
             render_page=self.article_render_check.isChecked()
         )
@@ -1177,6 +1243,7 @@ class CrawlerPlaygroundApp(QMainWindow):
         pause = self.pause_browser_check.isChecked()
         render = self.render_page_check.isChecked()  # This is the main window's
         discovery_proxy = self.discovery_proxy_input.text().strip() or None
+        discovery_timeout = self.discovery_timeout_spin.value()
         url = self.url_input.text()
         start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
         end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
@@ -1194,8 +1261,10 @@ class CrawlerPlaygroundApp(QMainWindow):
         code += f"end_date = datetime.datetime.strptime(\"{end_date}\", \"%Y-%m-%d\").replace(hour=23, minute=59)\n\n"
         code += "log_cb = print  # Use print for logging\n"
         code += f"discovery_proxy = {repr(discovery_proxy)}\n"
+        code += f"discovery_timeout = {discovery_timeout}\n"
         code += "fetcher = create_fetcher_instance(fetcher_name, log_cb, " \
-                f"proxy=discovery_proxy, pause_browser={pause}, render_page=False)\n"
+                f"proxy=discovery_proxy, timeout=discovery_timeout, " \
+                f"pause_browser={pause}, render_page=False)\n"
         code += "discoverer = create_discoverer_instance(discoverer_name, fetcher, log_cb)\n"
         code += "channels = discoverer.discover_channels(homepage_url, start_date, end_date)\n"
         code += "print(f\"Found {len(channels)} channels.\")\n"
@@ -1243,10 +1312,12 @@ class CrawlerPlaygroundApp(QMainWindow):
         # --- Read from the article tab's checkboxes ---
         pause_for_extraction = self.article_pause_check.isChecked()
         article_proxy = self.article_proxy_input.text().strip() or None
+        article_timeout = self.article_timeout_spin.value()
 
         code += f"pause_for_extraction = {pause_for_extraction}\n"
         code += f"render_for_extraction = {render_for_extraction}\n"
         code += f"article_proxy = {repr(article_proxy)}\n"
+        code += f"article_timeout = {article_timeout}\n"
 
         # TODO: Get this from settings dialog
         extractor_kwargs = {}
@@ -1255,7 +1326,8 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         code += f"extractor_kwargs = {extractor_kwargs}\n\n"
         code += "article_fetcher = create_fetcher_instance(article_fetcher_name, log_cb, " \
-                f"proxy=article_proxy, pause_browser={pause_for_extraction}, " \
+                f"proxy=article_proxy, timeout=article_timeout, " \
+                f"pause_browser={pause_for_extraction}, " \
                 f"render_page={render_for_extraction})\n"
         code += "content = article_fetcher.get_content(article_url)\n"
         code += "extractor = create_extractor_instance(extractor_name, log_cb)\n"
