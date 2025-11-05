@@ -268,7 +268,7 @@ class TrafilaturaExtractor(IExtractor):
                 content,
                 url=url,
                 output_format='xml',
-                include_links=True,
+                # include_links=True,
                 **kwargs
             )
 

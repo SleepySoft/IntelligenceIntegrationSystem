@@ -2663,12 +2663,19 @@ discoverer_args = crawl_params["discoverer"][args]
 discoverer = RSSDiscoverer(discoverer_fetcher, **discoverer_args)
 
 
+生成代码不要这么复杂，直接根据配置先查表找到对应的类，直接在生成代码中初始化类并开始调用即可，整个生成代码甚至不到10行。
+
+
+TODO:直接使用这个机制运行抓取。
 
 
 
 
 
 
+
+有个小改动：关于日期，不要选择范围，而是指定一个天数，并且使用checkbox来使能该功能。同时生成代码里面使用datetime.datetime.now()及减去这个天数的时间范围。如果没有配置，则不要指定这个时间参数。
+同时Extraction应该使用和遍历Discovery发现的所有文章链接，而不是使用界面中指定的固定链接。
 
 
 

@@ -533,16 +533,22 @@ class CrawlerPlaygroundApp(QMainWindow):
         )
         top_bar_layout.addWidget(self.discoverer_combo)
 
-        # --- Date Period Selectors (Original) ---
-        top_bar_layout.addWidget(QLabel("From:"))
-        self.start_date_edit = QDateEdit(QDate.currentDate().addDays(-7))
-        self.start_date_edit.setCalendarPopup(True)
-        top_bar_layout.addWidget(self.start_date_edit)
+        # --- NEW: Date Period Refactor (Request 1) ---
+        self.date_filter_check = QCheckBox("Filter last:")
+        self.date_filter_check.setToolTip("If checked, only discover channels/articles updated within the last X days.")
+        top_bar_layout.addWidget(self.date_filter_check)
 
-        top_bar_layout.addWidget(QLabel("To:"))
-        self.end_date_edit = QDateEdit(QDate.currentDate())
-        self.end_date_edit.setCalendarPopup(True)
-        top_bar_layout.addWidget(self.end_date_edit)
+        self.date_filter_days_spin = QSpinBox()
+        self.date_filter_days_spin.setRange(1, 9999)
+        self.date_filter_days_spin.setValue(7)
+        self.date_filter_days_spin.setSuffix(" days")
+        self.date_filter_days_spin.setEnabled(False)  # Disabled by default
+        top_bar_layout.addWidget(self.date_filter_days_spin)
+
+        # Connect checkbox to enable/disable the spinbox
+        self.date_filter_check.stateChanged.connect(
+            lambda state: self.date_filter_days_spin.setEnabled(state == Qt.Checked)
+        )
 
         # --- Discovery Fetcher Strategy (Original) ---
         top_bar_layout.addWidget(QLabel("Fetcher:"))
@@ -873,8 +879,6 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.analyze_button.setEnabled(not is_loading)
         self.discoverer_combo.setEnabled(not is_loading)
         self.discovery_fetcher_combo.setEnabled(not is_loading)
-        self.start_date_edit.setEnabled(not is_loading)
-        self.end_date_edit.setEnabled(not is_loading)
         self.pause_browser_check.setEnabled(not is_loading)
         self.render_page_check.setEnabled(not is_loading)
 
@@ -936,10 +940,17 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         self.clear_all_controls()
 
-        # Get values from UI
-        start_date = self.start_date_edit.dateTime().toPyDateTime()
-        end_date_qdt = self.end_date_edit.dateTime()
-        end_date = end_date_qdt.toPyDateTime().replace(hour=23, minute=59, second=59)
+        # --- Get values from new date controls ---
+        start_date: Optional[datetime.datetime] = None
+        end_date: Optional[datetime.datetime] = None
+
+        if self.date_filter_check.isChecked():
+            days_ago = self.date_filter_days_spin.value()
+            end_date = datetime.datetime.now()
+            start_date = end_date - datetime.timedelta(days=days_ago)
+            # Log the filter being used
+            self.append_log_history(f"Applying date filter: Last {days_ago} days "
+                                    f"(since {start_date.strftime('%Y-%m-%d')})")
 
         # Store the selected strategy names and options
         self.discoverer_name = self.discoverer_combo.currentText()
@@ -1235,108 +1246,236 @@ class CrawlerPlaygroundApp(QMainWindow):
 
     # --- REQ 5: Code Generation ---
     def update_generated_code(self):
-        """Generates Python code snippets based on current UI settings."""
+        """
+        Orchestrator for code generation.
+        Gathers all UI settings into a config dict, then generates
+        the corresponding Python code script.
+        (代码生成的协调器。
+         将所有UI设置收集到一个配置字典中，然后生成相应的Python代码脚本。)
+        """
+        try:
+            # Step 1: Read all UI controls into a structured dictionary
+            # (第 1 步：将所有 UI 控件读入结构化字典)
+            config_dict = self._build_config_dict()
 
-        # Part 1: Discovery Code
-        discover_name = self.discoverer_combo.currentText()
-        fetcher_name = self.discovery_fetcher_combo.currentText()
-        pause = self.pause_browser_check.isChecked()
-        render = self.render_page_check.isChecked()  # This is the main window's
-        discovery_proxy = self.discovery_proxy_input.text().strip() or None
-        discovery_timeout = self.discovery_timeout_spin.value()
-        url = self.url_input.text()
-        start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
-        end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+            # Step 2: Pass the dictionary to the code generator
+            # (第 2 步：将字典传递给代码生成器)
+            code_script = self.generate_code_from_config(config_dict)
 
-        code = "from IntelligenceCrawler.Fetcher import *\n"
-        code += "from IntelligenceCrawler.Discoverer import *\n"
-        code += "import datetime\n\n"
-        code += "# --- Part 1: Discovery ---\n"
-        code += f"discoverer_name = \"{discover_name}\"\n"
-        code += f"fetcher_name = \"{fetcher_name}\"\n"
-        code += f"homepage_url = \"{url}\"\n"
-        code += f"pause_browser = {pause}\n"
-        code += "# Note: 'render_page' is forced False for Discovery workers.\n"
-        code += f"start_date = datetime.datetime.strptime(\"{start_date}\", \"%Y-%m-%d\")\n"
-        code += f"end_date = datetime.datetime.strptime(\"{end_date}\", \"%Y-%m-%d\").replace(hour=23, minute=59)\n\n"
-        code += "log_cb = print  # Use print for logging\n"
-        code += f"discovery_proxy = {repr(discovery_proxy)}\n"
-        code += f"discovery_timeout = {discovery_timeout}\n"
-        code += "fetcher = create_fetcher_instance(fetcher_name, log_cb, " \
-                f"proxy=discovery_proxy, timeout=discovery_timeout, " \
-                f"pause_browser={pause}, render_page=False)\n"
-        code += "discoverer = create_discoverer_instance(discoverer_name, fetcher, log_cb)\n"
-        code += "channels = discoverer.discover_channels(homepage_url, start_date, end_date)\n"
-        code += "print(f\"Found {len(channels)} channels.\")\n"
+            # Step 3: Display the generated code
+            # (第 3 步：显示生成的代码)
+            self.generated_code_text.setPlainText(code_script)
 
-        # Add channel filter code
-        selected_paths = []
-        for i in range(self.tree_widget.topLevelItemCount()):
-            item = self.tree_widget.topLevelItem(i)
-            if item.checkState(0) == Qt.Checked:
-                data = item.data(0, Qt.UserRole)
-                if data:
-                    try:
-                        path = urlparse(data.get('url')).path
-                        selected_paths.append(path)
-                    except Exception:
-                        pass
+        except Exception as e:
+            # Show any error during generation in the code block itself
+            # (在代码块本身中显示生成期间的任何错误)
+            error_msg = f"# Failed to generate code:\n# {type(e).__name__}: {e}\n\n"
+            error_msg += traceback.format_exc()
+            self.generated_code_text.setPlainText(error_msg)
 
-        if selected_paths:
-            code += "\n# --- Channel Filtering (based on tree selection) ---\n"
-            code += "SELECTED_CHANNEL_PATHS = {\n"
-            for path in sorted(selected_paths):
-                code += f"    \"{path}\",\n"
-            code += "}\n"
-            code += "filtered_channels = [c for c in channels if urlparse(c).path in SELECTED_CHANNEL_PATHS]\n"
-            code += "print(f\"Filtered down to {len(filtered_channels)} channels.\")\n"
-        else:
-            code += "filtered_channels = channels # No filters selected\n"
-
-        code += "# articles = discoverer.get_articles_for_channel(filtered_channels[0])\n"
-
-        # Part 2: Extraction Code
-        article_url = self.article_url_input.text()
-        article_fetcher = self.article_fetcher_combo.currentText()
-        extractor_name = self.extractor_combo.currentText()
-        # This is the correct render setting for extraction
-        render_for_extraction = self.render_page_check.isChecked()
-
-        code += "\n\n# --- Part 2: Extraction ---\n"
-        code += "from IntelligenceCrawler.Extractor import *\n\n"
-
-        code += f"article_url = \"{article_url}\"\n"
-        code += f"article_fetcher_name = \"{article_fetcher}\"\n"
-        code += f"extractor_name = \"{extractor_name}\"\n"
-
-        # --- Read from the article tab's checkboxes ---
-        pause_for_extraction = self.article_pause_check.isChecked()
-        article_proxy = self.article_proxy_input.text().strip() or None
-        article_timeout = self.article_timeout_spin.value()
-
-        code += f"pause_for_extraction = {pause_for_extraction}\n"
-        code += f"render_for_extraction = {render_for_extraction}\n"
-        code += f"article_proxy = {repr(article_proxy)}\n"
-        code += f"article_timeout = {article_timeout}\n"
-
-        # TODO: Get this from settings dialog
-        extractor_kwargs = {}
+    def _get_current_extractor_args(self, extractor_name: str) -> dict:
+        """
+        Placeholder for retrieving extractor-specific arguments.
+        (TODO: Implement this when the 'Settings' button is functional).
+        (用于检索提取器特定参数的占位符。
+         （TODO：在“设置”按钮可用时实现此功能）。)
+        """
         if extractor_name == "Generic CSS":
-            extractor_kwargs = {'selectors': ['article', '.content'], 'exclude_selectors': ['nav', 'footer']}
+            # Hardcoded example for now
+            return {
+                'selectors': ['article', '.content'],
+                'exclude_selectors': ['nav', 'footer']
+            }
+        return {}  # Default
 
-        code += f"extractor_kwargs = {extractor_kwargs}\n\n"
-        code += "article_fetcher = create_fetcher_instance(article_fetcher_name, log_cb, " \
-                f"proxy=article_proxy, timeout=article_timeout, " \
-                f"pause_browser={pause_for_extraction}, " \
-                f"render_page={render_for_extraction})\n"
-        code += "content = article_fetcher.get_content(article_url)\n"
-        code += "extractor = create_extractor_instance(extractor_name, log_cb)\n"
-        code += "markdown = extractor.extract(content, article_url, **extractor_kwargs)\n"
-        code += "print(f\"--- Extracted Markdown ---\n{markdown}\")\n\n"
-        code += "article_fetcher.close()\n"
-        code += "fetcher.close()\n"
+    def _build_config_dict(self) -> dict:
+        """
+        Reads all UI controls and builds the standardized config dictionary.
+        (读取所有UI控件并构建标准化的配置字典。)
+        """
+        # --- 1. Discoverer Configuration ---
+        discovery_fetcher_name = self.discovery_fetcher_combo.currentText()
+        discoverer_fetcher_params = {
+            "class": discovery_fetcher_name,
+            "parameters": {
+                "proxy": self.discovery_proxy_input.text().strip() or None,
+                "timeout": self.discovery_timeout_spin.value(),
+                "stealth": "Stealth" in discovery_fetcher_name,
+                "pause_browser": self.pause_browser_check.isChecked(),
+                "render_page": False  # Hardcoded False for discovery
+            }
+        }
 
-        self.generated_code_text.setPlainText(code)
+        discoverer_name = self.discoverer_combo.currentText()
+        discoverer_args = {
+            "entry_point_url": self.url_input.text().strip(),
+            # --- MODIFICATION: Store new date filter state ---
+            "date_filter_enabled": self.date_filter_check.isChecked(),
+            "date_filter_days": self.date_filter_days_spin.value(),
+        }
+
+        # --- 2. Extractor Configuration ---
+        article_fetcher_name = self.article_fetcher_combo.currentText()
+        extractor_fetcher_params = {
+            "class": article_fetcher_name,
+            "parameters": {
+                "proxy": self.article_proxy_input.text().strip() or None,
+                "timeout": self.article_timeout_spin.value(),
+                "stealth": "Stealth" in article_fetcher_name,
+                "pause_browser": self.article_pause_check.isChecked(),
+                "render_page": self.article_render_check.isChecked()
+            }
+        }
+
+        extractor_name = self.extractor_combo.currentText()
+        extractor_args = self._get_current_extractor_args(extractor_name)
+
+        # --- 3. Assemble Final Config ---
+        config = {
+            "discoverer": {
+                "class": discoverer_name,
+                "args": discoverer_args,
+                "fetcher": discoverer_fetcher_params
+            },
+            "extractor": {
+                "class": extractor_name,
+                "args": extractor_args,
+                "fetcher": extractor_fetcher_params
+                # --- MODIFICATION: URL removed (Request 2) ---
+                # It will now be sourced from the discovery pipeline
+            }
+        }
+        return config
+
+    def generate_code_from_config(self, config: dict) -> str:
+        """
+        Takes a configuration dict and generates a single, pipelined,
+        runnable Python script.
+        (获取配置字典并生成一个单一的、管道化的、可运行的Python脚本。)
+        """
+
+        # --- 1. Class Name Mappings (The "Table" Lookup) ---
+        DISCOVERER_CLASS_MAP = {"Sitemap": "SitemapDiscoverer", "RSS": "RSSDiscoverer"}
+        FETCHER_CLASS_MAP = {
+            "Simple (Requests)": "RequestsFetcher",
+            "Advanced (Playwright)": "PlaywrightFetcher",
+            "Stealth (Playwright)": "PlaywrightFetcher"
+        }
+
+        # --- 2. Get Discovery Config ---
+        d_config = config['discoverer']
+        d_fetcher_config = d_config['fetcher']
+        d_class_name = DISCOVERER_CLASS_MAP.get(d_config['class'], "UnknownDiscoverer")
+        d_fetcher_class_name = FETCHER_CLASS_MAP.get(d_fetcher_config['class'], "UnknownFetcher")
+
+        d_fetcher_params = d_fetcher_config['parameters'].copy()
+        if 'Playwright' in d_fetcher_class_name:
+            d_fetcher_params['timeout'] = d_fetcher_params.get('timeout', 10) * 1000
+        d_fetcher_args_str = f"log_callback=log_cb, " + ", ".join(f"{k}={repr(v)}" for k, v in d_fetcher_params.items())
+
+        # --- 3. Get Extraction Config ---
+        e_config = config['extractor']
+        e_fetcher_config = e_config['fetcher']
+        e_class_name = "UnknownExtractor"
+        if e_config['class'] in EXTRACTOR_MAP:
+            e_class_name = EXTRACTOR_MAP[e_config['class']].__name__
+        e_fetcher_class_name = FETCHER_CLASS_MAP.get(e_fetcher_config['class'], "UnknownFetcher")
+
+        e_fetcher_params = e_fetcher_config['parameters'].copy()
+        if 'Playwright' in e_fetcher_class_name:
+            e_fetcher_params['timeout'] = e_fetcher_params.get('timeout', 20) * 1000
+        e_fetcher_args_str = f"log_callback=log_cb, " + ", ".join(f"{k}={repr(v)}" for k, v in e_fetcher_params.items())
+
+        e_kwargs_str = repr(e_config['args'])  # Extractor-specific args
+
+        # --- 4. Build the Pipelined Code String ---
+        code = "# === Imports ===\n"
+        code += "import datetime\n"
+        code += "import json\n"
+        code += "import time\n"
+        code += "from IntelligenceCrawler.Fetcher import *\n"
+        code += "from IntelligenceCrawler.Discoverer import *\n"
+        code += "from IntelligenceCrawler.Extractor import *\n\n"
+        code += "log_cb = print\n\n"
+
+        code += "# === Main Pipeline Function ===\n"
+        code += "def run_full_pipeline():\n"
+        code += "    d_fetcher = None\n"
+        code += "    e_fetcher = None\n"
+        code += "    total_articles_processed = 0\n"
+        code += "    try:\n"
+
+        # --- Part 1: Discovery ---
+        code += "        # --- 1. Initialize Discovery Components ---\n"
+        code += f"        d_fetcher = {d_fetcher_class_name}({d_fetcher_args_str})\n"
+        code += f"        discoverer = {d_class_name}(fetcher=d_fetcher, verbose=True)\n\n"
+
+        code += "        # --- 2. Run Discovery ---\n"
+
+        # --- MODIFICATION: New Date Logic (Request 1) ---
+        if d_config['args']['date_filter_enabled']:
+            code += "        print(\"Applying date filter...\")\n"
+            code += f"        days_ago = {d_config['args']['date_filter_days']}\n"
+            code += "        end_date = datetime.datetime.now()\n"
+            code += "        start_date = end_date - datetime.timedelta(days=days_ago)\n"
+        else:
+            code += "        print(\"No date filter applied.\")\n"
+            code += "        start_date = None\n"
+            code += "        end_date = None\n"
+
+        code += "        channels = discoverer.discover_channels(\n"
+        code += f"            entry_point_url={repr(d_config['args']['entry_point_url'])},\n"
+        code += "            start_date=start_date,\n"
+        code += "            end_date=end_date\n"
+        code += "        )\n"
+        code += "        print(f\"Found {len(channels)} channels to process.\")\n\n"
+
+        # --- Part 2: Extraction (Pipelined) ---
+        code += "        # --- 3. Initialize Extraction Components ---\n"
+        code += f"        e_fetcher = {e_fetcher_class_name}({e_fetcher_args_str})\n"
+        code += f"        extractor = {e_class_name}(verbose=True)\n"
+        code += f"        extractor_kwargs = {e_kwargs_str}\n\n"
+
+        code += "        # --- 4. Run Extraction Pipeline ---\n"
+        code += "        for channel_url in channels:\n"
+        code += "            print(f\"--- Processing Channel: {channel_url} ---\")\n"
+        code += "            articles = discoverer.get_articles_for_channel(channel_url)\n"
+        code += "            print(f\"Found {len(articles)} articles in channel.\")\n\n"
+        code += "            for article_url in articles:\n"
+        code += "                try:\n"
+        code += "                    print(f\"Extracting: {article_url}\")\n"
+        code += "                    content = e_fetcher.get_content(article_url)\n"
+        code += "                    if not content:\n"
+        code += "                        print(f\"Skipped (no content): {article_url}\")\n"
+        code += "                        continue\n\n"
+        code += "                    result = extractor.extract(content, article_url, **extractor_kwargs)\n"
+        code += "                    total_articles_processed += 1\n"
+
+        code += "                    # --- Your processing logic here --- \n"
+        code += "                    # print(result.markdown_content)\n"
+        code += "                    # print(json.dumps(result.metadata, default=str))\n"
+        code += "                    # time.sleep(1) # Be polite\n\n"
+
+        code += "                except Exception as e:\n"
+        code += "                    print(f\"Failed to extract {article_url}: {e}\")\n\n"
+
+        code += "            print(f\"--- Finished Channel: {channel_url} ---\")\n"
+
+        code += "    except Exception as e:\n"
+        code += "        print(f\"A critical error occurred: {e}\")\n"
+        code += "        import traceback\n"
+        code += "        traceback.print_exc()\n"
+        code += "    finally:\n"
+        code += "        # --- 5. Cleanup --- \n"
+        code += "        print(\"--- Cleaning up fetchers ---\")\n"
+        code += "        if d_fetcher: d_fetcher.close()\n"
+        code += "        if e_fetcher: e_fetcher.close()\n"
+        code += "        print(f\"Pipeline finished. Processed {total_articles_processed} articles.\")\n\n"
+
+        code += "if __name__ == \"__main__\":\n"
+        code += "    run_full_pipeline()\n"
+
+        return code
 
     def closeEvent(self, event):
         """Ensure threads are cleaned up on exit."""
