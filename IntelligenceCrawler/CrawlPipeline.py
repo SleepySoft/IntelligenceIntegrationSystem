@@ -40,8 +40,8 @@ class CrawlPipeline:
 
         # --- State Properties ---
         self.channels: List[str] = []
-        self.contents: List[Tuple[str, bytes]] = []
-        self.articles: List[ExtractionResult] = []
+        self.articles: List[str] = []
+        self.contents: List[Tuple[str, ExtractionResult]] = []
 
     def shutdown(self):
         """Gracefully closes both fetcher instances."""
@@ -68,11 +68,7 @@ class CrawlPipeline:
         """
         self.log(f"--- 1. Discovering Channels from {len(entry_point_urls)} entry point(s) ---")
 
-        # Clear all previous state
-        self.channels.clear()
-        self.contents.clear()
-        self.articles.clear()
-
+        channels = []
         for url in entry_point_urls:
             self.log(f"Scanning entry point: {url}")
             try:
@@ -81,26 +77,25 @@ class CrawlPipeline:
                     start_date=start_date,
                     end_date=end_date
                 )
-                self.channels.extend(channels_found)
+                channels.extend(channels_found)
                 self.log(f"Found {len(channels_found)} channels from this entry point.")
             except Exception as e:
                 self.log(f"[Error] Failed to discover from {url}: {e}\n{traceback.format_exc()}")
 
         # De-duplicate the list while preserving order
-        self.channels = list(dict.fromkeys(self.channels))
+        self.channels = list(dict.fromkeys(channels))
         self.log(f"Found {len(self.channels)} unique channels in total.")
         return self.channels
 
     def discover_articles(self,
-                          channel_filter: Optional[Callable[[str], bool]] = None) -> List[Tuple[str, bytes]]:
+                          channel_filter: Optional[Callable[[str], bool]] = None) -> List[str]:
         """
         Step 2: Discovers article URLs from channels and fetches their content.
         Populates self.contents.
         """
-        self.log(f"--- 2. Discovering & Fetching Articles from {len(self.channels)} Channels ---")
-        self.contents.clear()
-        self.articles.clear()
+        self.log(f"--- 2. Discovering & Articles from {len(self.channels)} Channels ---")
 
+        articles = []
         for channel_url in self.channels:
             if channel_filter and not channel_filter(channel_url):
                 self.log(f"Skipping channel (filtered): {channel_url}")
@@ -110,43 +105,49 @@ class CrawlPipeline:
             try:
                 articles_in_channel = self.discoverer.get_articles_for_channel(channel_url)
                 self.log(f"Found {len(articles_in_channel)} articles in channel.")
-
-                for article_url in articles_in_channel:
-                    self.log(f"Fetching: {article_url}")
-                    content = self.e_fetcher.get_content(article_url)
-                    if not content:
-                        self.log(f"Skipped (no content): {article_url}")
-                        continue
-                    # Store for the extraction step
-                    self.contents.append((article_url, content))
+                articles.extend(articles_in_channel)
             except Exception as e:
                 self.log(f"[Error] Failed to process channel {channel_url}: {e}\n{traceback.format_exc()}")
 
-        self.log(f"Fetched {len(self.contents)} article contents.")
-        return self.contents
+        self.articles = list(dict.fromkeys(articles))
+        self.log(f"Fetched {len(self.articles)} article contents.")
+        return self.articles
 
     def extract_articles(self,
-                         content_handler: Optional[Callable[[ExtractionResult], None]] = None,
-                         error_handler: Optional[Callable[[str, Exception], None]] = None,
-                         **extractor_kwargs: Any) -> List[ExtractionResult]:
+                         article_filter: Optional[Callable[[str], bool]] = None,
+                         content_handler: Optional[Callable[[str, ExtractionResult], None]] = None,
+                         exception_handler: Optional[Callable[[str, Exception], None]] = None,
+                         **extractor_kwargs: Any) -> List[Tuple[str, ExtractionResult]]:
         """
         Step 3: Extracts content from all fetched articles.
         Populates self.articles and calls optional handlers.
         """
         self.log(f"--- 3. Extracting {len(self.contents)} Articles ---")
-        self.articles.clear()
 
-        for article_url, content in self.contents:
+        contents = []
+        for article_url in self.articles:
+            if article_filter and not article_filter(article_url):
+                self.log(f"Skipping article (filtered): {article_url}")
+                continue
+
+            self.log(f"Fetching: {article_url}")
+
             try:
+                content = self.e_fetcher.get_content(article_url)
+                if not content:
+                    self.log(f"Skipped (no content): {article_url}")
+                    continue
+
                 result = self.extractor.extract(content, article_url, **extractor_kwargs)
-                self.articles.append(result)  # Store the final result
+                contents.append((article_url, result))      # Store the final result
 
                 if content_handler:
-                    content_handler(result)  # Pass full result to handler
+                    content_handler(article_url, result)    # Pass full result to handler
             except Exception as e:
                 self.log(f"[Error] Failed to extract {article_url}: {e}")
-                if error_handler:
-                    error_handler(article_url, e)  # Pass URL and exception
+                if exception_handler:
+                    exception_handler(article_url, e)       # Pass URL and exception
 
-        self.log(f"Extracted {len(self.articles)} articles successfully.")
-        return self.articles
+        self.contents = contents
+        self.log(f"Extracted {len(self.contents)} articles successfully.")
+        return self.contents

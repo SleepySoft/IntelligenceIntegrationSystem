@@ -85,20 +85,91 @@ except ImportError:
     def Field(default=None, **kwargs):
         return default
 
+from pydantic import BaseModel, Field, computed_field
+from typing import Dict, Any, Optional
+import json
+
+
 class ExtractionResult(BaseModel):
     """
     Standardized return object for all IExtractor implementations.
     (所有 IExtractor 实现的标准返回对象。)
     """
-    markdown_content: str = Field(default="", description="The main content in Markdown format.")
-    metadata: Dict[str, Any] = Field(default_factory=dict,
-                                     description="Extracted metadata (e.g., title, author, date).")
-    error: Optional[str] = Field(default=None, description="An error message if extraction failed.")
+    markdown_content: str = Field(
+        default="",
+        description="The main content in Markdown format.",
+        repr=False  # 1. 不在 __repr__ 中显示完整内容，避免刷屏
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extracted metadata (e.g., title, author, date)."
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="An error message if extraction failed."
+    )
+
+    @computed_field(repr=True)
+    @property
+    def content_preview(self) -> str:
+        """A truncated preview of the content for repr."""
+        if not self.markdown_content:
+            return "[No Content]"
+
+        cleaned_content = self.markdown_content.replace('\n', ' ')
+        if len(cleaned_content) > 100:
+            return cleaned_content[:100] + "..."
+        return cleaned_content
+
+    @property
+    def success(self) -> bool:
+        """Returns True if the extraction was successful (no error)."""
+        return self.error is None
 
     def __str__(self):
-        """Helper for printing metadata."""
-        import json
-        return json.dumps(self.metadata, indent=2, ensure_ascii=False, default=str)
+        """
+        Provides a comprehensive, human-readable summary.
+        (提供一个全面且易读的摘要。)
+        """
+
+        # 1. 失败情况 (不变)
+        if not self.success:
+            return f"[Extraction FAILED]\n└── Error: {self.error}"
+
+        # --- 2. 成功的情况 (根据您的反馈调整) ---
+        output = ["[Extraction SUCCESS]"]
+
+        # 明确显示标题 (无论有无)
+        title = self.metadata.get('title')
+        if title:
+            output.append(f"├── Title: {title}")
+        else:
+            output.append(f"├── Title: [No Title Found]")
+
+        # 明确显示内容预览 (无论有无)
+        if self.markdown_content:
+            # 清理换行符并截断
+            preview_str = self.markdown_content.replace('\n', ' ').strip()
+            if len(preview_str) > 70:
+                preview_str = preview_str[:70] + "..."
+            elif not preview_str:
+                preview_str = "[Content is whitespace]"
+            output.append(f"├── Content: \"{preview_str}\"")
+        else:
+            output.append(f"├── Content: [No Content]")
+
+        # 3. 附加元数据信息 (作为最后一项)
+        if self.metadata:
+            try:
+                meta_json = json.dumps(self.metadata, indent=2, ensure_ascii=False, default=str)
+                meta_lines = [f"│   {line}" for line in meta_json.splitlines()]
+                output.append(f"└── Metadata:\n" + "\n".join(meta_lines))
+            except Exception as e:
+                output.append(f"└── Metadata: [Error serializing: {e}]")
+        else:
+            output.append("└── Metadata: [None]")
+
+        return "\n".join(output)
 
 NormalizationForm: TypeAlias = Literal["NFC", "NFD", "NFKC", "NFKD"]
 
