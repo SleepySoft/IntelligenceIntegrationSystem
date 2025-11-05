@@ -239,7 +239,8 @@ class TrafilaturaExtractor(IExtractor):
 
     def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
         """
-        Extracts content using trafilatura (compat mode for old versions).
+        Extracts content and metadata *separately* using trafilatura 2.0.0.
+        Calls extract() twice to ensure clean separation.
 
         :param content: Raw HTML bytes.
         :param url: The original URL.
@@ -253,22 +254,22 @@ class TrafilaturaExtractor(IExtractor):
             return ExtractionResult(error=error_str)
 
         try:
-            # --- 1. 第一次调用：获取 Markdown 内容 ---
+            # --- 1. 第一次调用：只获取干净的 Markdown 内容 ---
             kwargs_content = kwargs.copy()
-            # 确保清除了可能冲突的 output_format
             kwargs_content.pop('output_format', None)
+            kwargs_content.pop('with_metadata', None)  # 确保不请求元数据
 
             markdown = trafilatura.extract(
                 content,
                 url=url,
                 output_format='markdown',  # 显式获取 Markdown
-                include_links=True,
+                include_links=True,  # 只保留内容相关的参数
                 **kwargs_content
             )
 
-            # --- 2. 第二次调用：获取元数据 (通过 JSON) ---
+            # --- 2. 第二次调用：只获取元数据 (通过 JSON) ---
             kwargs_meta = kwargs.copy()
-            # 清除内容相关的参数，避免潜在冲突
+            # 清除所有内容相关的参数
             kwargs_meta.pop('output_format', None)
             kwargs_meta.pop('include_links', None)
             kwargs_meta.pop('include_tables', None)
@@ -276,23 +277,18 @@ class TrafilaturaExtractor(IExtractor):
             json_string = trafilatura.extract(
                 content,
                 url=url,
-                output_format='json',  # 这是获取元数据的关键
+                output_format='json',  # 请求 JSON
+                with_metadata=True,  # <--- 使用正确的参数请求元数据
                 **kwargs_meta
             )
-
-            # ++++++++++++++++ 添加这行诊断代码 ++++++++++++++++
-            self._log(f"[DEBUG] Trafilatura raw JSON output: {json_string}")
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++
 
             # --- 3. 解析 JSON 字符串以提取元数据 ---
             metadata = {}
             if json_string:
                 try:
-                    # trafilatura 返回的是一个 JSON 字符串
                     data_dict = json.loads(json_string)
-
-                    # 从 JSON 字典中提取元数据
-                    # 注意：'text' 键在 data_dict 中，但我们忽略它，因为我们用 markdown
+                    # JSON 输出会把元数据和 'text' 放在同一个字典里
+                    # 我们只提取元数据，忽略 'text'
                     metadata = {
                         'title': data_dict.get('title'),
                         'author': data_dict.get('author'),
@@ -302,6 +298,10 @@ class TrafilaturaExtractor(IExtractor):
                         'fingerprint': data_dict.get('fingerprint'),
                         'id': data_dict.get('id'),
                         'license': data_dict.get('license'),
+                        'description': data_dict.get('description'),
+                        'image': data_dict.get('image'),
+                        'url': data_dict.get('url'),
+                        'hostname': data_dict.get('hostname'),
                     }
                     # 移除值为 None 的键，保持 metadata 字典干净
                     metadata = {k: v for k, v in metadata.items() if v is not None}
@@ -317,7 +317,7 @@ class TrafilaturaExtractor(IExtractor):
 
             return ExtractionResult(
                 markdown_content=sanitize_unicode_string(markdown or ""),
-                metadata=metadata
+                metadata=metadata  # 这是干净的 metadata 字典
             )
 
         except Exception as e:
@@ -325,73 +325,6 @@ class TrafilaturaExtractor(IExtractor):
             self._log(f"[Error] {error_str}")
             self._log(traceback.format_exc())
             return ExtractionResult(error=error_str)
-
-    # def extract(self, content: bytes, url: str, **kwargs) -> ExtractionResult:
-    #     """
-    #     Extracts content using trafilatura.
-    #
-    #     :param content: Raw HTML bytes.
-    #     :param url: The original URL.
-    #     :param kwargs: Passed to `trafilatura.extract()`.
-    #                    Example: `include_comments=False`, `include_tables=True`
-    #     :return: Markdown string.
-    #     """
-    #     self._log(f"Extracting with TrafilaturaExtractor from {url}")
-    #     if not trafilatura:
-    #         error_str = "[Error] Trafilatura library not found."
-    #         self._log(error_str)
-    #         return ExtractionResult(error=error_str)
-    #
-    #     # Set defaults that align with returning Markdown
-    #     kwargs.setdefault('output_format', 'markdown')
-    #     kwargs.setdefault('include_links', True)
-    #     kwargs['include_metadata'] = True
-    #
-    #     try:
-    #         # Trafilatura handles its own decoding
-    #         # --- MODIFICATION: Ask Trafilatura for metadata ---
-    #         # We must extract to XML/lxml object first to get metadata
-    #         kwargs.pop('output_format', None)  # Remove output_format if present
-    #
-    #         lxml_object = trafilatura.extract(
-    #             content,
-    #             url=url,
-    #             **kwargs
-    #         )
-    #
-    #         if lxml_object is None:
-    #             self._log("[Info] Trafilatura returned None.")
-    #             return ExtractionResult(error="Trafilatura failed to extract content.")
-    #
-    #         # Convert the LXML object to Markdown for the content
-    #         # We need html2text for this conversion
-    #         h = html2text.HTML2Text()
-    #         h.ignore_links = False
-    #         h.ignore_images = False
-    #         h.body_width = 0
-    #
-    #         html_string = lxml.etree.tostring(lxml_object, encoding='unicode')
-    #         markdown = h.handle(html_string)
-    #
-    #         # Extract metadata from the object's properties
-    #         metadata = {
-    #             'title': getattr(lxml_object, 'title', None),
-    #             'author': getattr(lxml_object, 'author', None),
-    #             'date': getattr(lxml_object, 'date', None),
-    #             'sitename': getattr(lxml_object, 'sitename', None),
-    #             'tags': getattr(lxml_object, 'tags', None),
-    #             'fingerprint': getattr(lxml_object, 'fingerprint', None),
-    #         }
-    #
-    #         return ExtractionResult(
-    #             markdown_content=sanitize_unicode_string(markdown),
-    #             metadata=metadata
-    #         )
-    #     except Exception as e:
-    #         error_str = f"Trafilatura failed: {e}"
-    #         self._log(f"[Error] {error_str}")
-    #         self._log(traceback.format_exc())
-    #         return ExtractionResult(error=error_str)
 
 
 class ReadabilityExtractor(IExtractor):
