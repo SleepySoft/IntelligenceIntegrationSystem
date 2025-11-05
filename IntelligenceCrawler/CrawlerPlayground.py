@@ -119,11 +119,11 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QSplitter,
     QTextEdit, QStatusBar, QTabWidget, QLabel, QFrame, QComboBox,
-    QDateEdit, QCheckBox, QToolBar, QSizePolicy, QSpinBox
+    QDateEdit, QCheckBox, QToolBar, QSizePolicy, QSpinBox,
+    QMenu, QAction
 )
 from PyQt5.QtCore import (
-    Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer,
-    QDate
+    Qt, QRunnable, QThreadPool, QObject, pyqtSignal, QTimer, QSettings
 )
 from PyQt5.QtGui import QFont, QIcon
 
@@ -494,8 +494,13 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.channel_item_map: Dict[str, QTreeWidgetItem] = {}
         self.log_history_view: Optional[QTextEdit] = None
 
+        # --- NEW: Settings for URL History ---
+        self.URL_HISTORY_KEY = "discovery_url_history"
+        self.MAX_URL_HISTORY = 25
+
         # --- Initialize UI ---
         self.init_ui()
+        self._load_url_history()
         self.connect_signals()  # Centralize signal connections
         self.setWindowTitle("Crawler Playground (v4.0)")
         self.setWindowIcon(QIcon.fromTheme("internet-web-browser"))
@@ -513,9 +518,21 @@ class CrawlerPlaygroundApp(QMainWindow):
         # --- 1. Top URL Input Bar (Refactored) ---
         top_bar_layout = QHBoxLayout()
         top_bar_layout.setSpacing(10)
-        self.url_input = QLineEdit()
+
+        # --- MODIFICATION: Replace QLineEdit with QComboBox ---
+        self.url_input = QComboBox()
+        self.url_input.setEditable(True)
         self.url_input.setPlaceholderText("Enter website homepage URL (e.g., https://www.example.com)")
-        top_bar_layout.addWidget(self.url_input, 1)
+        self.url_input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        # Connect 'Enter' key press in the editable line edit
+        self.url_input.lineEdit().returnPressed.connect(self.start_channel_discovery)
+
+        # --- NEW: Add Context Menu for clearing history ---
+        self.url_input.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.url_input.customContextMenuRequested.connect(self._show_url_history_context_menu)
+
+        top_bar_layout.addWidget(self.url_input, 1)  # Give it stretch
 
         # --- REQ 1: Discoverer Dropdown ---
         top_bar_layout.addWidget(QLabel("Discoverer:"))
@@ -589,24 +606,14 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         # --- NEW: Discovery Proxy Input ---
 
-        # top_bar_layout.addWidget(QLabel("Proxy:"))
-        # self.discovery_proxy_input = QLineEdit()
-        # self.discovery_proxy_input.setPlaceholderText("e.g., http://user:pass@host:port")
-        # # Give it a small stretch factor to fill remaining space
-        # self.discovery_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
-        # top_bar_layout.addWidget(self.discovery_proxy_input, 1)  # 1 stretch
-        #
-        # # --- Analyze Button (Original) ---
-        # self.analyze_button = QPushButton("Discover Channels")  # Renamed
-        # top_bar_layout.addWidget(self.analyze_button)
-
         top_bar_layout.addWidget(QLabel("Proxy:"))
         self.discovery_proxy_input = QLineEdit()
         self.discovery_proxy_input.setPlaceholderText("e.g., http://user:pass@host:port")
         self.discovery_proxy_input.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Preferred)
-        top_bar_layout.addWidget(self.discovery_proxy_input)  # Remove stretch
+        top_bar_layout.addWidget(self.discovery_proxy_input)
 
-        # --- MODIFICATION: Add stretch to push button to the right ---
+        # --- MODIFICATION: Use addStretch with a factor ---
+        # The url_input has stretch 1, this will take up remaining space
         top_bar_layout.addStretch(1)
 
         self.analyze_button = QPushButton("Discover Channels")  # Renamed
@@ -854,7 +861,7 @@ class CrawlerPlaygroundApp(QMainWindow):
     def connect_signals(self):
         """Centralize all signal/slot connections."""
         # Top Bar
-        self.url_input.returnPressed.connect(self.start_channel_discovery)
+        self.url_input.lineEdit().returnPressed.connect(self.start_channel_discovery)
         self.analyze_button.clicked.connect(self.start_channel_discovery)
 
         # Tree
@@ -911,6 +918,9 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.channel_item_map.clear()
         self.channel_source_viewer.clear()
         self.generated_code_text.clear()
+        # --- MODIFICATION: Clear only text, not history list ---
+        self.url_input.setCurrentIndex(-1)
+        self.url_input.clearEditText()
         if self.log_history_view:
             self.log_history_view.clear()
         if self.web_view and QUrl:
@@ -929,7 +939,7 @@ class CrawlerPlaygroundApp(QMainWindow):
 
     def start_channel_discovery(self):
         """Slot for 'Discover Channels' button."""
-        url = self.url_input.text().strip()
+        url = self.url_input.currentText().strip()
         if not url:
             self.status_bar.showMessage("Error: Please enter a URL.")
             return
@@ -939,6 +949,7 @@ class CrawlerPlaygroundApp(QMainWindow):
             self.url_input.setText(url)
 
         self.clear_all_controls()
+        self._save_url_history(url)
 
         # --- Get values from new date controls ---
         start_date: Optional[datetime.datetime] = None
@@ -1308,7 +1319,7 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         discoverer_name = self.discoverer_combo.currentText()
         discoverer_args = {
-            "entry_point_url": self.url_input.text().strip(),
+            "entry_point_url": self.url_input.currentText().strip(),
             # --- MODIFICATION: Store new date filter state ---
             "date_filter_enabled": self.date_filter_check.isChecked(),
             "date_filter_days": self.date_filter_days_spin.value(),
@@ -1484,6 +1495,60 @@ class CrawlerPlaygroundApp(QMainWindow):
         self.thread_pool.clear()
         event.accept()
 
+    # --- NEW: URL History Management Methods ---
+
+    def _load_url_history(self):
+        """Loads URL history from QSettings into the ComboBox."""
+        settings = QSettings("MyOrg", "CrawlerPlayground")
+        history = settings.value(self.URL_HISTORY_KEY, [], type=list)
+        if history:
+            self.url_input.addItems(history)
+            self.url_input.setCurrentIndex(-1)  # Show placeholder
+
+    def _save_url_history(self, url: str):
+        """Saves a new URL to the top of the history and QSettings."""
+        if not url:
+            return
+
+        # 1. Find if item already exists
+        found_index = self.url_input.findText(url, Qt.MatchFixedString)
+
+        # 2. Remove if exists
+        if found_index >= 0:
+            self.url_input.removeItem(found_index)
+
+        # 3. Add to top
+        self.url_input.insertItem(0, url)
+        self.url_input.setCurrentText(url)  # Ensure it's the selected item
+
+        # 4. Trim history if over limit
+        while self.url_input.count() > self.MAX_URL_HISTORY:
+            self.url_input.removeItem(self.MAX_URL_HISTORY)
+
+        # 5. Persist to QSettings
+        new_history = [self.url_input.itemText(i) for i in range(self.url_input.count())]
+        settings = QSettings("MyOrg", "CrawlerPlayground")
+        settings.setValue(self.URL_HISTORY_KEY, new_history)
+
+    def _show_url_history_context_menu(self, pos):
+        """Shows a right-click context menu for the URL ComboBox."""
+        menu = QMenu(self)
+        clear_action = menu.addAction("Clear History")
+
+        action = menu.exec_(self.url_input.mapToGlobal(pos))
+
+        if action == clear_action:
+            self._clear_url_history()
+
+    def _clear_url_history(self):
+        """Clears the ComboBox and the QSettings history."""
+        self.url_input.clear()  # Clears the list
+        self.url_input.clearEditText()  # Clears the typed text
+
+        settings = QSettings("MyOrg", "CrawlerPlayground")
+        settings.setValue(self.URL_HISTORY_KEY, [])
+        self.status_bar.showMessage("URL history cleared.")
+
 
 # =============================================================================
 #
@@ -1503,6 +1568,9 @@ if __name__ == "__main__":
         print("Please install it: pip install playwright && python -m playwright install")
 
     app = QApplication(sys.argv)
+
+    app.setOrganizationName("SleepySoft")
+    app.setApplicationName("CrawlerPlayground")
 
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
         app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
