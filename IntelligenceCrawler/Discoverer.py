@@ -1,6 +1,6 @@
 import re
-import datetime
 import logging
+import datetime
 import traceback
 import xml.etree.ElementTree as ET
 from collections import deque

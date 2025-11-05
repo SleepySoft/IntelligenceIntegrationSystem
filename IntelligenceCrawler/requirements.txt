@@ -1,0 +1,34 @@
+# -----------------------------------------------------------------
+# Core Fetching & Parsing
+# (Used for basic HTTP requests, HTML/XML parsing, and feeds)
+# -----------------------------------------------------------------
+requests                # For making standard synchronous HTTP requests.
+beautifulsoup4          # For parsing HTML and XML documents (used by FeedFinder, etc.).
+lxml                    # High-performance XML/HTML parser (dependency for readability, etc.).
+feedparser              # For parsing RSS and Atom feeds.
+ultimate-sitemap-parser # For discovering and parsing website sitemaps (from usp.tree).
+
+# -----------------------------------------------------------------
+# Dynamic Content Fetching (Playwright)
+# (Used for rendering JavaScript-heavy pages)
+# -----------------------------------------------------------------
+playwright              # Core library for browser automation (enables dynamic fetching).
+playwright-stealth      # Addon to make Playwright sessions less detectable by anti-bot measures.
+
+# -----------------------------------------------------------------
+# Content Extraction & Conversion
+# (Libraries for extracting main content from HTML)
+# -----------------------------------------------------------------
+readability-lxml        # A simple algorithm for extracting the main readable content.
+trafilatura             # Advanced library for web scraping and content/metadata extraction.
+newspaper3k             # For extracting articles, metadata, and authors from news sites.
+crawl4ai                # AI-based extractor for smart content extraction.
+html2text               # For converting the final extracted HTML into clean Markdown.
+
+# -----------------------------------------------------------------
+# Utilities & Data Validation
+# (Helper libraries for data, dates, and compatibility)
+# -----------------------------------------------------------------
+pydantic                # For data validation and settings management (used for ExtractionResult).
+python-dateutil         # For robustly parsing dates from metadata and feeds (date_parse).
+typing-extensions       # Backports for newer Python typing features (like TypeAlias).

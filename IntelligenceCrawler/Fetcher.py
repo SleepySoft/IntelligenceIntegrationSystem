@@ -3,7 +3,6 @@
 import queue
 import requests
 import threading        # Add threading for PlaywrightFetcher avoiding asyncio conflict with Newspaper3kExtractor
-import traceback
 from typing import Dict, Optional
 from urllib.parse import urlparse
 from abc import ABC, abstractmethod

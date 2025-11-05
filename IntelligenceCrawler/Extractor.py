@@ -6,16 +6,16 @@ Extractor Module:
 Defines the IExtractor interface and provides multiple implementations
 for extracting main content from HTML and converting it to Markdown.
 """
-import json
 import re
 import copy
-import unicodedata
+import json
 import traceback
 import html2text
-from abc import ABC, abstractmethod
-from typing import Set, List, Dict, Any, Optional, Literal, TypeAlias
-from bs4 import BeautifulSoup
 import lxml.etree
+import unicodedata
+from bs4 import BeautifulSoup
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional, Literal
 
 # --- Library Import Checks ---
 # These imports are optional. Implementations will check if they
@@ -66,7 +66,7 @@ except ImportError:
     from typing_extensions import TypeAlias
 # --- NEW: Pydantic model for a standardized extraction result ---
 try:
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, Field, computed_field
 
     print("Success: Imported 'pydantic'. IExtractor will use ExtractionResult.")
 except ImportError:
@@ -84,10 +84,6 @@ except ImportError:
 
     def Field(default=None, **kwargs):
         return default
-
-from pydantic import BaseModel, Field, computed_field
-from typing import Dict, Any, Optional
-import json
 
 
 class ExtractionResult(BaseModel):
