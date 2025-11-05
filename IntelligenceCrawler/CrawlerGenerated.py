@@ -11,20 +11,19 @@ from IntelligenceCrawler.CrawlPipeline import CrawlPipeline
 
 log_cb = print
 
-# === 1. Initialize Components ===
-d_fetcher = PlaywrightFetcher(log_callback=log_cb, proxy=None, timeout_s=10, stealth=True, pause_browser=False, render_page=False)
-e_fetcher = PlaywrightFetcher(log_callback=log_cb, proxy=None, timeout_s=20, stealth=True, pause_browser=False, render_page=True)
-discoverer = RSSDiscoverer(fetcher=d_fetcher, verbose=True)
-extractor = Newspaper3kExtractor(verbose=True)
-
-# === 2. Define Pipeline Parameters ===
-entry_point_urls = ['http://feeds.bbci.co.uk/news/rss.xml']
-days_ago = 7
-end_date = datetime.datetime.now()
-start_date = end_date - datetime.timedelta(days=days_ago)
-extractor_kwargs = {}
-
 def run_pipeline():
+    # === 1. Initialize Components ===
+    d_fetcher = PlaywrightFetcher(log_callback=log_cb, proxy=None, timeout_s=10, stealth=True, pause_browser=False, render_page=False)
+    e_fetcher = PlaywrightFetcher(log_callback=log_cb, proxy=None, timeout_s=20, stealth=True, pause_browser=False, render_page=True)
+    discoverer = RSSDiscoverer(fetcher=d_fetcher, verbose=True)
+    extractor = TrafilaturaExtractor(verbose=True)
+    
+    # === 2. Define Pipeline Parameters ===
+    entry_point_urls = ['http://feeds.bbci.co.uk/news/rss.xml']
+    start_date = None
+    end_date = None
+    extractor_kwargs = {}
+
     pipeline = CrawlPipeline(
         d_fetcher=d_fetcher,
         discoverer=discoverer,

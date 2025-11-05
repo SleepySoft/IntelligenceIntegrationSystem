@@ -485,16 +485,16 @@ from IntelligenceCrawler.CrawlPipeline import CrawlPipeline
 
 log_cb = print
 
-# === 1. Initialize Components ===
-{code_d_fetcher}
-{code_e_fetcher}
-{code_discoverer}
-{code_extractor}
-
-# === 2. Define Pipeline Parameters ===
-{parameters}
-
 def run_pipeline():
+    # === 1. Initialize Components ===
+    {code_d_fetcher}
+    {code_e_fetcher}
+    {code_discoverer}
+    {code_extractor}
+    
+    # === 2. Define Pipeline Parameters ===
+    {parameters}
+
     pipeline = CrawlPipeline(
         d_fetcher=d_fetcher,
         discoverer=discoverer,
@@ -1494,13 +1494,13 @@ class CrawlerPlaygroundApp(QMainWindow):
 
         parameters = f"entry_point_urls = [{repr(d_config['args']['entry_point_url'])}]\n"
         if d_config['args']['date_filter_enabled']:
-            parameters += f"days_ago = {d_config['args']['date_filter_days']}\n"
-            parameters += "end_date = datetime.datetime.now()\n"
-            parameters += "start_date = end_date - datetime.timedelta(days=days_ago)\n"
+            parameters += f"    days_ago = {d_config['args']['date_filter_days']}\n"
+            parameters += "    end_date = datetime.datetime.now()\n"
+            parameters += "    start_date = end_date - datetime.timedelta(days=days_ago)\n"
         else:
-            parameters += "start_date = None\n"
-            parameters += "end_date = None\n"
-        parameters += f"extractor_kwargs = {e_kwargs_str}"
+            parameters += "    start_date = None\n"
+            parameters += "    end_date = None\n"
+        parameters += f"    extractor_kwargs = {e_kwargs_str}"
 
         # --- 5. Format the final code ---
         code = CODE_TEMPLATE.format(
