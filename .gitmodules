@@ -5,3 +5,7 @@
 [submodule "PyLoggingBackend"]
 	path = PyLoggingBackend
 	url = https://github.com/SleepySoft/PyLoggingBackend.git
+[submodule "IntelligenceCrawler"]
+	path = IntelligenceCrawler
+	url = https://github.com/SleepySoft/IntelligenceCrawler.git
+	branch = main
