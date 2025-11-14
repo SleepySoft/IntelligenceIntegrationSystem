@@ -111,10 +111,10 @@ def feeds_craw_flow(flow_name: str,
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    for feed_name, feed_url in feeds.items():
+    for feed_name, feed_url in { **feeds, "cached": "" }.items():
         if stop_event.is_set():
             break
-        level_names = [flow_name, feed_url]
+        level_names = [flow_name, feed_name]
 
         # feed_statistics = {
         #     'total': 0,
@@ -132,11 +132,11 @@ def feeds_craw_flow(flow_name: str,
             if result.fatal:
                 raise ProcessError(error_text = '\n'.join(result.errors))
             # feed_statistics['total'] = len(result.entries)
-            context.crawl_statistics.counter_log(stat_name, 'success')
+            context.crawl_statistics.counter_log(level_names, 'success')
         except Exception as e:
             context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
             context.crawl_record.increment_error_count(feed_url)
-            context.crawl_statistics.counter_log(stat_name, 'exception')
+            context.crawl_statistics.counter_log(level_names, 'exception')
             continue
 
         context.logger.info(f'Feed: [{feed_name}] process finished.')
@@ -150,8 +150,6 @@ def feeds_craw_flow(flow_name: str,
                 article_link = article.link
                 if article_link:
                     context.logger.debug(f'Processing article: {article_link}')
-                else:
-                    context.logger.debug(f'Processing cached data: {context.cac}')
 
                 # ----------------------------------- Check Duplication ----------------------------------
 
@@ -233,7 +231,7 @@ def feeds_craw_flow(flow_name: str,
                 # print('.', end='', flush=True)
                 # context.logger.debug(f'Article finished.')
                 # crawl_record.record_url_status(article_link, STATUS_SUCCESS)
-                # crawl_statistics.sub_item_log(stat_name, article_link, 'success')
+                # crawl_statistics.sub_item_log(level_names, article_link, 'success')
 
             # except ProcessSkip:
             #     feed_statistics['skip'] += 1
@@ -245,7 +243,7 @@ def feeds_craw_flow(flow_name: str,
             #     print('o', end='', flush=True)
             #     context.logger.debug(f'Article ignored.')
             #     crawl_record.record_url_status(e.item, STATUS_IGNORED)
-            #     crawl_statistics.sub_item_log(stat_name, e.item, e.reason)
+            #     crawl_statistics.sub_item_log(level_names, e.item, e.reason)
             #
             # except ProcessProblem as e:
             #     if e.problem == 'db_error':
@@ -258,7 +256,7 @@ def feeds_craw_flow(flow_name: str,
             #         context.logger.error(e.problem)
             #         if e.problem != 'commit_error':
             #             crawl_record.increment_error_count(e.item)
-            #         crawl_statistics.sub_item_log(stat_name, e.item, e.problem)
+            #         crawl_statistics.sub_item_log(level_names, e.item, e.problem)
             #     else:
             #         pass
 
@@ -272,7 +270,7 @@ def feeds_craw_flow(flow_name: str,
         #             f"     Total Cached Items: {len(_uncommit_content_cache)}")
 
         # print('-' * 80)
-        # print(crawl_statistics.dump_sub_items(stat_name, statuses=[
+        # print(crawl_statistics.dump_sub_items(level_names, statuses=[
         #     'fetch emtpy', 'scrub emtpy', 'persists fail', 'exception']))
         # print()
         # print('=' * 100)

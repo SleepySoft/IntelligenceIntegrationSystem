@@ -40,3 +40,17 @@
 20251031:
     将数据转移到data目录中，同时兼容以前的路径。
 
+
+加入塔斯社新闻：
+    https://tass.com/world
+    https://tass.com/emergencies
+    https://tass.com/politics
+    https://tass.com/economy
+    https://tass.com/defense
+    https://tass.com/society
+
+
+    https://tass.com/sitemap/sitemap_section.xml
+
+
+
