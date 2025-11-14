@@ -196,7 +196,7 @@ def get_base_dir() -> Path:
     return _get_instance().base_dir
 
 
-def save_content(url, content, title, category,suffix='.txt') -> Tuple[bool, str]:
+def save_content(url, content, title, category, suffix='.txt') -> Tuple[bool, str]:
     return _get_instance().save_content(url, content, title, category, suffix)
 
 

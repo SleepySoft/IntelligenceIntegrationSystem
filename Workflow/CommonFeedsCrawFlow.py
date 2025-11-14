@@ -16,14 +16,10 @@ from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_
 from Tools.CrawlStatistics import CrawlStatistics
 from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
 from Tools.RSSFetcher import FeedData
+from Workflow.CommonFlowUtility import CrawlContext
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
-logger = get_tls_logger(__name__)
-logger.setLevel(logging.INFO)
-
-CRAWL_ERROR_THRESHOLD = 3
 
 CRAWL_ERROR_FEED_FETCH = 'Feed fetch error'
 CRAWL_ERROR_FEED_PARSE = 'Feed parse error'
@@ -32,38 +28,6 @@ CRAWL_ERROR_ARTICLE_FETCH = 'Article fetch error'
 
 class FetchContentResult(TypedDict):
     content: str
-
-
-# Re-assign this function pointer to re-direct output for debug.
-_intelligence_sink: Callable[[str, CollectedData, int], dict] | None = post_collected_intelligence
-
-
-def set_intelligence_sink(func: Callable[[str, dict, int], dict] | None):
-    global _intelligence_sink
-    _intelligence_sink = func
-
-
-# ------------------------------- Cache management -------------------------------
-
-_lock = threading.Lock()
-_uncommit_content_cache = { }
-
-
-def cache_content(url: str, content: any):
-    with _lock:
-        if url not in _uncommit_content_cache:
-            _uncommit_content_cache[url] = content
-
-
-def get_cached_content(url: str) -> any:
-    with _lock:
-        return _uncommit_content_cache.get(url, None)
-
-
-def drop_cached_content(url: str):
-    with _lock:
-        if url in _uncommit_content_cache:
-            del _uncommit_content_cache[url]
 
 
 # --------------------------------- Helper Functions ---------------------------------
@@ -78,7 +42,7 @@ def fetch_process_article(article_link: str,
 
     raw_html = content['content']
     if not raw_html:
-        # logger.error(f'{prefix}   |--Got empty HTML content.')
+        # context.logger.error(f'{prefix}   |--Got empty HTML content.')
         # craw_statistics.sub_item_log(stat_name, article_link, 'fetch emtpy')
         return '', 'fetch'
 
@@ -90,7 +54,7 @@ def fetch_process_article(article_link: str,
         if not text:
             break
     if not text:
-        # logger.error(f'{prefix}   |--Got empty content when applying scrubber {str(scrubber)}.')
+        # context.logger.error(f'{prefix}   |--Got empty content when applying scrubber {str(scrubber)}.')
         # craw_statistics.sub_item_log(stat_name, article_link, 'scrub emtpy')
         return '', 'scrub'
 
@@ -107,7 +71,10 @@ def feeds_craw_flow(flow_name: str,
 
                     fetch_feed: Callable[[str], FeedData],
                     fetch_content: Callable[[str], FetchContentResult],
-                    scrubbers: List[Callable[[str], str]]):
+                    scrubbers: List[Callable[[str], str]],
+
+                    context: CrawlContext
+                    ):
     """
     A common feeds and their articles craw workflow. This workflow works in this sequence:
         fetch_feed -> for each feed: fetch_content -> apply scrubbers
@@ -127,93 +94,94 @@ def feeds_craw_flow(flow_name: str,
                         fetch_content(article_link: str) -> dict
     :param scrubbers: The functions to process scrubbed text. Function declaration:
                         scrubber(text: str) -> str
+    :param context: CrawlContext for data record and submission.
 
     :return: None
     """
-    prefix = f'[{flow_name}]:'
-    logger.info(f'{prefix} starts work.')
+    context.logger.info(f'starts work.')
 
-    submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
-    collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
-    token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
-
-    logger.info(f'{prefix} submit to URL: {submit_ihub_url}, token = {token}.')
-
-    crawl_record = CrawlRecord(['crawl_record', flow_name])
-    crawl_statistics = CrawlStatistics()
+    # submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
+    # collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
+    # token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
+    #
+    # context.logger.info(f'submit to URL: {submit_ihub_url}, token = {token}.')
+    #
+    # crawl_record = CrawlRecord(['crawl_record', flow_name])
+    # crawl_statistics = CrawlStatistics()
 
     # ------------------------------------------------------------------------------------------------------------------
 
     for feed_name, feed_url in feeds.items():
         if stop_event.is_set():
             break
-        stat_name = [flow_name, feed_url]
+        level_names = [flow_name, feed_url]
 
-        feed_statistics = {
-            'total': 0,
-            'index': 0,
-            'success': 0,
-            'skip': 0,
-        }
+        # feed_statistics = {
+        #     'total': 0,
+        #     'index': 0,
+        #     'success': 0,
+        #     'skip': 0,
+        # }
 
         # ----------------------------------- Fetch and Parse feeds -----------------------------------
 
-        logger.info(f'{prefix} Processing feed: [{feed_name}] - {feed_url}')
+        context.logger.info(f'Processing feed: [{feed_name}] - {feed_url}')
 
         try:
             result = fetch_feed(feed_url)
             if result.fatal:
                 raise ProcessError(error_text = '\n'.join(result.errors))
-            feed_statistics['total'] = len(result.entries)
-            crawl_statistics.counter_log(stat_name, 'success')
+            # feed_statistics['total'] = len(result.entries)
+            context.crawl_statistics.counter_log(stat_name, 'success')
         except Exception as e:
-            logger.error(f"{prefix} Process feed fail: {feed_url} - {str(e)}")
-            crawl_record.increment_error_count(feed_url)
-            crawl_statistics.counter_log(stat_name, 'exception')
+            context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
+            context.crawl_record.increment_error_count(feed_url)
+            context.crawl_statistics.counter_log(stat_name, 'exception')
             continue
 
-        logger.info(f'{prefix} Feed: [{feed_name}] process finished.')
+        context.logger.info(f'Feed: [{feed_name}] process finished.')
 
         # ----------------------------------- Process Articles in Feed ----------------------------------
 
-        for article in result.entries:
+        for article in result.entries + ['']:
             try:
-                feed_statistics['index'] += 1
-                article_link = article.link
+                # feed_statistics['index'] += 1
 
-                logger.debug(f'Processing article: {article_link}')
+                article_link = article.link
+                if article_link:
+                    context.logger.debug(f'Processing article: {article_link}')
+                else:
+                    context.logger.debug(f'Processing cached data: {context.cac}')
 
                 # ----------------------------------- Check Duplication ----------------------------------
 
-                url_status = crawl_record.get_url_status(article_link, from_db=False)
-                if url_status >= STATUS_SUCCESS:
-                    raise ProcessSkip('already exists', article_link)
-                elif url_status <= STATUS_UNKNOWN:
-                    pass        # <- Process going on here
-                elif url_status == STATUS_ERROR:
-                    url_error_count = crawl_record.get_error_count(article_link, from_db=False)
-                    if url_error_count < 0:
-                        raise ProcessProblem('db_error', article_link)
-                    if url_error_count >= CRAWL_ERROR_THRESHOLD:
-                        raise ProcessSkip('max retry exceed', article_link)
-                    else:
-                        pass    # <- Process going on here
-                else:   # STATUS_DB_ERROR
-                    raise ProcessProblem('db_error', article_link)
-
-                # Also keep this check to make it compatible
-                if has_url(article_link):
-                    raise ProcessSkip('already exists', article_link)
+                # url_status = crawl_record.get_url_status(article_link, from_db=False)
+                # if url_status >= STATUS_SUCCESS:
+                #     raise ProcessSkip('already exists', article_link)
+                # elif url_status <= STATUS_UNKNOWN:
+                #     pass        # <- Process going on here
+                # elif url_status == STATUS_ERROR:
+                #     url_error_count = crawl_record.get_error_count(article_link, from_db=False)
+                #     if url_error_count < 0:
+                #         raise ProcessProblem('db_error', article_link)
+                #     if url_error_count >= CRAWL_ERROR_THRESHOLD:
+                #         raise ProcessSkip('max retry exceed', article_link)
+                #     else:
+                #         pass    # <- Process going on here
+                # else:   # STATUS_DB_ERROR
+                #     raise ProcessProblem('db_error', article_link)
+                #
+                # # Also keep this check to make it compatible
+                # if has_url(article_link):
+                #     raise ProcessSkip('already exists', article_link)
 
                 # ------------------------------- Fetch and Parse articles ------------------------------
 
                 # TODO: Use a loop to process cached data.
-                cached_data = get_cached_content(article_link)
-                if cached_data:
-                    collected_data = cached_data
-                    # TODO: Workaround, compatible with to_file_and_history() mechanism.
-                    text = collected_data.content
-                    logger.debug(f'[cache] Get data from cache: {article_link}')
+                collected_data = context.check_get_cached_data(article_link)
+                if collected_data:
+                    context.logger.debug(f'[cache] Get data from cache: {article_link}')
+
                 else:
                     text, error_place = fetch_process_article(article_link, fetch_content, scrubbers)
 
@@ -224,12 +192,11 @@ def feeds_craw_flow(flow_name: str,
                     if not text:
                         raise ProcessIgnore('empty when ' + error_place)
 
-                    # --------------------------------- Record and Persists ---------------------------------
+                    # --------------- Pack Fetched Data ---------------
 
-                    # Post to IHub
                     collected_data = CollectedData(
                         UUID=str(uuid4()),
-                        token=token,
+                        token='',
 
                         title=article.title,
                         authors=article.authors,
@@ -238,66 +205,71 @@ def feeds_craw_flow(flow_name: str,
                         informant=article.link
                     )
 
-                if _intelligence_sink:
-                    result = _intelligence_sink(submit_ihub_url, collected_data, 10)
-                    if result.get('status', 'success') == 'error':
-                        if not cached_data:
-                            cache_content(article_link, collected_data)
-                            logger.info(f'[cache] Cache item: {article_link}')
-                        raise ProcessProblem('commit_error')
-                    else:
-                        if cached_data:
-                            drop_cached_content(article_link)
-                            logger.info(f'[cache] Submitted and remove item: {article_link}')
+                context.submit_collected_data(collected_data, level_names)
 
-                if text:
-                    success, file_path = to_file_and_history(
-                        article_link, text, article.title, feed_name, '.md')
-                    # TODO: Actually, with CrawlRecord, we don't need this.
-                    if not success:
-                        logger.info(f'{prefix} Save content {file_path} fail.')
+            except Exception as e:
+                context.handle_process_exception(e)
 
-                feed_statistics['success'] += 1
-                print('.', end='', flush=True)
-                logger.debug(f'Article finished.')
-                crawl_record.record_url_status(article_link, STATUS_SUCCESS)
-                crawl_statistics.sub_item_log(stat_name, article_link, 'success')
+                # if _intelligence_sink:
+                #     result = _intelligence_sink(submit_ihub_url, collected_data, 10)
+                #     if result.get('status', 'success') == 'error':
+                #         if not cached_data:
+                #             cache_content(article_link, collected_data)
+                #             context.logger.info(f'[cache] Cache item: {article_link}')
+                #         raise ProcessProblem('commit_error')
+                #     else:
+                #         if cached_data:
+                #             drop_cached_content(article_link)
+                #             context.logger.info(f'[cache] Submitted and remove item: {article_link}')
 
-            except ProcessSkip:
-                feed_statistics['skip'] += 1
-                print('*', end='', flush=True)
-                logger.debug(f'Article skipped.')
+                # if text:
+                #     success, file_path = to_file_and_history(
+                #         article_link, text, article.title, feed_name, '.md')
+                #     # TODO: Actually, with CrawlRecord, we don't need this.
+                #     if not success:
+                #         context.logger.info(f'Save content {file_path} fail.')
+                #
+                # feed_statistics['success'] += 1
+                # print('.', end='', flush=True)
+                # context.logger.debug(f'Article finished.')
+                # crawl_record.record_url_status(article_link, STATUS_SUCCESS)
+                # crawl_statistics.sub_item_log(stat_name, article_link, 'success')
 
-            except ProcessIgnore as e:
-                feed_statistics['skip'] += 1
-                print('o', end='', flush=True)
-                logger.debug(f'Article ignored.')
-                crawl_record.record_url_status(e.item, STATUS_IGNORED)
-                crawl_statistics.sub_item_log(stat_name, e.item, e.reason)
-
-            except ProcessProblem as e:
-                if e.problem == 'db_error':
-                    # DB error, not content error, just ignore and retry at next loop.
-                    logger.error('Crawl record DB Error.')
-                elif e.problem in ['fetch_error', 'persists_error', 'commit_error']:
-                    # If just commit error, just retry with cache.
-                    # Persists error, actually once we're starting use CrawRecord. We don't need this anymore
-                    print('x', end='', flush=True)
-                    logger.error(e.problem)
-                    if e.problem != 'commit_error':
-                        crawl_record.increment_error_count(e.item)
-                    crawl_statistics.sub_item_log(stat_name, e.item, e.problem)
-                else:
-                    pass
+            # except ProcessSkip:
+            #     feed_statistics['skip'] += 1
+            #     print('*', end='', flush=True)
+            #     context.logger.debug(f'Article skipped.')
+            #
+            # except ProcessIgnore as e:
+            #     feed_statistics['skip'] += 1
+            #     print('o', end='', flush=True)
+            #     context.logger.debug(f'Article ignored.')
+            #     crawl_record.record_url_status(e.item, STATUS_IGNORED)
+            #     crawl_statistics.sub_item_log(stat_name, e.item, e.reason)
+            #
+            # except ProcessProblem as e:
+            #     if e.problem == 'db_error':
+            #         # DB error, not content error, just ignore and retry at next loop.
+            #         context.logger.error('Crawl record DB Error.')
+            #     elif e.problem in ['fetch_error', 'persists_error', 'commit_error']:
+            #         # If just commit error, just retry with cache.
+            #         # Persists error, actually once we're starting use CrawRecord. We don't need this anymore
+            #         print('x', end='', flush=True)
+            #         context.logger.error(e.problem)
+            #         if e.problem != 'commit_error':
+            #             crawl_record.increment_error_count(e.item)
+            #         crawl_statistics.sub_item_log(stat_name, e.item, e.problem)
+            #     else:
+            #         pass
 
         # ---------------------------------------- Log feed statistics ----------------------------------------
 
-        logger.info(f"{prefix} Feed: {feed_name} finished.\n"
-                    f"     Total: {feed_statistics['total']}\n"
-                    f"     Success: {feed_statistics['success']}\n"
-                    f"     Skip: {feed_statistics['skip']}\n"
-                    f"     Fail: {feed_statistics['total'] - feed_statistics['success'] - feed_statistics['skip']}\n"
-                    f"     Total Cached Items: {len(_uncommit_content_cache)}")
+        # context.logger.info(f"Feed: {feed_name} finished.\n"
+        #             f"     Total: {feed_statistics['total']}\n"
+        #             f"     Success: {feed_statistics['success']}\n"
+        #             f"     Skip: {feed_statistics['skip']}\n"
+        #             f"     Fail: {feed_statistics['total'] - feed_statistics['success'] - feed_statistics['skip']}\n"
+        #             f"     Total Cached Items: {len(_uncommit_content_cache)}")
 
         # print('-' * 80)
         # print(crawl_statistics.dump_sub_items(stat_name, statuses=[
@@ -308,8 +280,8 @@ def feeds_craw_flow(flow_name: str,
 
     # ----------------------------------------- Log all feeds counter -----------------------------------------
 
-    crawl_statistics.dump_counters(['flow_name'])
-    logger.info(f"{prefix} Finished one loop and rest for {update_interval_s} seconds ...")
+    # crawl_statistics.dump_counters(['flow_name'])
+    context.logger.info(f"Finished one loop and rest for {update_interval_s} seconds ...")
 
     # ------------------------------------------ Delay and Wait for Next Loop ------------------------------------------
 
