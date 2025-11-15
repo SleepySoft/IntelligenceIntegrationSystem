@@ -1,14 +1,15 @@
 from functools import partial
-
-import Scraper.PlaywrightRenderedScraper
-from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
-from MyPythonUtility.easy_config import EasyConfig
 from ServiceEngine import ServiceContext
 from Tools.RSSFetcher import fetch_feed
-from Scraper.PlaywrightRenderedScraper import fetch_content
+from MyPythonUtility.easy_config import EasyConfig
+from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
-from Workflow.CommonFeedsCrawFlow import feeds_craw_flow
+from Workflow.CommonFlowUtility import CrawlContext
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config, feeds_craw_flow
+
+from Scraper.PlaywrightRenderedScraper import fetch_content
+
 
 # https://www.aa.com.tr/
 
@@ -18,11 +19,14 @@ feed_list = {
 
 
 config: EasyConfig | None = None
+crawl_context: CrawlContext | None = None
 
 
 def module_init(service_context: ServiceContext):
     global config
+    global crawl_context
     config = service_context.config
+    crawl_context = build_crawl_ctx_by_config(config)
 
 
 def start_task(stop_event):
@@ -32,10 +36,11 @@ def start_task(stop_event):
                     config,
                     15 * 60,
 
-                    partial(fetch_feed, scraper=Scraper.PlaywrightRenderedScraper, proxy=config.get('collector.global_site_proxy', {})),
+                    partial(fetch_feed, fetch_content=fetch_content, proxy=config.get('collector.global_site_proxy', {})),
                     partial(fetch_content, timeout_ms=APPLIED_NATIONAL_TIMEOUT_MS, proxy=config.get('collector.global_site_proxy', {}), format='lxml'),
                     [
                         partial(html_content_converter, selectors=['div[class="detay-icerik"]']),
                         partial(sanitize_unicode_string, max_length=10240 * 5)
-                    ])
+                    ],
+                    crawl_context)
 

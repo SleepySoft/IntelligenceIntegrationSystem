@@ -8,7 +8,7 @@ from MyPythonUtility.easy_config import EasyConfig
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
 from ServiceEngine import ServiceContext
-from Workflow.CommonFeedsCrawFlow import set_intelligence_sink, fetch_process_article
+from Workflow.CommonFeedsCrawFlow import fetch_process_article
 
 
 def drive_module(module):
@@ -79,11 +79,11 @@ def main():
     # from CrawlTasks import task_crawl_nhk
     # drive_module(task_crawl_nhk)
 
-    # from CrawlTasks import task_crawl_aa
-    # drive_module(task_crawl_aa)
+    from CrawlTasks import task_crawl_aa
+    drive_module(task_crawl_aa)
 
-    from CrawlTasks import task_crawl_elpais
-    drive_module(task_crawl_elpais)
+    # from CrawlTasks import task_crawl_elpais
+    # drive_module(task_crawl_elpais)
 
     # fetch_by_request_scraper('https://www.cbc.ca/news/science/india-flood-cloudburst-glacier-1.7603074?cmp=rss')
 

@@ -1,14 +1,16 @@
 from functools import partial
-
-import Scraper.RequestsScraper
-from GlobalConfig import APPLIED_PROXY, APPLIED_INTERNAL_TIMEOUT_MS
-from MyPythonUtility.easy_config import EasyConfig
 from ServiceEngine import ServiceContext
 from Tools.RSSFetcher import fetch_feed
-from Scraper.PlaywrightRenderedScraper import fetch_content
+from MyPythonUtility.easy_config import EasyConfig
+from GlobalConfig import APPLIED_INTERNAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
-from Workflow.CommonFeedsCrawFlow import feeds_craw_flow
+from Workflow.CommonFlowUtility import CrawlContext
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config, feeds_craw_flow
+
+from Scraper.RequestsScraper import fetch_content as feed_fetcher
+from Scraper.PlaywrightRenderedScraper import fetch_content as article_fetcher
+
 
 feed_list = {
     "即时新闻": "https://www.chinanews.com.cn/rss/scroll-news.xml",
@@ -20,11 +22,14 @@ feed_list = {
 
 
 config: EasyConfig | None = None
+crawl_context: CrawlContext | None = None
 
 
 def module_init(service_context: ServiceContext):
     global config
+    global crawl_context
     config = service_context.config
+    crawl_context = build_crawl_ctx_by_config(config)
 
 
 def start_task(stop_event):
@@ -34,12 +39,13 @@ def start_task(stop_event):
                     config,
                     15 * 60,
 
-                    partial(fetch_feed, scraper=Scraper.RequestsScraper, proxy=config.get('collector.global_site_proxy', {})),
-                    partial(fetch_content, timeout_ms=APPLIED_INTERNAL_TIMEOUT_MS, proxy=config.get('collector.global_site_proxy', {})),
+                    partial(fetch_feed, fetch_content=feed_fetcher, proxy=config.get('collector.global_site_proxy', {})),
+                    partial(article_fetcher, timeout_ms=APPLIED_INTERNAL_TIMEOUT_MS, proxy=config.get('collector.global_site_proxy', {})),
                     [
                         partial(html_content_converter, selectors='div.left_zw'),
                         partial(sanitize_unicode_string, max_length=10240)
-                    ])
+                    ],
+                    crawl_context)
 
 
 # def start_task(stop_event):

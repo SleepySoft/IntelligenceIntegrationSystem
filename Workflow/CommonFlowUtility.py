@@ -7,7 +7,7 @@ from logging import Logger
 import urllib3
 import threading
 from uuid import uuid4
-from typing import Callable, TypedDict, Dict, List, Tuple
+from typing import Callable, TypedDict, Dict, List, Tuple, Optional, Any
 
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceHub import CollectedData
@@ -25,32 +25,37 @@ from Tools.RSSFetcher import FeedData
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 # ------------------------------------------------------------------------------------------------------------------
 
 class CrawlCache:
     def __init__(self):
         self._lock = threading.Lock()
-        self._uncommit_content_cache = { }
+        self._uncommit_content_cache: Dict[str, Any] = {}
 
     def cache_len(self) -> int:
-        return len(self._uncommit_content_cache)
+        with self._lock:
+            return len(self._uncommit_content_cache)
 
     def cache_content(self, url: str, content: any):
         with self._lock:
-            if url not in self._uncommit_content_cache:
-                self._uncommit_content_cache[url] = content
+            self._uncommit_content_cache[url] = content
 
-    def pop_cached_content(self, url: str) -> any:
+    def pop_content(self, url: str) -> Optional[Any]:
         with self._lock:
-            return self._uncommit_content_cache.pop(url, None) \
-                if url else \
-                self._uncommit_content_cache.popitem()
+            return self._uncommit_content_cache.pop(url, None)
+
+    def pop_random_item(self) -> Optional[Tuple[str, Any]]:
+        with self._lock:
+            if self._uncommit_content_cache:
+                return self._uncommit_content_cache.popitem()
+            return '', None
 
     def drop_cached_content(self, url: str):
         with self._lock:
-            if url in self._uncommit_content_cache:
-                del self._uncommit_content_cache[url]
+            self._uncommit_content_cache.pop(url, None)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -130,8 +135,24 @@ class CrawlContext:
         if has_url(article_link):
             raise ProcessSkip('already exists', article_link, leveling=full_levels)
 
-    def check_get_cached_data(self, url: str = None) -> CollectedData:
-        return self.crawl_cache.pop_cached_content(url)
+    def check_get_cached_data(self, url: str = None)-> CollectedData:
+        return self.crawl_cache.pop_content(url)
+
+    def submit_cached_data(self, limit: int = -1):
+        count = 0
+        levels = [self.flow_name, 'cached_data']
+        while (limit < 0) or (count < limit):
+            url, collected_data = self.crawl_cache.pop_random_item()
+            if not collected_data:
+                break
+            try:
+                self.submit_collected_data(collected_data, levels)
+            except Exception as e:
+                self.handle_process_exception(e)
+            finally:
+                count += 1
+        if count:
+            self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
 
     def submit_collected_data(self,
                               collected_data: CollectedData,
@@ -145,6 +166,7 @@ class CrawlContext:
         # -------------------------------- Submit Data Here --------------------------------
 
         if self._submit_collected_data:
+            self.logger.info(f"Submit collected data to: {self.i_hub_url}")
             result = self._submit_collected_data(self.i_hub_url, collected_data, 10)
             if result.get('status', 'success') == 'error':
                 if cache_on_error:
@@ -182,7 +204,7 @@ class CrawlContext:
             self.logger.debug(f'Article skipped.')
 
         except ProcessIgnore as e:
-            print('o', end='', flush=True)
+            # print('o', end='', flush=True)
             self.logger.debug(f'Article ignored.')
             self.crawl_record.record_url_status(e.item, STATUS_IGNORED)
             self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.reason)
@@ -194,7 +216,7 @@ class CrawlContext:
             elif e.problem in ['fetch_error', 'persists_error', 'commit_error']:
                 # If just commit error, just retry with cache.
                 # Persists error, actually once we're starting use CrawRecord. We don't need this anymore
-                print('x', end='', flush=True)
+                # print('x', end='', flush=True)
                 self.logger.error(e.problem)
                 if e.problem != 'commit_error':
                     self.crawl_record.increment_error_count(e.item)

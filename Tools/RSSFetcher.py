@@ -9,19 +9,12 @@ Complete implementation with:
 - Type annotations
 """
 import logging
-import datetime
-import traceback
-from multiprocessing.managers import Value
-
 import feedparser
-
 from bs4 import BeautifulSoup
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from typing import Optional, Dict, List, Callable
 
-from Scraper import ScraperBase
-import Scraper.RequestsScraper as RequestsScraper
-
+from Scraper.ScraperBase import ScraperResult, ProxyConfig
 
 logger = logging.getLogger(__name__)
 context = None
@@ -152,13 +145,13 @@ def extract_media(entry) -> list:
 
 def fetch_feed(
     url: str,
-    scraper: ScraperBase = RequestsScraper,
+    fetch_content: Callable[..., ScraperResult],
     proxy: Optional[Dict[str, str]] = None,
     headless: bool = True
 ) -> FeedData:
     """
     Main entry point for fetching and parsing feeds
-    :param scraper: The scraper to fetch feed.
+    :param fetch_content: The fetch_content function of scraper to fetch feed.
     :param url: Feed URL
     :param proxy: Proxy configuration in request style:
         {
@@ -169,9 +162,7 @@ def fetch_feed(
     :return: Result dictionary with status details.
     """
     try:
-        result = scraper.fetch_content(
-            url, timeout_ms=DEFAULT_TIMEOUT_MS, proxy=proxy,
-            headless=headless)
+        result = fetch_content(url, timeout_ms=DEFAULT_TIMEOUT_MS, proxy=proxy, headless=headless)
         if result['content']:
             parsed = parse_feed(result['content'])
             return parsed
