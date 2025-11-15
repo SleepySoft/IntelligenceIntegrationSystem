@@ -224,6 +224,24 @@ class CrawlContext:
             else:
                 pass
 
+    @staticmethod
+    def wait_interruptibly(total_duration_s: int, stop_event: threading.Event) -> bool:
+        """
+        Waits for the specified duration while periodically checking for the stop_event.
+
+        Returns True if the full duration was reached, False if the event was set early.
+        """
+        remaining = total_duration_s
+
+        CHECK_INTERVAL_S = 5
+
+        while remaining > 0 and not stop_event.is_set():
+            sleep_time = min(CHECK_INTERVAL_S, remaining)
+            time.sleep(sleep_time)
+            remaining -= sleep_time
+
+        return remaining <= 0
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def _full_levels(self, levels: str | List[str] = '') -> List[str]:
