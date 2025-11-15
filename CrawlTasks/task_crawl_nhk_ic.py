@@ -35,17 +35,5 @@ def module_init(service_context: ServiceContext):
 
 
 def start_task(stop_event):
-    feeds_craw_flow('nhk',
-                    feed_list,
-                    stop_event,
-                    config,
-                    15 * 60,
-
-                    partial(fetch_feed, fetch_content=fetch_content, proxy=config.get('collector.global_site_proxy', {})),
-                    partial(fetch_content, timeout_ms=APPLIED_NATIONAL_TIMEOUT_MS, proxy=config.get('collector.global_site_proxy', {}), format='lxml'),
-                    [
-                        partial(html_content_converter, selectors=['.module--detail-content']),
-                        partial(sanitize_unicode_string, max_length=10240 * 5)
-                    ],
-                    crawl_context)
+    pass
 

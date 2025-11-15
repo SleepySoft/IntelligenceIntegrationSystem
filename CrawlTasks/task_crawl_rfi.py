@@ -36,7 +36,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_config(config)
+    crawl_context = build_crawl_ctx_by_config('rfi', config)
 
 
 def start_task(stop_event):
