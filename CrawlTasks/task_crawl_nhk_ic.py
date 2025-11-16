@@ -2,15 +2,29 @@
 
 from IntelligenceCrawler.CrawlPipeline import *
 
+d_fetcher_init_param = {
+    'log_callback': log_cb,
+    'proxy': 'http://127.0.0.1:10809',
+    'timeout_s': 10
+}
+
+e_fetcher_init_param = {
+    'log_callback': log_cb,
+    'proxy': 'http://127.0.0.1:10809',
+    'timeout_s': 20,
+    'stealth': False,
+    'pause_browser': False,
+    'render_page': True
+}
 
 def run_pipeline(
         article_filter = lambda url: True,
         content_handler = save_article_to_disk,
         exception_handler = lambda url, exception: None
-):
+    ):
     # === 1. Initialize Components ===
-    d_fetcher = RequestsFetcher(log_callback=log_cb, proxy='http://127.0.0.1:10809', timeout_s=10)
-    e_fetcher = PlaywrightFetcher(log_callback=log_cb, proxy='http://127.0.0.1:10809', timeout_s=20, stealth=False, pause_browser=False, render_page=True)
+    d_fetcher = RequestsFetcher(**d_fetcher_init_param)
+    e_fetcher = PlaywrightFetcher(**e_fetcher_init_param)
     discoverer = RSSDiscoverer(fetcher=d_fetcher, verbose=True)
     extractor = TrafilaturaExtractor(verbose=True)
 
