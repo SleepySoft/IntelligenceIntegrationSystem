@@ -3,14 +3,14 @@ from IntelligenceCrawler.CrawlPipeline import *
 
 # === Fetcher init parameters ===
 d_fetcher_init_param = {'log_callback': log_cb, 'proxy': None, 'timeout_s': 10}
-e_fetcher_init_param = {'log_callback': log_cb, 'proxy': None, 'timeout_s': 20, 'stealth': True, 'pause_browser': False, 'render_page': False}
+e_fetcher_init_param = {'log_callback': log_cb, 'proxy': None, 'timeout_s': 20, 'stealth': True, 'pause_browser': False, 'render_page': True}
 
 # === Crawl parameters ===
 entry_point = ['https://www.nhk.or.jp/rss/news/cat1.xml', 'https://www.nhk.or.jp/rss/news/cat4.xml', 'https://www.nhk.or.jp/rss/news/cat5.xml', 'https://www.nhk.or.jp/rss/news/cat6.xml']
 start_date = None
 end_date = None
-d_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 10, 'scroll_pages': 0}
-e_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20, 'scroll_pages': 0}
+d_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20, 'scroll_pages': 0}
+e_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 40, 'scroll_pages': 0}
 extractor_kwargs = {}
 channel_filter_list = []
 

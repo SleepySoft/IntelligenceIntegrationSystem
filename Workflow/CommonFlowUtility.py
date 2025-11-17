@@ -2,6 +2,7 @@ import threading
 
 import time
 import logging
+import traceback
 from logging import Logger
 
 import urllib3
@@ -223,6 +224,10 @@ class CrawlContext:
                 self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.problem)
             else:
                 pass
+        except Exception as e:
+            self.logger.error(f"Crawl process got unexpected exception: {str(e)}")
+            print(traceback.format_exc())
+
 
     @staticmethod
     def wait_interruptibly(total_duration_s: int, stop_event: threading.Event) -> bool:
