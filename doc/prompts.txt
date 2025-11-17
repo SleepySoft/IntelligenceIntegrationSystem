@@ -2496,346 +2496,6 @@ ai client需要包含以下功能，并提取一个公共接口：
 代码仅供你参考，仅需要生成d_fetcher_init_param和e_fetcher_init_param的初始化代码，我会将其放置在生成代码中合适的位置。
 
 
-    # --- REQ 5: Code Generation ---
-    def update_generated_code(self):
-        """
-        Orchestrator for code generation.
-        Gathers all UI settings into a config dict, then generates
-        the corresponding Python code script.
-        (代码生成的协调器。
-         将所有UI设置收集到一个配置字典中，然后生成相应的Python代码脚本。)
-        """
-        try:
-            # Step 1: Read all UI controls into a structured dictionary
-            # (第 1 步：将所有 UI 控件读入结构化字典)
-            config_dict = self._build_config_dict()
-
-            # Step 2: Pass the dictionary to the code generator
-            # (第 2 步：将字典传递给代码生成器)
-            code_script = self.generate_code_from_config(config_dict)
-
-            # Step 3: Display the generated code
-            # (第 3 步：显示生成的代码)
-            self.generated_code_text.setPlainText(code_script)
-
-        except Exception as e:
-            # Show any error during generation in the code block itself
-            # (在代码块本身中显示生成期间的任何错误)
-            error_msg = f"# Failed to generate code:\n# {type(e).__name__}: {e}\n\n"
-            error_msg += traceback.format_exc()
-            self.generated_code_text.setPlainText(error_msg)
-
-    def _get_current_extractor_args(self, extractor_name: str) -> dict:
-        """
-        Retrieves extractor-specific arguments from the UI.
-        (从UI检索特定于提取器的参数。)
-        """
-        # --- [MODIFIED] ---
-        if extractor_name == "Generic CSS":
-            if hasattr(self, 'css_selector_input') and self.css_selector_input:
-                selector_str = self.css_selector_input.text().strip()
-                if selector_str:
-                    # 按逗号分割，并去除每个选择器的空白
-                    selectors_list = [s.strip() for s in selector_str.split(',') if s.strip()]
-                    return {
-                        'selectors': selectors_list
-                    }
-            # Fallback if UI not ready or input is empty
-            return {'selectors': ['body']}  # Default fallback
-        return {}  # Default for other extractors
-
-    def _generate_channel_filter_list_code(self) -> str:
-        """
-        Generates the Python code string for 'channel_filter_list'.
-
-        This list is based on the user-checked channels in the tree,
-        but contains "filter keys" (e.g., 'it/news_sitemap.xml')
-        instead of full URLs.
-        """
-        def get_filter_key(url: str) -> str:
-            """
-            Helper function: Creates a simple, more unique filter key from a URL.
-
-            Examples:
-            - '.../sitemap/it/news_sitemap.xml' -> 'it/news_sitemap.xml'
-            - '.../feeds/main.rss'               -> 'feeds/main.rss'
-            - '.../feeds/'                       -> 'feeds'
-            - '.../sitemap.xml'                  -> 'sitemap.xml'
-            - 'https://example.com/' (as feed)    -> 'example.com'
-            """
-            try:
-                parsed_url = urlparse(url)
-                path = parsed_url.path
-
-                # [FIXED] If path is just '/' or empty, this is a root URL.
-                # Use the netloc (domain) as the key.
-                if not path or path == '/':
-                    # e.g., 'www.example.com'
-                    return parsed_url.netloc or url  # Fallback to full url if netloc is also empty
-
-                # Strip a trailing slash if it exists (e.g., /feeds/ -> /feeds)
-                if path.endswith('/'):
-                    path = path[:-1]
-
-                # Get the filename (e.g., 'news_sitemap.xml' or 'feeds')
-                filename = os.path.basename(path)
-
-                # Get the parent directory (e.g., '/sitemap/it' or '/')
-                parent_dir_path = os.path.dirname(path)
-
-                # If the parent is not the root, get its name (e.g., 'it')
-                if parent_dir_path and parent_dir_path != '/':
-                    parent_folder = os.path.basename(parent_dir_path)
-                    # Combine them: 'it/news_sitemap.xml'
-                    return f"{parent_folder}/{filename}"
-                else:
-                    # Parent is root, just use the filename (e.g., 'sitemap.xml')
-                    return filename
-
-            except Exception:
-                # Fallback on any error
-                return url
-
-        # 1. Iterate the tree, get "keys" for all checked channels
-        checked_keys = []
-        for i in range(self.tree_widget.topLevelItemCount()):
-            item = self.tree_widget.topLevelItem(i)
-            if not item:
-                continue
-
-            data = item.data(0, Qt.UserRole)
-
-            # Ensure it is a "channel" and it is checked
-            if (data and
-                    data.get('type') == 'channel' and
-                    item.checkState(0) == Qt.Checked):
-
-                url = data.get('url')
-                if url:
-                    checked_keys.append(get_filter_key(url))
-
-        # 2. Generate the code string
-        if not checked_keys:
-            # Generate an empty list if no channels were checked
-            return "channel_filter_list = []"
-
-        # Format into a clean Python list string
-        list_str = "channel_filter_list = [\n"
-        # Sort and de-duplicate the keys
-        for key in sorted(list(set(checked_keys))):
-            # repr() automatically handles quotes (e.g., 'it/news_sitemap.xml')
-            list_str += f"        {repr(key)},\n"
-        list_str += "    ]"
-        return list_str
-
-    def _build_config_dict(self) -> dict:
-        """
-        Reads all UI controls and builds the standardized config dictionary.
-        (读取所有UI控件并构建标准化的配置字典。)
-        """
-        # --- 1. Discoverer Configuration ---
-        d_fetcher_config_dict = self.discovery_fetcher_widget.get_config()
-        discovery_fetcher_name = d_fetcher_config_dict['fetcher_name']
-
-        discoverer_fetcher_params = {
-            "class": discovery_fetcher_name,
-            "parameters": {
-                "proxy": d_fetcher_config_dict['proxy'],
-                "timeout": d_fetcher_config_dict['timeout'],
-                "stealth": "Stealth" in discovery_fetcher_name,
-                "pause_browser": d_fetcher_config_dict['pause'],
-                "render_page": d_fetcher_config_dict['render']\
-            }
-        }
-
-        discoverer_fetcher_kwargs = {
-            'wait_until': d_fetcher_config_dict.get('wait_until'),
-            'wait_for_selector': d_fetcher_config_dict.get('wait_for_selector'),
-            'wait_for_timeout_s': d_fetcher_config_dict.get('timeout'),
-            'scroll_pages': d_fetcher_config_dict.get('scroll_pages', 0)
-        }
-
-        discoverer_name = self.discoverer_combo.currentText()
-        discoverer_args = {
-            # Read from our cache, not the live (and potentially empty) UI control.
-            # This 'entry_point' key now matches the 'Any' type (str or List[str]).
-            "entry_point": self.last_used_entry_point,
-            # --- MODIFICATION: Store new date filter state ---
-            "date_filter_enabled": self.date_filter_check.isChecked(),
-            "date_filter_days": self.date_filter_days_spin.value(),
-            "manual_specified_signature": self.manual_specified_signature_input.text().strip() or None
-        }
-
-        # --- 2. Extractor Configuration ---
-        e_fetcher_config_dict = self.article_fetcher_widget.get_config()
-        article_fetcher_name = e_fetcher_config_dict['fetcher_name']
-
-        extractor_fetcher_params = {
-            "class": article_fetcher_name,
-            "parameters": {
-                "proxy": e_fetcher_config_dict['proxy'],
-                "timeout": e_fetcher_config_dict['timeout'],
-                "stealth": "Stealth" in article_fetcher_name,
-                "pause_browser": e_fetcher_config_dict['pause'],
-                "render_page": e_fetcher_config_dict['render']
-            }
-        }
-
-        extractor_name = self.extractor_combo.currentText()
-        extractor_args = self._get_current_extractor_args(extractor_name)
-
-        fetcher_get_content_kwargs = {
-            'wait_until': e_fetcher_config_dict['wait_until'],
-            'wait_for_selector': e_fetcher_config_dict['wait_for_selector'],
-            'wait_for_timeout_s': e_fetcher_config_dict['timeout'],
-            'scroll_pages': e_fetcher_config_dict['scroll_pages']
-        }
-
-        # --- 3. Assemble Final Config ---
-        config = {
-            "discoverer": {
-                "class": discoverer_name,
-                "args": discoverer_args,
-                "fetcher": discoverer_fetcher_params,
-                "fetcher_kwargs": discoverer_fetcher_kwargs
-            },
-            "extractor": {
-                "class": extractor_name,
-                "args": extractor_args,
-                "fetcher": extractor_fetcher_params,
-                "fetcher_kwargs": fetcher_get_content_kwargs,
-            }
-        }
-        return config
-
-    def generate_code_from_config(self, config: dict) -> str:
-        """
-        Takes a configuration dict and generates a simple, runnable
-        Python script based on the new 'CrawlProcess' architecture.
-        (根据新的 'CrawlProcess' 架构，获取配置字典并生成一个简单的、
-         可运行的Python脚本。)
-        """
-        # --- 1. Class Name Mappings (The "Table" Lookup) ---
-        DISCOVERER_CLASS_MAP = {
-            "Sitemap": "SitemapDiscoverer",
-            "RSS": "RSSDiscoverer",
-            "Smart Analysis": "ListPageDiscoverer"
-        }
-
-        FETCHER_CLASS_MAP = {
-            "Simple (Requests)": "RequestsFetcher",
-            "Advanced (Playwright)": "PlaywrightFetcher",
-            "Stealth (Playwright)": "PlaywrightFetcher"
-        }
-
-        # 1. 生成渠道过滤器列表代码
-        channel_list_code = self._generate_channel_filter_list_code()
-
-        # --- 2. Get Discovery Config ---
-        d_config = config['discoverer']
-        d_fetcher_config = d_config['fetcher']
-
-        d_class_name = DISCOVERER_CLASS_MAP.get(d_config['class'], "UnknownDiscoverer")
-        d_fetcher_class_name = FETCHER_CLASS_MAP.get(d_fetcher_config['class'], "UnknownFetcher")
-
-        # --- Build Discovery Fetcher Args ---
-        d_fetcher_params = d_fetcher_config['parameters']
-        d_arg_list = ['log_callback=log_cb']
-
-        if 'Playwright' in d_fetcher_class_name:
-            d_arg_list.append(f"proxy={repr(d_fetcher_params.get('proxy'))}")
-            d_arg_list.append(f"timeout_s={repr(d_fetcher_params.get('timeout'))}")
-            d_arg_list.append(f"stealth={repr(d_fetcher_params.get('stealth'))}")
-            d_arg_list.append(f"pause_browser={repr(d_fetcher_params.get('pause_browser'))}")
-            d_arg_list.append(f"render_page={repr(d_fetcher_params.get('render_page'))}")
-        elif 'Requests' in d_fetcher_class_name:
-            d_arg_list.append(f"proxy={repr(d_fetcher_params.get('proxy'))}")
-            d_arg_list.append(f"timeout_s={repr(d_fetcher_params.get('timeout'))}")
-
-        d_fetcher_args_str = ", ".join(d_arg_list)
-        d_fetcher_kwargs_str = repr(d_config.get('fetcher_kwargs', {}))
-
-        # --- 3. Get Extraction Config ---
-        e_config = config['extractor']
-        e_fetcher_config = e_config['fetcher']
-        e_class_name = "UnknownExtractor"
-        if e_config['class'] in EXTRACTOR_MAP:
-            e_class_name = EXTRACTOR_MAP[e_config['class']].__name__
-        e_fetcher_class_name = FETCHER_CLASS_MAP.get(e_fetcher_config['class'], "UnknownFetcher")
-
-        # --- Build Extraction Fetcher Args ---
-        e_fetcher_params = e_fetcher_config['parameters']
-        e_arg_list = ['log_callback=log_cb']
-
-        if 'Playwright' in e_fetcher_class_name:
-            e_arg_list.append(f"proxy={repr(e_fetcher_params.get('proxy'))}")
-            e_arg_list.append(f"timeout_s={repr(e_fetcher_params.get('timeout'))}")
-            e_arg_list.append(f"stealth={repr(e_fetcher_params.get('stealth'))}")
-            e_arg_list.append(f"pause_browser={repr(e_fetcher_params.get('pause_browser'))}")
-            e_arg_list.append(f"render_page={repr(e_fetcher_params.get('render_page'))}")
-        elif 'Requests' in e_fetcher_class_name:
-            e_arg_list.append(f"proxy={repr(e_fetcher_params.get('proxy'))}")
-            e_arg_list.append(f"timeout_s={repr(e_fetcher_params.get('timeout'))}")
-
-        e_fetcher_args_str = ", ".join(e_arg_list)
-
-        e_fetcher_kwargs_str = repr(e_config.get('fetcher_kwargs', {}))
-        extractor_kwargs_str = repr(e_config.get('args', {}))
-
-        # --- 4. Build {parameters} String ---
-        code_d_fetcher = f"d_fetcher = {d_fetcher_class_name}({d_fetcher_args_str})"
-        code_e_fetcher = f"e_fetcher = {e_fetcher_class_name}({e_fetcher_args_str})"
-
-        # Note: Renamed variables to avoid conflict with 'pipeline.' call
-        code_discoverer = ""
-        if d_class_name == "ListPageDiscoverer":
-            ai_sig_val = d_config['args'].get('manual_specified_signature')
-            code_discoverer = f"discoverer = {d_class_name}(fetcher=d_fetcher, verbose=True, manual_specified_signature={repr(ai_sig_val)})"
-        else:
-            # Default for Sitemap, RSS, etc.
-            code_discoverer = f"discoverer = {d_class_name}(fetcher=d_fetcher, verbose=True)"
-
-        code_extractor = f"extractor = {e_class_name}(verbose=True)"
-
-        parameters = []
-        entry_point_value = d_config['args'].get('entry_point')
-        parameters.append(f"entry_point = {repr(entry_point_value)}")
-
-        if d_config['args'].get('date_filter_enabled'):
-            parameters.append(f"    days_ago = {d_config['args']['date_filter_days']}")
-            parameters.append("    end_date = datetime.datetime.now()")
-            parameters.append("    start_date = end_date - datetime.timedelta(days=days_ago)")
-        else:
-            parameters.append("    start_date = None")
-            parameters.append("    end_date = None")
-
-        # 添加所有 kwargs 字典
-        parameters.append(f"    d_fetcher_kwargs = {d_fetcher_kwargs_str}")
-        parameters.append(f"    e_fetcher_kwargs = {e_fetcher_kwargs_str}")
-        parameters.append(f"    extractor_kwargs = {extractor_kwargs_str}")
-
-        parameters_str = "\n".join(parameters)
-
-        # TODO: Get value from ui
-        in_markdown = True
-        in_pdf = True
-
-        # --- 5. Format the final code ---
-        code = CODE_TEMPLATE.format(
-            code_d_fetcher=code_d_fetcher,
-            code_e_fetcher=code_e_fetcher,
-            code_discoverer=code_discoverer,
-            code_extractor=code_extractor,
-            parameters=parameters_str,
-            channel_filter_list=channel_list_code,
-            in_markdown=in_markdown,
-            in_pdf=in_pdf
-        )
-
-        return code
-
-
-
 参考的生成代码（注意不同的fetcher参数不一样）：
 
 ```
@@ -2862,8 +2522,34 @@ e_fetcher_init_param = {
 
 
 
+我最初的需求如下：
+AI client分为几类：
+1. 贵但默认有效，默认先使用这一类client，但只要有其它client有效，则不要使用这一类client。
+2. 为了降低成本，使用大量低值账号轮换的client，但是在切换key时会有一段时间服务无响应，这类client通常有很多，定时检查以更新更用性，优先返回这种client。
+3. 每日限量client，每日更新额度，在这类client能用的前提下，使用的优先级是最高的。
+4. 其它client，优先级在1之前。
+请帮我分析一下这个设计，给出建议。
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+帮我思考如何设计self._usage_stats，使之可以易于被统一记录更新和统一计算，但同时满足各种不同的用量统计方法，如：
+1. 限量
+2. 限次
+3. 余额
+4. 其它用量限制
+我能想到的一点是：对于限量和限次，用量百分比是有意义的，而对于余额来说，用量百分比并没有意义（不需要在乎初始的钱数，只需要在达到阈值后放弃使用即可）。
+同时，这个用量能方便从统一的返回结果中提取，或者由核心API主动上报。开发者能接受一个通用且合理的机制，它不会给后续开发造成负担。
 
 
 

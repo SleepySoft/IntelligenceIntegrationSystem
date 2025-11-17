@@ -1,14 +1,27 @@
 import time
 import logging
+import requests
 import datetime
 import threading
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Union
 
-import requests
 
 logger = logging.getLogger(__name__)
+
+
+CLIENT_PRIORITY_MOST_PRECIOUS = 0       # Precious API resource has the lowest using priority.
+CLIENT_PRIORITY_EXPENSIVE = 30
+CLIENT_PRIORITY_NORMAL = 50
+CLIENT_PRIORITY_CONSUMABLES = 80
+CLIENT_PRIORITY_FREEBIE = 100           # Prioritize using the regularly reset free quota
+
+CLIENT_PRIORITY_HIGHER = 5
+CLIENT_PRIORITY_LOWER = -5
+
+CLIENT_PRIORITY_MORE_PRECIOUS = CLIENT_PRIORITY_LOWER
+CLIENT_PRIORITY_LESS_PRECIOUS = CLIENT_PRIORITY_HIGHER
 
 
 class ClientStatus(Enum):
@@ -25,7 +38,7 @@ class BaseAIClient(ABC):
     Extends the existing OpenAICompatibleAPI functionality.
     """
 
-    def __init__(self, api_token: str, priority: int = 1):
+    def __init__(self, api_token: str, priority: int = CLIENT_PRIORITY_NORMAL):
         """
         Initialize AI client with token and priority.
 
@@ -120,6 +133,59 @@ class BaseAIClient(ABC):
         except Exception as e:
             return self._handle_exception(e)
 
+    def test_and_update_status(self):
+        """
+        Test client connectivity and update status.
+        Called periodically by the management framework.
+
+        Returns:
+            bool: True if test was successful
+        """
+        current_time = time.time()
+        if current_time - self.last_test_time < self.test_interval:
+            return
+
+        if not self.acquire():
+            return
+
+        try:
+            result = self.chat(
+                messages=[{"role": "user", "content": self.test_prompt}],
+                max_tokens=100
+            )
+
+            if (isinstance(result, dict) and
+                    result.get('choices') and
+                    len(result['choices']) > 0):
+
+                content = result['choices'][0].get('message', {}).get('content', '')
+                if self.expected_response in content:
+                    self._update_status(ClientStatus.AVAILABLE)
+                    self.error_count = 0
+                    return True
+
+            self._update_status(ClientStatus.ERROR)
+            self.error_count += 1
+
+        except Exception as e:
+            logger.warning(f"Client test failed for {self.__class__.__name__}: {e}")
+            self._update_status(ClientStatus.ERROR)
+            self.error_count += 1
+
+        self.last_test_time = current_time
+
+        return self.status == ClientStatus.AVAILABLE
+
+    def _update_status(self, new_status: ClientStatus):
+        """Update client status with thread safety."""
+        with self._lock:
+            old_status = self.status
+            self.status = new_status
+            self.last_checked = time.time()
+
+            if old_status != new_status:
+                logger.info(f"Client status changed from {old_status} to {new_status}")
+
     def _handle_http_error(self, response) -> Dict[str, Any]:
         """处理HTTP错误状态码"""
         error_info = {
@@ -167,9 +233,8 @@ class BaseAIClient(ABC):
             logger.warning(f"HTTP error {response.status_code}")
             self.error_count += 1
 
-        # 检查错误计数是否超过阈值
-        if self.error_count >= self.max_errors:
-            self._update_status(ClientStatus.UNAVAILABLE)
+        if error_type == 'recoverable':
+            self._update_status(ClientStatus.ERROR)
 
         return {
             'error': 'http_error',
@@ -203,9 +268,8 @@ class BaseAIClient(ABC):
             logger.warning(f"Unknown API error type: {error_type}, message: {error_message}")
             self.error_count += 1
 
-        # 检查错误计数阈值
-        if self.error_count >= self.max_errors:
-            self._update_status(ClientStatus.UNAVAILABLE)
+        if error_category == 'recoverable':
+            self._update_status(ClientStatus.ERROR)
 
         return {
             'error': 'api_error',
@@ -290,9 +354,8 @@ class BaseAIClient(ABC):
             logger.error(f"Unexpected error: {error_message}")
             self.error_count += 1
 
-        # 检查错误计数阈值
-        if self.error_count >= self.max_errors:
-            self._update_status(ClientStatus.UNAVAILABLE)
+        if error_type == 'recoverable':
+            self._update_status(ClientStatus.ERROR)
 
         return {
             'error': 'exception',
@@ -325,7 +388,7 @@ class BaseAIClient(ABC):
             self._usage_stats['total_prompt_tokens'] += current_stats['prompt_tokens']
             self._usage_stats['total_completion_tokens'] += current_stats['completion_tokens']
 
-    # ------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------- Abstractmethod -------------------------------------------------
 
     @abstractmethod
     def get_usage_metrics(self) -> Dict[str, float]:
@@ -349,63 +412,8 @@ class BaseAIClient(ABC):
                              max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
         pass
 
-    def test_and_update_status(self):
-        """
-        Test client connectivity and update status.
-        Called periodically by the management framework.
 
-        Returns:
-            bool: True if test was successful
-        """
-        current_time = time.time()
-        if current_time - self.last_test_time < self.test_interval:
-            return
-
-        if not self.acquire():
-            return
-
-        try:
-            result = self.chat(
-                messages=[{"role": "user", "content": self.test_prompt}],
-                max_tokens=100
-            )
-
-            if (isinstance(result, dict) and
-                    result.get('choices') and
-                    len(result['choices']) > 0):
-
-                content = result['choices'][0].get('message', {}).get('content', '')
-                if self.expected_response in content:
-                    self._update_status(ClientStatus.AVAILABLE)
-                    self.error_count = 0
-                    return True
-
-            self._update_status(ClientStatus.ERROR)
-            self.error_count += 1
-
-        except Exception as e:
-            logger.warning(f"Client test failed for {self.__class__.__name__}: {e}")
-            self._update_status(ClientStatus.ERROR)
-            self.error_count += 1
-
-        self.last_test_time = current_time
-
-        # Check if client should be marked as unavailable
-        if self.error_count >= self.max_errors:
-            self._update_status(ClientStatus.UNAVAILABLE)
-
-        return self.status == ClientStatus.AVAILABLE
-
-    def _update_status(self, new_status: ClientStatus):
-        """Update client status with thread safety."""
-        with self._lock:
-            old_status = self.status
-            self.status = new_status
-            self.last_checked = time.time()
-
-            if old_status != new_status:
-                logger.info(f"Client status changed from {old_status} to {new_status}")
-
+# ----------------------------------------------------------------------------------------------------------------------
 
 class AIClientManager:
     """
@@ -511,7 +519,7 @@ class AIClientManager:
         try:
             usage_data = {}
             for client in self.clients:
-                usage_data[client.api_token] = {
+                usage_data[client._api_token] = {
                     "usage_stats": client.get_usage_stats(),
                     "last_checked": client.last_checked,
                     "status": client.status.value

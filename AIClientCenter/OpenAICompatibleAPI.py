@@ -106,7 +106,7 @@ class OpenAICompatibleAPI:
 
     Attributes:
         api_base_url (str): The base URL of the API service.
-        api_token (str): Authentication token for the API.
+        _api_token (str): Authentication token for the API.
         default_model (str): Default model to use when making requests.
         proxies (dict): Proxies to use for requests.
         sync_session (requests.Session): A session for synchronous requests with retry logic.
@@ -129,9 +129,9 @@ class OpenAICompatibleAPI:
         self.api_base_url = api_base_url.strip()
 
         # Try to get token from environment variables if not provided
-        self.api_token = token or os.getenv("OPENAI_API_KEY")
+        self._api_token = token or os.getenv("OPENAI_API_KEY")
 
-        if not self.api_token:
+        if not self._api_token:
             raise ValueError(
                 "API token must be provided either through the constructor or environment variable OPENAI_API_KEY")
 
@@ -171,7 +171,7 @@ class OpenAICompatibleAPI:
         # Set default headers and proxies for the session
         session.headers.update({
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_token}"
+            "Authorization": f"Bearer {self._api_token}"
         })
         session.proxies = self.proxies
 
@@ -208,13 +208,17 @@ class OpenAICompatibleAPI:
 
         return request_data
 
+    def get_api_token(self) -> str:
+        with self.lock:
+            return self._api_token
+
     def set_api_token(self, token: str):
         """Safely update the API token for both sync and async methods."""
         with self.lock:
-            old_token = self.api_token
-            self.api_token = token
+            old_token = self._api_token
+            self._api_token = token
             # Update the token in the persistent synchronous session
-            self.sync_session.headers["Authorization"] = f"Bearer {self.api_token}"
+            self.sync_session.headers["Authorization"] = f"Bearer {self._api_token}"
             logger.info(f'Change API key from {old_token[:16]} to {token[:16]}.')
 
     def get_header(self) -> dict:
@@ -225,7 +229,7 @@ class OpenAICompatibleAPI:
         with self.lock:
             return {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_token}"
+                "Authorization": f"Bearer {self._api_token}"
             }
 
     def get_model_list(self) -> Union[Dict[str, Any], requests.Response]:
@@ -236,7 +240,7 @@ class OpenAICompatibleAPI:
         Returns:
             Union[Dict[str, Any], requests.Response]: The API response, either as a parsed dictionary or the raw response object.
         """
-        if not self.api_token:
+        if not self._api_token:
             return {'error': 'invalid api token'}
 
         url = self._construct_url("models")
@@ -276,7 +280,7 @@ class OpenAICompatibleAPI:
             The messages should be in the format of [{"role": "system", "content": "System message"},
                                                    {"role": "user", "content": "User message"}].
         """
-        if not self.api_token:
+        if not self._api_token:
             return {'error': 'invalid api token'}
 
         url = self._construct_url("chat/completions")
@@ -333,7 +337,7 @@ class OpenAICompatibleAPI:
             The messages should be in the format of [{"role": "system", "content": "System message"},
                                                    {"role": "user", "content": "User message"}].
         """
-        if not self.api_token:
+        if not self._api_token:
             return {'error': 'invalid api token'}
         if not aiohttp:
             return {'error': 'aiohttp not installed'}
@@ -378,7 +382,7 @@ class OpenAICompatibleAPI:
         Returns:
             Union[Dict[str, Any], requests.Response]: The API response, either as a parsed dictionary or the raw response object.
         """
-        if not self.api_token:
+        if not self._api_token:
             return {'error': 'invalid api token'}
 
         url = self._construct_url("completions")
@@ -432,7 +436,7 @@ class OpenAICompatibleAPI:
         Note:
             Requires asyncio and aiohttp to be installed and used within an async context.
         """
-        if not self.api_token:
+        if not self._api_token:
             return {'error': 'invalid api token'}
         if not aiohttp:
             return {'error': 'aiohttp not installed'}
