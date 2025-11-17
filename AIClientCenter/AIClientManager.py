@@ -504,6 +504,42 @@ class AIClientManager:
                 if not client.is_busy():
                     client.test_and_update_status()
 
+    def _calculate_client_health(self, metrics: List[Dict[str, Any]]) -> float:
+        """
+        统一计算客户端的抽象健康评分（0-100）。
+        选取最差（最低）的指标作为最终分数。
+        """
+        lowest_score = 100.0
+
+        for m in metrics:
+            metrics_type = m.get("metrics_type")
+            current_score = 100.0
+
+            if metrics_type in ["TOKEN_QUOTA", "CALL_COUNT"] and m.get("limit"):
+                # 1. 配额/限次计算：基于百分比
+                limit = m["limit"]
+                usage = m["usage"]
+                current_score = max(0, 100 * (limit - usage) / limit)
+
+            elif metrics_type == "BALANCE" and m.get("current_value") is not None:
+                # 2. 余额计算：基于硬性阈值
+                balance = m["current_value"]
+                threshold = m.get("hard_threshold", 0.0)
+
+                if balance <= threshold:
+                    current_score = 0.0  # 达到阈值，立即视为不可用
+                else:
+                    # 距离阈值越近，分数越低（例如：使用线性或对数衰减）
+                    # 简单示例：如果余额是阈值的两倍以上，则认为健康
+                    current_score = min(100.0, 100.0 * (balance - threshold) / threshold)
+
+            # 如果有时间限制，也可以根据重置时间做惩罚
+            # ...
+
+            lowest_score = min(lowest_score, current_score)
+
+        return lowest_score
+
     def _cleanup_unavailable_clients(self):
         """Remove clients that are permanently unavailable."""
         with self._lock:
