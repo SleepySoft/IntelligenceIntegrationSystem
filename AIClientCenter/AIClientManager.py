@@ -77,8 +77,11 @@ class BaseAIClient(ABC):
              temperature: float = 0.7,
              max_tokens: int = 4096) -> Dict[str, Any]:
 
-        if self.status == ClientStatus.UNAVAILABLE:
+        if self.get_status('status') == ClientStatus.UNAVAILABLE:
             return {'error': 'client_unavailable', 'message': 'Client is marked as unavailable.'}
+
+        if not self._acquire():
+            return {'error': 'client_busy', 'message': 'Client is busy.'}
 
         try:
             response = self._chat_completion_sync(messages, model, temperature, max_tokens)
@@ -101,6 +104,8 @@ class BaseAIClient(ABC):
 
         except Exception as e:
             return self._handle_exception(e)
+        finally:
+            self._release()
 
     def get_status(self, key: Optional[str] = None) -> Any:
         with self._lock:
@@ -153,14 +158,13 @@ class BaseAIClient(ABC):
         Returns:
             bool: True if test was successfully completed.
         """
-        if not self._acquire():
-            return False
-
         try:
             result = self.chat(
                 messages=[{"role": "user", "content": self.test_prompt}],
                 max_tokens=100
             )
+            if 'error' in result:
+                return False
 
             if (isinstance(result, dict) and
                     result.get('choices') and
@@ -174,7 +178,6 @@ class BaseAIClient(ABC):
 
             self._increase_error_count()
             self._update_client_status(ClientStatus.ERROR)
-
         except Exception as e:
             logger.warning(f"Client test failed for {self.name}: {e}")
             print(traceback.format_exc())
@@ -182,7 +185,6 @@ class BaseAIClient(ABC):
             self._update_client_status(ClientStatus.ERROR)
         finally:
             self._status['last_test'] = time.time()
-
         return False
 
     def _reset_error_count(self):
@@ -381,7 +383,7 @@ class BaseAIClient(ABC):
             'completion_tokens': usage_data.get('completion_tokens', 0),
             'total_tokens': usage_data.get('total_tokens', 0),
             'message_count': len(original_messages),
-            'last_update': datetime.datetime.now()
+            'last_update': time.time()
         }
 
         with self._lock:
