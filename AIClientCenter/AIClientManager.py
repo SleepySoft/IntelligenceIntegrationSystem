@@ -1,5 +1,7 @@
 import time
 import logging
+import traceback
+
 import requests
 import datetime
 import threading
@@ -38,7 +40,7 @@ class BaseAIClient(ABC):
     Extends the existing OpenAICompatibleAPI functionality.
     """
 
-    def __init__(self, api_token: str, priority: int = CLIENT_PRIORITY_NORMAL):
+    def __init__(self, name: str, api_token: str, priority: int = CLIENT_PRIORITY_NORMAL):
         """
         Initialize AI client with token and priority.
 
@@ -46,61 +48,28 @@ class BaseAIClient(ABC):
             api_token: API token for authentication
             priority: Client priority (lower number = higher priority)
         """
+        self.name = name
         self.api_token = api_token
         self.priority = priority
-        self.status = ClientStatus.UNKNOWN
-        self.last_checked = None
-        self.error_count = 0
-        self.max_errors = 3
+
         self._lock = threading.RLock()
-        self._in_use = False
-        self._last_used = None
-        self._usage_stats = { "last_update": None }
+        self._status = {
+            'status': ClientStatus.UNKNOWN,
+            'status_last_updated': 0.0,
+            'last_acquired': 0.0,
+            'last_released': 0.0,
+            'last_chat': 0.0,
+            'last_test': 0.0,
+            'error_count': 0,
+            'in_use': False
+        }
 
-        # Testing configuration
-        self.test_interval = 300  # 5 minutes default
-        self.last_test_time = 0
-        self.test_prompt = "Hello, are you working? Please respond with 'OK'."
+        self._usage_stats = {
+            "last_update": 0.0
+        }
+
+        self.test_prompt = "If you are working, please respond with 'OK'."
         self.expected_response = "OK"
-
-    def acquire(self) -> bool:
-        """
-        Attempt to acquire the client for use.
-
-        Returns:
-            bool: True if acquired successfully
-        """
-        with self._lock:
-            if self._in_use or self.status == ClientStatus.UNAVAILABLE:
-                return False
-
-            self._in_use = True
-            self._last_used = time.time()
-            return True
-
-    def release(self):
-        """Release the client after use."""
-        with self._lock:
-            self._in_use = False
-
-    def is_busy(self) -> bool:
-        """Check if client is currently in use."""
-        return self._in_use
-
-    def get_status(self) -> ClientStatus:
-        """Get current client status."""
-        return self.status
-
-    def record_usage(self, usages: dict):
-        """Record usage statistics."""
-        with self._lock:
-            self._usage_stats.update(usages)
-            self._usage_stats["last_update"] = datetime.datetime.now()
-
-    def get_usage_stats(self) -> Dict[str, Any]:
-        """Get usage statistics."""
-        with self._lock:
-            return self._usage_stats.copy()
 
     def chat(self,
              messages: List[Dict[str, str]],
@@ -112,7 +81,7 @@ class BaseAIClient(ABC):
             return {'error': 'client_unavailable', 'message': 'Client is marked as unavailable.'}
 
         try:
-            response = self.chat_completion_sync(messages, model, temperature, max_tokens)
+            response = self._chat_completion_sync(messages, model, temperature, max_tokens)
 
             # 处理HTTP错误响应
             if hasattr(response, 'status_code') and response.status_code != 200:
@@ -133,20 +102,59 @@ class BaseAIClient(ABC):
         except Exception as e:
             return self._handle_exception(e)
 
-    def test_and_update_status(self):
+    def get_status(self, key: Optional[str] = None) -> Any:
+        with self._lock:
+            return self._status.get(key, None) if key else self._status.copy()
+
+    def record_usage(self, usages: dict):
+        """Record usage statistics."""
+        with self._lock:
+            self._usage_stats.update(usages)
+            self._usage_stats["last_update"] = time.time()
+
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """Get usage statistics."""
+        with self._lock:
+            return self._usage_stats.copy()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _acquire(self) -> bool:
+        """
+        Attempt to acquire the client for use.
+
+        Returns:
+            bool: True if acquired successfully
+        """
+        with self._lock:
+            if self._status['in_use'] or self._status['status'] == ClientStatus.UNAVAILABLE:
+                return False
+
+            self._status['in_use'] = True
+            self._status['last_acquired'] = time.time()
+            return True
+
+    def _release(self):
+        """Release the client after use."""
+        with self._lock:
+            self._status['in_use'] = False
+            self._status['last_released'] = time.time()
+
+    def _is_busy(self) -> bool:
+        """Check if client is currently in use."""
+        with self._lock:
+            return self._status['in_use']
+
+    def _test_and_update_status(self) -> bool:
         """
         Test client connectivity and update status.
         Called periodically by the management framework.
 
         Returns:
-            bool: True if test was successful
+            bool: True if test was successfully completed.
         """
-        current_time = time.time()
-        if current_time - self.last_test_time < self.test_interval:
-            return
-
-        if not self.acquire():
-            return
+        if not self._acquire():
+            return False
 
         try:
             result = self.chat(
@@ -160,59 +168,58 @@ class BaseAIClient(ABC):
 
                 content = result['choices'][0].get('message', {}).get('content', '')
                 if self.expected_response in content:
-                    self._update_status(ClientStatus.AVAILABLE)
-                    self.error_count = 0
+                    self._reset_error_count()
+                    self._update_client_status(ClientStatus.AVAILABLE)
                     return True
 
-            self._update_status(ClientStatus.ERROR)
-            self.error_count += 1
+            self._increase_error_count()
+            self._update_client_status(ClientStatus.ERROR)
 
         except Exception as e:
-            logger.warning(f"Client test failed for {self.__class__.__name__}: {e}")
-            self._update_status(ClientStatus.ERROR)
-            self.error_count += 1
+            logger.warning(f"Client test failed for {self.name}: {e}")
+            print(traceback.format_exc())
+            self._increase_error_count()
+            self._update_client_status(ClientStatus.ERROR)
+        finally:
+            self._status['last_test'] = time.time()
 
-        self.last_test_time = current_time
+        return False
 
-        return self.status == ClientStatus.AVAILABLE
+    def _reset_error_count(self):
+        with self._lock:
+            self._status['error_count'] = 0
 
-    def _update_status(self, new_status: ClientStatus):
+    def _increase_error_count(self):
+        with self._lock:
+            self._status['error_count'] += 1
+
+    def _update_client_status(self, new_status: ClientStatus):
         """Update client status with thread safety."""
         with self._lock:
-            old_status = self.status
-            self.status = new_status
-            self.last_checked = time.time()
+            old_status = self._status['status']
+            self._status['status'] = new_status
+            self._status['status_last_updated'] = time.time()
 
             if old_status != new_status:
                 logger.info(f"Client status changed from {old_status} to {new_status}")
 
     def _handle_http_error(self, response) -> Dict[str, Any]:
         """处理HTTP错误状态码"""
-        error_info = {
-            'status_code': response.status_code,
-            'reason': getattr(response, 'reason', 'Unknown'),
-            'headers': dict(response.headers) if hasattr(response, 'headers') else {}
-        }
-
         # 根据状态码分类错误类型
         if response.status_code in [400, 422]:
             # 错误请求 - 通常是参数错误，可能是可恢复的
             error_type = 'recoverable'
             logger.warning(f"Bad request error (recoverable): {response.status_code}")
-            self.error_count += 1
 
         elif response.status_code == 401:
             # 认证失败 - 通常是不可恢复的致命错误
             error_type = 'fatal'
             logger.error("Authentication failed - invalid API token")
-            self._update_status(ClientStatus.UNAVAILABLE)
-            self.error_count = self.max_errors  # 立即达到错误阈值
 
         elif response.status_code == 403:
             # 权限不足 - 可能是不可恢复的
             error_type = 'fatal'
             logger.error("Permission denied - check API permissions")
-            self.error_count += 2  # 权限错误权重更高
 
         elif response.status_code == 429:
             # 速率限制 - 可恢复错误，需要延迟重试
@@ -225,16 +232,17 @@ class BaseAIClient(ABC):
             # 服务器错误 - 通常是临时的，可恢复
             error_type = 'recoverable'
             logger.warning(f"Server error {response.status_code}, may be temporary")
-            self.error_count += 1
 
         else:
             # 其他HTTP错误
             error_type = 'recoverable'
             logger.warning(f"HTTP error {response.status_code}")
-            self.error_count += 1
 
         if error_type == 'recoverable':
-            self._update_status(ClientStatus.ERROR)
+            self._update_client_status(ClientStatus.ERROR)
+        elif error_type == 'fatal':
+            self._update_client_status(ClientStatus.UNAVAILABLE)
+        self._increase_error_count()
 
         return {
             'error': 'http_error',
@@ -257,24 +265,61 @@ class BaseAIClient(ABC):
         if error_type in fatal_errors:
             error_category = 'fatal'
             logger.error(f"Fatal API error: {error_message} (type: {error_type})")
-            self._update_status(ClientStatus.UNAVAILABLE)
-            self.error_count = self.max_errors
         elif error_type in recoverable_errors:
             error_category = 'recoverable'
             logger.warning(f"Recoverable API error: {error_message}")
-            self.error_count += 1
         else:
             error_category = 'recoverable'
             logger.warning(f"Unknown API error type: {error_type}, message: {error_message}")
-            self.error_count += 1
 
-        if error_category == 'recoverable':
-            self._update_status(ClientStatus.ERROR)
+        if error_type == 'recoverable':
+            self._update_client_status(ClientStatus.ERROR)
+        elif error_type == 'fatal':
+            self._update_client_status(ClientStatus.UNAVAILABLE)
+        self._increase_error_count()
 
         return {
             'error': 'api_error',
             'error_type': error_category,
             'api_error_type': error_type,
+            'message': error_message
+        }
+
+    def _handle_exception(self, exception: Exception) -> Dict[str, Any]:
+        """处理异常情况"""
+        error_message = str(exception)
+
+        # 根据异常类型分类
+        if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+            # 网络相关异常 - 通常是可恢复的
+            error_type = 'recoverable'
+            logger.warning(f"Network error (recoverable): {error_message}")
+
+        elif isinstance(exception, requests.exceptions.RequestException):
+            # 其他请求异常
+            error_type = 'recoverable'
+            logger.warning(f"Request exception: {error_message}")
+
+        elif isinstance(exception, (ValueError, TypeError)):
+            # 参数错误 - 可能是不可恢复的编程错误
+            error_type = 'fatal'
+            logger.error(f"Parameter error (fatal): {error_message}")
+
+        else:
+            # 其他未知异常
+            error_type = 'recoverable'
+            logger.error(f"Unexpected error: {error_message}")
+
+        if error_type == 'recoverable':
+            self._update_client_status(ClientStatus.ERROR)
+        elif error_type == 'fatal':
+            self._update_client_status(ClientStatus.UNAVAILABLE)
+        self._increase_error_count()
+
+        return {
+            'error': 'exception',
+            'error_type': error_type,
+            'exception_type': type(exception).__name__,
             'message': error_message
         }
 
@@ -296,7 +341,7 @@ class BaseAIClient(ABC):
             if finish_reason in ['length', 'content_filter']:
                 error_type = 'recoverable'
                 logger.warning(f"LLM response truncated due to: {finish_reason}")
-                self.error_count += 0.5  # 部分错误，权重较低
+                self._increase_error_count()
 
                 return {
                     'error': 'llm_generation_issue',
@@ -306,14 +351,17 @@ class BaseAIClient(ABC):
                     'choices': choices  # 仍然返回部分结果
                 }
 
-            # 统计token使用量
-            usage_data = response.get('usage', {})
-            if usage_data:
-                self._record_token_usage(usage_data, original_messages)
+            try:
+                # 统计token使用量
+                if usage_data := response.get('usage', {}):
+                    self._record_token_usage(usage_data, original_messages)
+            except Exception as e:
+                # Maybe not support.
+                pass
 
             # 重置错误计数（成功请求）
-            self.error_count = 0
-            self._update_status(ClientStatus.AVAILABLE)
+            self._reset_error_count()
+            self._update_client_status(ClientStatus.AVAILABLE)
 
             return response
 
@@ -325,57 +373,18 @@ class BaseAIClient(ABC):
                 'message': f'Failed to process LLM response: {str(e)}'
             }
 
-    def _handle_exception(self, exception: Exception) -> Dict[str, Any]:
-        """处理异常情况"""
-        error_message = str(exception)
-
-        # 根据异常类型分类
-        if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
-            # 网络相关异常 - 通常是可恢复的
-            error_type = 'recoverable'
-            logger.warning(f"Network error (recoverable): {error_message}")
-            self.error_count += 1
-
-        elif isinstance(exception, requests.exceptions.RequestException):
-            # 其他请求异常
-            error_type = 'recoverable'
-            logger.warning(f"Request exception: {error_message}")
-            self.error_count += 1
-
-        elif isinstance(exception, (ValueError, TypeError)):
-            # 参数错误 - 可能是不可恢复的编程错误
-            error_type = 'fatal'
-            logger.error(f"Parameter error (fatal): {error_message}")
-            self.error_count += 2
-
-        else:
-            # 其他未知异常
-            error_type = 'recoverable'
-            logger.error(f"Unexpected error: {error_message}")
-            self.error_count += 1
-
-        if error_type == 'recoverable':
-            self._update_status(ClientStatus.ERROR)
-
-        return {
-            'error': 'exception',
-            'error_type': error_type,
-            'exception_type': type(exception).__name__,
-            'message': error_message
-        }
-
     def _record_token_usage(self, usage_data: Dict[str, Any], original_messages: List[Dict[str, str]]):
         """记录token使用统计"""
-        with self._lock:
-            # 更新使用统计
-            current_stats = {
-                'prompt_tokens': usage_data.get('prompt_tokens', 0),
-                'completion_tokens': usage_data.get('completion_tokens', 0),
-                'total_tokens': usage_data.get('total_tokens', 0),
-                'message_count': len(original_messages),
-                'last_update': datetime.datetime.now()
-            }
+        # 更新使用统计
+        current_stats = {
+            'prompt_tokens': usage_data.get('prompt_tokens', 0),
+            'completion_tokens': usage_data.get('completion_tokens', 0),
+            'total_tokens': usage_data.get('total_tokens', 0),
+            'message_count': len(original_messages),
+            'last_update': datetime.datetime.now()
+        }
 
+        with self._lock:
             # 合并历史统计
             self._usage_stats.update(current_stats)
 
@@ -405,11 +414,11 @@ class BaseAIClient(ABC):
         pass
 
     @abstractmethod
-    def chat_completion_sync(self,
-                             messages: List[Dict[str, str]],
-                             model: Optional[str] = None,
-                             temperature: float = 0.7,
-                             max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
+    def _chat_completion_sync(self,
+                              messages: List[Dict[str, str]],
+                              model: Optional[str] = None,
+                              temperature: float = 0.7,
+                              max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
         pass
 
 
@@ -421,19 +430,16 @@ class AIClientManager:
     health monitoring, and automatic client management.
     """
 
-    def __init__(self, storage_backend=None):
+    def __init__(self, base_check_interval_sec: int = 60):
         """
         Initialize client manager.
-
-        Args:
-            storage_backend: Storage backend for usage data (optional)
         """
         self.clients = []  # List of BaseAIClient instances
         self._lock = threading.RLock()
-        self.storage_backend = storage_backend
         self.monitor_thread = None
         self.monitor_running = False
-        self.monitor_interval = 60  # Check every minute
+        self.check_error_interval = base_check_interval_sec             # Check interval when client status is error.
+        self.check_stable_interval = base_check_interval_sec * 10       # Check interval when client status is normal.
 
     def register_client(self, client: BaseAIClient):
         """Register a new AI client."""
@@ -455,15 +461,8 @@ class AIClientManager:
                 if client.status == ClientStatus.UNAVAILABLE:
                     continue
 
-                # Test client if status is unknown or it's been a while
-                if (client.status == ClientStatus.UNKNOWN or
-                        (client.last_checked and
-                         time.time() - client.last_checked > client.test_interval)):
-                    client.test_and_update_status()
-
                 # Try to acquire available client
-                if (client.status == ClientStatus.AVAILABLE and
-                        client.acquire()):
+                if client.status == ClientStatus.AVAILABLE and client._acquire():
                     return client
 
             return None
@@ -491,7 +490,6 @@ class AIClientManager:
             try:
                 self._check_client_health()
                 self._cleanup_unavailable_clients()
-                self._save_usage_data()
             except Exception as e:
                 logger.error(f"Error in monitor loop: {e}")
 
@@ -499,10 +497,28 @@ class AIClientManager:
 
     def _check_client_health(self):
         """Check health of all non-busy clients."""
+        client_to_be_check = []
+
         with self._lock:
             for client in self.clients:
-                if not client.is_busy():
-                    client.test_and_update_status()
+                if client._is_busy():
+                    continue
+                if client.status == ClientStatus.UNAVAILABLE:
+                    continue
+
+                usage_stats = client.get_usage_stats()
+                last_update = usage_stats.get("last_update", 0.0)
+
+                timeout = self.check_stable_interval \
+                    if client.status == ClientStatus.AVAILABLE else \
+                    self.check_error_interval
+
+                if time.time() - last_update > timeout:
+                    client_to_be_check.append(client)
+
+        for client in client_to_be_check:
+            logger.info(f'Checking client {client.name} status.')
+            client._test_and_update_status()
 
     def _calculate_client_health(self, metrics: List[Dict[str, Any]]) -> float:
         """
@@ -547,24 +563,6 @@ class AIClientManager:
             self.clients = [client for client in self.clients
                             if client.status != ClientStatus.UNAVAILABLE]
 
-    def _save_usage_data(self):
-        """Save usage data to storage backend."""
-        if not self.storage_backend:
-            return
-
-        try:
-            usage_data = {}
-            for client in self.clients:
-                usage_data[client._api_token] = {
-                    "usage_stats": client.get_usage_stats(),
-                    "last_checked": client.last_checked,
-                    "status": client.status.value
-                }
-
-            self.storage_backend.save_usage_data(usage_data)
-        except Exception as e:
-            logger.error(f"Failed to save usage data: {e}")
-
     def get_client_stats(self) -> Dict[str, Any]:
         """Get statistics about all clients."""
         with self._lock:
@@ -584,12 +582,12 @@ class AIClientManager:
                     "priority": client.priority,
                     "usage_stats": client.get_usage_stats(),
                     "usage_metrics": client.get_usage_metrics(),
-                    "last_checked": client.last_checked,
-                    "is_busy": client.is_busy()
+                    "last_checked": client.status_last_updated,
+                    "is_busy": client._is_busy()
                 })
 
             return stats
 
     def release_client(self, client: BaseAIClient):
         """Release a client back to the pool."""
-        client.release()
+        client._release()

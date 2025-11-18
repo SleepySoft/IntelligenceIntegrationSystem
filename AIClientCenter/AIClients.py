@@ -5,14 +5,15 @@ import requests
 from typing_extensions import override
 
 from AIClientCenter.AIClientManager import BaseAIClient, CLIENT_PRIORITY_NORMAL
+from AIClientCenter.LimitMixins import BalanceMixin
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
 
 
 class OpenAIClient(BaseAIClient):
-    def __init__(self, openai_client: OpenAICompatibleAPI, priority: int = CLIENT_PRIORITY_NORMAL):
-        super().__init__(openai_client.get_api_token(), priority)
+    def __init__(self, openai_api: OpenAICompatibleAPI, priority: int = CLIENT_PRIORITY_NORMAL):
+        super().__init__(openai_api.get_api_token(), priority)
 
-        self.client = openai_client
+        self.api = openai_api
 
     # ------------------------------------------------- Overrides -------------------------------------------------
 
@@ -28,15 +29,15 @@ class OpenAIClient(BaseAIClient):
 
     @override
     def get_model_list(self) -> Dict[str, Any]:
-        return self.client.get_model_list()
+        return self.api.get_model_list()
 
     @override
-    def chat_completion_sync(self,
-                             messages: List[Dict[str, str]],
-                             model: Optional[str] = None,
-                             temperature: float = 0.7,
-                             max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
-        return self.client.create_chat_completion_sync(messages, model, temperature, max_tokens)
+    def _chat_completion_sync(self,
+                              messages: List[Dict[str, str]],
+                              model: Optional[str] = None,
+                              temperature: float = 0.7,
+                              max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
+        return self.api.create_chat_completion_sync(messages, model, temperature, max_tokens)
 
 
 

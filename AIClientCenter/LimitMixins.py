@@ -102,10 +102,9 @@ class QuotaMixin(DateResetMixin):
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_requests": 0,
-        # ... other potential limits ...
     }
 
-    def __init__(self, quota_limits: Dict[str, float] = None, *args, **kwargs):
+    def __init__(self, quota_limits: Dict[str, int] = None, *args, **kwargs):
         # The MRO (Method Resolution Order) ensures super().__init__ calls the BaseAIClient's init
         super().__init__(*args, **kwargs)
 
@@ -119,8 +118,6 @@ class QuotaMixin(DateResetMixin):
         Overrides BaseAIClient's record_usage (if called after BaseAIClient in MRO)
         or is called explicitly. Records usage both in total stats and current period.
         """
-        super().record_usage(usages)  # Call BaseAIClient's method to update total usage stats
-
         # Record usage for the current period tracking
         if 'prompt_tokens' in usages:
             self.record_period_usage('prompt_tokens', usages['prompt_tokens'])
