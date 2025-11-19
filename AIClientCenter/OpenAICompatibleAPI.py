@@ -490,6 +490,15 @@ def create_siliconflow_client():
     return client
 
 
+def create_modelscope_client():
+    client = OpenAICompatibleAPI(
+        api_base_url='https://api-inference.modelscope.cn/v1',
+        token=os.getenv("MODELSCOPE_API_KEY"),
+        default_model='deepseek-ai/DeepSeek-V3.2-Exp'
+    )
+    return client
+
+
 def create_gemini_client():
     client = OpenAICompatibleAPI(
         api_base_url='https://generativelanguage.googleapis.com/v1beta/openai',

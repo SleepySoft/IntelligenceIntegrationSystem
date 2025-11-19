@@ -6,8 +6,9 @@ import traceback
 from typing import Optional, List, Dict
 
 from AIClientCenter.AIClients import OpenAIClient
-from AIClientCenter.AIClientManager import CLIENT_PRIORITY_EXPENSIVE, AIClientManager, BaseAIClient
-from AIClientCenter.OpenAICompatibleAPI import create_siliconflow_client
+from AIClientCenter.AIClientManager import CLIENT_PRIORITY_EXPENSIVE, AIClientManager, BaseAIClient, \
+    CLIENT_PRIORITY_FREEBIE
+from AIClientCenter.OpenAICompatibleAPI import create_siliconflow_client, create_modelscope_client
 from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
 
 
@@ -69,8 +70,9 @@ def simple_chat(user_message: str, context: Optional[List[Dict[str, str]]] = Non
 def main():
     setup_colored_logging()
 
+
     sf_api_a = create_siliconflow_client()
-    sf_client_a = OpenAIClient('Client A', sf_api_a, CLIENT_PRIORITY_EXPENSIVE)
+    sf_client_a = OpenAIClient('SiliconFlow Client A', sf_api_a, CLIENT_PRIORITY_EXPENSIVE)
     sf_rotator_a = SiliconFlowServiceRotator(
         ai_client=sf_client_a,
         keys_file='siliconflow_keys_a.txt',
@@ -78,16 +80,21 @@ def main():
         threshold=0.1)
 
     sf_api_b = create_siliconflow_client()
-    sf_client_b = OpenAIClient('Client B', sf_api_b, CLIENT_PRIORITY_EXPENSIVE)
+    sf_client_b = OpenAIClient('SiliconFlow Client B', sf_api_b, CLIENT_PRIORITY_EXPENSIVE)
     sf_rotator_b = SiliconFlowServiceRotator(
         ai_client=sf_client_b,
         keys_file='siliconflow_keys_b.txt',
         keys_record_file='key_record_b.json',
         threshold=0.1)
 
+    ms_api = create_modelscope_client()
+    ms_api.set_api_token('ms-6800a2c4-472c-4fcd-8e41-1771f847b038')
+    ms_client = OpenAIClient('ModelScope Client', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
+
     client_manager = AIClientManager()
-    client_manager.register_client(sf_client_a)
-    client_manager.register_client(sf_client_b)
+    # client_manager.register_client(sf_client_a)
+    # client_manager.register_client(sf_client_b)
+    client_manager.register_client(ms_client)
     client_manager.start_monitoring()
 
     sf_rotator_a.run_in_thread()

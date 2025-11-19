@@ -1,6 +1,7 @@
 import time
 import logging
 import traceback
+from collections import Counter
 
 import requests
 import datetime
@@ -65,9 +66,9 @@ class BaseAIClient(ABC):
             'acquired': False
         }
 
-        self._usage_stats = {
-            "last_update": 0.0
-        }
+        # Counter 不需要预先定义 key，访问不存在的 key 会自动返回 0
+        # Counter 的 update() 方法执行的是数值相加，而不是字典的覆盖。
+        self._usage_stats = Counter()
 
         self.test_prompt = "If you are working, please respond with 'OK'."
         self.expected_response = "OK"
@@ -386,28 +387,25 @@ class BaseAIClient(ABC):
             }
 
     def _record_token_usage(self, usage_data: Dict[str, Any], original_messages: List[Dict[str, str]]):
-        """记录token使用统计"""
-        # 更新使用统计
-        current_stats = {
+        # 1. 准备本次请求的增量数据
+        # 注意：这里我们将 key 统一映射为想要的统计字段名
+        increment_stats = Counter({
             'prompt_tokens': usage_data.get('prompt_tokens', 0),
             'completion_tokens': usage_data.get('completion_tokens', 0),
             'total_tokens': usage_data.get('total_tokens', 0),
             'message_count': len(original_messages),
-            'last_update': time.time()
-        }
+            # # 如果你还需要专门保留带 'total_' 前缀的字段以兼容旧代码逻辑：
+            # 'total_prompt_tokens': usage_data.get('prompt_tokens', 0),
+            # 'total_completion_tokens': usage_data.get('completion_tokens', 0)
+        })
 
         with self._lock:
-            # 合并历史统计
-            self._usage_stats.update(current_stats)
+            # 2. 自动累加
+            # Counter.update() 会将 increment_stats 中的数值加到 self._usage_stats 上
+            self._usage_stats.update(increment_stats)
 
-            # 计算累计值
-            if 'total_prompt_tokens' not in self._usage_stats:
-                self._usage_stats['total_prompt_tokens'] = 0
-            if 'total_completion_tokens' not in self._usage_stats:
-                self._usage_stats['total_completion_tokens'] = 0
-
-            self._usage_stats['total_prompt_tokens'] += current_stats['prompt_tokens']
-            self._usage_stats['total_completion_tokens'] += current_stats['completion_tokens']
+            # 3. 单独处理非累加字段（时间戳需要覆盖，而不是相加）
+            self._usage_stats['last_update'] = time.time()
 
     # ---------------------------------------- Abstractmethod ----------------------------------------
 
@@ -442,44 +440,111 @@ class AIClientManager:
     health monitoring, and automatic client management.
     """
 
-    def __init__(self, base_check_interval_sec: int = 60):
+    def __init__(self, base_check_interval_sec: int = 60, first_check_delay_sec: int = 10):
         """
         Initialize client manager.
+
+        Args:
+            base_check_interval_sec: Base interval for health checks.
+            first_check_delay_sec: Delay before the first check loop starts.
         """
         self.clients = []  # List of BaseAIClient instances
         self._lock = threading.RLock()
         self.monitor_thread = None
         self.monitor_running = False
-        self.check_error_interval = base_check_interval_sec             # Check interval when client status is error.
-        self.check_stable_interval = base_check_interval_sec * 10       # Check interval when client status is normal.
 
-    def register_client(self, client: BaseAIClient):
-        """Register a new AI client."""
+        # Configuration for the monitoring loop
+        self.check_error_interval = base_check_interval_sec  # Interval when client is in ERROR state
+        self.check_stable_interval = base_check_interval_sec * 10  # Interval when client is AVAILABLE
+        self.first_check_delay_sec = first_check_delay_sec
+
+    def register_client(self, client: Any):
+        """
+        Register a new AI client.
+        """
         with self._lock:
             self.clients.append(client)
             # Sort by priority (lower number = higher priority)
+            # This ensures get_available_client always picks the best one first.
             self.clients.sort(key=lambda x: x.priority)
+            logger.info(f"Registered client: {getattr(client, 'name', 'Unknown')}")
 
-    def get_available_client(self) -> Optional[BaseAIClient]:
+    def get_available_client(self) -> Optional[Any]:
         """
         Get an available client based on priority and status.
 
         Returns:
-            BaseAIClient or None if no clients available
+            BaseAIClient or None if no clients are available/healthy.
         """
         with self._lock:
             for client in self.clients:
                 client_status = client.get_status('status')
 
-                # Skip unavailable clients
+                # 1. Filter out permanently dead clients
                 if client_status == ClientStatus.UNAVAILABLE:
                     continue
 
-                # Try to acquire available client
+                # 2. Check dynamic health (Optional optimization: skip if health is 0)
+                # If you want strict checking:
+                # if client.calculate_health() <= 0: continue
+
+                # 3. Try to acquire lock/token for the client
                 if client_status == ClientStatus.AVAILABLE and client._acquire():
                     return client
 
             return None
+
+    def release_client(self, client: Any):
+        """Release a client back to the pool."""
+        # Simple wrapper to release the lock/semaphore on the client
+        if hasattr(client, '_release'):
+            client._release()
+
+    def get_client_stats(self) -> Dict[str, Any]:
+        """
+        Get comprehensive statistics about all clients for dashboards/logs.
+        Leverages the ClientMetricsMixin for detailed health data.
+        """
+        with self._lock:
+            # Pre-calculate lists for summary
+            available_list = [c for c in self.clients if c.status == ClientStatus.AVAILABLE]
+            unavailable_list = [c for c in self.clients if c.status == ClientStatus.UNAVAILABLE]
+            busy_list = [c for c in self.clients if c._is_busy()]
+
+            client_details = []
+            for client in self.clients:
+                # 1. Get the calculated health score directly from the Mixin
+                health_score = client.calculate_health()
+
+                # 2. Get the standardized explanation of why the health is what it is
+                metrics_detail = client.get_standardized_metrics()
+
+                client_details.append({
+                    "name": getattr(client, "name", "Unknown"),
+                    "type": client.__class__.__name__,
+                    "status": client.get_status('status'),
+                    "priority": client.priority,
+                    "health_score": health_score,  # 0-100 score
+                    "is_busy": client._is_busy(),
+                    "last_checked": client.get_status('status_last_updated'),
+                    # Detailed breakdowns
+                    "lifetime_stats": client.get_usage_stats(),  # Total accumulation
+                    "constraint_metrics": metrics_detail,  # Quota/Balance snapshots
+                })
+
+            # Sort details by priority (high priority first) then by health
+            client_details.sort(key=lambda x: (x['priority'], -x['health_score']))
+
+            return {
+                "summary": {
+                    "total": len(self.clients),
+                    "available": len(available_list),
+                    "unavailable": len(unavailable_list),
+                    "busy": len(busy_list),
+                    "timestamp": time.time()
+                },
+                "clients": client_details
+            }
 
     def start_monitoring(self):
         """Start background monitoring of client health."""
@@ -500,107 +565,71 @@ class AIClientManager:
 
     def _monitor_loop(self):
         """Background monitoring loop."""
+        logger.info("Monitor loop started.")
         while self.monitor_running:
+            # Initial startup delay
+            if self.first_check_delay_sec > 0:
+                self.first_check_delay_sec -= 1
+                time.sleep(1)
+                continue
+
             try:
                 self._check_client_health()
                 self._cleanup_unavailable_clients()
             except Exception as e:
-                print(traceback.format_exc())
+                # Prevent monitor thread from crashing entirely
                 logger.error(f"Error in monitor loop: {e}")
+                logger.debug(traceback.format_exc())
 
-            time.sleep(self.check_error_interval / 10)      # Deviation 10%
+            # Sleep with a small deviation to avoid thundering herd if multiple managers exist
+            time.sleep(self.check_error_interval)
 
     def _check_client_health(self):
-        """Check health of all non-busy clients."""
-        client_to_be_check = []
+        """
+        Trigger active health checks (connectivity/latency) for eligible clients.
+        This does NOT recalculate quota/balance logic (handled by Mixin internally).
+        """
+        clients_to_check = []
 
         with self._lock:
             for client in self.clients:
                 client_status = client.get_status('status')
                 if client_status == ClientStatus.UNAVAILABLE:
                     continue
+
                 status_last_updated = client.get_status('status_last_updated')
 
+                # Determine timeout based on current status
                 timeout = self.check_stable_interval \
                     if client_status == ClientStatus.AVAILABLE else \
                     self.check_error_interval
 
                 if time.time() - status_last_updated > timeout:
-                    client_to_be_check.append(client)
+                    clients_to_check.append(client)
 
-        for client in client_to_be_check:
-            logger.info(f'Checking client {client.name} status.')
+        # Perform checks outside the main lock to avoid blocking get_available_client
+        for client in clients_to_check:
+            client_name = getattr(client, 'name', 'Unknown Client')
+            logger.debug(f'Checking connectivity for {client_name}...')
+
+            # This method usually pings the API or checks simple connectivity
             result = client._test_and_update_status()
-            logger.info(f"Status check for {client.name} {'successes' if result else 'unsuccessful'}.")
 
-    def _calculate_client_health(self, metrics: List[Dict[str, Any]]) -> float:
-        """
-        统一计算客户端的抽象健康评分（0-100）。
-        选取最差（最低）的指标作为最终分数。
-        """
-        lowest_score = 100.0
-
-        for m in metrics:
-            metrics_type = m.get("metrics_type")
-            current_score = 100.0
-
-            if metrics_type in ["TOKEN_QUOTA", "CALL_COUNT"] and m.get("limit"):
-                # 1. 配额/限次计算：基于百分比
-                limit = m["limit"]
-                usage = m["usage"]
-                current_score = max(0, 100 * (limit - usage) / limit)
-
-            elif metrics_type == "BALANCE" and m.get("current_value") is not None:
-                # 2. 余额计算：基于硬性阈值
-                balance = m["current_value"]
-                threshold = m.get("hard_threshold", 0.0)
-
-                if balance <= threshold:
-                    current_score = 0.0  # 达到阈值，立即视为不可用
-                else:
-                    # 距离阈值越近，分数越低（例如：使用线性或对数衰减）
-                    # 简单示例：如果余额是阈值的两倍以上，则认为健康
-                    current_score = min(100.0, 100.0 * (balance - threshold) / threshold)
-
-            # 如果有时间限制，也可以根据重置时间做惩罚
-            # ...
-
-            lowest_score = min(lowest_score, current_score)
-
-        return lowest_score
+            if not result:
+                logger.warning(f"Status check failed for {client_name}.")
 
     def _cleanup_unavailable_clients(self):
-        """Remove clients that are permanently unavailable."""
+        """
+        Remove clients that are marked as UNAVAILABLE (permanently dead).
+        Clients with 0 Health (Quota exceeded) are usually kept as they might recover next month,
+        unless the client logic explicitly sets them to UNAVAILABLE.
+        """
         with self._lock:
-            # Keep clients that might recover (not UNAVAILABLE)
-            self.clients = [client for client in self.clients
-                            if client.get_status('status') != ClientStatus.UNAVAILABLE]
-
-    def get_client_stats(self) -> Dict[str, Any]:
-        """Get statistics about all clients."""
-        with self._lock:
-            stats = {
-                "total_clients": len(self.clients),
-                "available_clients": len([c for c in self.clients
-                                          if c.status == ClientStatus.AVAILABLE]),
-                "unavailable_clients": len([c for c in self.clients
-                                            if c.status == ClientStatus.UNAVAILABLE]),
-                "clients": []
-            }
-
-            for client in self.clients:
-                stats["clients"].append({
-                    "type": client.__class__.__name__,
-                    "status": client.get_status('status'),
-                    "priority": client.priority,
-                    "usage_stats": client.get_usage_stats(),
-                    "usage_metrics": client.get_usage_metrics(),
-                    "last_checked": client.get_status('status_last_updated'),
-                    "is_busy": client._is_busy()
-                })
-
-            return stats
-
-    def release_client(self, client: BaseAIClient):
-        """Release a client back to the pool."""
-        client._release()
+            initial_count = len(self.clients)
+            self.clients = [
+                client for client in self.clients
+                if client.get_status('status') != ClientStatus.UNAVAILABLE
+            ]
+            removed = initial_count - len(self.clients)
+            if removed > 0:
+                logger.info(f"Cleaned up {removed} unavailable clients.")

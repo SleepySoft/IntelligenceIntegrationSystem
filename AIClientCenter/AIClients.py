@@ -4,17 +4,24 @@ from typing import Dict, List, Optional, Any, Union
 import requests
 from typing_extensions import override
 
-from AIClientCenter.AIClientManager import BaseAIClient, CLIENT_PRIORITY_NORMAL
-from AIClientCenter.AIServiceTokenRotator import RotatableClient
 from AIClientCenter.LimitMixins import BalanceMixin
+from AIClientCenter.AIServiceTokenRotator import RotatableClient
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
+from AIClientCenter.AIClientManager import BaseAIClient, CLIENT_PRIORITY_NORMAL, ClientStatus
 
 
 class OpenAIClient(BaseAIClient, RotatableClient):
-    def __init__(self, name: str, openai_api: OpenAICompatibleAPI, priority: int = CLIENT_PRIORITY_NORMAL):
+    def __init__(
+            self,
+            name: str,
+            openai_api: OpenAICompatibleAPI,
+            priority: int = CLIENT_PRIORITY_NORMAL,
+            default_available: bool = False):
         super().__init__(name, openai_api.get_api_token(), priority)
 
         self.api = openai_api
+        if default_available:
+            self._status['status'] = ClientStatus.AVAILABLE
 
     # ------------------------------------------------- Overrides -------------------------------------------------
 

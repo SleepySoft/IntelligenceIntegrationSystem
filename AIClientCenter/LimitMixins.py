@@ -1,190 +1,248 @@
 import os
 import json
 import time
-import datetime
 import threading
-from typing import Dict, Any, Union, List, Optional
+from typing import Dict, Any, List, Optional, Union
+from collections import Counter
+
+# Constants for Metric Types
+METRIC_TYPE_USAGE = "USAGE_LIMIT"           # Logic: Healthy when current < target
+METRIC_TYPE_BALANCE = "BALANCE_THRESHOLD"   # Logic: Healthy when current > target
 
 
-# --- DateResetMixin ---
-
-class DateResetMixin:
+class ClientMetricsMixin:
     """
-    Mixin for managing usage that resets based on a time period (e.g., monthly).
-    Provides a mechanism to check and potentially reset accumulated usage.
+    A unified Mixin for managing AI Client statistics, quotas, balances, and health.
+    Supports simultaneous usage of periodic quotas (e.g., monthly tokens) and
+    financial thresholds (e.g., minimum wallet balance).
     """
 
-    def __init__(self, reset_period_days: int = 30, state_file_path: str = "client_reset_state.json", *args, **kwargs):
+    def __init__(self,
+                 quota_config: Optional[Dict[str, Any]] = None,
+                 balance_config: Optional[Dict[str, float]] = None,
+                 state_file_path: Optional[str] = None,
+                 *args, **kwargs):
+        """
+        Initialize the metrics subsystem.
+
+        Args:
+            quota_config: Dict defining limits (e.g., {'period_days': 30, 'limits': {'total_tokens': 1000}}).
+            balance_config: Dict defining balance rules (e.g., {'hard_threshold': 1.0}).
+            state_file_path: Path to a JSON file for persisting periodic usage data across restarts.
+            *args, **kwargs: Passed to super() to maintain MRO chain.
+        """
         super().__init__(*args, **kwargs)
-        self.reset_period_days = reset_period_days
+
+        self.quota_config = quota_config or {}
+        self.balance_config = balance_config or {}
         self.state_file_path = state_file_path
 
-        # Load or initialize the reset state
-        self._load_reset_state()
+        self._metrics_lock = threading.Lock()
 
-    def _load_reset_state(self):
-        """Loads last reset time and current usage from the state file."""
-        if hasattr(self, '_lock'):
-            with self._lock:
-                try:
-                    if os.path.exists(self.state_file_path):
-                        with open(self.state_file_path, 'r') as f:
-                            state = json.load(f)
-                            self._last_reset_time = state.get('last_reset_time', 0)
-                            self._current_period_usage = state.get('current_period_usage', {})
-                    else:
-                        self._last_reset_time = 0
-                        self._current_period_usage = {}
-                except Exception as e:
-                    # Log error, but proceed with default state
-                    print(f"Error loading reset state: {e}")
-                    self._last_reset_time = 0
-                    self._current_period_usage = {}
+        # Lifetime stats (reset on process restart)
+        self._lifetime_stats = Counter()
 
-    def _save_reset_state(self):
-        """Saves the current reset state to the file."""
-        if hasattr(self, '_lock'):
-            with self._lock:
-                state = {
-                    'last_reset_time': self._last_reset_time,
-                    'current_period_usage': self._current_period_usage
+        # Periodic stats (persisted, reset on time intervals)
+        self._periodic_stats = Counter()
+        self._last_reset_time = 0.0
+        self._current_balance = 0.0
+
+        if self.state_file_path:
+            self._load_periodic_state()
+
+    def set_usage_constraints(self,
+                              max_tokens: Optional[int] = None,
+                              period_days: int = 30,
+                              min_balance: Optional[float] = None,
+                              target_metric: str = 'total_tokens'):
+        """
+        Convenience method to quickly configure usage limits and balance thresholds.
+
+        Args:
+            max_tokens: Max allowed usage for the target metric. None to disable quota.
+            period_days: Number of days before the usage counter resets (default: 30).
+            min_balance: Minimum funds required. None to disable balance check.
+            target_metric: The metric key to track (default: 'total_tokens').
+        """
+        with self._metrics_lock:
+            # Configure Quota
+            if max_tokens is not None:
+                self.quota_config = {
+                    'period_days': period_days,
+                    'limits': {target_metric: max_tokens}
                 }
-                try:
-                    with open(self.state_file_path, 'w') as f:
-                        json.dump(state, f)
-                except Exception as e:
-                    print(f"Error saving reset state: {e}")
+                if self._last_reset_time == 0:
+                    self._last_reset_time = time.time()
+            else:
+                self.quota_config = {}
 
-    def check_and_reset_period(self):
+            # Configure Balance
+            if min_balance is not None:
+                self.balance_config = {'hard_threshold': min_balance}
+            else:
+                self.balance_config = {}
+
+            # Persist changes immediately if file path is set
+            if self.state_file_path:
+                self._save_periodic_state_unsafe()
+
+    def record_usage(self, usage_data: Dict[str, Any]):
         """
-        Checks if the reset period has passed and resets usage if necessary.
-        Must be called before getting usage metrics for accurate calculation.
+        Records usage statistics (deltas) into lifetime and periodic counters.
+
+        Key Conventions:
+        ----------------
+        Although this method accepts any numeric keys, the following standard keys
+        are recommended to ensure compatibility with the quota system:
+
+        1. 'total_tokens' (int):
+           Sum of input + output tokens.
+           *REQUIRED* if you use the default quota configuration.
+
+        2. 'prompt_tokens' (int):
+           Input tokens. Useful for analytics.
+
+        3. 'completion_tokens' (int):
+           Output tokens. Useful for analytics.
+
+        4. 'request_count' (int):
+           Usually set to 1 per call. Useful for limiting API calls per month.
+
+        5. 'cost_usd' (float):
+           Estimated cost. Useful for tracking spending logic internally.
+
+        Example:
+            # Good Practice
+            client.record_usage({
+                'prompt_tokens': 50,
+                'completion_tokens': 150,
+                'total_tokens': 200,  # Explicitly provided for quota check
+                'request_count': 1
+            })
+
+        Args:
+            usage_data: Dict containing numeric values to be accumulated.
+                        Non-numeric values are ignored.
         """
-        current_time = time.time()
-        reset_interval = self.reset_period_days * 86400  # seconds in a day
+        numeric_data = {k: v for k, v in usage_data.items() if isinstance(v, (int, float))}
+        increment = Counter(numeric_data)
 
-        if current_time - self._last_reset_time >= reset_interval:
-            print(f"Quota period elapsed ({self.reset_period_days} days). Resetting usage.")
-            with self._lock:
-                # Reset tracked usage for this period
-                self._current_period_usage = {}
-                self._last_reset_time = current_time
-                self._save_reset_state()
-            return True
-        return False
+        with self._metrics_lock:
+            # Update lifetime stats
+            self._lifetime_stats.update(increment)
+            self._lifetime_stats['last_update'] = time.time()
 
-    def record_period_usage(self, key: str, value: float):
-        """Records usage within the current period."""
-        with self._lock:
-            self._current_period_usage[key] = self._current_period_usage.get(key, 0) + value
-            self._save_reset_state()
+            # Update periodic stats if quota is active
+            if self.quota_config:
+                self._check_and_reset_period_unsafe()
+                self._periodic_stats.update(increment)
+                self._save_periodic_state_unsafe()
 
-    def get_period_usage(self, key: str) -> float:
-        """Returns the accumulated usage for the current period."""
-        with self._lock:
-            return self._current_period_usage.get(key, 0)
+    def update_balance(self, amount: float):
+        """Updates the current wallet/API balance."""
+        with self._metrics_lock:
+            self._current_balance = amount
 
-    def get_reset_timestamp(self) -> int:
-        """Returns the timestamp of the next expected reset."""
-        return self._last_reset_time + (self.reset_period_days * 86400)
-
-
-# --- QuotaMixin ---
-
-class QuotaMixin(DateResetMixin):
-    """
-    Mixin for managing multi-dimensional usage quotas (e.g., tokens, requests).
-    Inherits DateResetMixin to handle periodic resets.
-    """
-
-    # Define a default structure for quota limits
-    DEFAULT_LIMITS = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_requests": 0,
-    }
-
-    def __init__(self, quota_limits: Dict[str, int] = None, *args, **kwargs):
-        # The MRO (Method Resolution Order) ensures super().__init__ calls the BaseAIClient's init
-        super().__init__(*args, **kwargs)
-
-        # Merge provided limits with defaults
-        self.quota_limits = self.DEFAULT_LIMITS.copy()
-        if quota_limits:
-            self.quota_limits.update(quota_limits)
-
-    def record_usage(self, usages: dict):
+    def get_standardized_metrics(self) -> List[Dict[str, Any]]:
         """
-        Overrides BaseAIClient's record_usage (if called after BaseAIClient in MRO)
-        or is called explicitly. Records usage both in total stats and current period.
+        Returns a list of standardized metrics for health calculation.
+        Schema: {'type': str, 'key': str, 'current': float, 'target': float}
         """
-        # Record usage for the current period tracking
-        if 'prompt_tokens' in usages:
-            self.record_period_usage('prompt_tokens', usages['prompt_tokens'])
-        if 'completion_tokens' in usages:
-            self.record_period_usage('completion_tokens', usages['completion_tokens'])
-        # We can also track request count here if needed
-        # self.record_period_usage('total_requests', 1)
-
-    def get_quota_metrics(self) -> List[Dict[str, Any]]:
-        """
-        Returns a list of metrics for all defined quotas.
-        """
-        self.check_and_reset_period()  # Important: Check for reset before reporting metrics
-
         metrics = []
-        for key, limit in self.quota_limits.items():
-            if limit > 0:
-                current_usage = self.get_period_usage(key)
+        with self._metrics_lock:
+            # 1. Quota Metrics
+            if self.quota_config:
+                self._check_and_reset_period_unsafe()
+                limits = self.quota_config.get('limits', {})
+                for key, limit in limits.items():
+                    metrics.append({
+                        "type": METRIC_TYPE_USAGE,
+                        "key": key,
+                        "current": self._periodic_stats.get(key, 0),
+                        "target": limit
+                    })
 
+            # 2. Balance Metrics
+            if self.balance_config:
                 metrics.append({
-                    "metrics_type": key.upper(),  # E.g., "PROMPT_TOKENS"
-                    "usage": current_usage,
-                    "limit": limit,
-                    "current_value": limit - current_usage,
-                    "reset_timestamp": self.get_reset_timestamp(),
+                    "type": METRIC_TYPE_BALANCE,
+                    "key": "balance",
+                    "current": self._current_balance,
+                    "target": self.balance_config.get('hard_threshold', 0.0)
                 })
         return metrics
 
-
-# --- BalanceMixin ---
-
-class BalanceMixin:
-    """
-    Mixin for managing monetary balance. The health is determined by
-    comparing the current balance against a hard consumption threshold.
-    """
-
-    def __init__(self, hard_threshold: float = 1.0, *args, **kwargs):
-        # MRO ensures super().__init__ calls the next class in the chain (BaseAIClient)
-        super().__init__(*args, **kwargs)
-        self.hard_threshold = hard_threshold
-        self._current_balance = 0.0  # Assumed to be updated from an external API call
-
-    def update_balance(self, amount: float):
-        """Updates the current real-time balance."""
-        if hasattr(self, '_lock'):
-            with self._lock:
-                self._current_balance = amount
-        else:
-            self._current_balance = amount
-
-    def is_balance_low(self) -> bool:
-        """Quick check if balance is below the hard limit."""
-        return self._current_balance <= self.hard_threshold
-
-    def get_balance_metrics(self) -> List[Dict[str, Any]]:
+    def calculate_health(self) -> float:
         """
-        Returns the balance metric in the standardized format.
+        Calculates health score (0-100) based on the worst-performing metric.
         """
-        # Note: The 'usage' (total_cost_usd) must be accumulated by the client
-        # using the BaseAIClient's record_usage mechanism.
-        total_cost = self.get_usage_stats().get("total_cost_usd", 0)
+        metrics = self.get_standardized_metrics()
+        if not metrics:
+            return 100.0
 
-        return [{
-            "metrics_type": "BALANCE",
-            "usage": total_cost,
-            "limit": None,  # No defined "limit" for balance, use current_value/threshold
-            "current_value": self._current_balance,
-            "hard_threshold": self.hard_threshold,
-        }]
+        lowest_score = 100.0
+
+        for m in metrics:
+            score = 100.0
+            current = float(m['current'])
+            target = float(m['target'])
+
+            if m['type'] == METRIC_TYPE_USAGE:
+                # 0 if usage >= limit
+                if target > 0:
+                    if current >= target:
+                        score = 0.0
+                    else:
+                        score = 100.0 * (target - current) / target
+                else:
+                    score = 0.0 if current > 0 else 100.0
+
+            elif m['type'] == METRIC_TYPE_BALANCE:
+                # 0 if balance <= threshold
+                if current <= target:
+                    score = 0.0
+                else:
+                    # Use a dynamic buffer (max of target or 10.0) for smooth scoring
+                    safe_buffer = max(target, 10.0)
+                    score = min(100.0, 100.0 * (current - target) / safe_buffer)
+
+            if score < lowest_score:
+                lowest_score = score
+
+        return round(lowest_score, 2)
+
+    # --- Internal Helpers ---
+
+    def _check_and_reset_period_unsafe(self):
+        """Internal: Checks if period elapsed and resets stats."""
+        period_days = self.quota_config.get('period_days', 30)
+        if period_days <= 0: return
+
+        if time.time() - self._last_reset_time >= period_days * 86400:
+            self._periodic_stats.clear()
+            self._last_reset_time = time.time()
+
+    def _save_periodic_state_unsafe(self):
+        """Internal: Saves state to JSON file."""
+        if not self.state_file_path: return
+        try:
+            data = {
+                'last_reset_time': self._last_reset_time,
+                'periodic_usage': dict(self._periodic_stats)
+            }
+            with open(self.state_file_path, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            print(f"Metrics save error: {e}")
+
+    def _load_periodic_state(self):
+        """Internal: Loads state from JSON file."""
+        if not self.state_file_path or not os.path.exists(self.state_file_path): return
+        try:
+            with self._metrics_lock:
+                with open(self.state_file_path, 'r') as f:
+                    data = json.load(f)
+                    self._last_reset_time = data.get('last_reset_time', 0)
+                    self._periodic_stats = Counter(data.get('periodic_usage', {}))
+        except Exception:
+            pass  # Ignore load errors, start fresh
