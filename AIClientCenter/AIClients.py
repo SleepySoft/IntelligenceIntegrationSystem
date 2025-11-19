@@ -5,17 +5,20 @@ import requests
 from typing_extensions import override
 
 from AIClientCenter.AIClientManager import BaseAIClient, CLIENT_PRIORITY_NORMAL
+from AIClientCenter.AIServiceTokenRotator import RotatableClient
 from AIClientCenter.LimitMixins import BalanceMixin
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
 
 
-class OpenAIClient(BaseAIClient):
-    def __init__(self, openai_api: OpenAICompatibleAPI, priority: int = CLIENT_PRIORITY_NORMAL):
-        super().__init__(openai_api.get_api_token(), priority)
+class OpenAIClient(BaseAIClient, RotatableClient):
+    def __init__(self, name: str, openai_api: OpenAICompatibleAPI, priority: int = CLIENT_PRIORITY_NORMAL):
+        super().__init__(name, openai_api.get_api_token(), priority)
 
         self.api = openai_api
 
     # ------------------------------------------------- Overrides -------------------------------------------------
+
+    # ------------------ BaseAIClient ------------------
 
     @override
     def get_usage_metrics(self) -> Dict[str, float]:
@@ -39,16 +42,11 @@ class OpenAIClient(BaseAIClient):
                               max_tokens: int = 4096) -> Union[Dict[str, Any], requests.Response]:
         return self.api.create_chat_completion_sync(messages, model, temperature, max_tokens)
 
+    # ------------------ RotatableClient ------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
+    @override
+    def set_api_token(self, token: str):
+        self.api.set_api_token(token)
+        with self._lock:
+            # Ask for re-check ASAP.
+            self._status['status_last_updated'] = 0

@@ -61,7 +61,8 @@ class BaseAIClient(ABC):
             'last_chat': 0.0,
             'last_test': 0.0,
             'error_count': 0,
-            'in_use': False
+            'in_use': False,
+            'acquired': False
         }
 
         self._usage_stats = {
@@ -71,17 +72,20 @@ class BaseAIClient(ABC):
         self.test_prompt = "If you are working, please respond with 'OK'."
         self.expected_response = "OK"
 
+    # -------------------------------------- User interface --------------------------------------
+
     def chat(self,
              messages: List[Dict[str, str]],
              model: Optional[str] = None,
              temperature: float = 0.7,
              max_tokens: int = 4096) -> Dict[str, Any]:
 
-        if self.get_status('status') == ClientStatus.UNAVAILABLE:
-            return {'error': 'client_unavailable', 'message': 'Client is marked as unavailable.'}
-
-        if not self._acquire():
-            return {'error': 'client_busy', 'message': 'Client is busy.'}
+        with self._lock:
+            if self._status['status'] == ClientStatus.UNAVAILABLE:
+                return {'error': 'client_unavailable', 'message': 'Client is marked as unavailable.'}
+            if self._status['in_use']:
+                return {'error': 'client_busy', 'message': 'Client is busy (in use).'}
+            self._status['in_use'] = True
 
         try:
             response = self._chat_completion_sync(messages, model, temperature, max_tokens)
@@ -104,8 +108,10 @@ class BaseAIClient(ABC):
 
         except Exception as e:
             return self._handle_exception(e)
+
         finally:
-            self._release()
+            with self._lock:
+                self._status['in_use'] = False
 
     def get_status(self, key: Optional[str] = None) -> Any:
         with self._lock:
@@ -122,7 +128,12 @@ class BaseAIClient(ABC):
         with self._lock:
             return self._usage_stats.copy()
 
-    # ------------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------- Not for user ----------------------------------------
+
+    def _is_busy(self) -> bool:
+        """Check if client is currently in use."""
+        with self._lock:
+            return self._status['in_use']
 
     def _acquire(self) -> bool:
         """
@@ -132,23 +143,22 @@ class BaseAIClient(ABC):
             bool: True if acquired successfully
         """
         with self._lock:
-            if self._status['in_use'] or self._status['status'] == ClientStatus.UNAVAILABLE:
+            if self._status['acquired'] or self._status['status'] == ClientStatus.UNAVAILABLE:
                 return False
 
-            self._status['in_use'] = True
+            self._status['acquired'] = True
             self._status['last_acquired'] = time.time()
             return True
 
     def _release(self):
         """Release the client after use."""
         with self._lock:
-            self._status['in_use'] = False
+            self._status['acquired'] = False
             self._status['last_released'] = time.time()
 
-    def _is_busy(self) -> bool:
-        """Check if client is currently in use."""
+    def _is_acquired(self) -> bool:
         with self._lock:
-            return self._status['in_use']
+            return self._status['acquired']
 
     def _test_and_update_status(self) -> bool:
         """
@@ -399,7 +409,7 @@ class BaseAIClient(ABC):
             self._usage_stats['total_prompt_tokens'] += current_stats['prompt_tokens']
             self._usage_stats['total_completion_tokens'] += current_stats['completion_tokens']
 
-    # ------------------------------------------------- Abstractmethod -------------------------------------------------
+    # ---------------------------------------- Abstractmethod ----------------------------------------
 
     @abstractmethod
     def get_usage_metrics(self) -> Dict[str, float]:
@@ -459,12 +469,14 @@ class AIClientManager:
         """
         with self._lock:
             for client in self.clients:
+                client_status = client.get_status('status')
+
                 # Skip unavailable clients
-                if client.status == ClientStatus.UNAVAILABLE:
+                if client_status == ClientStatus.UNAVAILABLE:
                     continue
 
                 # Try to acquire available client
-                if client.status == ClientStatus.AVAILABLE and client._acquire():
+                if client_status == ClientStatus.AVAILABLE and client._acquire():
                     return client
 
             return None
@@ -493,9 +505,10 @@ class AIClientManager:
                 self._check_client_health()
                 self._cleanup_unavailable_clients()
             except Exception as e:
+                print(traceback.format_exc())
                 logger.error(f"Error in monitor loop: {e}")
 
-            time.sleep(self.monitor_interval)
+            time.sleep(self.check_error_interval / 10)      # Deviation 10%
 
     def _check_client_health(self):
         """Check health of all non-busy clients."""
@@ -503,24 +516,22 @@ class AIClientManager:
 
         with self._lock:
             for client in self.clients:
-                if client._is_busy():
+                client_status = client.get_status('status')
+                if client_status == ClientStatus.UNAVAILABLE:
                     continue
-                if client.status == ClientStatus.UNAVAILABLE:
-                    continue
-
-                usage_stats = client.get_usage_stats()
-                last_update = usage_stats.get("last_update", 0.0)
+                status_last_updated = client.get_status('status_last_updated')
 
                 timeout = self.check_stable_interval \
-                    if client.status == ClientStatus.AVAILABLE else \
+                    if client_status == ClientStatus.AVAILABLE else \
                     self.check_error_interval
 
-                if time.time() - last_update > timeout:
+                if time.time() - status_last_updated > timeout:
                     client_to_be_check.append(client)
 
         for client in client_to_be_check:
             logger.info(f'Checking client {client.name} status.')
-            client._test_and_update_status()
+            result = client._test_and_update_status()
+            logger.info(f"Status check for {client.name} {'successes' if result else 'unsuccessful'}.")
 
     def _calculate_client_health(self, metrics: List[Dict[str, Any]]) -> float:
         """
@@ -563,7 +574,7 @@ class AIClientManager:
         with self._lock:
             # Keep clients that might recover (not UNAVAILABLE)
             self.clients = [client for client in self.clients
-                            if client.status != ClientStatus.UNAVAILABLE]
+                            if client.get_status('status') != ClientStatus.UNAVAILABLE]
 
     def get_client_stats(self) -> Dict[str, Any]:
         """Get statistics about all clients."""
@@ -580,11 +591,11 @@ class AIClientManager:
             for client in self.clients:
                 stats["clients"].append({
                     "type": client.__class__.__name__,
-                    "status": client.status.value,
+                    "status": client.get_status('status'),
                     "priority": client.priority,
                     "usage_stats": client.get_usage_stats(),
                     "usage_metrics": client.get_usage_metrics(),
-                    "last_checked": client.status_last_updated,
+                    "last_checked": client.get_status('status_last_updated'),
                     "is_busy": client._is_busy()
                 })
 
