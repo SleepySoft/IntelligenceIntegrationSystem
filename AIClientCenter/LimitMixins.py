@@ -138,6 +138,10 @@ class ClientMetricsMixin:
                 self._periodic_stats.update(increment)
                 self._save_periodic_state_unsafe()
 
+    def get_usage_stats(self) -> Dict[str, Any]:
+        with self._metrics_lock:
+            return self._lifetime_stats
+
     def update_balance(self, amount: float):
         """Updates the current wallet/API balance."""
         with self._metrics_lock:

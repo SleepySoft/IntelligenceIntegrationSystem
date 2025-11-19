@@ -13,7 +13,11 @@ logger = logging.getLogger(__name__)
 
 class RotatableClient(ABC):
     @abstractmethod
-    def set_api_token(self, token: str):
+    def update_api_token(self, token: str):
+        pass
+
+    @abstractmethod
+    def update_token_balance(self, token: str, balance: float):
         pass
 
 
@@ -165,7 +169,9 @@ class SiliconFlowServiceRotator:
             self._rotate_to_next_key()
             return False
 
-        logger.info(f"Current key {self.current_key[:16]}... balance: ${balance:.4f}")
+        logger.debug(f"Current key {self.current_key[:16]}... balance: ${balance:.4f}")
+
+        self.ai_client.update_token_balance(self.current_key, balance)
 
         records_changed = False
         with self.lock:
@@ -374,7 +380,7 @@ class SiliconFlowServiceRotator:
         if not usable_keys:
             logger.critical("Rotation failed: No usable keys available.")
             self.current_key = ''
-            self.ai_client.set_api_token('')
+            self.ai_client.update_api_token('')
             return False
 
         # Simply pick the first usable key from the remaining list.
@@ -441,7 +447,7 @@ class SiliconFlowServiceRotator:
         This method is the central point for all key changes.
         """
         try:
-            self.ai_client.set_api_token(api_key)
+            self.ai_client.update_api_token(api_key)
             logger.info(f"Successfully changed API client key to: {api_key[:16]}...")
 
             # Reset the rate tracker whenever the key changes.

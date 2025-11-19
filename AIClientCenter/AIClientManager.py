@@ -37,8 +37,21 @@ class ClientStatus(Enum):
 
 class BaseAIClient(ABC):
     """
-    Abstract base class for AI clients with common management interface.
-    Extends the existing OpenAICompatibleAPI functionality.
+    Base class for all AI clients.
+
+    Capabilities:
+    - Abstract interface for API calls.
+    - Status management (Available/Busy/Error).
+
+    Usage Tracking & Quotas:
+    - This base class does NOT track token usage or limits.
+    - To enable these features, your client class must inherit from `ClientMetricsMixin`.
+
+    Example:
+        class OpenAIClient(ClientMetricsMixin, BaseAIClient):
+            def __init__(self, ...):
+                ClientMetricsMixin.__init__(self, quota_config=...)
+                BaseAIClient.__init__(self, ...)
     """
 
     def __init__(self, name: str, api_token: str, priority: int = CLIENT_PRIORITY_NORMAL):
@@ -65,10 +78,6 @@ class BaseAIClient(ABC):
             'in_use': False,
             'acquired': False
         }
-
-        # Counter 不需要预先定义 key，访问不存在的 key 会自动返回 0
-        # Counter 的 update() 方法执行的是数值相加，而不是字典的覆盖。
-        self._usage_stats = Counter()
 
         self.test_prompt = "If you are working, please respond with 'OK'."
         self.expected_response = "OK"
@@ -118,16 +127,68 @@ class BaseAIClient(ABC):
         with self._lock:
             return self._status.get(key, None) if key else self._status.copy()
 
-    def record_usage(self, usages: dict):
-        """Record usage statistics."""
-        with self._lock:
-            self._usage_stats.update(usages)
-            self._usage_stats["last_update"] = time.time()
+    # =========================================================================
+    # Metrics & Health Interface (Stubs)
+    # =========================================================================
+    # Note: The BaseAIClient provides NO built-in statistics tracking.
+    # To enable usage tracking, quotas, and balance checks, your subclass
+    # must inherit from 'ClientMetricsMixin' alongside this base class.
+    # =========================================================================
 
-    def get_usage_stats(self) -> Dict[str, Any]:
-        """Get usage statistics."""
-        with self._lock:
-            return self._usage_stats.copy()
+    def record_usage(self, usage_data: Dict[str, Any]):
+        """
+        Records usage statistics (e.g., tokens, cost) for this request.
+
+        [STUB IMPLEMENTATION]
+        By default, this method does nothing.
+
+        To enable functionality:
+            Inherit from `ClientMetricsMixin`. It will override this method to
+            accumulate stats (using Counter) and trigger quota checks.
+
+        Args:
+            usage_data (Dict[str, Any]): A dictionary of usage deltas.
+                Standard keys used by the Mixin include:
+                - 'prompt_tokens' (int)
+                - 'completion_tokens' (int)
+                - 'total_tokens' (int)
+                - 'cost_usd' (float)
+        """
+        # Intentionally left empty to serve as an interface.
+        pass
+
+    def calculate_health(self) -> float:
+        """
+        Calculates the abstract health score of the client (0.0 to 100.0).
+
+        [STUB IMPLEMENTATION]
+        Returns 100.0 (Fully Healthy) by default.
+
+        To enable functionality:
+            Inherit from `ClientMetricsMixin`. It will implement logic to return
+            lower scores based on exhausted quotas or low balances.
+
+        Returns:
+            float: Always 100.0 unless overridden.
+        """
+        return 100.0
+
+    def get_standardized_metrics(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves standardized metric details for reporting and health calculation.
+        Used by the Manager to display quota progress bars or balance alerts.
+
+        [STUB IMPLEMENTATION]
+        Returns an empty list by default.
+
+        To enable functionality:
+            Inherit from `ClientMetricsMixin`. It will return structured data like:
+            [{'type': 'USAGE_LIMIT', 'current': 500, 'target': 1000}, ...]
+
+        Returns:
+            List[Dict]: Empty list unless overridden.
+        """
+        return []
 
     # ---------------------------------------- Not for user ----------------------------------------
 
@@ -481,8 +542,7 @@ class AIClientManager:
                 client_status = client.get_status('status')
 
                 # 1. Filter out permanently dead clients
-                if client_status == ClientStatus.UNAVAILABLE:
-                    continue
+                if client_status == ClientStatus.UNAVAILABLE: continue
 
                 # 2. Check dynamic health (Optional optimization: skip if health is 0)
                 # If you want strict checking:
@@ -528,7 +588,6 @@ class AIClientManager:
                     "is_busy": client._is_busy(),
                     "last_checked": client.get_status('status_last_updated'),
                     # Detailed breakdowns
-                    "lifetime_stats": client.get_usage_stats(),  # Total accumulation
                     "constraint_metrics": metrics_detail,  # Quota/Balance snapshots
                 })
 

@@ -4,20 +4,36 @@ from typing import Dict, List, Optional, Any, Union
 import requests
 from typing_extensions import override
 
-from AIClientCenter.LimitMixins import BalanceMixin
+from AIClientCenter.LimitMixins import ClientMetricsMixin
 from AIClientCenter.AIServiceTokenRotator import RotatableClient
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
 from AIClientCenter.AIClientManager import BaseAIClient, CLIENT_PRIORITY_NORMAL, ClientStatus
 
 
-class OpenAIClient(BaseAIClient, RotatableClient):
+class OpenAIClient(ClientMetricsMixin, BaseAIClient, RotatableClient):
     def __init__(
             self,
             name: str,
             openai_api: OpenAICompatibleAPI,
             priority: int = CLIENT_PRIORITY_NORMAL,
-            default_available: bool = False):
-        super().__init__(name, openai_api.get_api_token(), priority)
+            default_available: bool = False,
+            quota_config: dict = None,
+            balance_config: dict = None,
+            state_file_path: Optional[str] = None
+    ):
+        super().__init__(
+            # 1. BaseAIClient
+            name=name,
+            api_token=openai_api.get_api_token(),
+            priority=priority,
+
+            # 2. ClientMetricsMixin
+            quota_config=quota_config,
+            balance_config=balance_config,
+            state_file_path=state_file_path
+
+            # 3. RotatableClient
+        )
 
         self.api = openai_api
         if default_available:
@@ -52,8 +68,13 @@ class OpenAIClient(BaseAIClient, RotatableClient):
     # ------------------ RotatableClient ------------------
 
     @override
-    def set_api_token(self, token: str):
-        self.api.set_api_token(token)
+    def update_api_token(self, token: str):
+        self.api_token = token
+        self.api.set_api_token(self.api_token)
         with self._lock:
             # Ask for re-check ASAP.
             self._status['status_last_updated'] = 0
+
+    def update_token_balance(self, token: str, balance: float):
+        if token == self.api_token:
+            self.update_balance(balance)
