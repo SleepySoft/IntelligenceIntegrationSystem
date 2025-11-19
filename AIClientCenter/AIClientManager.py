@@ -567,8 +567,8 @@ class AIClientManager:
         """
         with self._lock:
             # Pre-calculate lists for summary
-            available_list = [c for c in self.clients if c.status == ClientStatus.AVAILABLE]
-            unavailable_list = [c for c in self.clients if c.status == ClientStatus.UNAVAILABLE]
+            available_list = [c for c in self.clients if c.get_status('status') == ClientStatus.AVAILABLE]
+            unavailable_list = [c for c in self.clients if c.get_status('status') == ClientStatus.UNAVAILABLE]
             busy_list = [c for c in self.clients if c._is_busy()]
 
             client_details = []
