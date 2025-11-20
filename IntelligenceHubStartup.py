@@ -67,7 +67,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
     client_manager = AIClientManager()
     try:
-        from _config.ai_client_config_example import AI_CLIENTS
+        from _config.ai_client_config import AI_CLIENTS
         logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
         for client in AI_CLIENTS:
             logger.info(f"Register AI client: {client.name}.")
@@ -130,7 +130,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
         # Start from here: put vector db in data path.
         vector_db_path_abs = vector_db_path \
             if os.path.isabs(vector_db_path) \
-            else os.path.join(data_path, vector_db_path)
+            else os.path.join(DATA_PATH, vector_db_path)
 
         vector_db_service = VectorDBService(
             db_path = vector_db_path_abs,
@@ -178,7 +178,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
             password=mongodb_pass,
             collection_name='intelligence_recommendation'),
 
-        ai_client = api_client
+            ai_client_manager = client_manager
     )
     hub.startup()
 
@@ -254,7 +254,7 @@ def run():
                                 link_file_roots={
                                     'conversation': os.path.abspath('conversation')
                                 },
-                                project_root=_self_path,
+                                project_root=PRJ_PATH,
                                 with_logger_manager=True)
     log_backend.register_router(app=wsgi_app, wrapper=ihub_service.access_manager.login_required)
 

@@ -131,9 +131,9 @@ class OpenAICompatibleAPI:
         # Try to get token from environment variables if not provided
         self._api_token = token or os.getenv("OPENAI_API_KEY")
 
-        if not self._api_token:
-            raise ValueError(
-                "API token must be provided either through the constructor or environment variable OPENAI_API_KEY")
+        # if not self._api_token:
+        #     raise ValueError(
+        #         "API token must be provided either through the constructor or environment variable OPENAI_API_KEY")
 
         self.default_model = default_model
         self.proxies = proxies or {}
@@ -219,7 +219,10 @@ class OpenAICompatibleAPI:
             self._api_token = token
             # Update the token in the persistent synchronous session
             self.sync_session.headers["Authorization"] = f"Bearer {self._api_token}"
-            logger.info(f'Change API key from {old_token[:16]} to {token[:16]}.')
+            if old_token:
+                logger.info(f'Change API key from {old_token[:16]} to {token[:16]}.')
+            else:
+                logger.info(f'Set API key: {token[:16]}.')
 
     def get_header(self) -> dict:
         """

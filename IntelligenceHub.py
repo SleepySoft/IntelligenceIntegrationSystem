@@ -401,8 +401,13 @@ class IntelligenceHub:
         retries = 0
         while True:
             if ai_client := self.ai_client_manager.get_available_client():
-                result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
-                break
+                try:
+                    result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+                except Exception as e:
+                    logger.error(f"Analysis with AI fail: {str(e)}")
+                finally:
+                    self.ai_client_manager.release_client(ai_client)
+                    break
             retries += 1
             time.sleep(1)
         if retries:

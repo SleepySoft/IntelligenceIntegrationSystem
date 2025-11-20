@@ -149,8 +149,13 @@ class RecommendationManager:
                 in result]
 
             if ai_client := self.ai_client_manager.get_available_client():
-                recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
-                self.ai_client_manager.release_client(ai_client)
+                try:
+                    recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
+                except Exception as e:
+                    logger.error(f"generate_recommendation_by_ai fail {str(e)}")
+                    print(traceback.format_exc())
+                finally:
+                    self.ai_client_manager.release_client(ai_client)
             else:
                 return False
 

@@ -14,14 +14,14 @@ from typing import Optional, Dict, Any, List, Union
 logger = logging.getLogger(__name__)
 
 
-CLIENT_PRIORITY_MOST_PRECIOUS = 0       # Precious API resource has the lowest using priority.
-CLIENT_PRIORITY_EXPENSIVE = 30
+CLIENT_PRIORITY_MOST_PRECIOUS = 100     # Precious API resource has the lowest using priority.
+CLIENT_PRIORITY_EXPENSIVE = 80
 CLIENT_PRIORITY_NORMAL = 50
-CLIENT_PRIORITY_CONSUMABLES = 80
-CLIENT_PRIORITY_FREEBIE = 100           # Prioritize using the regularly reset free quota
+CLIENT_PRIORITY_CONSUMABLES = 20
+CLIENT_PRIORITY_FREEBIE = 0             # Prioritize using the regularly reset free quota
 
-CLIENT_PRIORITY_HIGHER = 5
-CLIENT_PRIORITY_LOWER = -5
+CLIENT_PRIORITY_HIGHER = -5
+CLIENT_PRIORITY_LOWER = 5
 
 CLIENT_PRIORITY_MORE_PRECIOUS = CLIENT_PRIORITY_LOWER
 CLIENT_PRIORITY_LESS_PRECIOUS = CLIENT_PRIORITY_HIGHER
@@ -275,7 +275,7 @@ class BaseAIClient(ABC):
             self._status['status_last_updated'] = time.time()
 
             if old_status != new_status:
-                logger.info(f"Client status changed from {old_status} to {new_status}")
+                logger.info(f"Client {self.name} status changed from {old_status} to {new_status}")
 
     def _handle_http_error(self, response) -> Dict[str, Any]:
         """处理HTTP错误状态码"""
@@ -550,6 +550,7 @@ class AIClientManager:
 
                 # 3. Try to acquire lock/token for the client
                 if client_status == ClientStatus.AVAILABLE and client._acquire():
+                    logger.info(f"Get client: {client.name}")
                     return client
 
             return None
