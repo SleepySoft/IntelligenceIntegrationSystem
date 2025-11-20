@@ -1,3 +1,11 @@
+import os
+
+
+PRJ_PATH = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(PRJ_PATH, '_data')
+CONFIG_PATH = os.path.join(PRJ_PATH, '_config')
+PRODUCTS_PATH = os.path.join(PRJ_PATH, '_products')
+
 
 DEFAULT_PROXY = {
     "http": "socks5://127.0.0.1:10808",

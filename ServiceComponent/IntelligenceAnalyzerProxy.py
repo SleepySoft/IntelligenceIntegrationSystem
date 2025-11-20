@@ -1,15 +1,12 @@
-import os
 import json
 import time
-import traceback
-import uuid
 import logging
+import traceback
 import json_repair
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ValidationError
 
-from prompts import ANALYSIS_PROMPT
-from Tools.OpenAIClient import OpenAICompatibleAPI
+from AIClientCenter.AIClients import OpenAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
 from MyPythonUtility.DictTools import dict_list_to_markdown
 
@@ -143,7 +140,7 @@ def conversation_common_process(category, messages, response) -> dict:
 
 
 def analyze_with_ai(
-        api_client: OpenAICompatibleAPI,
+        ai_client: OpenAIClient,
         prompt: str,
         structured_data: Dict[str, Any],
         context: Optional[List[Dict[str, str]]] = None
@@ -152,7 +149,7 @@ def analyze_with_ai(
     Use the OpenAI API to analyze the input prompt and structured data, and return a formatted JSON result.
 
     Args:
-    api_client (OpenAICompatibleAPI): Provides a client instance of the OpenAI compatible API.
+    ai_client (OpenAIClient): Provides a client instance of the OpenAI compatible API.
     prompt (str): The main prompt, used to specify the role and rules for analysis.
     structured_data (Dict[str, Any]): Structured data, which must contain the 'content' field of the main content.
     context (Optional[List[Dict[str, str]]]): Dialogue context, optional.
@@ -180,7 +177,7 @@ def analyze_with_ai(
 
     start = time.time()
 
-    response = api_client.create_chat_completion_sync(
+    response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
@@ -193,7 +190,7 @@ def analyze_with_ai(
 
 
 def aggressive_by_ai(
-        api_client: OpenAICompatibleAPI,
+        ai_client: OpenAIClient,
         prompt: str,
         new_data: Dict[str, Any],
         history_data: List[Dict[str, str]]
@@ -213,7 +210,7 @@ def aggressive_by_ai(
 
     start = time.time()
 
-    response = api_client.create_chat_completion_sync(
+    response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
@@ -226,7 +223,7 @@ def aggressive_by_ai(
 
 
 def generate_recommendation_by_ai(
-        api_client: OpenAICompatibleAPI,
+        ai_client: OpenAIClient,
         prompt: str,
         intelligence_list: List[Dict[str, str]]
 ) -> List[str] or Dict:
@@ -238,7 +235,7 @@ def generate_recommendation_by_ai(
 
     start = time.time()
 
-    response = api_client.create_chat_completion_sync(
+    response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
@@ -248,81 +245,3 @@ def generate_recommendation_by_ai(
     print(f"AI response spends {elapsed} s")
 
     return conversation_common_process('recommendation', messages, response)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-NEWS_TEXT = """An industry group representing companies including Netflix argued on Friday that streamers should not have rules around Canadian content imposed on them. Netflix was also scheduled to appear at a hearing this week, but then cancelled its appearance. (Richard Drew/The Associated Press)
-
-Social Sharing
-A group representing major foreign streaming companies told a hearing held by Canada's broadcasting regulator on Friday that those companies shouldn't be expected to fulfil the same responsibilities as traditional broadcasters when it comes to Canadian content.
-
-The Motion Picture Association-Canada, which represents large streamers like Netflix, Paramount, Disney and Amazon, said the regulator should be flexible in modernizing its definition of Canadian content.
-
-The Canadian Radio-television and Telecommunications Commission (CRTC) is holding a two-week public hearing on a new definition of Canadian content that began Wednesday. The proceeding is part of its work to implement the Online Streaming Act — and it is bringing tensions between traditional players and large foreign streamers out in the open.
-
-In a written copy of the statement being made at the hearing, MPA-Canada argued the Online Streaming Act, which updated broadcasting laws to capture online platforms, sets a lower standard for foreign online services.
-
-Cancon funding debated
-"The contribution standard applied to Canadian broadcasters is much greater and reflects their existing obligations," the group said in its opening remarks.
-
-"This difference was intentional as Parliament rejected calls to impose the same standard because 'it is just not realistic' to expect foreign online undertakings operating in a global market to contribute in the same way as Canadian broadcasters."
-
-MPA-Canada said the CRTC shouldn't impose "any mandatory positions, functions or elements of a 'Canadian program"' on global streaming services.
-
-While the hearing is focused on the definition of Canadian content, the CRTC has also heard debate about financial contributions.
-
-Canadian media company Corus suggested that Cancon funding requirements be eased on broadcasters, and that streamers follow the same rule. (Tijana Martin/The Canadian Press)
-
-Earlier Friday, Canadian media company Corus urged the CRTC to require traditional broadcasters and online players to pay the same amount into the Canadian content system. The broadcaster, which owns Global TV, said both should contribute 20 per cent of their revenue toward Canadian content.
-
-Currently, large English-language broadcasters must contribute 30 per cent of revenues to Canadian programming, and the CRTC last year ordered streaming services to pay five per cent of their annual Canadian revenues to a fund devoted to producing Canadian content.
-
-The foreign streaming services are fighting that rule in court and Netflix, Paramount and Apple pulled out of the CRTC hearing earlier this week.
-
-Streamers like Netflix, Disney Plus get court reprieve from paying for Canadian content
-
-Controversial bill to regulate online streaming becomes law
-
-MPA-Canada said that online services "should be allowed to fulfil their obligations through direct spending on production where that is consistent with their business model — not forced to pay into funds or into a program acquisition model that is inconsistent with how their services operate."
-
-The CRTC has issued a preliminary position on the definition of Canadian content, suggesting it keep the current system for determining whether content is considered Canadian by awarding points when Canadians occupy key creative positions in a production.
-
-The CRTC is considering expanding that system to allow more creative positions to count toward the total points. One of the topics of debate in the hearing is the position of "showrunner," which has become more significant in recent years.
-
-MPA-Canada said that "adding just a few positions to a more than 40-year-old list ignores today's modern production landscape."""
-
-
-API_BASE_URL = ["http://localhost:11434/v1",
-                "https://api.siliconflow.cn/v1"]
-
-MODEL = ['qwen3:14b',
-         'Qwen/Qwen3-235B-A22B']
-
-def main():
-    select_index = 0
-
-    api_client = OpenAICompatibleAPI(
-        api_base_url=API_BASE_URL[select_index],
-        token='SleepySoft',
-        default_model=MODEL[select_index])
-
-    structured_data = {
-        "UUID": str(uuid.uuid4()),
-        "title": "Big streamers argue at CRTC hearing they shouldn't",
-        "content": NEWS_TEXT
-    }
-
-    # 调用函数
-    result = analyze_with_ai(api_client, ANALYSIS_PROMPT, structured_data)
-
-    # 打印结果
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()
-
-
-
-

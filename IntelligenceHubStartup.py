@@ -11,6 +11,8 @@ from flask import Flask
 from typing import Tuple
 from functools import partial
 
+from AIClientCenter.AIClientManager import AIClientManager
+from AIClientCenter.AIClients import OpenAIClient
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from ServiceComponent.AIServiceRotator import SiliconFlowServiceRotator
@@ -37,7 +39,6 @@ wsgi_app.config.update(
 
 
 logger = logging.getLogger(__name__)
-self_path = os.path.dirname(os.path.abspath(__file__))
 
 
 def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
@@ -58,23 +59,65 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     # ---------------------------------- Path ----------------------------------
 
     # TODO: All generated data will be put in this path. It's good for docker deployment.
-    data_path = os.path.join(self_path, 'data')
-
-    Path(data_path).mkdir(parents=True, exist_ok=True)
+    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+    Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
 
     # ------------------------------- AI Service -------------------------------
 
-    ai_service_url = config.get('intelligence_hub.ai_service.url', OPEN_AI_API_BASE_URL_SELECT)
-    ai_service_token = config.get('intelligence_hub.ai_service.token', 'Sleepy')
-    ai_service_model = config.get('intelligence_hub.ai_service.model', MODEL_SELECT)
-    ai_service_proxies = config.get('intelligence_hub.ai_service.proxies', None)
+    client_manager = AIClientManager()
+    try:
+        from _config.ai_client_config_example import AI_CLIENTS
+        logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
+        for client in AI_CLIENTS:
+            logger.info(f"Register AI client: {client.name}.")
+            client_manager.register_client(client)
+    except Exception as _:
+        logger.info(f"No ai_client_config in _config folder. Use traditional config.")
 
-    api_client = OpenAICompatibleAPI(
-        api_base_url=ai_service_url,
-        token=ai_service_token,
-        default_model=ai_service_model,
-        proxies=ai_service_proxies
-    )
+        ai_service_url = config.get('intelligence_hub.ai_service.url', OPEN_AI_API_BASE_URL_SELECT)
+        ai_service_token = config.get('intelligence_hub.ai_service.token', 'Sleepy')
+        ai_service_model = config.get('intelligence_hub.ai_service.model', MODEL_SELECT)
+        ai_service_proxies = config.get('intelligence_hub.ai_service.proxies', None)
+
+        api_client = OpenAICompatibleAPI(
+            api_base_url=ai_service_url,
+            token=ai_service_token,
+            default_model=ai_service_model,
+            proxies=ai_service_proxies
+        )
+
+        # Wrap by new mechanism
+        client_manager.register_client(
+            OpenAIClient('Default AI Client', api_client )
+        )
+
+        # --------------------- API Token Rotator ---------------------
+
+        key_rotator_enabled = config.get('ai_service_rotator.enabled', False)
+        key_rotator_key_file = config.get('ai_service_rotator.key_file', '')
+        key_rotator_threshold = config.get('ai_service_rotator.threshold', 0.5)
+
+        if key_rotator_enabled and key_rotator_key_file:
+            logger.info(f'AI Service Key Rotator Enabled. key file: '
+                        f'{key_rotator_key_file}, threshold: {key_rotator_threshold}')
+
+            ai_token_rotator = SiliconFlowServiceRotator(
+                ai_client=api_client,
+                keys_file=os.path.join(CONFIG_PATH, key_rotator_key_file),
+                threshold=float(key_rotator_threshold)
+            )
+
+            quit_flag = threading.Event()
+            rotator_thread = threading.Thread(
+                target=ai_token_rotator.run_forever,
+                args=(quit_flag,),
+                name="KeyRotatorThread",
+                daemon=True
+            )
+            rotator_thread.start()
+
+    client_manager.start_monitoring()
 
     # ------------------------------- Vector DB --------------------------------
 
@@ -162,31 +205,6 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
     hub_service.register_routers(wsgi_app)
 
-    # --------------------------------- Key Rotator ---------------------------------
-
-    key_rotator_enabled = config.get('ai_service_rotator.enabled', False)
-    key_rotator_key_file = config.get('ai_service_rotator.key_file', '')
-    key_rotator_threshold = config.get('ai_service_rotator.threshold', 0.5)
-
-    if key_rotator_enabled and key_rotator_key_file:
-        logger.info(f'AI Service Key Rotator Enabled. key file: '
-                    f'{key_rotator_key_file}, threshold: {key_rotator_threshold}')
-
-        ai_token_rotator = SiliconFlowServiceRotator(
-            ai_client=api_client,
-            keys_file=os.path.join(self_path, key_rotator_key_file),
-            threshold=float(key_rotator_threshold)
-        )
-
-        quit_flag = threading.Event()
-        rotator_thread = threading.Thread(
-            target=ai_token_rotator.run_forever,
-            args=(quit_flag,),
-            name="KeyRotatorThread",
-            daemon=True
-        )
-        rotator_thread.start()
-
     # --------------------------------- End of Init ---------------------------------
 
     return hub, hub_service
@@ -236,7 +254,7 @@ def run():
                                 link_file_roots={
                                     'conversation': os.path.abspath('conversation')
                                 },
-                                project_root=self_path,
+                                project_root=_self_path,
                                 with_logger_manager=True)
     log_backend.register_router(app=wsgi_app, wrapper=ihub_service.access_manager.login_required)
 

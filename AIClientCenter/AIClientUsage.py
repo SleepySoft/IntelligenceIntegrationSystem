@@ -272,6 +272,9 @@ def main():
                         print(f" - [{name:<20}] Health: {health:>5.1f}% | Tokens: {tokens}")
 
                     print("=" * 60 + "\n")
+                    print('Raw data: ')
+                    print(str(stats))
+                    print("=" * 60 + "\n")
 
             # 稍微 sleep 一下避免 CPU 空转太快（如果有大量客户端，这个可以设很小）
             time.sleep(0.1)

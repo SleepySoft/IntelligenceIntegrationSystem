@@ -6,10 +6,10 @@ from collections import Counter
 from dataclasses import dataclass, asdict
 from typing import Optional, Tuple, List, Dict
 
-from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware
 from prompts import SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.OpenAIClient import OpenAICompatibleAPI
+from AIClientCenter.AIClientManager import AIClientManager
+from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceAnalyzerProxy import generate_recommendation_by_ai
 
@@ -31,11 +31,11 @@ class RecommendationManager:
 
     def __init__(self,
                  query_engine: IntelligenceQueryEngine,
-                 open_ai_client: OpenAICompatibleAPI,
+                 ai_client_manager: AIClientManager,
                  db_storage: MongoDBStorage
                  ):
         self.query_engine = query_engine
-        self.open_ai_client = open_ai_client
+        self.ai_client_manager = ai_client_manager
         self.db = db_storage  # NOTE: Assuming `db_storage` is an object representing a specific MongoDB collection.
 
         self.recommendations_cache: List[RecommendationManager.RecommendationData] = []
@@ -114,7 +114,7 @@ class RecommendationManager:
     def generate_recommendation(self,
                                 period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
                                 threshold: int = 6,
-                                limit: int = 2000):
+                                limit: int = 2000) -> bool:
         """
         Executes the recommendation generation process and saves the result to the DB and cache.
         This function is designed to be called by a scheduled task (e.g., hourly) or triggered manually.
@@ -122,7 +122,7 @@ class RecommendationManager:
         with self.lock:
             if self.generating:
                 logger.warning("Recommendation generation is already in progress. Skipping this run.")
-                return
+                return False
             self.generating = True
 
         try:
@@ -139,7 +139,7 @@ class RecommendationManager:
                                                                  limit=limit)
             if not result:
                 logger.info("No intelligence data found for the given period. Nothing to recommend.")
-                return
+                return False
 
             if total > limit:
                 logger.warning(f'Total intelligence ({total}) is larger than limit ({limit}).')
@@ -148,11 +148,15 @@ class RecommendationManager:
                 {'UUID': item['UUID'], 'EVENT_TITLE': item['EVENT_TITLE'], 'EVENT_BRIEF': item['EVENT_BRIEF']} for item
                 in result]
 
-            recommendation_uuids = generate_recommendation_by_ai(self.open_ai_client, SUGGESTION_PROMPT, title_brief)
+            if ai_client := self.ai_client_manager.get_available_client():
+                recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
+                self.ai_client_manager.release_client(ai_client)
+            else:
+                return False
 
             if not recommendation_uuids or 'error' in recommendation_uuids:
                 logger.error(f"Failed to get recommendation from AI: {recommendation_uuids}")
-                return
+                return False
 
             uuid_set = set(recommendation_uuids)
             recommendation_intelligences = [item for item in result if item['UUID'] in uuid_set]
@@ -166,9 +170,13 @@ class RecommendationManager:
 
             self._save_and_cache_recommendation(new_recommendation)
 
+            return True
+
         except Exception as e:
             print(traceback.format_exc())
             logger.error(f'An exception occurred during generate_recommendation: {e}', exc_info=True)
+            return False
+
         finally:
             with self.lock:
                 self.generating = False

@@ -12,12 +12,12 @@ from typing import Tuple, Optional, Dict, Union
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
 
+from AIClientCenter.AIClientManager import AIClientManager
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.RecommendationManager import RecommendationManager
 from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
 from prompts import ANALYSIS_PROMPT, SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.OpenAIClient import OpenAICompatibleAPI
 from Tools.DateTimeUtility import time_str_to_datetime, get_aware_time, Clock
 from MyPythonUtility.DictTools import check_sanitize_dict
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
@@ -57,7 +57,7 @@ class IntelligenceHub:
                  db_cache: Optional[MongoDBStorage] = None,
                  db_archive: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
-                 ai_client: OpenAICompatibleAPI = None):
+                 ai_client_manager: AIClientManager = None):
         """
         Init IntelligenceHub.
         :param ref_url: The reference url for sub-resource url generation.
@@ -75,7 +75,7 @@ class IntelligenceHub:
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
         self.mongo_db_recommendation = db_recommendation
-        self.open_ai_client = ai_client
+        self.ai_client_manager = ai_client_manager
 
         # -------------- Queues Related --------------
 
@@ -104,7 +104,7 @@ class IntelligenceHub:
 
         self.recommendations_manager = RecommendationManager(
             query_engine = self.archive_db_query_engine,
-            open_ai_client=self.open_ai_client,
+            ai_client_manager=self.ai_client_manager,
             db_storage=self.mongo_db_recommendation
         )
 
@@ -396,7 +396,19 @@ class IntelligenceHub:
         if self.shutdown_flag.is_set():
             raise TryAgain
 
-        result = analyze_with_ai(self.open_ai_client, ANALYSIS_PROMPT, original_data)
+        # --------------------------- Wait until one AI client available ---------------------------
+
+        retries = 0
+        while True:
+            if ai_client := self.ai_client_manager.get_available_client():
+                result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+                break
+            retries += 1
+            time.sleep(1)
+        if retries:
+            logger.info(f"Analysis tries to get AI client for {retries} times.")
+
+        # ------------------------------------------------------------------------------------------
 
         # Check warning and error for statistics
         if 'error' in result:
@@ -408,7 +420,7 @@ class IntelligenceHub:
         return result
 
     def _ai_analysis_thread(self):
-        if not self.open_ai_client:
+        if not self.ai_client_manager:
             logger.info('**** NO AI API client - Thread QUIT ****')
             return
 
@@ -437,28 +449,9 @@ class IntelligenceHub:
 
                 result = self.__robust_analyze_with_ai(original_data)
 
-                # retry = 0
-                # result = None
-                # # Add retry to get correct answer from AI
-                # while retry < ai_process_max_retry and not self.shutdown_flag.is_set():
-                #     start_time = time.time()
-                #     result = analyze_with_ai(self.open_ai_client, ANALYSIS_PROMPT, original_data)
-                #     time_spending = time.time() - start_time
-                #
-                #     # Cooling down the API limitation.
-                #     if time_spending < 1.0:
-                #         time.sleep(1)
-                #
-                #     if 'error' not in result:
-                #         break
-                #     retry += 1
-
                 if not result or 'error' in result:
                     error_msg = f"AI process error after all retries."
                     raise ValueError(error_msg)
-
-                # if retry:
-                #     logger.info(f'Got AI match format answer after {retry} retires.')
 
                 # ----------------------- Check Analysis Result and Fill Other Fields ------------------------
 
@@ -631,7 +624,6 @@ class IntelligenceHub:
         period = (now- datetime.timedelta(hours=24), now)
 
         self.recommendations_manager.generate_recommendation(period=period, threshold=6, limit=500)
-        # self._generate_recommendation(period=period, threshold=6, limit=1000)
         logger.info(f'Generate recommendation finished at: {datetime.datetime.now()}')
 
     def _trigger_generate_recommendation(self):
@@ -744,63 +736,5 @@ class IntelligenceHub:
         except Exception as e:
             logger.error(f'Add item link fail: {str(e)}')
 
-    # def _get_cached_data_brief(self, threshold: int = 6) -> List[dict]:
-    #     return self.intelligence_cache.get_cached_data(
-    #         filter_func=lambda data: data.get('APPENDIX', {}).get(APPENDIX_MAX_RATE_SCORE, 0) >= threshold,
-    #         map_function=lambda data: {
-    #             'UUID': data['UUID'],
-    #             'EVENT_TITLE': data['EVENT_TITLE'],
-    #             'EVENT_BRIEF': data['EVENT_BRIEF'],
-    #         }
-    #     )
-
     def _aggressive_intelligence(self, article: dict):
         pass
-
-    # def _generate_recommendation(self,
-    #                              period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
-    #                              threshold: int = 6,
-    #                              limit: int = 2000):
-    #     with self.lock:
-    #         if self.generating_recommendation:
-    #             return
-    #     try:
-    #         with self.lock:
-    #             self.generating_recommendation = True
-    #
-    #         if not period:
-    #             period = (datetime.datetime.now() - datetime.timedelta(hours=24), datetime.datetime.now())
-    #
-    #         query_engine = self.archive_db_query_engine
-    #         result, total = query_engine.query_intelligence(archive_period = period, threshold=threshold, limit=limit)
-    #
-    #         if not result:
-    #             return []
-    #         if total > limit:
-    #             logger.warning(f'Total intelligence ({total}) is larger than limit ({limit}).')
-    #
-    #         title_brief = [{
-    #             'UUID': item['UUID'],
-    #             'EVENT_TITLE': item['EVENT_TITLE'],
-    #             'EVENT_BRIEF': item['EVENT_BRIEF'],
-    #         } for item in result]
-    #
-    #         recommendation_uuids = generate_recommendation_by_ai(self.open_ai_client, SUGGESTION_PROMPT, title_brief)
-    #
-    #         if not recommendation_uuids or 'error' in recommendation_uuids:
-    #             return []
-    #
-    #         uuid_set = set(recommendation_uuids)
-    #
-    #         recommendation_intelligences = [
-    #             item for item in result
-    #             if item['UUID'] in uuid_set
-    #         ]
-    #
-    #         with self.lock:
-    #             self.recommendations = recommendation_intelligences
-    #     except Exception as e:
-    #         logger.error(f'generate_recommendation exception: {str(e)}')
-    #     finally:
-    #         with self.lock:
-    #             self.generating_recommendation = False
