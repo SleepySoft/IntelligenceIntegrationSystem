@@ -510,6 +510,11 @@ class AIClientManager:
             first_check_delay_sec: Delay before the first check loop starts.
         """
         self.clients = []  # List of BaseAIClient instances
+
+        # Map user_name to their acquired client info
+        # Structure: { "user_name": {"client": client_obj, "last_used": timestamp} }
+        self.user_client_map: Dict[str, Dict[str, Any]] = {}
+
         self._lock = threading.RLock()
         self.monitor_thread = None
         self.monitor_running = False
@@ -530,43 +535,120 @@ class AIClientManager:
             self.clients.sort(key=lambda x: x.priority)
             logger.info(f"Registered client: {getattr(client, 'name', 'Unknown')}")
 
-    def get_available_client(self) -> Optional[Any]:
+    def get_available_client(self, user_name: str) -> Optional[Any]:
         """
-        Get an available client based on priority and status.
+        Get an available client for a specific user.
+
+        Logic:
+        1. If user already holds a client:
+           - If a higher priority client is free, release old and grab new.
+           - If no higher priority client is free, keep the current one (refresh timestamp).
+        2. If user holds no client:
+           - Acquire the highest priority free client.
+
+        Args:
+            user_name: The identifier for the user requesting the client.
 
         Returns:
             BaseAIClient or None if no clients are available/healthy.
         """
+        if not user_name:
+            logger.error("user_name is required to get a client.")
+            return None
+
         with self._lock:
+            # Retrieve current allocation for this user
+            current_allocation = self.user_client_map.get(user_name)
+            current_client = current_allocation['client'] if current_allocation else None
+
+            # If the current client is effectively dead/removed, treat user as having no client
+            if current_client and (current_client not in self.clients or
+                                   current_client.get_status('status') == ClientStatus.UNAVAILABLE):
+                self._release_user_resources(user_name)
+                current_client = None
+
+            # Iterate through clients (already sorted by priority: High -> Low)
             for client in self.clients:
                 client_status = client.get_status('status')
 
                 # 1. Filter out permanently dead clients
                 if client_status == ClientStatus.UNAVAILABLE: continue
 
-                # 2. Check dynamic health (Optional optimization: skip if health is 0)
-                # If you want strict checking:
+                # 2. Check dynamic health (Optional optimization)
                 # if client.calculate_health() <= 0: continue
 
-                # 3. Try to acquire lock/token for the client
-                if client_status == ClientStatus.AVAILABLE and client._acquire():
-                    logger.info(f"Get client: {client.name}")
+                # 3. Logic for selection
+                # Case A: We found the client currently held by this user.
+                # Since we iterate by priority, if we reached here, it means
+                # no *higher* priority client was free. So we keep this one.
+                if client is current_client:
+                    self.user_client_map[user_name]['last_used'] = time.time()
+                    logger.debug(f"User {user_name} keeps client: {client.name}")
                     return client
 
+                # Case B: We found a free client (not busy).
+                # Since this appears *before* the current_client in the loop (or user has no client),
+                # this client has higher priority. We should take it.
+                if not client._is_busy():
+                    # Try to acquire the lock/token for the new client
+                    if client._acquire():
+                        # If user had an old client, release it first
+                        if current_client:
+                            self._release_client_core(current_client)
+                            logger.info(
+                                f"User {user_name} switching from {current_client.name} to better client {client.name}")
+
+                        # Update map with new client
+                        self.user_client_map[user_name] = {
+                            "client": client,
+                            "last_used": time.time()
+                        }
+                        logger.info(f"User {user_name} acquired client: {client.name}")
+                        return client
+
+            # If we exit loop and user had a client but it wasn't found (should be covered by initial check)
+            # or no suitable client found at all.
             return None
 
-    def release_client(self, client: Any):
-        """Release a client back to the pool."""
-        # Simple wrapper to release the lock/semaphore on the client
+    def release_client(self, user_name: str):
+        """
+        Release the client currently held by the specified user.
+        This should be called when the user session ends or they want to free resources.
+        """
+        with self._lock:
+            if user_name in self.user_client_map:
+                client = self.user_client_map[user_name]['client']
+                self._release_client_core(client)
+                del self.user_client_map[user_name]
+                logger.info(f"Released client for user: {user_name}")
+
+    def _release_client_core(self, client: Any):
+        """Internal helper to release the physical client lock."""
         if hasattr(client, '_release'):
             client._release()
+
+    def _release_user_resources(self, user_name: str):
+        """Internal helper to clean up user map entries without double-releasing if client is dead."""
+        if user_name in self.user_client_map:
+            # We might want to attempt release just in case, usually safe
+            client = self.user_client_map[user_name]['client']
+            self._release_client_core(client)
+            del self.user_client_map[user_name]
 
     def get_client_stats(self) -> Dict[str, Any]:
         """
         Get comprehensive statistics about all clients for dashboards/logs.
-        Leverages the ClientMetricsMixin for detailed health data.
+        Now includes user allocation info.
         """
         with self._lock:
+            # Create a reverse lookup for O(1) access: Client -> User Info
+            client_to_user_info = {}
+            for u_name, info in self.user_client_map.items():
+                client_to_user_info[info['client']] = {
+                    "user": u_name,
+                    "last_used": info['last_used']
+                }
+
             # Pre-calculate lists for summary
             available_list = [c for c in self.clients if c.get_status('status') == ClientStatus.AVAILABLE]
             unavailable_list = [c for c in self.clients if c.get_status('status') == ClientStatus.UNAVAILABLE]
@@ -580,6 +662,9 @@ class AIClientManager:
                 # 2. Get the standardized explanation of why the health is what it is
                 metrics_detail = client.get_standardized_metrics()
 
+                # 3. Get user allocation info
+                allocation = client_to_user_info.get(client, None)
+
                 client_details.append({
                     "name": getattr(client, "name", "Unknown"),
                     "type": client.__class__.__name__,
@@ -588,6 +673,9 @@ class AIClientManager:
                     "health_score": health_score,  # 0-100 score
                     "is_busy": client._is_busy(),
                     "last_checked": client.get_status('status_last_updated'),
+                    # User allocation details
+                    "held_by_user": allocation['user'] if allocation else None,
+                    "last_used_ts": allocation['last_used'] if allocation else None,
                     # Detailed breakdowns
                     "constraint_metrics": metrics_detail,  # Quota/Balance snapshots
                 })
@@ -601,6 +689,7 @@ class AIClientManager:
                     "available": len(available_list),
                     "unavailable": len(unavailable_list),
                     "busy": len(busy_list),
+                    "active_users": len(self.user_client_map),
                     "timestamp": time.time()
                 },
                 "clients": client_details
@@ -636,6 +725,8 @@ class AIClientManager:
             try:
                 self._check_client_health()
                 self._cleanup_unavailable_clients()
+                # Optional: Auto-release idle clients held by users for too long?
+                # self._cleanup_idle_user_sessions()
             except Exception as e:
                 # Prevent monitor thread from crashing entirely
                 logger.error(f"Error in monitor loop: {e}")
@@ -681,15 +772,34 @@ class AIClientManager:
     def _cleanup_unavailable_clients(self):
         """
         Remove clients that are marked as UNAVAILABLE (permanently dead).
-        Clients with 0 Health (Quota exceeded) are usually kept as they might recover next month,
-        unless the client logic explicitly sets them to UNAVAILABLE.
+        Also cleans up user mappings if their held client is removed.
         """
         with self._lock:
             initial_count = len(self.clients)
-            self.clients = [
-                client for client in self.clients
-                if client.get_status('status') != ClientStatus.UNAVAILABLE
+
+            # Identify clients to remove
+            clients_to_remove = [
+                c for c in self.clients
+                if c.get_status('status') == ClientStatus.UNAVAILABLE
             ]
+
+            if not clients_to_remove:
+                return
+
+            # Remove from main list
+            self.clients = [c for c in self.clients if c not in clients_to_remove]
+
+            # Clean up user mappings that refer to removed clients
+            users_to_clear = []
+            for user, info in self.user_client_map.items():
+                if info['client'] in clients_to_remove:
+                    users_to_clear.append(user)
+
+            for user in users_to_clear:
+                # Note: No need to call _release() as client is dead/unavailable
+                del self.user_client_map[user]
+                logger.info(f"Removed allocation for user {user} (Client became unavailable)")
+
             removed = initial_count - len(self.clients)
             if removed > 0:
                 logger.info(f"Cleaned up {removed} unavailable clients.")

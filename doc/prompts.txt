@@ -2558,5 +2558,49 @@ AI client分为几类：
 
 
 
+AIClientManager类中获取client后需要显式释放，导致代码编写麻烦，且可能导致资源泄露：
+
+```
+if ai_client := self.ai_client_manager.get_available_client():
+    try:
+        result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+    except Exception as e:
+        logger.error(f"Analysis with AI fail: {str(e)}")
+    finally:
+        self.ai_client_manager.release_client(ai_client)
+        break
+```
+
+我在考虑另一种方式，即调用get_available_client时指定一个用户的名字，在manager中维护 用户-Client 映射表。
+在调用 get_available_client ，如果该client已经占用了一个client，那么推荐client时有优先级更高的，则释放前一个，分配新的一个。
+当然，用户可以主动释放，这样一来它名下没有client。
+同时，统计信息包含哪个client在哪个用户下，最后的一次 get_available_client 是什么时候。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
