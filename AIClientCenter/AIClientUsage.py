@@ -202,13 +202,13 @@ def main():
     )
 
     ms_api = create_modelscope_client()
-    ms_api.set_api_token('ms-6800a2c4-472c-4fcd-8e41-1771f847b038')
+    ms_api.set_api_token('ms-')
     ms_client = OpenAIClient('ModelScope Client', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
 
     client_manager = AIClientManager()
     client_manager.register_client(sf_client_a)
     client_manager.register_client(sf_client_b)
-    # client_manager.register_client(ms_client)
+    client_manager.register_client(ms_client)
     client_manager.start_monitoring()
 
     sf_rotator_a.run_in_thread()
@@ -226,9 +226,11 @@ def main():
 
     # 使用线程池来处理并发请求
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        request_counter = 0
         while True:
             # 尝试获取客户端
-            client = client_manager.get_available_client()
+            request_counter += 1
+            client = client_manager.get_available_client(f'AI Client Usage Demo ({request_counter})')
 
             if not client:
                 # --- Case A: 没有可用客户端 ---

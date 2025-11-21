@@ -148,14 +148,9 @@ class RecommendationManager:
                 {'UUID': item['UUID'], 'EVENT_TITLE': item['EVENT_TITLE'], 'EVENT_BRIEF': item['EVENT_BRIEF']} for item
                 in result]
 
-            if ai_client := self.ai_client_manager.get_available_client():
-                try:
-                    recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
-                except Exception as e:
-                    logger.error(f"generate_recommendation_by_ai fail {str(e)}")
-                    print(traceback.format_exc())
-                finally:
-                    self.ai_client_manager.release_client(ai_client)
+            if ai_client := self.ai_client_manager.get_available_client('RecommendationManager'):
+                recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
+
             else:
                 return False
 

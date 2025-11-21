@@ -520,8 +520,8 @@ class AIClientManager:
         self.monitor_running = False
 
         # Configuration for the monitoring loop
-        self.check_error_interval = base_check_interval_sec  # Interval when client is in ERROR state
-        self.check_stable_interval = base_check_interval_sec * 10  # Interval when client is AVAILABLE
+        self.check_error_interval = base_check_interval_sec * 2     # Interval when client is in ERROR state
+        self.check_stable_interval = base_check_interval_sec * 15   # Interval when client is AVAILABLE
         self.first_check_delay_sec = first_check_delay_sec
 
     def register_client(self, client: Any):
