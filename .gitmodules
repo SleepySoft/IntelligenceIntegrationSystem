@@ -9,3 +9,7 @@
 	path = IntelligenceCrawler
 	url = https://github.com/SleepySoft/IntelligenceCrawler.git
 	branch = main
+[submodule "AIClientCenter"]
+	path = AIClientCenter
+	url = https://github.com/SleepySoft/AIClientCenter.git
+	branch = main
