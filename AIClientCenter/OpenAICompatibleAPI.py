@@ -484,7 +484,7 @@ def create_ollama_client(model: Optional[str] = None):
     return client
 
 
-def create_siliconflow_client(token: Optional[str], model: Optional[str] = None):
+def create_siliconflow_client(token: Optional[str] = None, model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='https://api.siliconflow.cn/v1',
         token=token or os.getenv("SILICON_API_KEY"),
@@ -493,7 +493,7 @@ def create_siliconflow_client(token: Optional[str], model: Optional[str] = None)
     return client
 
 
-def create_modelscope_client(token: Optional[str], model: Optional[str] = None):
+def create_modelscope_client(token: Optional[str] = None, model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='https://api-inference.modelscope.cn/v1',
         token=token or os.getenv("MODELSCOPE_API_KEY"),
@@ -502,11 +502,11 @@ def create_modelscope_client(token: Optional[str], model: Optional[str] = None):
     return client
 
 
-def create_gemini_client():
+def create_gemini_client(token: Optional[str] = None, model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='https://generativelanguage.googleapis.com/v1beta/openai',
-        token=os.getenv("GEMINI_API_KEY"),
-        default_model='models/gemini-pro-latest',
+        token=token or os.getenv("GEMINI_API_KEY"),
+        default_model=model or 'models/gemini-pro-latest',
         proxies={
             "http": "http://127.0.0.1:10809",
             "https": "http://127.0.0.1:10809"

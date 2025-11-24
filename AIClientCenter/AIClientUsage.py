@@ -200,14 +200,22 @@ def main():
         threshold=0.1
     )
 
-    ms_api = create_modelscope_client()
-    ms_api.set_api_token('ms-')
-    ms_client = OpenAIClient('ModelScope Client', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
-
     client_manager = AIClientManager()
     client_manager.register_client(sf_client_a)
     client_manager.register_client(sf_client_b)
-    client_manager.register_client(ms_client)
+
+    # Modelscope: 每天总共 2000 次 API-Inference 调用免费额度，其中每个单模型额度上限500次
+    ms_token = 'ms-61462938-0c32-4dba-8102-d1efbf779478'
+    ms_models = ['deepseek-ai/DeepSeek-R1',
+                 'deepseek-ai/DeepSeek-V3.2-Exp',
+                 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+                 'moonshotai/Kimi-K2-Thinking']
+    for model in ms_models:
+        ms_api = create_modelscope_client(ms_token, model)
+        ms_client = OpenAIClient('ModelScope Client', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
+        ms_client.set_usage_constraints(max_tokens=495, period_days = 1, target_metric='request_count')
+        client_manager.register_client(ms_client)
+
     client_manager.start_monitoring()
 
     sf_rotator_a.run_in_thread()

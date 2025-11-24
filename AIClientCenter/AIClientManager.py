@@ -433,7 +433,8 @@ class BaseAIClient(ABC):
             try:
                 # 统计token使用量
                 if usage_data := response.get('usage', {}):
-                    self._record_token_usage(usage_data, original_messages)
+                    usage_data['request_count'] = 1
+                    self.record_usage(usage_data)
             except Exception as e:
                 # Maybe not support.
                 pass
@@ -452,26 +453,26 @@ class BaseAIClient(ABC):
                 'message': f'Failed to process LLM response: {str(e)}'
             }
 
-    def _record_token_usage(self, usage_data: Dict[str, Any], original_messages: List[Dict[str, str]]):
-        # 1. 准备本次请求的增量数据
-        # 注意：这里我们将 key 统一映射为想要的统计字段名
-        increment_stats = Counter({
-            'prompt_tokens': usage_data.get('prompt_tokens', 0),
-            'completion_tokens': usage_data.get('completion_tokens', 0),
-            'total_tokens': usage_data.get('total_tokens', 0),
-            'message_count': len(original_messages),
-            # # 如果你还需要专门保留带 'total_' 前缀的字段以兼容旧代码逻辑：
-            # 'total_prompt_tokens': usage_data.get('prompt_tokens', 0),
-            # 'total_completion_tokens': usage_data.get('completion_tokens', 0)
-        })
-
-        with self._lock:
-            # 2. 自动累加
-            # Counter.update() 会将 increment_stats 中的数值加到 self._usage_stats 上
-            self._usage_stats.update(increment_stats)
-
-            # 3. 单独处理非累加字段（时间戳需要覆盖，而不是相加）
-            self._usage_stats['last_update'] = time.time()
+    # def _record_token_usage(self, usage_data: Dict[str, Any], original_messages: List[Dict[str, str]]):
+    #     # 1. 准备本次请求的增量数据
+    #     # 注意：这里我们将 key 统一映射为想要的统计字段名
+    #     increment_stats = Counter({
+    #         'prompt_tokens': usage_data.get('prompt_tokens', 0),
+    #         'completion_tokens': usage_data.get('completion_tokens', 0),
+    #         'total_tokens': usage_data.get('total_tokens', 0),
+    #         'message_count': len(original_messages),
+    #         # # 如果你还需要专门保留带 'total_' 前缀的字段以兼容旧代码逻辑：
+    #         # 'total_prompt_tokens': usage_data.get('prompt_tokens', 0),
+    #         # 'total_completion_tokens': usage_data.get('completion_tokens', 0)
+    #     })
+    #
+    #     with self._lock:
+    #         # 2. 自动累加
+    #         # Counter.update() 会将 increment_stats 中的数值加到 self._usage_stats 上
+    #         self._usage_stats.update(increment_stats)
+    #
+    #         # 3. 单独处理非累加字段（时间戳需要覆盖，而不是相加）
+    #         self._usage_stats['last_update'] = time.time()
 
     # ---------------------------------------- Abstractmethod ----------------------------------------
 
@@ -581,7 +582,9 @@ class AIClientManager:
                 if client_status == ClientStatus.UNAVAILABLE: continue
 
                 # 2. Check dynamic health (Optional optimization)
-                # if client.calculate_health() <= 0: continue
+                if client.calculate_health() <= 0:
+                    logger.warning(f"Client: {client.name} health is 0.")
+                    continue
 
                 # 3. Logic for selection
                 # Case A: We found the client currently held by this user.

@@ -6,15 +6,22 @@ from typing import Dict, Any, List, Optional, Union
 from collections import Counter
 
 # Constants for Metric Types
-METRIC_TYPE_USAGE = "USAGE_LIMIT"           # Logic: Healthy when current < target
-METRIC_TYPE_BALANCE = "BALANCE_THRESHOLD"   # Logic: Healthy when current > target
+METRIC_TYPE_USAGE = "USAGE_LIMIT"  # Logic: Healthy when current < target
+METRIC_TYPE_BALANCE = "BALANCE_THRESHOLD"  # Logic: Healthy when current > target
 
 
 class ClientMetricsMixin:
     """
-    A unified Mixin for managing AI Client statistics, quotas, balances, and health.
-    Supports simultaneous usage of periodic quotas (e.g., monthly tokens) and
-    financial thresholds (e.g., minimum wallet balance).
+    A unified Mixin for managing AI Client statistics, quotas, and financial balances.
+
+    Architecture Note:
+    ------------------
+    We separate 'Periodic Stats' (Quota) from 'Balance' (Wallet) because they have
+    different lifecycles:
+    1. Periodic Stats: Reset automatically (e.g., every 30 days).
+    2. Balance: Persistent; only changes via manual external updates (top-up/deduction).
+
+    Both are persisted to the same state file for atomicity.
     """
 
     def __init__(self,
@@ -26,9 +33,9 @@ class ClientMetricsMixin:
         Initialize the metrics subsystem.
 
         Args:
-            quota_config: Dict defining limits (e.g., {'period_days': 30, 'limits': {'total_tokens': 1000}}).
-            balance_config: Dict defining balance rules (e.g., {'hard_threshold': 1.0}).
-            state_file_path: Path to a JSON file for persisting periodic usage data across restarts.
+            quota_config: Usage limits (e.g., {'period_days': 30, 'limits': {'total_tokens': 1000}}).
+            balance_config: Financial rules (e.g., {'hard_threshold': 1.0}).
+            state_file_path: JSON path for persisting both usage stats and balance.
             *args, **kwargs: Passed to super() to maintain MRO chain.
         """
         super().__init__(*args, **kwargs)
@@ -39,16 +46,18 @@ class ClientMetricsMixin:
 
         self._metrics_lock = threading.Lock()
 
-        # Lifetime stats (reset on process restart)
+        # Lifetime stats (In-memory only, resets on process restart)
         self._lifetime_stats = Counter()
 
-        # Periodic stats (persisted, reset on time intervals)
+        # Periodic stats (Persisted, resets on time intervals)
         self._periodic_stats = Counter()
         self._last_reset_time = 0.0
-        self._current_balance = 0.0
+
+        # Financial Balance (Persisted, NEVER resets automatically)
+        self._balance = 0.0
 
         if self.state_file_path:
-            self._load_periodic_state()
+            self._load_state()
 
     def set_usage_constraints(self,
                               max_tokens: Optional[int] = None,
@@ -65,7 +74,7 @@ class ClientMetricsMixin:
             target_metric: The metric key to track (default: 'total_tokens').
         """
         with self._metrics_lock:
-            # Configure Quota
+            # 1. Configure Quota
             if max_tokens is not None:
                 self.quota_config = {
                     'period_days': period_days,
@@ -76,15 +85,15 @@ class ClientMetricsMixin:
             else:
                 self.quota_config = {}
 
-            # Configure Balance
+            # 2. Configure Balance Thresholds
             if min_balance is not None:
                 self.balance_config = {'hard_threshold': min_balance}
             else:
                 self.balance_config = {}
 
-            # Persist changes immediately if file path is set
+            # 3. Persist configuration changes
             if self.state_file_path:
-                self._save_periodic_state_unsafe()
+                self._save_state_unsafe()
 
     def record_usage(self, usage_data: Dict[str, Any]):
         """
@@ -121,31 +130,51 @@ class ClientMetricsMixin:
             })
 
         Args:
-            usage_data: Dict containing numeric values to be accumulated.
-                        Non-numeric values are ignored.
+            usage_data: Dict containing numeric values (e.g., {'total_tokens': 150}).
         """
         numeric_data = {k: v for k, v in usage_data.items() if isinstance(v, (int, float))}
         increment = Counter(numeric_data)
 
         with self._metrics_lock:
-            # Update lifetime stats
+            # 1. Update lifetime stats (Memory only)
             self._lifetime_stats.update(increment)
             self._lifetime_stats['last_update'] = time.time()
 
-            # Update periodic stats if quota is active
+            # 2. Update periodic stats if quota is active (Persisted)
             if self.quota_config:
                 self._check_and_reset_period_unsafe()
                 self._periodic_stats.update(increment)
-                self._save_periodic_state_unsafe()
+                self._save_state_unsafe()
+
+    def update_balance(self, amount: float, mode: str = 'set'):
+        """
+        Updates the financial balance.
+
+        Args:
+            amount (float): The value to set or add.
+            mode (str): 'set' to overwrite, 'add' to increment (top-up), 'sub' to deduct.
+        """
+        with self._metrics_lock:
+            if mode == 'set':
+                self._balance = amount
+            elif mode == 'add':
+                self._balance += amount
+            elif mode == 'sub':
+                self._balance -= amount
+            else:
+                raise ValueError(f"Invalid balance update mode: {mode}")
+
+            # Persist immediately on financial change
+            if self.state_file_path:
+                self._save_state_unsafe()
+
+    def get_balance(self) -> float:
+        with self._metrics_lock:
+            return self._balance
 
     def get_usage_stats(self) -> Dict[str, Any]:
         with self._metrics_lock:
-            return self._lifetime_stats
-
-    def update_balance(self, amount: float):
-        """Updates the current wallet/API balance."""
-        with self._metrics_lock:
-            self._current_balance = amount
+            return dict(self._lifetime_stats)
 
     def get_standardized_metrics(self) -> List[Dict[str, Any]]:
         """
@@ -166,12 +195,12 @@ class ClientMetricsMixin:
                         "target": limit
                     })
 
-            # 2. Balance Metrics
+            # 2. Balance Metrics (Now uses the persistent _current_balance)
             if self.balance_config:
                 metrics.append({
                     "type": METRIC_TYPE_BALANCE,
                     "key": "balance",
-                    "current": self._current_balance,
+                    "current": self._balance,
                     "target": self.balance_config.get('hard_threshold', 0.0)
                 })
         return metrics
@@ -192,7 +221,7 @@ class ClientMetricsMixin:
             target = float(m['target'])
 
             if m['type'] == METRIC_TYPE_USAGE:
-                # 0 if usage >= limit
+                # Health drops as usage approaches limit
                 if target > 0:
                     if current >= target:
                         score = 0.0
@@ -202,11 +231,12 @@ class ClientMetricsMixin:
                     score = 0.0 if current > 0 else 100.0
 
             elif m['type'] == METRIC_TYPE_BALANCE:
-                # 0 if balance <= threshold
+                # Health drops as balance approaches threshold
                 if current <= target:
                     score = 0.0
                 else:
-                    # Use a dynamic buffer (max of target or 10.0) for smooth scoring
+                    # Dynamic buffer: max(target, 10.0) ensures we don't divide by zero
+                    # and provides a smooth slope for low-balance warnings.
                     safe_buffer = max(target, 10.0)
                     score = min(100.0, 100.0 * (current - target) / safe_buffer)
 
@@ -215,32 +245,71 @@ class ClientMetricsMixin:
 
         return round(lowest_score, 2)
 
+    def increase_quota(self, additional_amount: int, metric_key: Optional[str] = None):
+        """
+        Increases the quota limit for the current period by a specific amount (Incremental Update).
+
+        Behavior:
+        1. **Preserves History**: This method does NOT clear the 'used' statistics. It simply raises the ceiling (the Limit).
+        2. **Instant Revival**: If a client is currently marked as 'dead' (Health=0) because `Usage >= Limit`,
+           calling this method will immediately satisfy the condition `Usage < New_Limit`.
+           Consequently, `calculate_health()` will return a positive score, and the Manager will
+           automatically start routing traffic to this client again.
+        3. **Persistence**: The new limit is immediately saved to the JSON state file (if configured).
+
+        Use Case:
+        - A user purchases a "Traffic Booster Pack" or "Add-on Package".
+        - An administrator temporarily increases the limit for emergency testing.
+
+        Args:
+            additional_amount (int): The amount to add to the current limit (e.g., +1000 requests).
+            metric_key (Optional[str]): The specific metric key to increase (e.g., 'total_tokens', 'request_count').
+                                        If None, it defaults to the first metric defined in the config.
+        """
+        with self._metrics_lock:
+            if not self.quota_config or 'limits' not in self.quota_config:
+                target = metric_key or 'total_tokens'
+                self.quota_config = {'limits': {target: 0}, 'period_days': 30}
+
+            limits = self.quota_config['limits']
+            target_key = metric_key or next(iter(limits.keys()))
+
+            limits[target_key] = limits.get(target_key, 0) + additional_amount
+
+            if self.state_file_path:
+                self._save_state_unsafe()
+
     # --- Internal Helpers ---
 
     def _check_and_reset_period_unsafe(self):
-        """Internal: Checks if period elapsed and resets stats."""
+        """Internal: Checks if period elapsed and resets USAGE stats only."""
         period_days = self.quota_config.get('period_days', 30)
         if period_days <= 0: return
 
         if time.time() - self._last_reset_time >= period_days * 86400:
-            self._periodic_stats.clear()
+            self._periodic_stats.clear()  # Reset usage
             self._last_reset_time = time.time()
+            # Note: Balance is NOT reset here.
 
-    def _save_periodic_state_unsafe(self):
-        """Internal: Saves state to JSON file."""
+    def _save_state_unsafe(self):
+        """Internal: Persists both periodic stats and balance to disk."""
         if not self.state_file_path: return
         try:
             data = {
                 'last_reset_time': self._last_reset_time,
-                'periodic_usage': dict(self._periodic_stats)
+                'periodic_usage': dict(self._periodic_stats),
+                'balance': self._balance  # Persist balance alongside stats
             }
-            with open(self.state_file_path, 'w') as f:
-                json.dump(data, f)
+            # Use a temp file + rename for atomic write safety in production
+            temp_path = self.state_file_path + ".tmp"
+            with open(temp_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            os.replace(temp_path, self.state_file_path)
         except Exception as e:
             print(f"Metrics save error: {e}")
 
-    def _load_periodic_state(self):
-        """Internal: Loads state from JSON file."""
+    def _load_state(self):
+        """Internal: Loads state from disk."""
         if not self.state_file_path or not os.path.exists(self.state_file_path): return
         try:
             with self._metrics_lock:
@@ -248,5 +317,7 @@ class ClientMetricsMixin:
                     data = json.load(f)
                     self._last_reset_time = data.get('last_reset_time', 0)
                     self._periodic_stats = Counter(data.get('periodic_usage', {}))
+                    # Safely load balance, default to 0.0
+                    self._balance = float(data.get('balance', 0.0))
         except Exception:
-            pass  # Ignore load errors, start fresh
+            pass  # Start fresh on error
