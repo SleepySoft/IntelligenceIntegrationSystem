@@ -1,10 +1,8 @@
 import time
 import logging
-import traceback
-from collections import Counter
-
 import requests
 import datetime
+import traceback
 import threading
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -323,6 +321,8 @@ class BaseAIClient(ABC):
             self._update_client_status(ClientStatus.UNAVAILABLE)
         self._increase_error_count()
 
+        logger.warning(f"Error reason: {response.text}")
+
         return {
             'error': 'http_error',
             'error_type': error_type,
@@ -453,27 +453,6 @@ class BaseAIClient(ABC):
                 'message': f'Failed to process LLM response: {str(e)}'
             }
 
-    # def _record_token_usage(self, usage_data: Dict[str, Any], original_messages: List[Dict[str, str]]):
-    #     # 1. 准备本次请求的增量数据
-    #     # 注意：这里我们将 key 统一映射为想要的统计字段名
-    #     increment_stats = Counter({
-    #         'prompt_tokens': usage_data.get('prompt_tokens', 0),
-    #         'completion_tokens': usage_data.get('completion_tokens', 0),
-    #         'total_tokens': usage_data.get('total_tokens', 0),
-    #         'message_count': len(original_messages),
-    #         # # 如果你还需要专门保留带 'total_' 前缀的字段以兼容旧代码逻辑：
-    #         # 'total_prompt_tokens': usage_data.get('prompt_tokens', 0),
-    #         # 'total_completion_tokens': usage_data.get('completion_tokens', 0)
-    #     })
-    #
-    #     with self._lock:
-    #         # 2. 自动累加
-    #         # Counter.update() 会将 increment_stats 中的数值加到 self._usage_stats 上
-    #         self._usage_stats.update(increment_stats)
-    #
-    #         # 3. 单独处理非累加字段（时间戳需要覆盖，而不是相加）
-    #         self._usage_stats['last_update'] = time.time()
-
     # ---------------------------------------- Abstractmethod ----------------------------------------
 
     @abstractmethod
@@ -583,7 +562,6 @@ class AIClientManager:
 
                 # 2. Check dynamic health (Optional optimization)
                 if client.calculate_health() <= 0:
-                    logger.warning(f"Client: {client.name} health is 0.")
                     continue
 
                 # 3. Logic for selection
@@ -673,7 +651,6 @@ class AIClientManager:
                                                                               'get_standardized_metrics') else {}
 
                 # Access internal status directly for raw counters
-                # 假设 BaseAIClient 的 _status 字典是受保护但可读的
                 raw_status = client._status
 
                 # User Info
@@ -762,21 +739,15 @@ class AIClientManager:
             return f"[{'#' * fill}{'.' * (width - fill)}]"
 
         # --- Header Section ---
-        lines = []
-        lines.append("=" * 80)
-        lines.append(
-            f" AI CLIENT MANAGER DASHBOARD | {datetime.fromtimestamp(summary['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
-        lines.append("-" * 80)
+        lines = ["=" * 80,
+                 f" AI CLIENT MANAGER DASHBOARD | {datetime.datetime.fromtimestamp(summary['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}",
+                 "-" * 80, f" Clients: {summary['total_clients']} | "
+                           f"Avail: {summary['available']} | "
+                           f"Busy: {summary['busy']} | "
+                           f"Users: {summary['active_users']} | "
+                           f"Load: {summary['system_load']}", "=" * 80]
 
         # KPIs
-        lines.append(
-            f" Clients: {summary['total_clients']} | "
-            f"Avail: {summary['available']} | "
-            f"Busy: {summary['busy']} | "
-            f"Users: {summary['active_users']} | "
-            f"Load: {summary['system_load']}"
-        )
-        lines.append("=" * 80)
 
         # --- Table Header ---
         # Col widths: Name(15) Prio(4) Stat(10) Health(16) User/Duration(20) Stats(12)
@@ -866,8 +837,8 @@ class AIClientManager:
                 # self._cleanup_idle_user_sessions()
             except Exception as e:
                 # Prevent monitor thread from crashing entirely
+                print(traceback.format_exc())
                 logger.error(f"Error in monitor loop: {e}")
-                logger.debug(traceback.format_exc())
 
             # Sleep with a small deviation to avoid thundering herd if multiple managers exist
             time.sleep(self.check_error_interval)
@@ -914,10 +885,8 @@ class AIClientManager:
 
                 if not result:
                     logger.error(f"Status check - {client_name}: Unknown error.")
-                elif 'error' in result:
-                    logger.error(f"Status check error - {client_name}: {result['message']}")
             else:
-                logger.warning(f"Status check - Cannot acquire {client_name}.")
+                logger.debug(f"Status check - Cannot acquire {client_name}.")
 
     def _cleanup_unavailable_clients(self):
         """

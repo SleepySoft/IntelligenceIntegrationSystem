@@ -131,10 +131,6 @@ class OpenAICompatibleAPI:
         # Try to get token from environment variables if not provided
         self._api_token = token or os.getenv("OPENAI_API_KEY")
 
-        # if not self._api_token:
-        #     raise ValueError(
-        #         "API token must be provided either through the constructor or environment variable OPENAI_API_KEY")
-
         self.default_model = default_model
         self.proxies = proxies or {}
 
@@ -288,7 +284,7 @@ class OpenAICompatibleAPI:
 
         url = self._construct_url("chat/completions")
         data = self._prepare_request_data(
-            model=model,
+            model=model or self.default_model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens
@@ -347,7 +343,7 @@ class OpenAICompatibleAPI:
 
         url = self._construct_url("chat/completions")
         data = self._prepare_request_data(
-            model=model,
+            model=model or self.default_model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens
@@ -390,7 +386,7 @@ class OpenAICompatibleAPI:
 
         url = self._construct_url("completions")
         data = self._prepare_request_data(
-            model=model,
+            model=model or self.default_model,
             prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens
@@ -446,7 +442,7 @@ class OpenAICompatibleAPI:
 
         url = self._construct_url("completions")
         data = self._prepare_request_data(
-            model=model,
+            model=model or self.default_model,
             prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens

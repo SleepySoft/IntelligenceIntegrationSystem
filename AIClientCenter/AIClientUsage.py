@@ -205,14 +205,15 @@ def main():
     client_manager.register_client(sf_client_b)
 
     # Modelscope: 每天总共 2000 次 API-Inference 调用免费额度，其中每个单模型额度上限500次
-    ms_token = 'ms-61462938-0c32-4dba-8102-d1efbf779478'
-    ms_models = ['deepseek-ai/DeepSeek-R1',
-                 'deepseek-ai/DeepSeek-V3.2-Exp',
-                 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
-                 'moonshotai/Kimi-K2-Thinking']
-    for model in ms_models:
-        ms_api = create_modelscope_client(ms_token, model)
-        ms_client = OpenAIClient('ModelScope Client', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
+    ms_token = ['ms-0657d62b-eaac-4ce5-a14d-f6f5106ad983',
+                # 'ms-fb0b6038-c89a-4c66-b51e-a3611fcd6656',
+                # 'ms-e8929f24-f3d6-4c11-83cb-d998d96e974b',
+                'ms-d832aee6-f37c-421e-84e2-f20eeb50c67c']
+    ms_models = ['deepseek-ai/DeepSeek-V3.2-Exp',
+                 'Qwen/Qwen3-Coder-480B-A35B-Instruct']
+    for token, model in zip(ms_token, ms_models):
+        ms_api = create_modelscope_client(token, model)
+        ms_client = OpenAIClient(f'ModelScope Client ({model})', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
         ms_client.set_usage_constraints(max_tokens=495, period_days = 1, target_metric='request_count')
         client_manager.register_client(ms_client)
 
@@ -270,8 +271,8 @@ def main():
                 stats_str = client_manager.format_stats_report(stats)
                 print(stats_str)
 
-            if request_counter >= 260:
-                break
+            # if request_counter >= 260:
+            #     break
 
             # 稍微 sleep 一下避免 CPU 空转太快（如果有大量客户端，这个可以设很小）
             time.sleep(0.1)
