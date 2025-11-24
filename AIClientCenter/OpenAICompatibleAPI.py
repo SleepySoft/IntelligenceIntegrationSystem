@@ -475,29 +475,29 @@ class OpenAICompatibleAPI:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def create_ollama_client():
+def create_ollama_client(model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='http://localhost:11434/v1',
         token='x',
-        default_model='qwen3:14b'
+        default_model=model or 'qwen3:14b'
     )
     return client
 
 
-def create_siliconflow_client():
+def create_siliconflow_client(token: Optional[str], model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='https://api.siliconflow.cn/v1',
-        token=os.getenv("SILICON_API_KEY"),
-        default_model='Qwen/Qwen3-235B-A22B'
+        token=token or os.getenv("SILICON_API_KEY"),
+        default_model=model or 'Qwen/Qwen3-235B-A22B'
     )
     return client
 
 
-def create_modelscope_client():
+def create_modelscope_client(token: Optional[str], model: Optional[str] = None):
     client = OpenAICompatibleAPI(
         api_base_url='https://api-inference.modelscope.cn/v1',
-        token=os.getenv("MODELSCOPE_API_KEY"),
-        default_model='deepseek-ai/DeepSeek-V3.2-Exp'
+        token=token or os.getenv("MODELSCOPE_API_KEY"),
+        default_model=model or 'deepseek-ai/DeepSeek-V3.2-Exp'
     )
     return client
 

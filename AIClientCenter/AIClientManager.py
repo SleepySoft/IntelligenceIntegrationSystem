@@ -59,6 +59,7 @@ class BaseAIClient(ABC):
         Initialize AI client with token and priority.
 
         Args:
+            name: The name of AI Client
             api_token: API token for authentication
             priority: Client priority (lower number = higher priority)
         """
@@ -74,6 +75,7 @@ class BaseAIClient(ABC):
             'last_released': 0.0,
             'last_chat': 0.0,
             'last_test': 0.0,
+            'acquire_count': 0,
             'error_count': 0,
             'in_use': False,
             'acquired': False
@@ -209,7 +211,9 @@ class BaseAIClient(ABC):
                 return False
 
             self._status['acquired'] = True
+            self._status['acquire_count'] += 1
             self._status['last_acquired'] = time.time()
+
             return True
 
     def _release(self):
@@ -272,7 +276,7 @@ class BaseAIClient(ABC):
         with self._lock:
             old_status = self._status['status']
             self._status['status'] = new_status
-            self._status['status_last_updated'] = time.time()
+            self._status['status_last_updated'] = 0.0 if new_status == ClientStatus.UNKNOWN else time.time()
 
             if old_status != new_status:
                 logger.info(f"Client {self.name} status changed from {old_status} to {new_status}")
@@ -285,6 +289,7 @@ class BaseAIClient(ABC):
             error_type = 'recoverable'
             logger.warning(f"Bad request error (recoverable): {response.status_code}")
 
+        # Because of the API token rotation. We don't think these error are fatal.
         elif response.status_code == 401:
             # 认证失败 - 通常是不可恢复的致命错误
             error_type = 'fatal'
@@ -520,7 +525,8 @@ class AIClientManager:
         self.monitor_running = False
 
         # Configuration for the monitoring loop
-        self.check_error_interval = base_check_interval_sec * 2     # Interval when client is in ERROR state
+        self.reset_fatal_interval = base_check_interval_sec * 30    # Interval to reset fatal to unknown or re-check
+        self.check_error_interval = base_check_interval_sec         # Interval when client is in ERROR state
         self.check_stable_interval = base_check_interval_sec * 15   # Interval when client is AVAILABLE
         self.first_check_delay_sec = first_check_delay_sec
 
@@ -610,17 +616,16 @@ class AIClientManager:
             # or no suitable client found at all.
             return None
 
-    def release_client(self, user_name: str):
+    def release_client(self, client: BaseAIClient | str):
         """
         Release the client currently held by the specified user.
         This should be called when the user session ends or they want to free resources.
         """
         with self._lock:
-            if user_name in self.user_client_map:
-                client = self.user_client_map[user_name]['client']
-                self._release_client_core(client)
-                del self.user_client_map[user_name]
-                logger.info(f"Released client for user: {user_name}")
+            keys_to_remove = [k for k, v in self.user_client_map.items() if v['client'] == client] \
+                if isinstance(client, BaseAIClient) else [str(client)]
+            for key in keys_to_remove:
+                self._release_user_resources(key)
 
     def _release_client_core(self, client: Any):
         """Internal helper to release the physical client lock."""
@@ -637,63 +642,190 @@ class AIClientManager:
 
     def get_client_stats(self) -> Dict[str, Any]:
         """
-        Get comprehensive statistics about all clients for dashboards/logs.
-        Now includes user allocation info.
+        Get comprehensive statistics about all clients.
+        Enhancements: Added error rates, hold durations, and detailed timing.
         """
         with self._lock:
-            # Create a reverse lookup for O(1) access: Client -> User Info
+            now = time.time()
+
+            # 1. User Allocation Lookup
             client_to_user_info = {}
             for u_name, info in self.user_client_map.items():
                 client_to_user_info[info['client']] = {
                     "user": u_name,
-                    "last_used": info['last_used']
+                    "start_time": info['last_used']  # 假设这个key存的是分配时间
                 }
 
-            # Pre-calculate lists for summary
-            available_list = [c for c in self.clients if c.get_status('status') == ClientStatus.AVAILABLE]
-            unavailable_list = [c for c in self.clients if c.get_status('status') == ClientStatus.UNAVAILABLE]
-            busy_list = [c for c in self.clients if c._is_busy()]
+            # 2. Categorize Clients
+            # 使用 getattr 避免 AttributeError，如果没有 status 属性则默认 UNKNOWN
+            available_cnt = sum(1 for c in self.clients if c.get_status('status') == 'AVAILABLE')  # 假设是字符串或枚举
+            busy_cnt = sum(1 for c in self.clients if c._is_busy())
+            error_cnt_clients = sum(1 for c in self.clients if c.get_status('error_count') > 0)
 
             client_details = []
             for client in self.clients:
-                # 1. Get the calculated health score directly from the Mixin
-                health_score = client.calculate_health()
+                # --- Extract Data ---
+                health_score = client.calculate_health() if hasattr(client, 'calculate_health') else 100
+                metrics_detail = client.get_standardized_metrics() if hasattr(client,
+                                                                              'get_standardized_metrics') else {}
 
-                # 2. Get the standardized explanation of why the health is what it is
-                metrics_detail = client.get_standardized_metrics()
+                # Access internal status directly for raw counters
+                # 假设 BaseAIClient 的 _status 字典是受保护但可读的
+                raw_status = client._status
 
-                # 3. Get user allocation info
+                # User Info
                 allocation = client_to_user_info.get(client, None)
 
+                # --- Derived Metrics ---
+                # 1. Duration (How long held or how long idle)
+                duration = 0.0
+                if client._is_busy() and raw_status.get('last_acquired'):
+                    duration = now - raw_status['last_acquired']
+                elif raw_status.get('last_released'):
+                    duration = now - raw_status['last_released']
+
+                # 2. Error Rate
+                total_ops = raw_status.get('acquire_count', 0)
+                err_count = raw_status.get('error_count', 0)
+                err_rate = (err_count / total_ops * 100) if total_ops > 0 else 0.0
+
                 client_details.append({
-                    "name": getattr(client, "name", "Unknown"),
-                    "type": client.__class__.__name__,
-                    "status": client.get_status('status'),
-                    "priority": client.priority,
-                    "health_score": health_score,  # 0-100 score
-                    "is_busy": client._is_busy(),
-                    "last_checked": client.get_status('status_last_updated'),
-                    # User allocation details
-                    "held_by_user": allocation['user'] if allocation else None,
-                    "last_used_ts": allocation['last_used'] if allocation else None,
-                    # Detailed breakdowns
-                    "constraint_metrics": metrics_detail,  # Quota/Balance snapshots
+                    "meta": {
+                        "name": getattr(client, "name", "Unknown"),
+                        "type": client.__class__.__name__,
+                        "priority": client.priority,
+                    },
+                    "state": {
+                        "status": client.get_status('status'),
+                        "is_busy": client._is_busy(),
+                        "health_score": health_score,
+                        "last_active_ts": raw_status.get('status_last_updated', 0),
+                    },
+                    "allocation": {
+                        "held_by": allocation['user'] if allocation else None,
+                        "held_since": allocation['start_time'] if allocation else None,
+                        "duration_seconds": duration if allocation else 0
+                    },
+                    "runtime_stats": {
+                        "acquire_count": total_ops,
+                        "error_count": err_count,
+                        "error_rate_percent": round(err_rate, 1),
+                        "last_chat_ts": raw_status.get('last_chat', 0),
+                    },
+                    "metrics": metrics_detail  # Token limits, RPM, etc.
                 })
 
-            # Sort details by priority (high priority first) then by health
-            client_details.sort(key=lambda x: (x['priority'], -x['health_score']))
+            # Sort: 1. By Priority (asc), 2. By Busy Status (busy first), 3. By Health (desc)
+            client_details.sort(key=lambda x: (
+                x['meta']['priority'],
+                not x['state']['is_busy'],
+                -x['state']['health_score']
+            ))
 
             return {
                 "summary": {
-                    "total": len(self.clients),
-                    "available": len(available_list),
-                    "unavailable": len(unavailable_list),
-                    "busy": len(busy_list),
+                    "timestamp": now,
+                    "total_clients": len(self.clients),
+                    "available": available_cnt,
+                    "busy": busy_cnt,
+                    "clients_with_errors": error_cnt_clients,
                     "active_users": len(self.user_client_map),
-                    "timestamp": time.time()
+                    "system_load": f"{(busy_cnt / len(self.clients) * 100):.1f}%" if self.clients else "0%"
                 },
                 "clients": client_details
             }
+
+    @staticmethod
+    def format_stats_report(stats_data: Dict[str, Any]) -> str:
+        """
+        Formats the dict returned by get_client_stats into a readable dashboard string.
+        """
+        summary = stats_data.get('summary', {})
+        clients = stats_data.get('clients', [])
+        now = time.time()
+
+        # --- Helpers ---
+        def _time_ago(ts):
+            if not ts or ts == 0: return "-"
+            diff = now - ts
+            if diff < 60: return f"{int(diff)}s ago"
+            if diff < 3600: return f"{int(diff / 60)}m ago"
+            return f"{int(diff / 3600)}h ago"
+
+        def _progress_bar(val, max_val=100, width=10):
+            percent = val / max_val
+            fill = int(width * percent)
+            # Visual indicator: High health = Green-ish (using characters)
+            return f"[{'#' * fill}{'.' * (width - fill)}]"
+
+        # --- Header Section ---
+        lines = []
+        lines.append("=" * 80)
+        lines.append(
+            f" AI CLIENT MANAGER DASHBOARD | {datetime.fromtimestamp(summary['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("-" * 80)
+
+        # KPIs
+        lines.append(
+            f" Clients: {summary['total_clients']} | "
+            f"Avail: {summary['available']} | "
+            f"Busy: {summary['busy']} | "
+            f"Users: {summary['active_users']} | "
+            f"Load: {summary['system_load']}"
+        )
+        lines.append("=" * 80)
+
+        # --- Table Header ---
+        # Col widths: Name(15) Prio(4) Stat(10) Health(16) User/Duration(20) Stats(12)
+        header = f"{'CLIENT NAME':<18} {'PRIO':<5} {'STATUS':<10} {'HEALTH':<14} {'USER / DURATION':<22} {'STATS (Acq/Err)'}"
+        lines.append(header)
+        lines.append("-" * 80)
+
+        # --- Rows ---
+        for c in clients:
+            meta = c['meta']
+            state = c['state']
+            alloc = c['allocation']
+            run = c['runtime_stats']
+
+            # 1. Name & Priority
+            name_str = meta['name'][:17]
+            prio_str = str(meta['priority'])
+
+            # 2. Status & Icon
+            status_raw = str(state['status']).split('.')[-1]  # Get 'AVAILABLE' from enum
+            status_icon = "🟢"
+            if state['is_busy']: status_icon = "🟡"  # Busy
+            if status_raw in ['UNAVAILABLE', 'ERROR']: status_icon = "🔴"
+            status_str = f"{status_icon} {status_raw[:7]}"
+
+            # 3. Health Bar
+            health_val = state['health_score']
+            health_str = f"{_progress_bar(health_val)} {int(health_val)}%"
+
+            # 4. Allocation info
+            if state['is_busy'] and alloc['held_by']:
+                user_str = f"{alloc['held_by'][:10]}"
+                dur_str = f"{int(alloc['duration_seconds'])}s"
+                alloc_str = f"👤 {user_str:<10} ({dur_str})"
+            elif state['is_busy']:
+                alloc_str = "🟡 System/Busy"
+            else:
+                alloc_str = "⚪ Idle"
+
+            # 5. Stats (Acquire Count / Error Count)
+            stats_str = f"Use:{run['acquire_count']:<3} Err:{run['error_count']}"
+
+            # Combine
+            row = f"{name_str:<18} {prio_str:<5} {status_str:<10} {health_str:<14} {alloc_str:<22} {stats_str}"
+            lines.append(row)
+
+            # Optional: Add error detail line if health is low
+            if health_val < 60:
+                lines.append(f"   ↳ ⚠️ Low Health Warning. Last Active: {_time_ago(state['last_active_ts'])}")
+
+        lines.append("=" * 80)
+        return "\n".join(lines)
 
     def start_monitoring(self):
         """Start background monitoring of client health."""
@@ -724,8 +856,10 @@ class AIClientManager:
 
             try:
                 self._check_client_health()
-                self._cleanup_unavailable_clients()
-                # Optional: Auto-release idle clients held by users for too long?
+                # - Do not clean up the unavailable clients.
+                # - Because the limit will be reset by time or by changing token.
+                # self._cleanup_unavailable_clients()
+                # - Optional: Auto-release idle clients held by users for too long?
                 # self._cleanup_idle_user_sessions()
             except Exception as e:
                 # Prevent monitor thread from crashing entirely
@@ -745,15 +879,22 @@ class AIClientManager:
         with self._lock:
             for client in self.clients:
                 client_status = client.get_status('status')
-                if client_status == ClientStatus.UNAVAILABLE:
-                    continue
-
                 status_last_updated = client.get_status('status_last_updated')
 
+                if (client_error_count := client.get_status('error_count')) > 0:
+                    adjusted_error_interval = min(self.check_error_interval * client_error_count,
+                                                  self.reset_fatal_interval)
+                else:
+                    adjusted_error_interval = self.check_error_interval
+
                 # Determine timeout based on current status
-                timeout = self.check_stable_interval \
-                    if client_status == ClientStatus.AVAILABLE else \
-                    self.check_error_interval
+                timeout = {
+                    ClientStatus.UNKNOWN : 0,
+                    ClientStatus.AVAILABLE : self.check_stable_interval,
+                    # Just treat error and fatal as the same.
+                    ClientStatus.ERROR: adjusted_error_interval,
+                    ClientStatus.UNAVAILABLE: adjusted_error_interval,
+                }.get(client_status, ClientStatus.ERROR)
 
                 if time.time() - status_last_updated > timeout:
                     clients_to_check.append(client)
@@ -764,10 +905,16 @@ class AIClientManager:
             logger.debug(f'Checking connectivity for {client_name}...')
 
             # This method usually pings the API or checks simple connectivity
-            result = client._test_and_update_status()
+            if client._acquire():
+                result = client._test_and_update_status()
+                client._release()
 
-            if not result:
-                logger.warning(f"Status check failed for {client_name}.")
+                if not result:
+                    logger.error(f"Status check - {client_name}: Unknown error.")
+                elif 'error' in result:
+                    logger.error(f"Status check error - {client_name}: {result['message']}")
+            else:
+                logger.warning(f"Status check - Cannot acquire {client_name}.")
 
     def _cleanup_unavailable_clients(self):
         """

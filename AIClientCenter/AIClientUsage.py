@@ -139,7 +139,6 @@ def worker_task(client, request_id, manager):
     print(f"\n[Request #{request_id}] 🚀 Assigned to {client.name}: '{prompt}'")
 
     try:
-        # 模拟网络请求 (如果 client.chat 是同步的，这里会阻塞线程，但不会阻塞主程序)
         messages = simple_chat(prompt)
         response = client.chat(messages=messages)
 
@@ -226,7 +225,6 @@ def main():
 
     # 使用线程池来处理并发请求
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        request_counter = 0
         while True:
             # 尝试获取客户端
             request_counter += 1
@@ -238,45 +236,34 @@ def main():
                 is_waiting = True
                 print_wait_status(wait_loop_counter)
                 time.sleep(0.5)  # 等待间隔
-            else:
-                # --- Case B: 获取到客户端 ---
+                continue
 
-                # 1. 如果之前在打印等待条，先换行，避免被覆盖
-                if is_waiting:
-                    sys.stdout.write("\n")  # 结束那一行等待提示
-                    is_waiting = False
-                    wait_loop_counter = 0
+            # --- Case B: 获取到客户端 ---
 
-                request_counter += 1
+            # 1. 如果之前在打印等待条，先换行，避免被覆盖
+            if is_waiting:
+                sys.stdout.write("\n")  # 结束那一行等待提示
+                is_waiting = False
+                wait_loop_counter = 0
 
-                # 2. 异步提交任务
-                # 注意：不要在这里做耗时的 chat 操作，否则 while 循环会卡住
-                executor.submit(worker_task, client, request_counter, client_manager)
+            request_counter += 1
 
-                # 3. 定期打印统计信息
-                if request_counter % STATS_INTERVAL == 0:
-                    # 稍微延迟一下打印，防止和上面的 submit 里的 print 混在一起
-                    time.sleep(0.1)
-                    print("\n" + "=" * 20 + f" STATS REPORT (Req #{request_counter}) " + "=" * 20)
-                    stats = client_manager.get_client_stats()
+            # 2. 异步提交任务
+            # 注意：不要在这里做耗时的 chat 操作，否则 while 循环会卡住
+            executor.submit(worker_task, client, request_counter, client_manager)
 
-                    # 打印简报
-                    summary = stats.get('summary', {})
-                    print(
-                        f"Summary: Total={summary.get('total')}, Available={summary.get('available')}, Busy={summary.get('busy')}")
+            # 3. 定期打印统计信息
+            if request_counter % STATS_INTERVAL == 0:
+                # 稍微延迟一下打印，防止和上面的 submit 里的 print 混在一起
+                time.sleep(0.1)
+                print("\n" + "=" * 20 + f" STATS REPORT (Req #{request_counter}) " + "=" * 20)
+                stats = client_manager.get_client_stats()
 
-                    # 打印每个客户端的健康度和Token使用量 (如果你实现了 standardized_metrics)
-                    for c_detail in stats.get('clients', []):
-                        name = c_detail.get('name', 'Unknown')
-                        health = c_detail.get('health_score', 0)
-                        # 假设你有 lifetime_stats
-                        tokens = c_detail.get('lifetime_stats', {}).get('total_tokens', 0)
-                        print(f" - [{name:<20}] Health: {health:>5.1f}% | Tokens: {tokens}")
+                stats_str = client_manager.format_stats_report(stats)
+                print(stats_str)
 
-                    print("=" * 60 + "\n")
-                    print('Raw data: ')
-                    print(str(stats))
-                    print("=" * 60 + "\n")
+            if request_counter >= 260:
+                break
 
             # 稍微 sleep 一下避免 CPU 空转太快（如果有大量客户端，这个可以设很小）
             time.sleep(0.1)

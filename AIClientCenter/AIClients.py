@@ -71,10 +71,9 @@ class OpenAIClient(ClientMetricsMixin, BaseAIClient, RotatableClient):
     def update_api_token(self, token: str):
         self.api_token = token
         self.api.set_api_token(self.api_token)
-        with self._lock:
-            # Ask for re-check ASAP.
-            self._status['status_last_updated'] = 0
+        self._update_client_status(ClientStatus.UNKNOWN)
 
+    @override
     def update_token_balance(self, token: str, balance: float):
         if token == self.api_token:
             self.update_balance(balance)
