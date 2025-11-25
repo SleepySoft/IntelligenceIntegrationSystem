@@ -95,22 +95,6 @@
 > 值得一提的是，自从使用了json_repair后，python的解析率几乎100%。接下来我会尝试在小模型上使用constrained decoding，看是否能提升表现。
 >
 
-+ [OpenAIClient.py](Tools/OpenAIClient.py)
->
-> OpenAI兼容的API Client
-> 
-
-+ [AIServiceRotator.py](ServiceComponent/AIServiceRotator.py)
-+ [AiServiceBalanceQuery.py](Tools/AiServiceBalanceQuery.py)
-> 
-> 为了节约成本，程序可以使用硅基流动刷邀请的14元余额的矿渣账号进行分析。
-> 
-> 这两个模块实现查询余额，并根据余额情况对Token进行自动选择和轮转的功能。
->
-> 已知问题：SF的API在换KEY后在一段时间内会一直503，新启用的KEY可能要先预热（不确定）。当前的解决方案是指数退避。
-> 
-
-
 ### 内容发布
 
 如前所述，网络服务由[IntelligenceHubWebService.py](IntelligenceHubWebService.py)提供。包含以下内容：

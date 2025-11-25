@@ -15,15 +15,15 @@ from AIClientCenter.AIClientManager import AIClientManager
 from AIClientCenter.AIClients import OpenAIRotationClient
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
-from ServiceComponent.AIServiceRotator import SiliconFlowServiceRotator
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.OpenAIClient import OpenAICompatibleAPI
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemMonotorLauncher import start_system_monitor
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 # from Tools.VectorDatabase import VectorDatabase
+from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
+from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 from VectorDB.VectorDBService import VectorDBService
@@ -242,7 +242,7 @@ def config_log():
     limit_logger_level("Tools.RequestTracer")
     limit_logger_level("Tools.DateTimeUtility")
     limit_logger_level("PyLoggingBackend.LoggerBackend")
-    limit_logger_level("ServiceComponent.AIServiceRotator", level=logging.INFO)
+    limit_logger_level("AIClientCenter.AIServiceTokenRotator")
 
 
 def run():

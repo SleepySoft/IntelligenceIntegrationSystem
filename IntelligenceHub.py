@@ -428,10 +428,7 @@ class IntelligenceHub:
 
         while not self.shutdown_flag.is_set():
             try:
-                original_data = self.original_queue.get(block=True)
-                if not original_data:
-                    self.original_queue.task_done()
-                    continue
+                original_data = self.original_queue.get(block=True, timeout=2)
             except queue.Empty:
                 continue
 
