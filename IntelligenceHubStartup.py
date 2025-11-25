@@ -1,32 +1,30 @@
-import os
 import time
 import uuid
 import logging
 import datetime
 import threading
 import traceback
-from pathlib import Path
-
 from flask import Flask
 from typing import Tuple
+from pathlib import Path
 from functools import partial
 
-from AIClientCenter.AIClientManager import AIClientManager
-from AIClientCenter.AIClients import OpenAIRotationClient
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
-from Tools.SystemMonotorLauncher import start_system_monitor
 from MyPythonUtility.easy_config import EasyConfig
+from VectorDB.VectorDBService import VectorDBService
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
-# from Tools.VectorDatabase import VectorDatabase
+from AIClientCenter.AIClients import OpenAIRotationClient
+from AIClientCenter.AIClientManager import AIClientManager
+from Tools.SystemMonotorLauncher import start_system_monitor
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
 from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
-from VectorDB.VectorDBService import VectorDBService
+
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -56,13 +54,6 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     logger.info('Apply config: ')
     logger.info(config.dump_text())
 
-    # ---------------------------------- Path ----------------------------------
-
-    # TODO: All generated data will be put in this path. It's good for docker deployment.
-    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
-    Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
-    Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
-
     # ------------------------------- AI Service -------------------------------
 
     client_manager = AIClientManager()
@@ -80,17 +71,17 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
         ai_service_model = config.get('intelligence_hub.ai_service.model', MODEL_SELECT)
         ai_service_proxies = config.get('intelligence_hub.ai_service.proxies', None)
 
-        api_client = OpenAICompatibleAPI(
+        ai_api = OpenAICompatibleAPI(
             api_base_url=ai_service_url,
             token=ai_service_token,
             default_model=ai_service_model,
             proxies=ai_service_proxies
         )
 
+        ai_client = OpenAIRotationClient('Default AI Client', ai_api)
+
         # Wrap by new mechanism
-        client_manager.register_client(
-            OpenAIRotationClient('Default AI Client', api_client)
-        )
+        client_manager.register_client(ai_client)
 
         # --------------------- API Token Rotator ---------------------
 
@@ -103,7 +94,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
                         f'{key_rotator_key_file}, threshold: {key_rotator_threshold}')
 
             ai_token_rotator = SiliconFlowServiceRotator(
-                ai_client=api_client,
+                ai_client=ai_client,
                 keys_file=os.path.join(CONFIG_PATH, key_rotator_key_file),
                 threshold=float(key_rotator_threshold)
             )
@@ -212,8 +203,8 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-IIS_LOG_FILE = 'iis.log'
-HISTORY_LOG_FOLDER = 'history_log'
+IIS_LOG_FILE = os.path.join(LOG_PATH, 'iis.log')
+HISTORY_LOG_FOLDER = os.path.join(LOG_PATH, 'history_log')
 
 
 def config_log():
@@ -246,7 +237,19 @@ def config_log():
 
 
 def run():
+    # ---------------------------------- Path ----------------------------------
+
+    # TODO: All generated data will be put in this path. It's good for docker deployment.
+    Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+    Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
+
+    # ---------------------------------- Log -----------------------------------
+
     config_log()
+
+    # -------------------------------- Service ---------------------------------
 
     ihub, ihub_service = start_intelligence_hub_service()
 
