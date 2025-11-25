@@ -119,8 +119,8 @@ class IntelligenceHub:
         self.lock = threading.Lock()
         self.shutdown_flag = threading.Event()
 
-        self.analysis_thread = threading.Thread(target=self._ai_analysis_thread, daemon=True)
-        self.post_process_thread = threading.Thread(target=self._post_process_worker, daemon=True)
+        self.analysis_thread = threading.Thread(name='AnalysisThread', target=self._ai_analysis_thread, daemon=True)
+        self.post_process_thread = threading.Thread(name='PostProcessThread', target=self._post_process_worker, daemon=True)
 
         # ------------------ Tasks ------------------
 
