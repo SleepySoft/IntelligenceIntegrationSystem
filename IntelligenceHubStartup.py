@@ -12,7 +12,7 @@ from typing import Tuple
 from functools import partial
 
 from AIClientCenter.AIClientManager import AIClientManager
-from AIClientCenter.AIClients import OpenAIClient
+from AIClientCenter.AIClients import OpenAIRotationClient
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from ServiceComponent.AIServiceRotator import SiliconFlowServiceRotator
@@ -89,7 +89,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
         # Wrap by new mechanism
         client_manager.register_client(
-            OpenAIClient('Default AI Client', api_client )
+            OpenAIRotationClient('Default AI Client', api_client)
         )
 
         # --------------------- API Token Rotator ---------------------

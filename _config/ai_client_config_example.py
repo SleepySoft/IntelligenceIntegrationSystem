@@ -2,16 +2,14 @@
 # Python is config. We don't need a json file and load it, analyze it.
 # --------------------------------------------------------------------
 
-
 from typing import List
 
 from GlobalConfig import *
-from AIClientCenter.AIClients import OpenAIClient
+from AIClientCenter.AIClients import OpenAIRotationClient
 from AIClientCenter.AIClientManager import CLIENT_PRIORITY_EXPENSIVE, \
     CLIENT_PRIORITY_FREEBIE, BaseAIClient, CLIENT_PRIORITY_NORMAL
 from AIClientCenter.OpenAICompatibleAPI import create_siliconflow_client, create_modelscope_client
 from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
-
 
 
 def build_ai_clients() -> List[BaseAIClient]:
@@ -22,13 +20,13 @@ def build_ai_clients() -> List[BaseAIClient]:
     # - The Initialize is in environment variant "SILICON_API_KEY"
     # -------------------------------------------------
 
-    sf_api_default = create_siliconflow_client()
-    sf_client_default = OpenAIClient(
+    sf_api_default = create_siliconflow_client('A valid token')
+    sf_client_default = OpenAIRotationClient(
         'SiliconFlow Client Default',
         sf_api_default,
         CLIENT_PRIORITY_EXPENSIVE,
         default_available=True,
-        balance_config={ 'hard_threshold': 0.1 }
+        balance_config={ 'hard_threshold': 10 }
     )
 
     # -------- The token-rotation silicon flow client --------
@@ -37,9 +35,8 @@ def build_ai_clients() -> List[BaseAIClient]:
     # - Initialize token set to empty.
     # --------------------------------------------------------
 
-    sf_api_a = create_siliconflow_client()
-    sf_api_a.set_api_token('invalid')
-    sf_client_a = OpenAIClient(
+    sf_api_a = create_siliconflow_client('invalid')
+    sf_client_a = OpenAIRotationClient(
         'SiliconFlow Client A',
         sf_api_a,
         CLIENT_PRIORITY_NORMAL,
@@ -52,9 +49,10 @@ def build_ai_clients() -> List[BaseAIClient]:
         threshold=0.1
     )
 
-    sf_api_b = create_siliconflow_client()
-    sf_api_b.set_api_token('invalid')
-    sf_client_b = OpenAIClient(
+    # --------------------------------------------------------
+
+    sf_api_b = create_siliconflow_client('invalid')
+    sf_client_b = OpenAIRotationClient(
         'SiliconFlow Client B',
         sf_api_b,
         CLIENT_PRIORITY_NORMAL,
@@ -75,11 +73,29 @@ def build_ai_clients() -> List[BaseAIClient]:
     # -------------- Model scope client --------------
     # - Daily refresh invoking times limit.
     # - Use this client by priority.
+    # ------------------------------------------------
+
+    # Modelscope: A total of 2000 free API-Inference calls per day, with a limit of 500 calls per single model
+    #             However, only the following three 400B+ models are actually available.
+
+    ms_models = [
+        'deepseek-ai/DeepSeek-R1-0528',
+        'deepseek-ai/DeepSeek-V3.2-Exp',
+        'Qwen/Qwen3-Coder-480B-A35B-Instruct'
+    ]
+
     # --------------------------------------------------------
 
-    ms_api = create_modelscope_client()
-    ms_api.set_api_token('ms-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
-    ms_client = OpenAIClient('ModelScope Client A', ms_api, CLIENT_PRIORITY_FREEBIE, default_available=True)
+    ms_api = create_modelscope_client('ms-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+    ms_client = OpenAIRotationClient(
+        f'ModelScope Client 1',
+        ms_api, CLIENT_PRIORITY_FREEBIE,
+        default_available=True
+    )
+    ms_client.set_rotation_models(ms_models)
+    ms_client.set_usage_constraints(max_tokens=495, period_days=1, target_metric='request_count')
+
+    # --------------------------------------------------------
 
     return [sf_client_default, sf_client_a, sf_client_b, ms_client]
 
