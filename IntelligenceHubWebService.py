@@ -262,17 +262,18 @@ class IntelligenceHubWebService:
                 if not data.get('UUID', ''):
                     raise ValueError('Invalid UUID.')
 
-                if self.access_manager.check_collector_token(data.get('token', '')):
+                collector_token = data.get('token', '')
+                if self.access_manager.check_collector_token(collector_token):
                     result = self.intelligence_hub.submit_collected_data(data)
                     response = 'queued' if result else 'error',
                 else:
                     response = 'invalid token'
+                    logger.warning(f'Post intelligence with invalid token: {collector_token}.')
 
-                return jsonify(
-                    {
-                        'resp': response,
-                        'uuid': data.get('UUID', '')
-                    })
+                return jsonify({
+                    'resp': response,
+                    'uuid': data.get('UUID', '')
+                })
             except Exception as e:
                 logger.error(f'collect_api() fail: {str(e)}')
                 return jsonify({'resp': 'error', 'uuid': ''})
