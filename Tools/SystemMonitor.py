@@ -182,7 +182,7 @@ class SystemMonitor:
         """Start the monitoring thread."""
         if not self.running:
             self.running = True
-            self.monitor_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+            self.monitor_thread = threading.Thread(name='SystemMonitor', target=self._monitoring_loop, daemon=True)
             self.monitor_thread.start()
 
     def stop_monitoring(self):

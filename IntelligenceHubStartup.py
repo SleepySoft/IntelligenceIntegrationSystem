@@ -271,7 +271,7 @@ def run():
     # Monitor in standalone process
     start_system_monitor()
 
-    threading.Thread(target=partial(show_intelligence_hub_statistics_forever, ihub)).start()
+    threading.Thread(name='ShowStatistics', target=partial(show_intelligence_hub_statistics_forever, ihub)).start()
 
 try:
     run()
