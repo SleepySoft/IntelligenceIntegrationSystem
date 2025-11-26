@@ -28,6 +28,8 @@
 
 + [Logger Config](/logger/logger_config)
 
++ [Client Manager](/monitor/ai-client-dashboard)
+
 + [System Monitor](/monitor/api/dashboard)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
