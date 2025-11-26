@@ -211,7 +211,7 @@ class IntelligenceHub:
 
     def start_analysis_threads(self, thread_count):
         for i in range(thread_count):
-            t = threading.Thread(target=self._ai_analysis_worker, name=f"AI-Worker-{i}", daemon=True)
+            t = threading.Thread(target=self._ai_analysis_worker, name=f"AI-Worker-{i}", daemon=True, args=(i,))
             t.start()
         logger.info(f"Started {thread_count} AI analysis threads.")
 
@@ -397,26 +397,28 @@ class IntelligenceHub:
         # The retry condition: retry if an exception occurs OR the result is an error
         retry=(retry_if_exception_type(Exception) | retry_if_result(__is_result_an_error))
     )
-    def __robust_analyze_with_ai(self, original_data):
+    def __robust_analyze_with_ai(self, original_data: dict, worker_index: int):
         """
         A robust wrapper for the AI analysis function that will be automatically retried.
         """
         if self.shutdown_flag.is_set():
             return None
+        prefix = f'AI Worker [{worker_index}]'
+        client_user = f'IntelligenceHub-{worker_index}'
 
         # --------------------------- Wait until one AI client available ---------------------------
 
         retries = 0
         while True:
-            if ai_client := self.ai_client_manager.get_available_client('IntelligenceHub'):
+            if ai_client := self.ai_client_manager.get_available_client(client_user):
                 result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
                 break
             retries += 1
             if retries % 10 == 0:
-                logger.warning(f"Thread {threading.current_thread().name} waiting for AI client for {retries}s...")
+                logger.warning(f"{prefix} Thread {threading.current_thread().name} waiting for AI client for {retries}s...")
             time.sleep(1 + random.random() * 0.5)
         if retries:
-            logger.info(f"Analysis tries to get AI client for {retries} times.")
+            logger.info(f"{prefix} Analysis tries to get AI client for {retries} times.")
 
         # ------------------------------------------------------------------------------------------
 
@@ -429,9 +431,11 @@ class IntelligenceHub:
 
         return result
 
-    def _ai_analysis_worker(self):
+    def _ai_analysis_worker(self, worker_index: int = 0):
+        prefix = f'AI Worker [{worker_index}]'
+
         if not self.ai_client_manager:
-            logger.info('**** NO AI API client - Thread QUIT ****')
+            logger.info(f'{prefix} **** NO AI API client - Thread QUIT ****')
             return
 
         # ai_process_max_retry = 3
@@ -456,7 +460,7 @@ class IntelligenceHub:
 
                 # ---------------------------------- AI Analysis with Retry ----------------------------------
 
-                result = self.__robust_analyze_with_ai(original_data)
+                result = self.__robust_analyze_with_ai(original_data, worker_index)
 
                 if not result or 'error' in result:
                     error_msg = f"AI process error after all retries."
@@ -510,7 +514,7 @@ class IntelligenceHub:
             except Exception as e:
                 with self.lock:
                     self.error_counter += 1
-                logger.error(f"Analysis error: {str(e)}")
+                logger.error(f"{prefix} Analysis error: {str(e)}")
                 self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR)
             finally:
                 self.original_queue.task_done()

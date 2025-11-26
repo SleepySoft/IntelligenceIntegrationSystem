@@ -7,6 +7,8 @@
       "model": "deepseek-ai/DeepSeek-R1"
     },
 
+    "ai_analysis_thread": 1,
+
     "mongodb": {
       "host": "localhost",
       "port": 27017,
