@@ -616,6 +616,9 @@ class IntelligenceHub:
             except queue.Empty:
                 continue
 
+            except Exception as e:
+                logger.error(f"Post process got unknown issue: {str(e)}")
+
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------
 
     def _do_export_mongodb_weekly(self):
