@@ -189,7 +189,7 @@ class IntelligenceHub:
 
     def startup(self):
         # self.analysis_thread.start()
-        self.start_analysis_threads(3)
+        self.start_analysis_threads(5)
         self.post_process_thread.start()
 
     def shutdown(self, timeout=10):
@@ -202,7 +202,7 @@ class IntelligenceHub:
         self._clear_queues()
 
         # 等待工作线程结束
-        self.analysis_thread.join(timeout=timeout)
+        # self.analysis_thread.join(timeout=timeout)
         self.post_process_thread.join(timeout=timeout)
 
         # 清理资源
