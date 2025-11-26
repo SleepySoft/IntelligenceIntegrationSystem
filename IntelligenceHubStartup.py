@@ -9,6 +9,7 @@ from typing import Tuple
 from pathlib import Path
 from functools import partial
 
+from AIClientCenter.AIClientManagerBackend import AIDashboardService
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
@@ -48,7 +49,7 @@ def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
         time.sleep(2)
 
 
-def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService]:
+def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
     config = EasyConfig()
 
     logger.info('Apply config: ')
@@ -198,7 +199,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
     # --------------------------------- End of Init ---------------------------------
 
-    return hub, hub_service
+    return hub, hub_service, client_manager
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -251,7 +252,7 @@ def run():
 
     # -------------------------------- Service ---------------------------------
 
-    ihub, ihub_service = start_intelligence_hub_service()
+    ihub, ihub_service, client_manager = start_intelligence_hub_service()
 
     log_backend = LoggerBackend(monitoring_file_path=IIS_LOG_FILE, cache_limit_count=100000,
                                 link_file_roots={
@@ -260,6 +261,11 @@ def run():
                                 project_root=PRJ_PATH,
                                 with_logger_manager=True)
     log_backend.register_router(app=wsgi_app, wrapper=ihub_service.access_manager.login_required)
+
+    client_manager_backend = AIDashboardService(client_manager)
+    client_manager_backend.mount_to_app(
+        app=wsgi_app,
+        url_prefix='/monitor/ai-client-dashboard')
 
     # Monitor in the same process and the same service
     monitor_api = MonitorAPI(app=wsgi_app, wrapper=ihub_service.access_manager.login_required, prefix='/monitor')
