@@ -429,6 +429,8 @@ class IntelligenceHub:
             self.conversation_warning += 1
         self.conversation_total += 1
 
+        time.sleep(1.5 + random.random() * 0.5)
+
         return result
 
     def _ai_analysis_worker(self, worker_index: int = 0):
