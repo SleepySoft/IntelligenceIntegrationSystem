@@ -1,4 +1,5 @@
 import datetime
+import random
 import time
 import traceback
 import uuid
@@ -119,7 +120,7 @@ class IntelligenceHub:
         self.lock = threading.Lock()
         self.shutdown_flag = threading.Event()
 
-        self.analysis_thread = threading.Thread(name='AnalysisThread', target=self._ai_analysis_thread, daemon=True)
+        # self.analysis_thread = threading.Thread(name='AnalysisThread', target=self._ai_analysis_thread, daemon=True)
         self.post_process_thread = threading.Thread(name='PostProcessThread', target=self._post_process_worker, daemon=True)
 
         # ------------------ Tasks ------------------
@@ -187,7 +188,8 @@ class IntelligenceHub:
     # ----------------------------------------------- Startup / Shutdown -----------------------------------------------
 
     def startup(self):
-        self.analysis_thread.start()
+        # self.analysis_thread.start()
+        self.start_analysis_threads(3)
         self.post_process_thread.start()
 
     def shutdown(self, timeout=10):
@@ -206,6 +208,12 @@ class IntelligenceHub:
         # 清理资源
         self._cleanup_resources()
         logger.info("Intelligence hub has stopped.")
+
+    def start_analysis_threads(self, thread_count):
+        for i in range(thread_count):
+            t = threading.Thread(target=self._ai_analysis_worker, name=f"AI-Worker-{i}", daemon=True)
+            t.start()
+        logger.info(f"Started {thread_count} AI analysis threads.")
 
     # --------------------------------------- Shutdowns ---------------------------------------
 
@@ -394,7 +402,7 @@ class IntelligenceHub:
         A robust wrapper for the AI analysis function that will be automatically retried.
         """
         if self.shutdown_flag.is_set():
-            raise TryAgain
+            return None
 
         # --------------------------- Wait until one AI client available ---------------------------
 
@@ -404,7 +412,9 @@ class IntelligenceHub:
                 result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
                 break
             retries += 1
-            time.sleep(1)
+            if retries % 10 == 0:
+                logger.warning(f"Thread {threading.current_thread().name} waiting for AI client for {retries}s...")
+            time.sleep(1 + random.random() * 0.5)
         if retries:
             logger.info(f"Analysis tries to get AI client for {retries} times.")
 
@@ -419,7 +429,7 @@ class IntelligenceHub:
 
         return result
 
-    def _ai_analysis_thread(self):
+    def _ai_analysis_worker(self):
         if not self.ai_client_manager:
             logger.info('**** NO AI API client - Thread QUIT ****')
             return
@@ -427,16 +437,18 @@ class IntelligenceHub:
         # ai_process_max_retry = 3
 
         while not self.shutdown_flag.is_set():
+            original_uuid = None
+
             try:
-                original_data = self.original_queue.get(block=True, timeout=2)
+                original_data = self.original_queue.get(block=True, timeout=1)
             except queue.Empty:
                 continue
 
-            # If there's no UUID...
-            if not (original_uuid := str(original_data.get('UUID', '')).strip()):
-                original_data['UUID'] = original_uuid = str(uuid.uuid4())
-
             try:
+                # If there's no UUID...
+                if not (original_uuid := str(original_data.get('UUID', '')).strip()):
+                    original_data['UUID'] = original_uuid = str(uuid.uuid4())
+
                 # ---------------------- Check Duplication First Avoiding Wasting Token ----------------------
 
                 if self._check_data_duplication(original_data, True):
@@ -487,7 +499,8 @@ class IntelligenceHub:
                 validated_data['SUBMITTER'] = 'Analysis Thread'
 
                 if not self._enqueue_processed_data(validated_data):
-                    self.error_counter += 1
+                    with self.lock:
+                        self.error_counter += 1
 
             except IntelligenceHub.Exception as e:
                 if e.name == 'drop':

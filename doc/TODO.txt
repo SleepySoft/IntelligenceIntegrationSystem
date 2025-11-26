@@ -2,13 +2,13 @@
     增强搜索功能
         全文搜索
         格式化五要素
-        向量数据库
-        向量搜索
+        向量数据库 - Done
+        向量搜索 - Done
 
     AI Client增强
-        多实例轮转
+        多实例轮转 - Done
         并行分析
-        维护自己的状态
+        维护自己的状态 - Done
         在获取不到可用的AI Client时暂停分析
 
     增加recommendation页面显示信息：
@@ -52,5 +52,5 @@
 
     https://tass.com/sitemap/sitemap_section.xml
 
-
+加入NHK新闻 - Done
 
