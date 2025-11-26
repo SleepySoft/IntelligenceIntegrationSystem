@@ -265,6 +265,7 @@ def run():
     client_manager_backend = AIDashboardService(client_manager)
     client_manager_backend.mount_to_app(
         app=wsgi_app,
+        wrapper=ihub_service.access_manager.login_required,
         url_prefix='/monitor/ai-client-dashboard')
 
     # Monitor in the same process and the same service
