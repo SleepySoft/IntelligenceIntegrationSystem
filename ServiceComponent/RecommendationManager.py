@@ -1,6 +1,8 @@
 import logging
 import datetime
+import random
 import threading
+import time
 import traceback
 from collections import Counter
 from dataclasses import dataclass, asdict
@@ -148,11 +150,19 @@ class RecommendationManager:
                 {'UUID': item['UUID'], 'EVENT_TITLE': item['EVENT_TITLE'], 'EVENT_BRIEF': item['EVENT_BRIEF']} for item
                 in result]
 
-            if ai_client := self.ai_client_manager.get_available_client('RecommendationManager'):
-                recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
-
-            else:
-                return False
+            retries = 0
+            while True:
+                if ai_client := self.ai_client_manager.get_available_client('RecommendationManager'):
+                    recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
+                    # Because recommendation period is very long. Release it for other task using.
+                    self.ai_client_manager.release_client(ai_client)
+                    break
+                retries += 1
+                if retries % 10 == 0:
+                    logger.warning(f"Recommendation thread {threading.current_thread().name} waiting for AI client for {retries}s...")
+                time.sleep(1 + random.random() * 0.5)
+            if retries:
+                logger.info(f"Recommendation tries to get AI client for {retries} times.")
 
             if not recommendation_uuids or 'error' in recommendation_uuids:
                 logger.error(f"Failed to get recommendation from AI: {recommendation_uuids}")
