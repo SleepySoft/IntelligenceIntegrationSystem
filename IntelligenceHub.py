@@ -80,8 +80,9 @@ class IntelligenceHub:
 
         # -------------- Queues Related --------------
 
-        self.original_queue = queue.Queue()             # Original intelligence queue
-        self.processed_queue = queue.Queue()            # Processed intelligence queue
+        self.original_queue = queue.Queue()         # Original intelligence queue
+        self.processed_queue = queue.Queue()        # Processed intelligence queue
+        self.unarchived_queue = queue.Queue()       # Loaded unarchived data queue, lower priority than original_queue
         self.archived_counter = 0
         self.drop_counter = 0
         self.error_counter = 0
@@ -175,12 +176,12 @@ class IntelligenceHub:
             for doc in cursor:
                 doc['_id'] = str(doc['_id'])  # 转换ObjectId
                 try:
-                    self.original_queue.put(doc, block=True, timeout=5)
+                    self.unarchived_queue.put(doc, block=True, timeout=5)
                 except queue.Full:
                     logger.error("Queue full, failed to add document")
                     break
 
-            logger.info(f'Unarchived data loaded, item count: {self.original_queue.qsize()}')
+            logger.info(f'Unarchived data loaded, item count: {self.unarchived_queue.qsize()}')
 
         except pymongo.errors.PyMongoError as e:
             logger.error(f"Database operation failed: {str(e)}")
@@ -444,13 +445,26 @@ class IntelligenceHub:
 
         while not self.shutdown_flag.is_set():
             original_uuid = None
+            original_data = None
+            current_queue = None  # 用于记录当前数据来自哪个队列，以便正确 task_done
 
             try:
-                original_data = self.original_queue.get(block=True, timeout=1)
-            except queue.Empty:
-                continue
+                try:
+                    # 阻塞等待 1 秒，优先处理新数据
+                    original_data = self.original_queue.get(block=True, timeout=1)
+                    current_queue = self.original_queue
+                except queue.Empty:
+                    # ------------------- 2. 高优先级为空，尝试低优先级 -------------------
+                    # 如果 original_queue 是空的，尝试从 unarchived_queue 拿
+                    # 使用 block=False，因为刚才已经等了1秒了，这里快速检查即可
+                    try:
+                        original_data = self.unarchived_queue.get(block=False)
+                        current_queue = self.unarchived_queue
+                        logger.debug('Idle, process unarchived queue.')
+                    except queue.Empty:
+                        # 两个队列都空，进入下一次循环
+                        continue
 
-            try:
                 # If there's no UUID...
                 if not (original_uuid := str(original_data.get('UUID', '')).strip()):
                     original_data['UUID'] = original_uuid = str(uuid.uuid4())
@@ -519,7 +533,8 @@ class IntelligenceHub:
                 logger.error(f"{prefix} Analysis error: {str(e)}")
                 self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR)
             finally:
-                self.original_queue.task_done()
+                if current_queue:
+                    current_queue.task_done()
 
     def _post_process_worker(self):
         # ---------------- If a vector database is specified, wait until it is ready ----------------
