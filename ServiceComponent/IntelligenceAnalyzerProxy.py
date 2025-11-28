@@ -6,7 +6,7 @@ import json_repair
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ValidationError
 
-from AIClientCenter.AIClients import OpenAIRotationClient
+from AIClientCenter.AIClientManager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
 from MyPythonUtility.DictTools import dict_list_to_markdown
 
@@ -140,7 +140,7 @@ def conversation_common_process(category, messages, response) -> dict:
 
 
 def analyze_with_ai(
-        ai_client: OpenAIRotationClient,
+        ai_client: BaseAIClient,
         prompt: str,
         structured_data: Dict[str, Any],
         context: Optional[List[Dict[str, str]]] = None
@@ -190,7 +190,7 @@ def analyze_with_ai(
 
 
 def aggressive_by_ai(
-        ai_client: OpenAIRotationClient,
+        ai_client: BaseAIClient,
         prompt: str,
         new_data: Dict[str, Any],
         history_data: List[Dict[str, str]]
@@ -223,7 +223,7 @@ def aggressive_by_ai(
 
 
 def generate_recommendation_by_ai(
-        ai_client: OpenAIRotationClient,
+        ai_client: BaseAIClient,
         prompt: str,
         intelligence_list: List[Dict[str, str]]
 ) -> List[str] or Dict:

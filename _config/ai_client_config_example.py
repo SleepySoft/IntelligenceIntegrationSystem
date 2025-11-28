@@ -5,7 +5,8 @@
 from typing import List
 
 from GlobalConfig import *
-from AIClientCenter.AIClients import OpenAIRotationClient
+from AIClientCenter.AIClients import StandardOpenAIClient, \
+    SelfRotatingOpenAIClient, OuterTokenRotatingOpenAIClient
 from AIClientCenter.AIClientManager import CLIENT_PRIORITY_EXPENSIVE, \
     CLIENT_PRIORITY_FREEBIE, BaseAIClient, CLIENT_PRIORITY_NORMAL
 from AIClientCenter.OpenAICompatibleAPI import create_siliconflow_client, create_modelscope_client
@@ -21,7 +22,7 @@ def build_ai_clients() -> List[BaseAIClient]:
     # -------------------------------------------------
 
     sf_api_default = create_siliconflow_client('A valid token')
-    sf_client_default = OpenAIRotationClient(
+    sf_client_default = StandardOpenAIClient(
         'SiliconFlow Client Default',
         sf_api_default,
         CLIENT_PRIORITY_EXPENSIVE,
@@ -36,7 +37,7 @@ def build_ai_clients() -> List[BaseAIClient]:
     # --------------------------------------------------------
 
     sf_api_a = create_siliconflow_client('invalid')
-    sf_client_a = OpenAIRotationClient(
+    sf_client_a = OuterTokenRotatingOpenAIClient(
         'SiliconFlow Client A',
         sf_api_a,
         CLIENT_PRIORITY_NORMAL,
@@ -52,7 +53,7 @@ def build_ai_clients() -> List[BaseAIClient]:
     # --------------------------------------------------------
 
     sf_api_b = create_siliconflow_client('invalid')
-    sf_client_b = OpenAIRotationClient(
+    sf_client_b = OuterTokenRotatingOpenAIClient(
         'SiliconFlow Client B',
         sf_api_b,
         CLIENT_PRIORITY_NORMAL,
@@ -87,7 +88,7 @@ def build_ai_clients() -> List[BaseAIClient]:
     # --------------------------------------------------------
 
     ms_api = create_modelscope_client('ms-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
-    ms_client = OpenAIRotationClient(
+    ms_client = SelfRotatingOpenAIClient(
         f'ModelScope Client 1',
         ms_api, CLIENT_PRIORITY_FREEBIE,
         default_available=True

@@ -18,7 +18,7 @@ from MyPythonUtility.easy_config import EasyConfig
 from VectorDB.VectorDBService import VectorDBService
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
-from AIClientCenter.AIClients import OpenAIRotationClient
+from AIClientCenter.AIClients import OuterTokenRotatingOpenAIClient
 from AIClientCenter.AIClientManager import AIClientManager
 from Tools.SystemMonotorLauncher import start_system_monitor
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
@@ -79,7 +79,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
             proxies=ai_service_proxies
         )
 
-        ai_client = OpenAIRotationClient('Default AI Client', ai_api)
+        ai_client = OuterTokenRotatingOpenAIClient('Default AI Client', ai_api)
 
         # Wrap by new mechanism
         client_manager.register_client(ai_client)
