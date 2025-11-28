@@ -2643,4 +2643,7 @@ if ai_client := self.ai_client_manager.get_available_client():
 
 
 
-
+给get_available_client增加几个参数：
+1. 请求换一个：如果为true，则给它换一个，没有则返回空。既然它名下没有client，则下次有可能分配到刚释放的client，符合预期。
+2. 指定要更换的client的group_id，没有满足则返回空。
+3. 指定要更换的client名，最严格且优先级最高的要求，不满足则返回空。
