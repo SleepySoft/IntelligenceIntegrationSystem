@@ -241,6 +241,7 @@ class IntelligenceHub:
     def statistics(self):
         return {
             'waiting_process': self.original_queue.qsize(),
+            'unarchived_queue': self.unarchived_queue.qsize(),
             'post_process': self.processed_queue.qsize(),
             'archived': self.archived_counter,
             'dropped': self.drop_counter,
