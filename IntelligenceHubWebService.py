@@ -342,7 +342,7 @@ class IntelligenceHubWebService:
                 recommendations, offset=0, count=len(recommendations), total_count=len(recommendations))
 
         @app.route('/intelligences/query', methods=['GET', 'POST'])
-        # @WebServiceAccessManager.login_required
+        @WebServiceAccessManager.login_required
         def intelligences_query_api():
             if request.method == 'POST':
                 try:
