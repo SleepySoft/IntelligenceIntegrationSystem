@@ -61,15 +61,16 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     try:
         from _config.ai_client_config import AI_CLIENTS
         logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
-        for client in AI_CLIENTS:
+        for client in AI_CLIENTS.values():
             logger.info(f"Register AI client: {client.name}.")
             client_manager.register_client(client)
         # Considering stable and limitation. Limit 2 Siliconflow service at the same time.
         client_manager.set_group_limit('silicon flow', 2)
         client_manager.set_group_limit('model scope', 1)
         client_manager.set_group_limit('zhipu', 1)
-    except Exception as _:
-        logger.info(f"No ai_client_config in _config folder. Use traditional config.")
+    except Exception as e:
+        print(traceback.format_exc())
+        logger.info(f"Import {CONFIG_PATH}/ai_client_config.py fail. Use traditional config.")
 
         ai_service_url = config.get('intelligence_hub.ai_service.url', OPEN_AI_API_BASE_URL_SELECT)
         ai_service_token = config.get('intelligence_hub.ai_service.token', 'Sleepy')

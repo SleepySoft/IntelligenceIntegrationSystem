@@ -192,7 +192,7 @@ class IntelligenceHub:
 
     def startup(self):
         # self.analysis_thread.start()
-        self.start_analysis_threads(5)
+        self.start_analysis_threads(3)
         self.post_process_thread.start()
 
     def shutdown(self, timeout=10):
