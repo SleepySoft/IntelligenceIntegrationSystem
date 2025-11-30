@@ -581,31 +581,40 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def export_mongodb():
             """
-            Handle export request using the integrated MongoDBStorage class.
-            Supports exporting from 'archive', 'cache', or 'both'.
+            Handle export request.
+            Supports:
+            1. Mode: 'range' (specific start/end) or 'all' (entire db)
+            2. Split: 'month', 'week', 'year', or None
+            3. Target: 'archive', 'cache', or 'all'
             """
             try:
-                # 1. Get parameters from request
+                # 1. Get parameters
                 data = request.get_json()
                 if not data:
                     return jsonify({'status': 'error', 'message': 'No JSON data received'}), 400
 
-                start_date_str = data.get('startDate')
-                end_date_str = data.get('endDate')
-
-                # 'target' determines which DB to export: 'archive', 'cache', or 'all'
+                mode = data.get('mode', 'range')  # 'range' or 'all'
                 target = data.get('target', 'archive')
+                split_by = data.get('splitBy') # 'month', 'week', 'year' or None (empty string)
 
-                # 2. Validate and Parse Dates
-                if not start_date_str or not end_date_str:
-                    return jsonify({'status': 'error', 'message': 'startDate and endDate are required'}), 400
+                # Normalize split_by to None if it's an empty string or 'none'
+                if not split_by or split_by == 'none':
+                    split_by = None
 
-                try:
-                    # Parse ISO strings to datetime objects (automatically handles 'Z' or offsets)
-                    start_dt = date_parser.parse(start_date_str)
-                    end_dt = date_parser.parse(end_date_str)
-                except ValueError as e:
-                    return jsonify({'status': 'error', 'message': f'Invalid date format: {str(e)}'}), 400
+                # 2. Prepare Date Range (Only if mode is 'range')
+                start_dt = None
+                end_dt = None
+
+                if mode == 'range':
+                    start_date_str = data.get('startDate')
+                    end_date_str = data.get('endDate')
+                    if not start_date_str or not end_date_str:
+                        return jsonify({'status': 'error', 'message': 'startDate and endDate are required for range mode'}), 400
+                    try:
+                        start_dt = date_parser.parse(start_date_str)
+                        end_dt = date_parser.parse(end_date_str)
+                    except ValueError as e:
+                        return jsonify({'status': 'error', 'message': f'Invalid date format: {str(e)}'}), 400
 
                 generated_files = []
                 messages = []
@@ -617,34 +626,43 @@ class IntelligenceHubWebService:
                         messages.append(f"Skipped {prefix}: Database instance not initialized.")
                         return
 
-                    # Construct full directory path: e.g., /exports/mongo_db_archive
                     full_dir = os.path.join(EXPORT_PATH, sub_dir)
 
-                    # Execute export
-                    # output_file is the full absolute path returned by the storage class
-                    output_file = db_instance.export_by_time_range(
-                        start_dt=start_dt,
-                        end_dt=end_dt,
-                        directory=full_dir,
-                        time_field=time_field,
-                        file_prefix=prefix,
-                        add_timestamp=True  # Ensure unique filenames
-                    )
-
-                    if output_file:
-                        generated_files.append(output_file)
-                        messages.append(f"Exported {prefix} to {os.path.basename(output_file)}")
+                    # Dispatch based on mode
+                    if mode == 'all':
+                        # Call export_all
+                        files = db_instance.export_all(
+                            directory=full_dir,
+                            split_by=split_by,
+                            time_field=time_field,
+                            add_timestamp=True
+                        )
+                        if files:
+                            generated_files.extend(files)
+                            messages.append(f"Exported all {prefix} data ({len(files)} files)")
+                        else:
+                            messages.append(f"No data found in {prefix}")
                     else:
-                        messages.append(f"No data found for {prefix} in the given range.")
+                        # Call export_by_time_range
+                        output_file = db_instance.export_by_time_range(
+                            start_dt=start_dt,
+                            end_dt=end_dt,
+                            directory=full_dir,
+                            time_field=time_field,
+                            file_prefix=prefix,
+                            add_timestamp=True
+                        )
+                        if output_file:
+                            generated_files.append(output_file)
+                            messages.append(f"Exported {prefix} range to {os.path.basename(output_file)}")
+                        else:
+                            messages.append(f"No data found for {prefix} in range")
 
                 # 4. Execute Exports based on Target
 
                 # --- Export Archive DB ---
                 if target in ['archive', 'all']:
-                    # Uses specific constant field for time query
-                    # Assuming APPENDIX_TIME_ARCHIVED is like "APPENDIX.time_archived" or just "time_archived"
                     time_field = f"APPENDIX.{APPENDIX_TIME_ARCHIVED}"
-
                     run_export(
                         db_instance=self.intelligence_hub.mongo_db_archive,
                         sub_dir='mongo_db_archive',
@@ -654,10 +672,7 @@ class IntelligenceHubWebService:
 
                 # --- Export Cache DB ---
                 if target in ['cache', 'all']:
-                    # Cache usually uses 'created_at', 'timestamp', or user specified field
-                    # We default to 'created_at' if not specified in request
                     cache_time_field = data.get('cacheTimeField', 'created_at')
-
                     run_export(
                         db_instance=self.intelligence_hub.mongo_db_cache,
                         sub_dir='mongo_db_cache',
@@ -674,7 +689,6 @@ class IntelligenceHubWebService:
                         'count': len(generated_files)
                     })
                 else:
-                    # If no files were generated but no error occurred (e.g., empty data range)
                     return jsonify({
                         'status': 'warning',
                         'message': '; '.join(messages)

@@ -321,6 +321,23 @@ class MongoDBStorage:
 
         return str(Path(directory) / f"{filename}.json")
 
+    def _get_nested_value(self, doc: Dict[str, Any], path: str) -> Any:
+        """
+        Helper to retrieve value from nested dict using dot notation (e.g., 'meta.created_at').
+        Returns None if the path does not exist.
+        """
+        if not doc:
+            return None
+
+        keys = path.split('.')
+        value = doc
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                return None
+        return value
+
     def _stream_cursor_to_json(self, cursor, filepath: str, batch_size: int = 2000) -> int:
         """
         Streams MongoDB cursor data to a JSON file incrementally in batches.
@@ -524,11 +541,12 @@ class MongoDBStorage:
             return []
 
         # Note: process_document_output converts output to Local, which is what we want for iteration logic
-        min_date: datetime.datetime = min_doc.get(time_field)
-        max_date: datetime.datetime = max_doc.get(time_field)
+        # Use helper to access nested fields via dot notation (e.g. "APPENDIX.time_archived")
+        min_date: datetime.datetime = self._get_nested_value(min_doc, time_field)
+        max_date: datetime.datetime = self._get_nested_value(max_doc, time_field)
 
         if not isinstance(min_date, datetime.datetime) or not isinstance(max_date, datetime.datetime):
-            logger.error(f"Field '{time_field}' is not a valid datetime object.")
+            logger.error(f"Field '{time_field}' is not a valid datetime object in range check. Value: {min_date}")
             return []
 
         generated_files = []
@@ -565,7 +583,6 @@ class MongoDBStorage:
                 current_date = next_year
 
         return generated_files
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
