@@ -33,9 +33,7 @@
 
 ```mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_archived --file=intelligence_archived.json```
 
-+ [2025年8月](https://pan.baidu.com/s/1IiuH13NqEd4XOZnlFLhCWQ?pwd=v94e)
-
-+ [2025年9月](https://pan.baidu.com/s/1r9T0joS2JdUIb4hvrMa_Sw?pwd=k4ay)
++ [自动备份与上传](https://pan.baidu.com/s/1Fpf32ZJAVITglTAqKkH1GQ?pwd=yucs)
 
 ## 赞助该项目
 
