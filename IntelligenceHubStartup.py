@@ -248,6 +248,7 @@ def run():
     Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
     Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
     Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(EXPORT_PATH).mkdir(parents=True, exist_ok=True)
     Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------- Log -----------------------------------

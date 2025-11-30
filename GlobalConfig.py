@@ -5,6 +5,7 @@ PRJ_PATH = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(PRJ_PATH, '_log')
 DATA_PATH = os.path.join(PRJ_PATH, '_data')
 CONFIG_PATH = os.path.join(PRJ_PATH, '_config')
+EXPORT_PATH = os.path.join(PRJ_PATH, '_export')
 PRODUCTS_PATH = os.path.join(PRJ_PATH, '_products')
 
 

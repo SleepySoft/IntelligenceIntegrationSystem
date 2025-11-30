@@ -7,22 +7,22 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        /* 添加到现有的样式部分 */
+        /* Base styles for preset buttons */
         .preset-btn {
             margin: 2px;
             font-size: 0.85rem;
         }
 
-        /* Week Presets 容器样式 */
+        /* Container for Week Presets */
         #weekPresets {
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
         }
 
-        /* 周按钮统一宽度样式 */
+        /* Fixed width logic for week buttons to look neat */
         #weekPresets .preset-btn {
-            flex: 0 0 calc(25% - 10px); /* 每行4个按钮 */
+            flex: 0 0 calc(25% - 10px); /* 4 buttons per row */
             min-width: 120px;
             margin-bottom: 8px;
             text-align: center;
@@ -31,110 +31,169 @@
             text-overflow: ellipsis;
         }
 
-        /* 响应式调整：小屏幕时每行2个按钮 */
+        /* Responsive: 2 buttons per row on tablets */
         @media (max-width: 768px) {
             #weekPresets .preset-btn {
                 flex: 0 0 calc(50% - 10px);
             }
         }
 
-        /* 响应式调整：超小屏幕时每行1个按钮 */
+        /* Responsive: 1 button per row on mobile */
         @media (max-width: 576px) {
             #weekPresets .preset-btn {
                 flex: 0 0 100%;
             }
         }
+
+        /* Style for the generated file list */
+        .file-list-group-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .loading-overlay {
+            opacity: 0.6;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
+    <div class="container mt-4 mb-5">
         <h1 class="text-center mb-4"><i class="fas fa-database me-2"></i>MongoDB Data Exporter</h1>
 
         <div class="row">
             <div class="col-md-8 mx-auto">
-                <div class="export-section">
-                    <h3><i class="fas fa-calendar-alt me-2"></i>Select Time Period</h3>
-
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="startDate" class="form-label">Start Date</label>
-                            <input type="datetime-local" class="form-control" id="startDate">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="endDate" class="form-label">End Date</label>
-                            <input type="datetime-local" class="form-control" id="endDate">
-                        </div>
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-file-export me-2"></i>Export Configuration</h5>
                     </div>
+                    <div class="card-body">
 
-                    <div class="row mb-3">
-                        <div class="col">
-                            <h5><i class="fas fa-calendar me-2"></i>Month Presets</h5>
-                            <div class="date-presets" id="monthPresets">
-                                <!-- Month preset buttons will be generated here -->
+                        <!-- 1. Target Selection -->
+                        <div class="mb-4">
+                            <label for="exportTarget" class="form-label fw-bold">Target Database</label>
+                            <select class="form-select" id="exportTarget">
+                                <option value="archive" selected>Intelligence Archive (Default)</option>
+                                <option value="cache">Intelligence Cache</option>
+                                <option value="all">Export Both (Archive & Cache)</option>
+                            </select>
+                            <div class="form-text text-muted">
+                                Select which database collection you wish to export.
                             </div>
                         </div>
-                    </div>
 
-                    <div class="row mb-3">
-                        <div class="col">
-                            <h5><i class="fas fa-calendar-week me-2"></i>Week Presets</h5>
-                            <div class="date-presets" id="weekPresets">
-                                <!-- Week preset buttons will be generated here -->
+                        <hr>
+
+                        <!-- 2. Time Period Selection -->
+                        <h5 class="mt-3"><i class="fas fa-calendar-alt me-2"></i>Select Time Period</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="startDate" class="form-label">Start Date</label>
+                                <input type="datetime-local" class="form-control" id="startDate">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="endDate" class="form-label">End Date</label>
+                                <input type="datetime-local" class="form-control" id="endDate">
                             </div>
                         </div>
-                    </div>
 
-                    <div class="row">
-                        <div class="col">
-                            <button id="exportBtn" class="btn btn-primary w-100">
-                                <i class="fas fa-download me-2"></i>Export Data
-                            </button>
+                        <!-- Month Presets -->
+                        <div class="row mb-3">
+                            <div class="col">
+                                <h6 class="text-secondary"><i class="fas fa-calendar me-2"></i>Month Presets</h6>
+                                <div class="date-presets" id="monthPresets">
+                                    <!-- Buttons generated by JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Week Presets -->
+                        <div class="row mb-4">
+                            <div class="col">
+                                <h6 class="text-secondary"><i class="fas fa-calendar-week me-2"></i>Week Presets</h6>
+                                <div class="date-presets" id="weekPresets">
+                                    <!-- Buttons generated by JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Action Buttons -->
+                        <div class="row">
+                            <div class="col">
+                                <button id="exportBtn" class="btn btn-primary w-100 py-2">
+                                    <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    <span id="btnText"><i class="fas fa-download me-2"></i>Start Export</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="progress mt-3 d-none" id="progressContainer">
-                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
-                         role="progressbar" style="width: 0%">0%</div>
+                <!-- 4. Progress Bar -->
+                <div class="progress mt-3 d-none" id="progressContainer" style="height: 25px;">
+                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                         role="progressbar" style="width: 0%">Processing...</div>
                 </div>
 
+                <!-- 5. Status Messages -->
                 <div id="resultAlert" class="alert d-none mt-3">
                     <i class="fas fa-info-circle me-2"></i><span id="resultMessage"></span>
                 </div>
 
-                <div id="downloadSection" class="d-none mt-3 text-center">
-                    <a id="downloadLink" class="btn btn-success">
-                        <i class="fas fa-file-download me-2"></i>Download Export File
-                    </a>
+                <!-- 6. Download Links Section (Dynamic List) -->
+                <div id="downloadSection" class="card mt-3 d-none border-success">
+                    <div class="card-header bg-success text-white">
+                        <i class="fas fa-check-circle me-2"></i>Export Ready
+                    </div>
+                    <ul class="list-group list-group-flush" id="fileList">
+                        <!-- File links will be injected here -->
+                    </ul>
                 </div>
+
             </div>
         </div>
     </div>
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <!-- Custom JavaScript -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Initialize date inputs with current time
+            // Initialize inputs with default time range (last 1 hour)
             const now = new Date();
             const oneHourAgo = new Date(now.getTime() - (60 * 60 * 1000));
 
-            document.getElementById('startDate').value = formatDateTime(oneHourAgo);
-            document.getElementById('endDate').value = formatDateTime(now);
+            // Note: datetime-local inputs require "YYYY-MM-DDThh:mm" format
+            document.getElementById('startDate').value = formatLocalISO(oneHourAgo);
+            document.getElementById('endDate').value = formatLocalISO(now);
 
-            // Generate preset buttons
+            // Generate the preset buttons logic
             generateMonthPresets();
             generateWeekPresets();
 
-            // Set up export button event listener
+            // Attach event listener
             document.getElementById('exportBtn').addEventListener('click', startExport);
         });
 
-        function formatDateTime(date) {
-            return date.toISOString().slice(0, 16);
+        /**
+         * Formats a Date object to "YYYY-MM-DDThh:mm" for input[type="datetime-local"]
+         * We construct this manually to respect local time without timezone conversion issues.
+         */
+        function formatLocalISO(date) {
+            const pad = (num) => String(num).padStart(2, '0');
+            const year = date.getFullYear();
+            const month = pad(date.getMonth() + 1);
+            const day = pad(date.getDate());
+            const hours = pad(date.getHours());
+            const minutes = pad(date.getMinutes());
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
         }
 
+        /**
+         * Generates buttons for the last 12 months.
+         */
         function generateMonthPresets() {
             const container = document.getElementById('monthPresets');
             const now = new Date();
@@ -143,21 +202,26 @@
                 const monthDate = new Date(now);
                 monthDate.setMonth(now.getMonth() - i);
 
-                const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+                // Start: 1st day of month 00:00
+                const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0);
+                // End: Last day of month 23:59:59
                 const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
 
                 const btn = document.createElement('button');
                 btn.className = 'btn btn-outline-primary preset-btn';
                 btn.textContent = startOfMonth.toLocaleDateString('en-US', {month: 'short', year: 'numeric'});
                 btn.onclick = () => {
-                    document.getElementById('startDate').value = formatDateTime(startOfMonth);
-                    document.getElementById('endDate').value = formatDateTime(endOfMonth);
+                    document.getElementById('startDate').value = formatLocalISO(startOfMonth);
+                    document.getElementById('endDate').value = formatLocalISO(endOfMonth);
                 };
 
                 container.appendChild(btn);
             }
         }
 
+        /**
+         * Generates buttons for the last 52 weeks.
+         */
         function generateWeekPresets() {
             const container = document.getElementById('weekPresets');
             const now = new Date();
@@ -165,103 +229,103 @@
             container.innerHTML = '';
 
             for (let i = 0; i < 52; i++) {
-                // 计算当前周减去i周的日期
+                // Calculate reference date for "i" weeks ago
                 const weekDate = new Date(now);
                 weekDate.setDate(now.getDate() - (7 * i));
 
-                // 获取当周的开始日期（周一）
+                // Find Monday of that week
                 const weekStart = new Date(weekDate);
-                const dayOfWeek = weekStart.getDay(); // 0=周日, 1=周一,...,6=周六
+                const dayOfWeek = weekStart.getDay(); // 0=Sun, 1=Mon...
                 const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
                 weekStart.setDate(weekStart.getDate() + diffToMonday);
+                weekStart.setHours(0, 0, 0, 0);
 
-                // 计算真实的ISO周数
+                // Calculate ISO Week Number for label
                 const isoWeekNumber = getISOWeekNumber(weekStart);
 
-                // 格式化日期为YYYY-MM-DD
-                const formatDate = (date) => {
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const day = String(date.getDate()).padStart(2, '0');
-                    return `${year}-${month}-${day}`;
-                };
+                // Format for button label
+                const labelDate = weekStart.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
 
-                const startDateStr = formatDate(weekStart);
-
-                // 创建按钮
+                // Create Button
                 const btn = document.createElement('button');
                 btn.className = 'btn btn-outline-secondary preset-btn';
-                btn.textContent = `Week ${isoWeekNumber} (${startDateStr})`; // 使用真实的ISO周数
+                btn.textContent = `W${isoWeekNumber} (${labelDate})`;
                 btn.onclick = () => {
-                    // 设置开始日期为当周周一
+                    // Start: Monday 00:00
                     const startDate = new Date(weekStart);
-                    startDate.setHours(0, 0, 0, 0);
 
-                    // 设置结束日期为当周周日23:59:59
+                    // End: Sunday 23:59
                     const endDate = new Date(weekStart);
                     endDate.setDate(weekStart.getDate() + 6);
-                    endDate.setHours(23, 59, 59, 999);
+                    endDate.setHours(23, 59, 59);
 
-                    document.getElementById('startDate').value = formatDateTime(startDate);
-                    document.getElementById('endDate').value = formatDateTime(endDate);
+                    document.getElementById('startDate').value = formatLocalISO(startDate);
+                    document.getElementById('endDate').value = formatLocalISO(endDate);
                 };
 
                 container.appendChild(btn);
             }
         }
 
-        // 计算ISO周数的函数 (基于ISO 8601标准)
+        /**
+         * Standard ISO 8601 week number calculation.
+         */
         function getISOWeekNumber(date) {
-            // 创建一个新的日期对象，避免修改原始日期[4](@ref)
             const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-
-            // 设置日期为本周的星期四 - ISO 8601标准[4](@ref)
             d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-
-            // 计算年份的第一个星期四[4](@ref)
             const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-
-            // 计算周数[4](@ref)
-            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-            return weekNo;
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
         }
 
+        /**
+         * Main function to handle the export process.
+         */
         function startExport() {
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
+            const target = document.getElementById('exportTarget').value;
 
             if (!startDate || !endDate) {
                 showResult('Please select both start and end dates.', 'danger');
                 return;
             }
 
-            // Show progress bar
-            document.getElementById('progressContainer').classList.remove('d-none');
-            document.getElementById('exportBtn').disabled = true;
-            updateProgress(10);
+            // UI: Reset states
+            resetUI();
 
-            // Send export request
+            // UI: Show loading state
+            setLoading(true);
+            updateProgress(10); // Fake progress to show activity
+
+            // Construct payload
+            // Note: Appending :00 to ensure seconds are present for robust backend parsing
+            const payload = {
+                startDate: startDate.length === 16 ? startDate + ':00' : startDate,
+                endDate: endDate.length === 16 ? endDate + ':00' : endDate,
+                target: target
+            };
+
             fetch('/maintenance/export_mongodb', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    startDate: startDate + ':00',
-                    endDate: endDate + ':00'
-                })
+                body: JSON.stringify(payload)
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.message || 'Server Error'); });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.status === 'success') {
                     updateProgress(100);
-                    showResult('Export completed successfully!', 'success');
-
-                    // Show download link
-                    const downloadLink = document.getElementById('downloadLink');
-                    downloadLink.href = `/download/${data.filename}`;
-                    downloadLink.download = data.filename;
-                    document.getElementById('downloadSection').classList.remove('d-none');
+                    showResult(data.message || 'Export completed successfully!', 'success');
+                    renderDownloadLinks(data.files);
+                } else if (data.status === 'warning') {
+                    updateProgress(100);
+                    showResult(data.message, 'warning');
                 } else {
                     updateProgress(0);
                     showResult(`Export failed: ${data.message}`, 'danger');
@@ -269,25 +333,94 @@
             })
             .catch(error => {
                 updateProgress(0);
-                showResult(`Error: ${error.message}`, 'danger');
+                showResult(`Communication Error: ${error.message}`, 'danger');
             })
             .finally(() => {
-                document.getElementById('exportBtn').disabled = false;
+                setLoading(false);
             });
+        }
+
+        /**
+         * Renders the list of files returned by the backend.
+         * Expects data.files to be an array of file paths.
+         */
+        function renderDownloadLinks(files) {
+            const listContainer = document.getElementById('fileList');
+            const downloadSection = document.getElementById('downloadSection');
+
+            listContainer.innerHTML = ''; // Clear previous
+
+            if (!files || files.length === 0) {
+                return;
+            }
+
+            files.forEach(filePath => {
+                // Extract filename from path (e.g., /app/exports/file.json -> file.json)
+                // Handles both Windows (\) and Unix (/) paths just in case
+                const filename = filePath.split(/[\\/]/).pop();
+
+                const li = document.createElement('li');
+                li.className = 'list-group-item file-list-group-item';
+
+                li.innerHTML = `
+                    <span><i class="far fa-file-alt me-2 text-muted"></i>${filename}</span>
+                    <a href="/download/${filename}" class="btn btn-sm btn-outline-success" download>
+                        <i class="fas fa-download me-1"></i> Download
+                    </a>
+                `;
+                listContainer.appendChild(li);
+            });
+
+            downloadSection.classList.remove('d-none');
+        }
+
+        // --- UI Helper Functions ---
+
+        function resetUI() {
+            document.getElementById('downloadSection').classList.add('d-none');
+            document.getElementById('resultAlert').classList.add('d-none');
+            document.getElementById('fileList').innerHTML = '';
+            document.getElementById('progressBar').className = 'progress-bar progress-bar-striped progress-bar-animated bg-info';
+        }
+
+        function setLoading(isLoading) {
+            const btn = document.getElementById('exportBtn');
+            const spinner = document.getElementById('btnSpinner');
+            const btnText = document.getElementById('btnText');
+            const inputs = document.querySelectorAll('input, select, button.preset-btn');
+
+            if (isLoading) {
+                btn.disabled = true;
+                spinner.classList.remove('d-none');
+                btnText.textContent = ' Exporting...';
+                document.getElementById('progressContainer').classList.remove('d-none');
+                // Disable inputs to prevent changes during export
+                inputs.forEach(el => el.disabled = true);
+            } else {
+                btn.disabled = false;
+                spinner.classList.add('d-none');
+                btnText.innerHTML = '<i class="fas fa-download me-2"></i>Start Export';
+                inputs.forEach(el => el.disabled = false);
+            }
         }
 
         function updateProgress(percent) {
             const progressBar = document.getElementById('progressBar');
             progressBar.style.width = `${percent}%`;
-            progressBar.textContent = `${percent}%`;
+            progressBar.textContent = percent < 100 ? `${percent}%` : 'Done';
+
+            if (percent === 100) {
+                progressBar.classList.remove('bg-info', 'progress-bar-animated');
+                progressBar.classList.add('bg-success');
+            }
         }
 
         function showResult(message, type) {
             const alert = document.getElementById('resultAlert');
             const messageSpan = document.getElementById('resultMessage');
 
-            alert.classList.remove('d-none', 'alert-success', 'alert-danger');
-            alert.classList.add(`alert-${type}`);
+            alert.className = `alert alert-${type} mt-3`;
+            alert.classList.remove('d-none');
             messageSpan.textContent = message;
         }
     </script>

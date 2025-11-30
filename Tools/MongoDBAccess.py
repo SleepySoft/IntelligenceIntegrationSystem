@@ -1,5 +1,8 @@
+import json
 import logging
 import datetime
+import calendar
+from pathlib import Path
 from bson import ObjectId
 from typing import Dict, Optional, List, Any, Sequence, Union, Tuple
 from pymongo.database import Database
@@ -24,6 +27,17 @@ except (ImportError, ZoneInfoNotFoundError):
 logger = logging.getLogger(__name__)
 
 IndexSpec = Sequence[Tuple[str, Union[int, str]]]
+
+
+# Custom Encoder to handle datetime and ObjectId for JSON serialization
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            # Return ISO 8601 formatted string
+            return obj.isoformat()
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        return super().default(obj)
 
 
 class MongoDBError(Exception):
@@ -286,6 +300,256 @@ class MongoDBStorage:
         """Closes the client connection."""
         self.client.close()
         logger.info("MongoDB connection closed.")
+
+    # ------------------------------------------ Export ------------------------------------------
+
+    def _generate_filename(self,
+                           prefix: str,
+                           time_str: str,
+                           directory: str,
+                           add_timestamp: bool = False) -> str:
+        """
+        Generates a standardized filename.
+        Format: {directory}/{prefix}_{time_str}[_timestamp].json
+        """
+        # We prepare the path here, but the directory creation is doubly ensured
+        # in _write_json_file for robustness.
+        filename = f"{prefix}_{time_str}"
+
+        if add_timestamp:
+            # Use compact timestamp format, e.g., 20231129103005
+            ts = datetime.datetime.now(LOCAL_TZ).strftime("%Y%m%d%H%M%S")
+            filename += f"_{ts}"
+
+        return str(Path(directory) / f"{filename}.json")
+
+    def _write_json_file(self, data: List[Dict], filepath: str) -> None:
+        """
+        Writes data to a JSON file.
+        CRITICAL: Automatically creates the parent directory if it does not exist.
+        """
+        try:
+            path_obj = Path(filepath)
+
+            # Ensure the parent directory exists immediately before writing.
+            # parents=True: creates missing parent directories (mkdir -p)
+            # exist_ok=True: does not raise error if directory already exists
+            if not path_obj.parent.exists():
+                path_obj.parent.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created missing directory: {path_obj.parent}")
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                # ensure_ascii=False allows non-ASCII characters (like Chinese) to be readable
+                json.dump(data, f, cls=DateTimeEncoder, ensure_ascii=False, indent=2)
+
+            logger.info(f"Successfully exported {len(data)} records to {filepath}")
+
+        except OSError as e:
+            # Catching OSError handles both directory creation errors and file writing errors
+            logger.error(f"Failed to write file {filepath}: {e}")
+            raise
+
+    def export_by_time_range(self,
+                             start_dt: datetime.datetime,
+                             end_dt: datetime.datetime,
+                             directory: str,
+                             time_field: str = "created_at",
+                             file_prefix: str = "export",
+                             add_timestamp: bool = False,
+                             filename_override: Optional[str] = None) -> str:
+        """
+        Core export function: Exports data within a specific time range.
+
+        Args:
+            start_dt: Start datetime (inclusive).
+            end_dt: End datetime (exclusive).
+            directory: The output directory path.
+            time_field: The database field to filter by (default: "created_at").
+            file_prefix: Prefix for the filename.
+            add_timestamp: If True, appends the current timestamp to the filename to avoid overwriting.
+            filename_override: If provided, uses this string for the time part of the filename.
+        """
+        # 1. Normalize Timezones
+        # Ensure input datetimes are timezone-aware. If naive, assume LOCAL_TZ.
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=LOCAL_TZ)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=LOCAL_TZ)
+
+        # 2. Build Query
+        # Note: We manually build the query here. The find_many method will handle
+        # converting the query values to UTC and the result values to Local Time.
+        query = {
+            time_field: {
+                "$gte": start_dt,
+                "$lt": end_dt
+            }
+        }
+
+        # 3. Fetch Data
+        data = self.find_many(query)
+
+        if not data:
+            logger.warning(f"No data found between {start_dt} and {end_dt}.")
+            return ""
+
+        # 4. Generate Filename
+        if filename_override:
+            time_str = filename_override
+        else:
+            # Standard format: 20231101_20231130
+            fmt = "%Y%m%d"
+            # Include HHMM if time is not 00:00
+            if start_dt.hour != 0 or start_dt.minute != 0:
+                fmt = "%Y%m%d%H%M"
+            time_str = f"{start_dt.strftime(fmt)}_{end_dt.strftime(fmt)}"
+
+        filepath = self._generate_filename(file_prefix, time_str, directory, add_timestamp)
+
+        # 5. Write to File
+        self._write_json_file(data, filepath)
+        return filepath
+
+    def export_by_month(self,
+                        year: int,
+                        month: int,
+                        directory: str,
+                        time_field: str = "created_at",
+                        add_timestamp: bool = False) -> str:
+        """
+        Exports data for a specific month.
+        Filename format example: monthly_2023_11.json
+        """
+        try:
+            # Start of the month
+            start_dt = datetime.datetime(year, month, 1, tzinfo=LOCAL_TZ)
+
+            # Handle year rollover for the end date (start of next month)
+            if month == 12:
+                end_dt = datetime.datetime(year + 1, 1, 1, tzinfo=LOCAL_TZ)
+            else:
+                end_dt = datetime.datetime(year, month + 1, 1, tzinfo=LOCAL_TZ)
+
+            # Filename identifier: 2023_11
+            fname_str = f"{year}_{month:02d}"
+
+            return self.export_by_time_range(
+                start_dt, end_dt, directory, time_field, "monthly", add_timestamp, filename_override=fname_str
+            )
+        except ValueError as e:
+            logger.error(f"Invalid year or month: {e}")
+            return ""
+
+    def export_by_week(self,
+                       year: int,
+                       week: int,
+                       directory: str,
+                       time_field: str = "created_at",
+                       add_timestamp: bool = False) -> str:
+        """
+        Exports data for a specific ISO week.
+        Filename format example: weekly_2023_W42.json
+        """
+        try:
+            # Parse ISO year and week to get Monday of that week
+            # %G-W%V-%u means ISO Year - ISO Week - Monday
+            start_dt = datetime.datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%u").replace(tzinfo=LOCAL_TZ)
+            # End date is exactly one week later
+            end_dt = start_dt + datetime.timedelta(weeks=1)
+
+            # Filename identifier: 2023_W42
+            fname_str = f"{year}_W{week:02d}"
+
+            return self.export_by_time_range(
+                start_dt, end_dt, directory, time_field, "weekly", add_timestamp, filename_override=fname_str
+            )
+        except ValueError as e:
+            logger.error(f"Invalid year or week: {e}")
+            return ""
+
+    def export_all(self,
+                   directory: str,
+                   split_by: Optional[str] = None,
+                   time_field: str = "created_at",
+                   add_timestamp: bool = False) -> List[str]:
+        """
+        Exports all data found in the collection.
+
+        Args:
+            directory: The output directory.
+            split_by: 'year', 'month', 'week', or None (single file).
+            time_field: The field used to determine the time range.
+            add_timestamp: Whether to add a timestamp to the filename.
+
+        Returns:
+            List of generated file paths.
+        """
+        # If no split is requested, export everything into one huge file
+        if not split_by:
+            # Use extreme dates to cover all possible data
+            start_dt = datetime.datetime(1970, 1, 1, tzinfo=LOCAL_TZ)
+            # Use current time + buffer as the upper bound
+            end_dt = datetime.datetime.now(LOCAL_TZ) + datetime.timedelta(days=1)
+            path = self.export_by_time_range(
+                start_dt, end_dt, directory, time_field, "all_data", add_timestamp, filename_override="full_dump"
+            )
+            return [path] if path else []
+
+        # Find the global min and max dates in the DB to determine loop range
+        min_doc = self.find_many({}, sort=[(time_field, ASCENDING)], limit=1)
+        max_doc = self.find_many({}, sort=[(time_field, DESCENDING)], limit=1)
+
+        if not min_doc or not max_doc:
+            logger.warning("No data available to export.")
+            return []
+
+        min_date: datetime.datetime = min_doc[0].get(time_field)
+        max_date: datetime.datetime = max_doc[0].get(time_field)
+
+        if not isinstance(min_date, datetime.datetime) or not isinstance(max_date, datetime.datetime):
+            logger.error(f"Field '{time_field}' is not a valid datetime object in the database.")
+            return []
+
+        generated_files = []
+        current_date = min_date
+
+        # Iterate based on the requested granularity
+        if split_by == 'month':
+            # Reset to the 1st of the starting month
+            current_date = current_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            while current_date <= max_date:
+                path = self.export_by_month(current_date.year, current_date.month, directory, time_field, add_timestamp)
+                if path: generated_files.append(path)
+
+                # Move to the next month
+                year = current_date.year + (current_date.month // 12)
+                month = (current_date.month % 12) + 1
+                current_date = current_date.replace(year=year, month=month)
+
+        elif split_by == 'week':
+            # Reset to the Monday of the starting week
+            iso_year, iso_week, _ = current_date.isocalendar()
+            current_date = datetime.datetime.strptime(f"{iso_year}-W{iso_week}-1", "%G-W%V-%u").replace(tzinfo=LOCAL_TZ)
+
+            while current_date <= max_date:
+                y, w, _ = current_date.isocalendar()
+                path = self.export_by_week(y, w, directory, time_field, add_timestamp)
+                if path: generated_files.append(path)
+                current_date += datetime.timedelta(weeks=1)
+
+        elif split_by == 'year':
+            # Reset to Jan 1st
+            current_date = current_date.replace(month=1, day=1, hour=0, minute=0, second=0)
+            while current_date <= max_date:
+                next_year = current_date.replace(year=current_date.year + 1)
+                fname = f"{current_date.year}"
+                path = self.export_by_time_range(
+                    current_date, next_year, directory, time_field, "yearly", add_timestamp, filename_override=fname
+                )
+                if path: generated_files.append(path)
+                current_date = next_year
+
+        return generated_files
 
 
 # ----------------------------------------------------------------------------------------------------------------------
