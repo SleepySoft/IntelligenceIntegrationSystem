@@ -312,8 +312,6 @@ class MongoDBStorage:
         Generates a standardized filename.
         Format: {directory}/{prefix}_{time_str}[_timestamp].json
         """
-        # We prepare the path here, but the directory creation is doubly ensured
-        # in _write_json_file for robustness.
         filename = f"{prefix}_{time_str}"
 
         if add_timestamp:
@@ -323,30 +321,78 @@ class MongoDBStorage:
 
         return str(Path(directory) / f"{filename}.json")
 
-    def _write_json_file(self, data: List[Dict], filepath: str) -> None:
+    def _stream_cursor_to_json(self, cursor, filepath: str, batch_size: int = 2000) -> int:
         """
-        Writes data to a JSON file.
-        CRITICAL: Automatically creates the parent directory if it does not exist.
+        Streams MongoDB cursor data to a JSON file incrementally in batches.
+
+        This method avoids loading the entire result set into memory (RAM) while
+        using buffering to improve I/O performance.
+
+        Args:
+            cursor: The PyMongo cursor object.
+            filepath: The target file path.
+            batch_size: Number of documents to write in a single I/O operation.
+
+        Returns:
+            int: The count of records exported.
         """
+        count = 0
         try:
             path_obj = Path(filepath)
 
-            # Ensure the parent directory exists immediately before writing.
-            # parents=True: creates missing parent directories (mkdir -p)
-            # exist_ok=True: does not raise error if directory already exists
+            # Ensure the parent directory exists (Robustness)
             if not path_obj.parent.exists():
                 path_obj.parent.mkdir(parents=True, exist_ok=True)
                 logger.info(f"Created missing directory: {path_obj.parent}")
 
             with open(filepath, 'w', encoding='utf-8') as f:
-                # ensure_ascii=False allows non-ASCII characters (like Chinese) to be readable
-                json.dump(data, f, cls=DateTimeEncoder, ensure_ascii=False, indent=2)
+                # Start JSON array
+                f.write('[')
 
-            logger.info(f"Successfully exported {len(data)} records to {filepath}")
+                batch = []
+                first_batch = True
 
-        except OSError as e:
-            # Catching OSError handles both directory creation errors and file writing errors
-            logger.error(f"Failed to write file {filepath}: {e}")
+                for document in cursor:
+                    # PROCESS THE DOCUMENT
+                    # 1. Convert ObjectId to str
+                    # 2. Convert UTC datetime to Local Time
+                    processed_doc = self.process_document_output(document)
+                    batch.append(processed_doc)
+
+                    # When batch is full, write to file
+                    if len(batch) >= batch_size:
+                        # Convert list of dicts to list of JSON strings
+                        json_strings = [json.dumps(doc, cls=DateTimeEncoder, ensure_ascii=False) for doc in batch]
+                        # Join them with comma and newline
+                        chunk = ',\n'.join(json_strings)
+
+                        if not first_batch:
+                            f.write(',\n')
+                        f.write(chunk)
+
+                        count += len(batch)
+                        batch = []
+                        first_batch = False
+
+                # Write remaining documents in the last batch
+                if batch:
+                    json_strings = [json.dumps(doc, cls=DateTimeEncoder, ensure_ascii=False) for doc in batch]
+                    chunk = ',\n'.join(json_strings)
+
+                    if not first_batch:
+                        f.write(',\n')
+                    f.write(chunk)
+                    count += len(batch)
+
+                # End JSON array
+                f.write(']')
+
+            logger.info(f"Successfully streamed {count} records to {filepath} (Batch Size: {batch_size})")
+            return count
+
+        except (IOError, PyMongoError) as e:
+            logger.error(f"Failed to stream export to {filepath}: {e}")
+            # If writing fails, we might want to delete the partial file or leave it for inspection
             raise
 
     def export_by_time_range(self,
@@ -358,38 +404,35 @@ class MongoDBStorage:
                              add_timestamp: bool = False,
                              filename_override: Optional[str] = None) -> str:
         """
-        Core export function: Exports data within a specific time range.
-
-        Args:
-            start_dt: Start datetime (inclusive).
-            end_dt: End datetime (exclusive).
-            directory: The output directory path.
-            time_field: The database field to filter by (default: "created_at").
-            file_prefix: Prefix for the filename.
-            add_timestamp: If True, appends the current timestamp to the filename to avoid overwriting.
-            filename_override: If provided, uses this string for the time part of the filename.
+        Core export function: Exports data within a specific time range using Streaming.
         """
-        # 1. Normalize Timezones
-        # Ensure input datetimes are timezone-aware. If naive, assume LOCAL_TZ.
+        # 1. Normalize Timezones (Input -> UTC)
         if start_dt.tzinfo is None:
             start_dt = start_dt.replace(tzinfo=LOCAL_TZ)
         if end_dt.tzinfo is None:
             end_dt = end_dt.replace(tzinfo=LOCAL_TZ)
 
+        # Convert to UTC for the database query
+        start_utc = self._normalize_to_utc(start_dt)
+        end_utc = self._normalize_to_utc(end_dt)
+
         # 2. Build Query
-        # Note: We manually build the query here. The find_many method will handle
-        # converting the query values to UTC and the result values to Local Time.
         query = {
             time_field: {
-                "$gte": start_dt,
-                "$lt": end_dt
+                "$gte": start_utc,
+                "$lt": end_utc
             }
         }
 
-        # 3. Fetch Data
-        data = self.find_many(query)
+        # 3. Get Cursor (Lazy evaluation, does not hit memory yet)
+        # Note: We use self.collection.find directly to get the cursor,
+        # bypassing self.find_many which would load a list.
+        cursor = self.collection.find(query)
 
-        if not data:
+        # Check if we have any data (Optional, but 'count_documents' is fast enough)
+        # If performance is critical on extremely large collections, you can skip this check
+        # and just let the file be empty [].
+        if self.collection.count_documents(query) == 0:
             logger.warning(f"No data found between {start_dt} and {end_dt}.")
             return ""
 
@@ -397,17 +440,16 @@ class MongoDBStorage:
         if filename_override:
             time_str = filename_override
         else:
-            # Standard format: 20231101_20231130
             fmt = "%Y%m%d"
-            # Include HHMM if time is not 00:00
             if start_dt.hour != 0 or start_dt.minute != 0:
                 fmt = "%Y%m%d%H%M"
             time_str = f"{start_dt.strftime(fmt)}_{end_dt.strftime(fmt)}"
 
         filepath = self._generate_filename(file_prefix, time_str, directory, add_timestamp)
 
-        # 5. Write to File
-        self._write_json_file(data, filepath)
+        # 5. Execute Stream Export
+        self._stream_cursor_to_json(cursor, filepath)
+
         return filepath
 
     def export_by_month(self,
@@ -417,20 +459,15 @@ class MongoDBStorage:
                         time_field: str = "created_at",
                         add_timestamp: bool = False) -> str:
         """
-        Exports data for a specific month.
-        Filename format example: monthly_2023_11.json
+        Exports data for a specific month (Streaming).
         """
         try:
-            # Start of the month
             start_dt = datetime.datetime(year, month, 1, tzinfo=LOCAL_TZ)
-
-            # Handle year rollover for the end date (start of next month)
             if month == 12:
                 end_dt = datetime.datetime(year + 1, 1, 1, tzinfo=LOCAL_TZ)
             else:
                 end_dt = datetime.datetime(year, month + 1, 1, tzinfo=LOCAL_TZ)
 
-            # Filename identifier: 2023_11
             fname_str = f"{year}_{month:02d}"
 
             return self.export_by_time_range(
@@ -447,17 +484,12 @@ class MongoDBStorage:
                        time_field: str = "created_at",
                        add_timestamp: bool = False) -> str:
         """
-        Exports data for a specific ISO week.
-        Filename format example: weekly_2023_W42.json
+        Exports data for a specific ISO week (Streaming).
         """
         try:
-            # Parse ISO year and week to get Monday of that week
-            # %G-W%V-%u means ISO Year - ISO Week - Monday
             start_dt = datetime.datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%u").replace(tzinfo=LOCAL_TZ)
-            # End date is exactly one week later
             end_dt = start_dt + datetime.timedelta(weeks=1)
 
-            # Filename identifier: 2023_W42
             fname_str = f"{year}_W{week:02d}"
 
             return self.export_by_time_range(
@@ -473,64 +505,48 @@ class MongoDBStorage:
                    time_field: str = "created_at",
                    add_timestamp: bool = False) -> List[str]:
         """
-        Exports all data found in the collection.
-
-        Args:
-            directory: The output directory.
-            split_by: 'year', 'month', 'week', or None (single file).
-            time_field: The field used to determine the time range.
-            add_timestamp: Whether to add a timestamp to the filename.
-
-        Returns:
-            List of generated file paths.
+        Exports all data (Streaming).
         """
-        # If no split is requested, export everything into one huge file
         if not split_by:
-            # Use extreme dates to cover all possible data
             start_dt = datetime.datetime(1970, 1, 1, tzinfo=LOCAL_TZ)
-            # Use current time + buffer as the upper bound
             end_dt = datetime.datetime.now(LOCAL_TZ) + datetime.timedelta(days=1)
             path = self.export_by_time_range(
                 start_dt, end_dt, directory, time_field, "all_data", add_timestamp, filename_override="full_dump"
             )
             return [path] if path else []
 
-        # Find the global min and max dates in the DB to determine loop range
-        min_doc = self.find_many({}, sort=[(time_field, ASCENDING)], limit=1)
-        max_doc = self.find_many({}, sort=[(time_field, DESCENDING)], limit=1)
+        # Find range for iteration
+        min_doc = self.find_one({}, sort=[(time_field, ASCENDING)])
+        max_doc = self.find_one({}, sort=[(time_field, DESCENDING)])
 
         if not min_doc or not max_doc:
             logger.warning("No data available to export.")
             return []
 
-        min_date: datetime.datetime = min_doc[0].get(time_field)
-        max_date: datetime.datetime = max_doc[0].get(time_field)
+        # Note: process_document_output converts output to Local, which is what we want for iteration logic
+        min_date: datetime.datetime = min_doc.get(time_field)
+        max_date: datetime.datetime = max_doc.get(time_field)
 
         if not isinstance(min_date, datetime.datetime) or not isinstance(max_date, datetime.datetime):
-            logger.error(f"Field '{time_field}' is not a valid datetime object in the database.")
+            logger.error(f"Field '{time_field}' is not a valid datetime object.")
             return []
 
         generated_files = []
         current_date = min_date
 
-        # Iterate based on the requested granularity
         if split_by == 'month':
-            # Reset to the 1st of the starting month
             current_date = current_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             while current_date <= max_date:
                 path = self.export_by_month(current_date.year, current_date.month, directory, time_field, add_timestamp)
                 if path: generated_files.append(path)
 
-                # Move to the next month
                 year = current_date.year + (current_date.month // 12)
                 month = (current_date.month % 12) + 1
                 current_date = current_date.replace(year=year, month=month)
 
         elif split_by == 'week':
-            # Reset to the Monday of the starting week
             iso_year, iso_week, _ = current_date.isocalendar()
             current_date = datetime.datetime.strptime(f"{iso_year}-W{iso_week}-1", "%G-W%V-%u").replace(tzinfo=LOCAL_TZ)
-
             while current_date <= max_date:
                 y, w, _ = current_date.isocalendar()
                 path = self.export_by_week(y, w, directory, time_field, add_timestamp)
@@ -538,7 +554,6 @@ class MongoDBStorage:
                 current_date += datetime.timedelta(weeks=1)
 
         elif split_by == 'year':
-            # Reset to Jan 1st
             current_date = current_date.replace(month=1, day=1, hour=0, minute=0, second=0)
             while current_date <= max_date:
                 next_year = current_date.replace(year=current_date.year + 1)
