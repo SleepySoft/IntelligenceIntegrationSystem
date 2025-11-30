@@ -2,6 +2,7 @@ import json
 import logging
 import datetime
 import calendar
+import os
 from pathlib import Path
 from bson import ObjectId
 from typing import Dict, Optional, List, Any, Sequence, Union, Tuple
@@ -341,75 +342,80 @@ class MongoDBStorage:
     def _stream_cursor_to_json(self, cursor, filepath: str, batch_size: int = 2000) -> int:
         """
         Streams MongoDB cursor data to a JSON file incrementally in batches.
-
-        This method avoids loading the entire result set into memory (RAM) while
-        using buffering to improve I/O performance.
-
-        Args:
-            cursor: The PyMongo cursor object.
-            filepath: The target file path.
-            batch_size: Number of documents to write in a single I/O operation.
-
-        Returns:
-            int: The count of records exported.
+        Uses Atomic Write pattern (.tmp -> rename) to prevent incomplete files.
         """
         count = 0
-        try:
-            path_obj = Path(filepath)
+        # 1. 定义临时文件路径
+        temp_filepath = f"{filepath}.tmp"
+        path_obj = Path(filepath)
 
-            # Ensure the parent directory exists (Robustness)
+        try:
+            # 确保目录存在
             if not path_obj.parent.exists():
                 path_obj.parent.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Created missing directory: {path_obj.parent}")
 
-            with open(filepath, 'w', encoding='utf-8') as f:
-                # Start JSON array
+            # 2. 写入临时文件
+            with open(temp_filepath, 'w', encoding='utf-8') as f:
                 f.write('[')
 
                 batch = []
                 first_batch = True
 
-                for document in cursor:
-                    # PROCESS THE DOCUMENT
-                    # 1. Convert ObjectId to str
-                    # 2. Convert UTC datetime to Local Time
-                    processed_doc = self.process_document_output(document)
-                    batch.append(processed_doc)
+                # 使用 try...finally 确保游标在异常时也能立即关闭
+                try:
+                    for document in cursor:
+                        processed_doc = self.process_document_output(document)
+                        batch.append(processed_doc)
 
-                    # When batch is full, write to file
-                    if len(batch) >= batch_size:
-                        # Convert list of dicts to list of JSON strings
+                        if len(batch) >= batch_size:
+                            json_strings = [json.dumps(doc, cls=DateTimeEncoder, ensure_ascii=False) for doc in batch]
+                            chunk = ',\n'.join(json_strings)
+
+                            if not first_batch:
+                                f.write(',\n')
+                            f.write(chunk)
+
+                            count += len(batch)
+                            batch = []
+                            first_batch = False
+
+                    # 写入剩余批次
+                    if batch:
                         json_strings = [json.dumps(doc, cls=DateTimeEncoder, ensure_ascii=False) for doc in batch]
-                        # Join them with comma and newline
                         chunk = ',\n'.join(json_strings)
 
                         if not first_batch:
                             f.write(',\n')
                         f.write(chunk)
-
                         count += len(batch)
-                        batch = []
-                        first_batch = False
 
-                # Write remaining documents in the last batch
-                if batch:
-                    json_strings = [json.dumps(doc, cls=DateTimeEncoder, ensure_ascii=False) for doc in batch]
-                    chunk = ',\n'.join(json_strings)
+                finally:
+                    # [关键优化] 显式关闭游标，立即释放数据库资源，而不是等待 GC
+                    if cursor:
+                        cursor.close()
 
-                    if not first_batch:
-                        f.write(',\n')
-                    f.write(chunk)
-                    count += len(batch)
-
-                # End JSON array
                 f.write(']')
 
-            logger.info(f"Successfully streamed {count} records to {filepath} (Batch Size: {batch_size})")
+            # 3. 写入成功：原子重命名 (Windows下需要先删除目标文件，Linux可直接覆盖)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            os.rename(temp_filepath, filepath)
+
+            logger.info(f"Successfully streamed {count} records to {filepath}")
             return count
 
-        except (IOError, PyMongoError) as e:
+        except (IOError, PyMongoError, Exception) as e:
             logger.error(f"Failed to stream export to {filepath}: {e}")
-            # If writing fails, we might want to delete the partial file or leave it for inspection
+
+            # 4. 写入失败：清理残留的临时文件
+            if os.path.exists(temp_filepath):
+                try:
+                    os.remove(temp_filepath)
+                    logger.info(f"Cleaned up partial file: {temp_filepath}")
+                except OSError:
+                    pass
+
+            # 向上抛出异常，让调用者知道任务失败了
             raise
 
     def export_by_time_range(self,

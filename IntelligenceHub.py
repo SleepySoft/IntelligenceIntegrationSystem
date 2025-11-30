@@ -1,4 +1,5 @@
 import datetime
+import os
 import random
 import time
 import traceback
@@ -14,6 +15,7 @@ from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
 
 from AIClientCenter.AIClientManager import AIClientManager
+from GlobalConfig import EXPORT_PATH
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.RecommendationManager import RecommendationManager
 from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
@@ -638,16 +640,91 @@ class IntelligenceHub:
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------
 
     def _do_export_mongodb_weekly(self):
-        now = datetime.datetime.now()
-        logger.info(f'Export mongodb weekly start at: {now}')
-        # TODO: Export mongodb.
-        logger.info(f'Export mongodb weekly finished at: {datetime.datetime.now()}')
+        """
+        Weekly export task.
+        Triggered on Sunday. Exports the current ISO week's data.
+        """
+        try:
+            now = datetime.datetime.now()
+            logger.info(f'Export mongodb weekly start at: {now}')
+
+            # 获取当前的 ISO 年份和周数
+            # isocalendar() 返回 (year, week, weekday)
+            iso_year, iso_week, _ = now.isocalendar()
+
+            # 1. 导出 Archive 数据库 (按周)
+            # 路径: {EXPORT_PATH}/mongo_db_archive/weekly_2023_W42_timestamp.json
+            if self.mongo_db_archive:
+                archive_dir = os.path.join(EXPORT_PATH, 'mongo_db_archive')
+                self.mongo_db_archive.export_by_week(
+                    year=iso_year,
+                    week=iso_week,
+                    directory=archive_dir,
+                    time_field=f"APPENDIX.{APPENDIX_TIME_ARCHIVED}",
+                    add_timestamp=True  # 定时任务建议加上时间戳，防止文件名冲突或覆盖
+                )
+
+            # 2. 导出 Cache 数据库 (按周)
+            # 路径: {EXPORT_PATH}/mongo_db_cache/weekly_2023_W42_timestamp.json
+            if self.mongo_db_cache:
+                cache_dir = os.path.join(EXPORT_PATH, 'mongo_db_cache')
+                # Cache 通常使用 created_at 或 timestamp
+                self.mongo_db_cache.export_by_week(
+                    year=iso_year,
+                    week=iso_week,
+                    directory=cache_dir,
+                    time_field='created_at',
+                    add_timestamp=True
+                )
+
+            logger.info(f'Export mongodb weekly finished at: {datetime.datetime.now()}')
+
+        except Exception as e:
+            logger.error(f"Weekly mongodb export failed: {e}", exc_info=True)
 
     def _do_export_mongodb_monthly(self):
-        now = datetime.datetime.now()
-        logger.info(f'Export mongodb monthly start at: {now}')
-        # TODO: Export mongodb.
-        logger.info(f'Export mongodb monthly finished at: {datetime.datetime.now()}')
+        """
+        Monthly export task.
+        Triggered on the 1st day of the month. Exports the *PREVIOUS* month's data.
+        """
+        try:
+            now = datetime.datetime.now()
+            logger.info(f'Export mongodb monthly start at: {now}')
+
+            # 计算上个月的年份和月份
+            # 逻辑：当前日期(1号) 减去 1天 = 上个月最后一天
+            last_day_prev_month = now.replace(day=1) - datetime.timedelta(days=1)
+            target_year = last_day_prev_month.year
+            target_month = last_day_prev_month.month
+
+            logger.info(f"Targeting export for Year: {target_year}, Month: {target_month}")
+
+            # 1. 导出 Archive 数据库 (按月)
+            if self.mongo_db_archive:
+                archive_dir = os.path.join(EXPORT_PATH, 'mongo_db_archive')
+                self.mongo_db_archive.export_by_month(
+                    year=target_year,
+                    month=target_month,
+                    directory=archive_dir,
+                    time_field=f"APPENDIX.{APPENDIX_TIME_ARCHIVED}",
+                    add_timestamp=True
+                )
+
+            # 2. 导出 Cache 数据库 (按月)
+            if self.mongo_db_cache:
+                cache_dir = os.path.join(EXPORT_PATH, 'mongo_db_cache')
+                self.mongo_db_cache.export_by_month(
+                    year=target_year,
+                    month=target_month,
+                    directory=cache_dir,
+                    time_field='created_at',
+                    add_timestamp=True
+                )
+
+            logger.info(f'Export mongodb monthly finished at: {datetime.datetime.now()}')
+
+        except Exception as e:
+            logger.error(f"Monthly mongodb export failed: {e}", exc_info=True)
 
     def _do_generate_recommendation(self):
         now = datetime.datetime.now()
