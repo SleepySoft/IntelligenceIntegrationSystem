@@ -672,7 +672,7 @@ class IntelligenceHubWebService:
 
                 # --- Export Cache DB ---
                 if target in ['cache', 'all']:
-                    cache_time_field = data.get('cacheTimeField', 'created_at')
+                    cache_time_field = '__TIME_GOT__'
                     run_export(
                         db_instance=self.intelligence_hub.mongo_db_cache,
                         sub_dir='mongo_db_cache',

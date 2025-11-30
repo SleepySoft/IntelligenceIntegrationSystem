@@ -439,22 +439,32 @@ class MongoDBStorage:
         start_utc = self._normalize_to_utc(start_dt)
         end_utc = self._normalize_to_utc(end_dt)
 
+        # --- 修改部分开始：自动检测是否需要转换为时间戳 ---
+        query_start = start_utc
+        query_end = end_utc
+
+        # 探测数据库中该字段的存储格式 (Peek one document)
+        # 因为不能加参数传递格式信息，所以此处查询一次样本数据来判断
+        sample_doc = self.collection.find_one({time_field: {"$exists": True}}, {time_field: 1})
+        if sample_doc:
+            val = self._get_nested_value(sample_doc, time_field)
+            # 如果数据库存的是数字(int/float)，说明是时间戳格式
+            if isinstance(val, (int, float)):
+                query_start = start_utc.timestamp()
+                query_end = end_utc.timestamp()
+        # --- 修改部分结束 ---
+
         # 2. Build Query
         query = {
             time_field: {
-                "$gte": start_utc,
-                "$lt": end_utc
+                "$gte": query_start,
+                "$lt": query_end
             }
         }
 
-        # 3. Get Cursor (Lazy evaluation, does not hit memory yet)
-        # Note: We use self.collection.find directly to get the cursor,
-        # bypassing self.find_many which would load a list.
+        # 3. Get Cursor (Lazy evaluation)
         cursor = self.collection.find(query)
 
-        # Check if we have any data (Optional, but 'count_documents' is fast enough)
-        # If performance is critical on extremely large collections, you can skip this check
-        # and just let the file be empty [].
         if self.collection.count_documents(query) == 0:
             logger.warning(f"No data found between {start_dt} and {end_dt}.")
             return ""
@@ -547,12 +557,25 @@ class MongoDBStorage:
             return []
 
         # Note: process_document_output converts output to Local, which is what we want for iteration logic
-        # Use helper to access nested fields via dot notation (e.g. "APPENDIX.time_archived")
-        min_date: datetime.datetime = self._get_nested_value(min_doc, time_field)
-        max_date: datetime.datetime = self._get_nested_value(max_doc, time_field)
+        # FIX: Use helper to access nested fields via dot notation (e.g. "APPENDIX.time_archived")
+        raw_min = self._get_nested_value(min_doc, time_field)
+        raw_max = self._get_nested_value(max_doc, time_field)
+
+        # 定义局部辅助函数：如果是时间戳(int/float)，则转换为带时区的 datetime
+        def to_datetime(val: Any) -> Optional[datetime.datetime]:
+            if isinstance(val, (int, float)):
+                try:
+                    # 假设是秒级时间戳 (如 1763648962.899)，转为本地时间对象
+                    return datetime.datetime.fromtimestamp(val, LOCAL_TZ)
+                except (ValueError, OSError):
+                    return None
+            return val
+
+        min_date: datetime.datetime = to_datetime(raw_min)
+        max_date: datetime.datetime = to_datetime(raw_max)
 
         if not isinstance(min_date, datetime.datetime) or not isinstance(max_date, datetime.datetime):
-            logger.error(f"Field '{time_field}' is not a valid datetime object in range check. Value: {min_date}")
+            logger.error(f"Field '{time_field}' is not a valid datetime object or timestamp. Value: {raw_min}")
             return []
 
         generated_files = []
