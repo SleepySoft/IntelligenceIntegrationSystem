@@ -45,20 +45,20 @@ class ArchivedData(ProcessedData, ArchivedDataExtraFields):
     pass
 
 
-APPENDIX_TIME_GOT       = '__TIME_GOT__'            # Timestamp of get from collector
-APPENDIX_TIME_POST      = '__TIME_POST__'           # Timestamp of post to processor
-APPENDIX_TIME_DONE      = '__TIME_DONE__'           # Timestamp of retrieve from processor
-APPENDIX_TIME_ARCHIVED  = '__TIME_ARCHIVED__'
-APPENDIX_RETRY_COUNT    = '__RETRY_COUNT__'
-APPENDIX_ARCHIVED_FLAG  = '__ARCHIVED__'
-APPENDIX_MAX_RATE_CLASS = '__MAX_RATE_CLASS__'
-APPENDIX_MAX_RATE_SCORE = '__MAX_RATE_SCORE__'
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
 APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
 
-APPENDIX_MANUAL_RATING  = '__MANUAL_RATING__'
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
 
-APPENDIX_LINK_ITEMS     = '__LINK_ITEMS__'
-APPENDIX_PARENT_ITEM    = '__PARENT_ITEM__'
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
 
 
 ARCHIVED_FLAG_DROP= 'D'

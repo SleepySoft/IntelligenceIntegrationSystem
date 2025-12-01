@@ -18,7 +18,7 @@ from AIClientCenter.AIClientManager import AIClientManager
 from GlobalConfig import EXPORT_PATH
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.RecommendationManager import RecommendationManager
-from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
+from VectorDB.VectorStorageEngine import VectorDBService, VectorStoreManager
 from prompts import ANALYSIS_PROMPT, SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.DateTimeUtility import time_str_to_datetime, get_aware_time, Clock
@@ -102,6 +102,8 @@ class IntelligenceHub:
 
         self.vector_db_summary: Optional[VectorStoreManager] = None
         self.vector_db_full_text: Optional[VectorStoreManager] = None
+        self.vector_db_init_event = threading.Event()
+        self.vector_db_init_failed = False
 
         self.scheduler = AdvancedScheduler(logger=logging.getLogger('Scheduler'))
         # TODO: This cache seems to be ugly.
@@ -124,8 +126,8 @@ class IntelligenceHub:
         self.lock = threading.Lock()
         self.shutdown_flag = threading.Event()
 
-        # self.analysis_thread = threading.Thread(name='AnalysisThread', target=self._ai_analysis_thread, daemon=True)
         self.post_process_thread = threading.Thread(name='PostProcessThread', target=self._post_process_worker, daemon=True)
+        self.vector_db_init_thread = threading.Thread(name='VectorDBInitThread', target=self._vector_db_init_worker, daemon=True)
 
         # ------------------ Tasks ------------------
 
@@ -192,7 +194,6 @@ class IntelligenceHub:
     # ----------------------------------------------- Startup / Shutdown -----------------------------------------------
 
     def startup(self):
-        # self.analysis_thread.start()
         self.start_analysis_threads(3)
         self.post_process_thread.start()
 
@@ -206,7 +207,6 @@ class IntelligenceHub:
         self._clear_queues()
 
         # 等待工作线程结束
-        # self.analysis_thread.join(timeout=timeout)
         self.post_process_thread.join(timeout=timeout)
 
         # 清理资源
@@ -445,7 +445,9 @@ class IntelligenceHub:
             logger.info(f'{prefix} **** NO AI API client - Thread QUIT ****')
             return
 
-        # ai_process_max_retry = 3
+        self.vector_db_init_event.wait(timeout=60)
+
+        # ------------------------------------ Analysis Main Loop ------------------------------------
 
         while not self.shutdown_flag.is_set():
             original_uuid = None
@@ -478,6 +480,30 @@ class IntelligenceHub:
                 if self._check_data_duplication(original_data, True):
                     raise IntelligenceHub.Exception('drop', 'Article duplicated')
 
+                # --------------------------------- AI Aggressive with Retry ---------------------------------
+
+                content = original_data.get('content', '')
+                if (not self.vector_db_init_failed) and (self.vector_db_full_text is not None):
+                    related_items = self.vector_db_full_text.search(content)
+                    item_uuids = [item["doc_id"] for item in related_items]
+                    intelligences = self.get_intelligence(item_uuids)
+                    recent
+
+
+                # TODO: 暂时不做，因为需要考虑的事情太多，且消耗token，后续可以考虑采用小模型实现。
+                # TODO: 20251028 - 绝妙的主意：使用向量搜索来查找近似内容，减少聚合分析的工作量。
+                #
+                # history_data_brief = self._get_cached_data_brief()
+                # aggressive_result = aggressive_by_ai(self.open_ai_client, AGGRESSIVE_PROMPT, result, history_data_brief)
+                #
+                # if aggressive_result:
+                #     # dict is ordered in python 3.7+
+                #     related_intelligence_uuid = next(iter(aggressive_result))
+                #     if aggressive_result[related_intelligence_uuid] > 1:
+                #         self._add_item_link(related_intelligence_uuid, validated_data['UUID'])
+                #         validated_data['APPENDIX'][APPENDIX_PARENT_ITEM] = related_intelligence_uuid
+
+
                 # ---------------------------------- AI Analysis with Retry ----------------------------------
 
                 result = self.__robust_analyze_with_ai(original_data, worker_index)
@@ -501,21 +527,6 @@ class IntelligenceHub:
                 validated_data, error_text = check_sanitize_dict(dict(result), ProcessedData)
                 if error_text:
                     raise ValueError(error_text)
-
-                # --------------------------------- AI Aggressive with Retry ---------------------------------
-
-                # TODO: 暂时不做，因为需要考虑的事情太多，且消耗token，后续可以考虑采用小模型实现。
-                # TODO: 20251028 - 绝妙的主意：使用向量搜索来查找近似内容，减少聚合分析的工作量。
-                #
-                # history_data_brief = self._get_cached_data_brief()
-                # aggressive_result = aggressive_by_ai(self.open_ai_client, AGGRESSIVE_PROMPT, result, history_data_brief)
-                #
-                # if aggressive_result:
-                #     # dict is ordered in python 3.7+
-                #     related_intelligence_uuid = next(iter(aggressive_result))
-                #     if aggressive_result[related_intelligence_uuid] > 1:
-                #         self._add_item_link(related_intelligence_uuid, validated_data['UUID'])
-                #         validated_data['APPENDIX'][APPENDIX_PARENT_ITEM] = related_intelligence_uuid
 
                 # -------------------------------- Fill Extra Data and Enqueue --------------------------------
 
@@ -541,26 +552,6 @@ class IntelligenceHub:
                     current_queue.task_done()
 
     def _post_process_worker(self):
-        # ---------------- If a vector database is specified, wait until it is ready ----------------
-
-        if self.vector_db_service is not None:
-            logger.info('Waiting for vector DB init...')
-            clock = Clock()
-            while not self.shutdown_flag.is_set():
-                status = self.vector_db_service.get_status().get('status', '')
-                if status == "ready":
-                    self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
-                    self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
-                    logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
-                elif status == 'error':
-                    self.vector_db_service = None
-                    # self.vector_db_summary and self.vector_db_full_text are also None
-                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
-                else:
-                    time.sleep(1)
-                    continue
-                break
-
         # -------------------------------------- Post process loop --------------------------------------
 
         while not self.shutdown_flag.is_set():
@@ -637,6 +628,62 @@ class IntelligenceHub:
 
             except Exception as e:
                 logger.error(f"Post process got unknown issue: {str(e)}")
+
+    # def _vector_db_init_worker(self):
+    #     if self.vector_db_service is not None:
+    #         logger.info('Waiting for vector DB init...')
+    #         clock = Clock()
+    #         while not self.shutdown_flag.is_set():
+    #             status = self.vector_db_service.get_status().get('status', '')
+    #             if status == "ready":
+    #                 self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
+    #                 self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
+    #                 logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
+    #             elif status == 'error':
+    #                 self.vector_db_service = None
+    #                 # self.vector_db_summary and self.vector_db_full_text are also None
+    #                 logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
+    #             else:
+    #                 time.sleep(1)
+    #                 continue
+    #             break
+
+    def _vector_db_init_worker(self):
+        if self.vector_db_service is None:
+            logger.warning("Vector DB service is not configured, skipping init.")
+            self.vector_db_init_failed = True
+            self.vector_db_init_event.set()
+            return
+
+        logger.info('Waiting for vector DB init...')
+        clock = Clock()
+
+        while not self.shutdown_flag.is_set():
+            try:
+                status_info = self.vector_db_service.get_status()
+                status = status_info.get('status', '')
+
+                if status == "ready":
+                    self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
+                    self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
+                    logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
+                    break
+
+                elif status == 'error':
+                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
+                    self.vector_db_service = None
+                    self.vector_db_init_failed = True
+                    break
+
+                else:
+                    time.sleep(1)
+
+            except Exception as e:
+                logger.exception(f"Exception during vector db init: {e}")
+                self.vector_db_init_failed = True
+                break
+
+        self.vector_db_init_event.set()
 
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------
 

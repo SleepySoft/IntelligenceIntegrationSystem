@@ -15,7 +15,7 @@ from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
 from MyPythonUtility.easy_config import EasyConfig
-from VectorDB.VectorDBService import VectorDBService
+from VectorDB.VectorStorageEngine import VectorDBService
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from AIClientCenter.AIClients import OuterTokenRotatingOpenAIClient

@@ -18,7 +18,7 @@ import traceback
 from typing import Optional
 
 # --- (Requirement 1) Fast Import ---
-from VectorDB.VectorDBService import VectorDBService, VectorStoreManager
+from VectorDB.VectorStorageEngine import VectorDBService, VectorStoreManager
 
 # --- Configuration ---
 MONGO_URI = "mongodb://localhost:27017/"
