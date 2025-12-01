@@ -150,6 +150,15 @@ class VectorStorageEngine:
             self._repos[collection_name] = repo
             return repo
 
+    def list_collections(self) -> List[str]:
+        """Returns a list of all available collection names."""
+        if not self.is_ready():
+            return []
+        with self._lock:
+            # ChromaDB client has a list_collections method
+            colls = self._client.list_collections()
+            return [c.name for c in colls]
+
     def create_backup(self, backup_dir: str) -> str:
         """
         Creates a hot backup of the database.
@@ -483,3 +492,33 @@ class VectorCollectionRepo:
     def count(self) -> int:
         """Returns total chunk count."""
         return self._collection.count()
+
+    def list_documents(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+        """
+        Returns a paginated list of documents (without embeddings).
+        Useful for browsing data.
+        """
+        # ChromaDB .get() supports limit and offset
+        results = self._collection.get(
+            limit=limit,
+            offset=offset,
+            include=["metadatas", "documents"]
+        )
+
+        # Format into a cleaner list of dicts
+        items = []
+        if results['ids']:
+            for i in range(len(results['ids'])):
+                items.append({
+                    "chunk_id": results['ids'][i],
+                    "doc_id": results['metadatas'][i].get("original_doc_id", "unknown"),
+                    "content": results['documents'][i],
+                    "metadata": results['metadatas'][i]
+                })
+
+        return {
+            "items": items,
+            "total": self.count(),
+            "limit": limit,
+            "offset": offset
+        }

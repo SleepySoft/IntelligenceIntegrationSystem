@@ -3,159 +3,274 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VectorDB Dashboard</title>
+    <title>VectorDB Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body { background-color: #f3f4f6; }
-        .json-input { font-family: monospace; }
+        .json-input { font-family: monospace; font-size: 0.85rem; }
+        /* Toast Animation */
+        .toast-enter-active, .toast-leave-active { transition: all 0.5s ease; }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(20px); }
     </style>
 </head>
 <body>
     <div id="app" class="flex h-screen">
 
-        <div class="w-64 bg-slate-800 text-white flex flex-col p-4 space-y-4">
-            <h1 class="text-2xl font-bold mb-4"><i class="fa-solid fa-layer-group mr-2"></i>VectorDB</h1>
+        <div class="w-72 bg-slate-800 text-white flex flex-col p-4 shadow-xl z-10">
+            <h1 class="text-2xl font-bold mb-6 flex items-center">
+                <i class="fa-solid fa-database mr-3 text-blue-400"></i> VectorDB
+            </h1>
 
-            <div class="space-y-2">
-                <label class="text-xs text-gray-400 uppercase">Current Collection</label>
-                <input v-model="collectionName" @change="fetchStats" class="w-full bg-slate-700 p-2 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. knowledge_base">
-                <button @click="fetchStats" class="w-full bg-blue-600 hover:bg-blue-700 text-xs py-2 rounded">
-                    Load / Create
-                </button>
+            <div class="mb-6 space-y-2">
+                <label class="text-xs text-gray-400 uppercase font-bold">Select Collection</label>
+
+                <div class="flex space-x-2">
+                    <select v-model="selectedCollection" @change="loadCollection" class="flex-1 bg-slate-700 p-2 rounded text-sm text-white border border-slate-600 focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="" disabled>-- Select --</option>
+                        <option v-for="c in collections" :key="c" :value="c">{{ c }}</option>
+                    </select>
+                    <button @click="refreshCollections" class="bg-slate-700 hover:bg-slate-600 px-2 rounded border border-slate-600" title="Refresh List">
+                        <i class="fa-solid fa-sync-alt text-gray-400"></i>
+                    </button>
+                </div>
+
+                <div class="relative group">
+                    <button @click="showCreateModal = true" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-xs py-2 rounded flex items-center justify-center transition">
+                        <i class="fa-solid fa-plus mr-2"></i> Create New
+                    </button>
+                </div>
             </div>
 
-            <div v-if="stats" class="bg-slate-700 p-3 rounded text-sm space-y-2">
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Status</span>
-                    <span class="text-green-400 font-bold">Active</span>
+            <div v-if="stats" class="bg-slate-700/50 p-4 rounded-lg border border-slate-600 space-y-3 mb-6">
+                <div class="flex justify-between items-center border-b border-slate-600 pb-2">
+                    <span class="text-gray-400 text-sm">Status</span>
+                    <span class="text-green-400 text-xs font-bold bg-green-900/30 px-2 py-1 rounded">READY</span>
                 </div>
-                <div class="flex justify-between">
-                    <span class="text-gray-400">Total Chunks</span>
-                    <span class="font-mono">{{ stats.chunk_count }}</span>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-400 text-sm">Total Chunks</span>
+                    <span class="font-mono text-xl">{{ stats.chunk_count }}</span>
                 </div>
             </div>
 
             <div class="flex-grow"></div>
-            <button @click="clearCollection" class="text-red-400 hover:text-red-300 text-xs flex items-center">
-                <i class="fa-solid fa-trash mr-2"></i> Clear Collection
-            </button>
 
-            <div class="border-t border-gray-600 pt-4 mt-4 space-y-2">
-                <button @click="downloadBackup" class="w-full bg-gray-600 hover:bg-gray-500 text-xs py-2 rounded flex items-center justify-center">
+            <div class="border-t border-slate-600 pt-4 space-y-2">
+                <p class="text-xs text-gray-500 font-bold uppercase">Maintenance</p>
+                <button @click="downloadBackup" class="w-full bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded flex items-center justify-center text-gray-300">
                     <i class="fa-solid fa-download mr-2"></i> Backup DB
                 </button>
-
-                <label class="w-full bg-gray-600 hover:bg-gray-500 text-xs py-2 rounded flex items-center justify-center cursor-pointer">
+                <label class="w-full bg-slate-700 hover:bg-slate-600 text-xs py-2 rounded flex items-center justify-center cursor-pointer text-gray-300">
                     <i class="fa-solid fa-upload mr-2"></i> Restore DB
                     <input type="file" @change="uploadRestore" class="hidden" accept=".zip">
                 </label>
+                <button v-if="selectedCollection" @click="clearCollection" class="w-full text-red-400 hover:bg-slate-700/50 hover:text-red-300 text-xs py-2 rounded flex items-center justify-center mt-2 transition">
+                    <i class="fa-solid fa-trash mr-2"></i> Clear Data
+                </button>
             </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-8">
+        <div class="flex-1 flex flex-col h-full overflow-hidden bg-gray-50">
 
-            <div class="flex space-x-4 mb-6 border-b border-gray-300 pb-2">
-                <button @click="currentTab = 'search'" :class="{'text-blue-600 border-b-2 border-blue-600': currentTab === 'search'}" class="pb-2 px-2 font-medium">
-                    <i class="fa-solid fa-magnifying-glass mr-1"></i> Search
-                </button>
-                <button @click="currentTab = 'add'" :class="{'text-blue-600 border-b-2 border-blue-600': currentTab === 'add'}" class="pb-2 px-2 font-medium">
-                    <i class="fa-solid fa-plus mr-1"></i> Add Document
-                </button>
+            <div class="bg-white border-b border-gray-200 px-8 pt-6 flex justify-between items-end">
+                <div class="flex space-x-6">
+                    <button @click="currentTab = 'browse'; fetchDocuments()" :class="tabClass('browse')" class="pb-3 px-1 font-medium text-sm flex items-center">
+                        <i class="fa-solid fa-table mr-2"></i> Browse Data
+                    </button>
+                    <button @click="currentTab = 'search'" :class="tabClass('search')" class="pb-3 px-1 font-medium text-sm flex items-center">
+                        <i class="fa-solid fa-magnifying-glass mr-2"></i> Search
+                    </button>
+                    <button @click="currentTab = 'add'" :class="tabClass('add')" class="pb-3 px-1 font-medium text-sm flex items-center">
+                        <i class="fa-solid fa-file-circle-plus mr-2"></i> Add / Upsert
+                    </button>
+                </div>
+                <div class="pb-3 text-sm text-gray-400 italic" v-if="selectedCollection">
+                    Active: <b>{{ selectedCollection }}</b>
+                </div>
             </div>
 
-            <div v-if="currentTab === 'search'" class="space-y-6">
-                <div class="bg-white p-4 rounded-lg shadow space-y-4">
-                    <div class="flex space-x-2">
-                        <input v-model="searchQuery" @keyup.enter="performSearch" type="text" placeholder="Enter semantic query..." class="flex-1 p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                        <button @click="performSearch" class="bg-blue-600 text-white px-6 rounded hover:bg-blue-700">Search</button>
+            <div class="flex-1 overflow-auto p-8 relative">
+
+                <div v-if="!selectedCollection" class="h-full flex flex-col items-center justify-center text-gray-400">
+                    <i class="fa-solid fa-layer-group text-6xl mb-4 text-gray-300"></i>
+                    <p class="text-lg">Select or create a collection to start.</p>
+                </div>
+
+                <div v-else-if="currentTab === 'browse'" class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-lg font-bold text-gray-700">Collection Data</h2>
+                        <div class="flex space-x-2">
+                             <button @click="browsePage > 0 ? browsePage-- : null; fetchDocuments()" :disabled="browsePage === 0" class="px-3 py-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-50">
+                                <i class="fa-solid fa-chevron-left"></i>
+                             </button>
+                             <span class="px-3 py-1 bg-gray-100 rounded text-sm flex items-center">Page {{ browsePage + 1 }}</span>
+                             <button @click="browsePage++; fetchDocuments()" :disabled="browseData.length < pageSize" class="px-3 py-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-50">
+                                <i class="fa-solid fa-chevron-right"></i>
+                             </button>
+                             <button @click="fetchDocuments" class="px-3 py-1 text-blue-600 hover:bg-blue-50 rounded"><i class="fa-solid fa-rotate"></i></button>
+                        </div>
                     </div>
 
-                    <div class="flex space-x-4 text-sm">
-                        <div class="flex-1">
-                            <label class="block text-gray-500 mb-1">Metadata Filter (JSON)</label>
-                            <input v-model="filterJson" placeholder='e.g. {"category": "news"}' class="w-full p-2 border rounded json-input text-gray-600">
-                        </div>
-                        <div class="w-24">
-                            <label class="block text-gray-500 mb-1">Top N</label>
-                            <input v-model.number="topN" type="number" class="w-full p-2 border rounded">
-                        </div>
-                        <div class="w-24">
-                            <label class="block text-gray-500 mb-1">Min Score</label>
-                            <input v-model.number="minScore" type="number" step="0.1" class="w-full p-2 border rounded">
-                        </div>
+                    <div class="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Doc ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Content Snippet</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48">Metadata</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr v-for="item in browseData" :key="item.chunk_id" class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-blue-600 truncate max-w-[150px]" :title="item.doc_id">
+                                        {{ item.doc_id }}
+                                        <div class="text-gray-300 text-[10px]">{{ item.chunk_id }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600">
+                                        <div class="truncate max-w-lg" :title="item.content">{{ item.content }}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-500 text-xs">
+                                        <pre class="whitespace-pre-wrap">{{ JSON.stringify(item.metadata, null, 1).replace(/[\{\}\"]/g, '') }}</pre>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button @click="deleteDoc(item.doc_id)" class="text-red-400 hover:text-red-600">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr v-if="browseData.length === 0">
+                                    <td colspan="4" class="px-6 py-8 text-center text-gray-400 italic">
+                                        No documents found in this collection.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
-                <div v-if="searchResults.length > 0" class="space-y-4">
-                    <h3 class="text-lg font-semibold text-gray-700">Top Results</h3>
-
-                    <div v-for="res in searchResults" :key="res.chunk_id" class="bg-white p-4 rounded-lg shadow hover:shadow-md transition">
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">Doc ID: {{ res.doc_id }}</span>
-                                <span class="ml-2 text-xs text-gray-400">Chunk: {{ res.chunk_id }}</span>
+                <div v-else-if="currentTab === 'search'" class="max-w-4xl mx-auto space-y-6">
+                    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
+                        <div class="flex space-x-2">
+                            <input v-model="searchQuery" @keyup.enter="performSearch" type="text" placeholder="Type query and press Enter..." class="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                            <button @click="performSearch" class="bg-blue-600 text-white px-8 rounded-lg hover:bg-blue-700 font-medium shadow-sm transition">Search</button>
+                        </div>
+                        <div class="grid grid-cols-12 gap-4 text-sm">
+                            <div class="col-span-8">
+                                <label class="block text-gray-500 mb-1 text-xs uppercase font-bold">Metadata Filter (JSON)</label>
+                                <input v-model="filterJson" placeholder='{"category": "news"}' class="w-full p-2 bg-gray-50 border rounded font-mono text-gray-600">
                             </div>
-                            <span class="text-sm font-bold" :class="getScoreColor(res.score)">
-                                {{ (res.score * 100).toFixed(1) }}% Match
-                            </span>
+                            <div class="col-span-2">
+                                <label class="block text-gray-500 mb-1 text-xs uppercase font-bold">Top K</label>
+                                <input v-model.number="topN" type="number" class="w-full p-2 bg-gray-50 border rounded text-center">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="block text-gray-500 mb-1 text-xs uppercase font-bold">Min Score</label>
+                                <input v-model.number="minScore" type="number" step="0.1" class="w-full p-2 bg-gray-50 border rounded text-center">
+                            </div>
                         </div>
-                        <p class="text-gray-700 mb-3 bg-gray-50 p-2 rounded text-sm leading-relaxed">{{ res.content }}</p>
+                    </div>
 
-                        <div class="flex flex-wrap gap-2">
-                            <span v-for="(val, key) in res.metadata" :key="key" class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded border">
-                                <b>{{ key }}:</b> {{ val }}
-                            </span>
-                        </div>
-                        <div class="mt-2 text-right">
-                             <button @click="deleteDoc(res.doc_id)" class="text-red-500 text-xs hover:underline">Delete Document</button>
+                    <div class="space-y-4">
+                        <div v-for="res in searchResults" :key="res.chunk_id" class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition group">
+                            <div class="flex justify-between items-start mb-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded border border-blue-200">{{ res.doc_id }}</span>
+                                    <span class="text-xs text-gray-400 font-mono">#{{ res.chunk_id.split('#')[1] }}</span>
+                                </div>
+                                <span class="text-sm font-bold bg-gray-100 px-2 py-1 rounded" :class="getScoreColor(res.score)">
+                                    {{ (res.score * 100).toFixed(1) }}% Match
+                                </span>
+                            </div>
+                            <p class="text-gray-700 mb-3 text-sm leading-relaxed bg-slate-50 p-3 rounded border border-slate-100">{{ res.content }}</p>
+                            <div class="flex justify-between items-center">
+                                <div class="flex flex-wrap gap-2">
+                                    <span v-for="(val, key) in res.metadata" :key="key" class="text-gray-500 text-xs bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                                        <span class="font-bold text-gray-600">{{ key }}:</span> {{ val }}
+                                    </span>
+                                </div>
+                                <button @click="deleteDoc(res.doc_id)" class="text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 text-sm">
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div v-else-if="hasSearched" class="text-center text-gray-500 mt-10">
-                    No results found meeting criteria.
+
+                <div v-else-if="currentTab === 'add'" class="max-w-3xl mx-auto">
+                    <div class="bg-white p-8 rounded-lg shadow-sm border border-gray-200 space-y-6">
+                        <div class="flex items-center justify-between border-b pb-4">
+                            <h2 class="text-xl font-bold text-gray-800">Upsert Document</h2>
+                            <span class="text-xs text-gray-400">Replaces existing Doc ID</span>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Document ID</label>
+                                <input v-model="upsertForm.doc_id" type="text" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" placeholder="unique_doc_identifier_v1">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Content Text</label>
+                                <textarea v-model="upsertForm.text" rows="8" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm leading-relaxed" placeholder="Paste the content to be indexed here..."></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">Metadata (JSON)</label>
+                                <textarea v-model="upsertForm.metadata" rows="3" class="w-full p-3 border rounded-lg bg-gray-50 font-mono text-xs focus:ring-2 focus:ring-blue-500 outline-none text-gray-600" placeholder='{"author": "me", "year": 2023}'></textarea>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 flex justify-end">
+                            <button @click="doUpsert" class="bg-green-600 text-white px-8 py-2.5 rounded-lg hover:bg-green-700 font-medium shadow-sm flex items-center transition transform active:scale-95">
+                                <i class="fa-solid fa-cloud-arrow-up mr-2"></i> Save Document
+                            </button>
+                        </div>
+                    </div>
                 </div>
+
             </div>
-
-            <div v-if="currentTab === 'add'" class="max-w-3xl mx-auto">
-                <div class="bg-white p-6 rounded-lg shadow space-y-4">
-                    <h2 class="text-lg font-bold text-gray-700">Upsert Document</h2>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Document ID (Unique)</label>
-                        <input v-model="upsertForm.doc_id" type="text" class="w-full p-2 border rounded focus:ring-blue-500 outline-none" placeholder="e.g. user_manual_v1">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                        <textarea v-model="upsertForm.text" rows="6" class="w-full p-2 border rounded focus:ring-blue-500 outline-none" placeholder="Paste document text here..."></textarea>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Metadata (JSON)</label>
-                        <textarea v-model="upsertForm.metadata" rows="3" class="w-full p-2 border rounded json-input focus:ring-blue-500 outline-none" placeholder='{"author": "me", "timestamp": 123456}'></textarea>
-                    </div>
-
-                    <div class="pt-4 flex justify-end">
-                        <button @click="doUpsert" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 flex items-center">
-                            <i class="fa-solid fa-save mr-2"></i> Save Document
-                        </button>
-                    </div>
-                </div>
-            </div>
-
         </div>
+
+        <transition name="toast">
+            <div v-if="toast.show" class="fixed bottom-6 right-6 px-6 py-4 rounded shadow-lg text-white font-medium z-50 flex items-center" :class="toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'">
+                <i class="mr-3" :class="toast.type === 'error' ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-check-circle'"></i>
+                {{ toast.message }}
+            </div>
+        </transition>
+
+        <div v-if="showCreateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
+                <h3 class="text-lg font-bold mb-4">Create New Collection</h3>
+                <input v-model="newCollectionName" @keyup.enter="createNewCollection" placeholder="Collection Name (e.g. logs_2024)" class="w-full p-2 border rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+                <div class="flex justify-end space-x-3">
+                    <button @click="showCreateModal = false" class="text-gray-500 hover:text-gray-700">Cancel</button>
+                    <button @click="createNewCollection" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Create</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref, onMounted, watch } = Vue;
 
         createApp({
             setup() {
-                const currentTab = ref('search');
-                const collectionName = ref('default_collection');
+                // UI State
+                const currentTab = ref('browse'); // Default to Browse now
+                const collections = ref([]);
+                const selectedCollection = ref('');
                 const stats = ref(null);
+                const showCreateModal = ref(false);
+                const newCollectionName = ref('');
+                const toast = ref({ show: false, message: '', type: 'success' });
+
+                // Browse State
+                const browseData = ref([]);
+                const browsePage = ref(0);
+                const pageSize = 20;
 
                 // Search State
                 const searchQuery = ref('');
@@ -163,30 +278,82 @@
                 const topN = ref(5);
                 const minScore = ref(0.2);
                 const searchResults = ref([]);
-                const hasSearched = ref(false);
 
                 // Upsert State
-                const upsertForm = ref({
-                    doc_id: '',
-                    text: '',
-                    metadata: '{}'
-                });
+                const upsertForm = ref({ doc_id: '', text: '', metadata: '{}' });
 
-                const getBaseUrl = () => `/api/v1/collections/${collectionName.value}`;
+                // --- Helpers ---
+                const showToast = (msg, type = 'success') => {
+                    toast.value = { show: true, message: msg, type };
+                    setTimeout(() => toast.value.show = false, 3000);
+                };
 
-                const fetchStats = async () => {
-                    if(!collectionName.value) return;
+                const getBaseUrl = () => `api/collections/${selectedCollection.value}`;
+
+                // --- Core Actions ---
+
+                const refreshCollections = async () => {
                     try {
-                        const res = await fetch(`${getBaseUrl()}/stats`);
-                        stats.value = await res.json();
+                        const res = await fetch('api/collections');
+                        if (!res.ok) throw new Error("Failed to list collections");
+                        const data = await res.json();
+                        collections.value = data.collections || [];
+
+                        // Auto-select first if none selected
+                        if (collections.value.length > 0 && !selectedCollection.value) {
+                            selectedCollection.value = collections.value[0];
+                            loadCollection();
+                        }
                     } catch(e) { console.error(e); }
                 };
 
+                const createNewCollection = () => {
+                    if (!newCollectionName.value) return;
+                    selectedCollection.value = newCollectionName.value;
+                    collections.value.push(newCollectionName.value);
+                    showCreateModal.value = false;
+                    newCollectionName.value = '';
+                    loadCollection(); // Init the collection in backend
+                    showToast(`Collection '${selectedCollection.value}' created.`);
+                };
+
+                const loadCollection = async () => {
+                    if (!selectedCollection.value) return;
+                    try {
+                        const res = await fetch(`${getBaseUrl()}/stats`);
+                        if (res.ok) {
+                            stats.value = await res.json();
+                            showToast(`Loaded ${selectedCollection.value}`);
+                            // Reset views
+                            browsePage.value = 0;
+                            browseData.value = [];
+                            searchResults.value = [];
+                            // Load data if in browse tab
+                            if (currentTab.value === 'browse') fetchDocuments();
+                        } else {
+                            throw new Error("Stats failed");
+                        }
+                    } catch(e) {
+                        showToast(e.message, 'error');
+                    }
+                };
+
+                const fetchDocuments = async () => {
+                    if (!selectedCollection.value) return;
+                    try {
+                        const offset = browsePage.value * pageSize;
+                        const res = await fetch(`${getBaseUrl()}/documents?limit=${pageSize}&offset=${offset}`);
+                        const data = await res.json();
+                        browseData.value = data.items || [];
+                    } catch(e) { console.error(e); }
+                };
+
+                // --- Operations ---
+
                 const performSearch = async () => {
                     let filters = null;
-                    try {
-                        if(filterJson.value.trim()) filters = JSON.parse(filterJson.value);
-                    } catch(e) { alert("Invalid JSON in filters"); return; }
+                    try { if(filterJson.value.trim()) filters = JSON.parse(filterJson.value); }
+                    catch(e) { showToast("Invalid JSON filter", "error"); return; }
 
                     const res = await fetch(`${getBaseUrl()}/search`, {
                         method: 'POST',
@@ -199,18 +366,15 @@
                         })
                     });
                     searchResults.value = await res.json();
-                    hasSearched.value = true;
                 };
 
                 const doUpsert = async () => {
                     let meta = {};
-                    try {
-                        meta = JSON.parse(upsertForm.value.metadata);
-                    } catch(e) { alert("Invalid JSON in metadata"); return; }
+                    try { meta = JSON.parse(upsertForm.value.metadata); }
+                    catch(e) { showToast("Invalid JSON metadata", "error"); return; }
 
                     if(!upsertForm.value.doc_id || !upsertForm.value.text) {
-                        alert("Doc ID and Text are required");
-                        return;
+                        showToast("Doc ID and Text required", "error"); return;
                     }
 
                     const res = await fetch(`${getBaseUrl()}/upsert`, {
@@ -223,84 +387,72 @@
                         })
                     });
 
-                    const data = await res.json();
-                    if(data.status === 'success') {
-                        alert(`Saved! Created ${data.chunks_created} chunks.`);
-                        upsertForm.value.text = ''; // Clear text
-                        fetchStats();
+                    if (res.ok) {
+                        const data = await res.json();
+                        showToast(`Saved! ${data.chunks_created} chunks.`);
+                        upsertForm.value.text = '';
+                        loadCollection(); // Refresh stats/data
                     } else {
-                        alert("Error saving document");
+                        showToast("Upsert Failed", "error");
                     }
                 };
 
                 const deleteDoc = async (docId) => {
                     if(!confirm(`Delete document ${docId}?`)) return;
                     await fetch(`${getBaseUrl()}/documents/${docId}`, { method: 'DELETE' });
-                    performSearch(); // Refresh results
-                    fetchStats();
+                    showToast(`Deleted ${docId}`);
+                    loadCollection(); // Refresh UI
                 };
 
                 const clearCollection = async () => {
-                    if(!confirm("Are you sure? This will delete EVERYTHING in this collection.")) return;
-                    await fetch(`${getBaseUrl()}/clear`, { method: 'POST' });
-                    fetchStats();
-                    searchResults.value = [];
+                     if(!confirm("DANGER: Delete ALL data in this collection?")) return;
+                     await fetch(`${getBaseUrl()}/clear`, { method: 'POST' });
+                     loadCollection();
+                     showToast("Collection Cleared");
                 };
 
-                const getScoreColor = (score) => {
-                    if(score > 0.8) return 'text-green-600';
-                    if(score > 0.5) return 'text-blue-600';
-                    return 'text-yellow-600';
-                };
-
-                onMounted(() => {
-                    fetchStats();
-                });
-
-                const downloadBackup = () => {
-                    // Determine API path (relative or absolute)
-                    window.location.href = "api/admin/backup";
-                };
-
+                // Admin Actions
+                const downloadBackup = () => window.location.href = "api/admin/backup";
                 const uploadRestore = async (event) => {
                     const file = event.target.files[0];
                     if (!file) return;
-
-                    if (!confirm("DANGER: This will overwrite all current data! Continue?")) return;
+                    if (!confirm("Overwrite Database?")) return;
 
                     const formData = new FormData();
                     formData.append("file", file);
-
-                    showLoadingOverlay("Restoring Database... Please wait.");
+                    showToast("Restoring... please wait...", "success");
 
                     try {
-                        const res = await fetch("api/admin/restore", {
-                            method: "POST",
-                            body: formData
-                        });
+                        const res = await fetch("api/admin/restore", { method: "POST", body: formData });
                         const data = await res.json();
-
-                        if (data.status === "success") {
-                            alert("Restore Successful!");
-                            fetchStats(); // Refresh UI
+                        if (res.ok) {
+                            showToast("Restore Complete!");
+                            setTimeout(() => location.reload(), 1000);
                         } else {
-                            alert("Restore Failed: " + data.error);
+                            showToast(data.error, "error");
                         }
-                    } catch(e) {
-                        alert("Network Error during restore.");
-                    } finally {
-                        hideLoadingOverlay();
-                        // Clear input
-                        event.target.value = '';
-                    }
+                    } catch(e) { showToast("Restore Error", "error"); }
                 };
 
+                // Utilities
+                const tabClass = (tab) => currentTab.value === tab
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700';
+
+                const getScoreColor = (s) => s > 0.7 ? 'text-green-600' : (s > 0.4 ? 'text-blue-600' : 'text-orange-500');
+
+                // Init
+                onMounted(() => {
+                    refreshCollections();
+                });
+
                 return {
-                    currentTab, collectionName, stats,
-                    searchQuery, filterJson, topN, minScore, searchResults, hasSearched,
-                    upsertForm,
-                    fetchStats, performSearch, doUpsert, deleteDoc, clearCollection, getScoreColor,
-                    downloadBackup, uploadRestore
+                    currentTab, collections, selectedCollection, stats, showCreateModal, newCollectionName, toast,
+                    browseData, browsePage, pageSize,
+                    searchQuery, filterJson, topN, minScore, searchResults, upsertForm,
+                    refreshCollections, createNewCollection, loadCollection, fetchDocuments,
+                    performSearch, doUpsert, deleteDoc, clearCollection,
+                    downloadBackup, uploadRestore, tabClass, getScoreColor
                 };
             }
         }).mount('#app');

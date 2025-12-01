@@ -254,6 +254,28 @@ class VectorDBService:
             except Exception as e:
                 return jsonify({"error": f"Restore failed: {str(e)}"}), 500
 
+        # 获取所有 Collection 列表
+        @route("/api/collections", methods=["GET"])
+        def list_all_collections():
+            try:
+                names = self.engine.list_collections()
+                return jsonify({"collections": names})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        # 分页浏览数据
+        @route("/api/collections/<name>/documents", methods=["GET"])
+        def list_documents(name):
+            limit = int(request.args.get("limit", 20))
+            offset = int(request.args.get("offset", 0))
+
+            try:
+                repo = get_repo(name)
+                data = repo.list_documents(limit=limit, offset=offset)
+                return jsonify(data)
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
         return bp
 
     def mount_to_app(self, app: Flask, url_prefix: str = "/vector-db", wrapper: Optional[Callable] = None) -> bool:
