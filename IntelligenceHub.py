@@ -85,6 +85,7 @@ class IntelligenceHub:
         self.original_queue = queue.Queue()         # Original intelligence queue
         self.processed_queue = queue.Queue()        # Processed intelligence queue
         self.unarchived_queue = queue.Queue()       # Loaded unarchived data queue, lower priority than original_queue
+
         self.archived_counter = 0
         self.drop_counter = 0
         self.error_counter = 0
@@ -748,21 +749,36 @@ class IntelligenceHub:
     # ---------------------------- Before Process ----------------------------
 
     def _check_data_duplication(self, data: dict, allow_empty_informant: bool) -> bool:
-        _uuid = data.get('UUID', '')
-        informant = data.get('informant', '')
+        target_uuid = data.get('UUID', '').strip()
+        target_informant = data.get('informant', '').strip()
 
-        if not _uuid.strip():
+        if not target_uuid:
             raise ValueError('No valid uuid.')
 
-        if not allow_empty_informant and not informant:
+        if not allow_empty_informant and not target_informant:
             raise ValueError('No valid informant.')
 
-        conditions = { 'UUID': _uuid, 'INFORMANT': informant } if informant else { 'UUID': _uuid }
+        queues_to_check = [self.original_queue, self.processed_queue, self.unarchived_queue]
+
+        for q in queues_to_check:
+            with q.mutex:
+                for item in q.queue:
+                    if item.get('UUID') == target_uuid:
+                        return True
+                    if target_informant and item.get('informant') == target_informant:
+                        return True
+
+        conditions = {'UUID': target_uuid}
+        if target_informant:
+            conditions['informant'] = target_informant
+            operator = "$or"
+        else:
+            operator = "$or"
 
         query_engine = self.archive_db_query_engine
-        exists_record = query_engine.common_query(conditions=conditions, operator="$or")
+        duplicated =  bool(query_engine.common_query(conditions=conditions, operator=operator))
 
-        return bool(exists_record)
+        return duplicated
 
     def _enqueue_collected_data(self, data: dict) -> True or Error:
         del data['token']
