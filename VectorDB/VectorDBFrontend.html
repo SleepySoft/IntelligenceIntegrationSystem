@@ -41,6 +41,17 @@
             <button @click="clearCollection" class="text-red-400 hover:text-red-300 text-xs flex items-center">
                 <i class="fa-solid fa-trash mr-2"></i> Clear Collection
             </button>
+
+            <div class="border-t border-gray-600 pt-4 mt-4 space-y-2">
+                <button @click="downloadBackup" class="w-full bg-gray-600 hover:bg-gray-500 text-xs py-2 rounded flex items-center justify-center">
+                    <i class="fa-solid fa-download mr-2"></i> Backup DB
+                </button>
+
+                <label class="w-full bg-gray-600 hover:bg-gray-500 text-xs py-2 rounded flex items-center justify-center cursor-pointer">
+                    <i class="fa-solid fa-upload mr-2"></i> Restore DB
+                    <input type="file" @change="uploadRestore" class="hidden" accept=".zip">
+                </label>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto p-8">
@@ -246,11 +257,50 @@
                     fetchStats();
                 });
 
+                const downloadBackup = () => {
+                    // Determine API path (relative or absolute)
+                    window.location.href = "api/admin/backup";
+                };
+
+                const uploadRestore = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    if (!confirm("DANGER: This will overwrite all current data! Continue?")) return;
+
+                    const formData = new FormData();
+                    formData.append("file", file);
+
+                    showLoadingOverlay("Restoring Database... Please wait.");
+
+                    try {
+                        const res = await fetch("api/admin/restore", {
+                            method: "POST",
+                            body: formData
+                        });
+                        const data = await res.json();
+
+                        if (data.status === "success") {
+                            alert("Restore Successful!");
+                            fetchStats(); // Refresh UI
+                        } else {
+                            alert("Restore Failed: " + data.error);
+                        }
+                    } catch(e) {
+                        alert("Network Error during restore.");
+                    } finally {
+                        hideLoadingOverlay();
+                        // Clear input
+                        event.target.value = '';
+                    }
+                };
+
                 return {
                     currentTab, collectionName, stats,
                     searchQuery, filterJson, topN, minScore, searchResults, hasSearched,
                     upsertForm,
-                    fetchStats, performSearch, doUpsert, deleteDoc, clearCollection, getScoreColor
+                    fetchStats, performSearch, doUpsert, deleteDoc, clearCollection, getScoreColor,
+                    downloadBackup, uploadRestore
                 };
             }
         }).mount('#app');

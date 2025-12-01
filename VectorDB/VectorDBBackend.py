@@ -1,6 +1,7 @@
 import os
 import logging
 import argparse
+import tempfile
 from typing import Optional, Callable, Dict, Any
 from flask import Flask, Blueprint, request, jsonify, send_file, Response
 
@@ -197,6 +198,61 @@ class VectorDBService:
                 return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
+
+        @route("/api/admin/backup", methods=["GET"])
+        def download_backup():
+            """
+            Triggers a backup and returns the zip file.
+            """
+            try:
+                # Create a temporary directory to store the zip
+                temp_dir = tempfile.mkdtemp()
+                zip_path = self.engine.create_backup(temp_dir)
+
+                # Send file and perform cleanup afterwards if possible
+                # Note: Flask's send_file doesn't automatically delete.
+                # For a simple solution, we leave it in /tmp or use a periodic cleaner.
+                filename = os.path.basename(zip_path)
+                return send_file(
+                    zip_path,
+                    as_attachment=True,
+                    download_name=filename,
+                    mimetype='application/zip'
+                )
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        @route("/api/admin/restore", methods=["POST"])
+        def upload_restore():
+            """
+            Accepts a zip file upload and restores the database.
+            Restarting the service is recommended but Hot Reload is attempted.
+            """
+            if 'file' not in request.files:
+                return jsonify({"error": "No file part"}), 400
+
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({"error": "No selected file"}), 400
+
+            if not file.filename.endswith('.zip'):
+                return jsonify({"error": "Only .zip files are allowed"}), 400
+
+            try:
+                # Save uploaded file to temp
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".zip")
+                os.close(temp_fd)
+                file.save(temp_path)
+
+                # Trigger engine restore
+                self.engine.restore_backup(temp_path)
+
+                # Cleanup upload
+                os.remove(temp_path)
+
+                return jsonify({"status": "success", "message": "Database restored and reloaded."})
+            except Exception as e:
+                return jsonify({"error": f"Restore failed: {str(e)}"}), 500
 
         return bp
 

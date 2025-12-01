@@ -1,4 +1,7 @@
-import time
+import gc
+import os
+import shutil
+import datetime
 import logging
 import threading
 from typing import List, Dict, Any, Union, Optional
@@ -146,6 +149,98 @@ class VectorStorageEngine:
             )
             self._repos[collection_name] = repo
             return repo
+
+    def create_backup(self, backup_dir: str) -> str:
+        """
+        Creates a hot backup of the database.
+
+        Mechanism:
+        1. Acquire global lock (blocks new writes).
+        2. Create a zip archive of the database directory.
+        3. Release lock.
+
+        Args:
+            backup_dir (str): Directory to store the zip file.
+
+        Returns:
+            str: Path to the generated zip file.
+        """
+        if not self.is_ready():
+            raise RuntimeError("Engine not ready")
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"vectordb_backup_{timestamp}"
+        archive_path = os.path.join(backup_dir, filename)
+
+        # CRITICAL: Hold the lock to prevent modification during copy
+        with self._lock:
+            logger.info(f"Starting backup... Locking DB at {self._db_path}")
+            try:
+                # shutil.make_archive creates a zip file.
+                # Note: This reads files. If Chroma holds exclusive locks (Windows),
+                # this might fail. Usually SQLite allows read-sharing.
+                zip_file = shutil.make_archive(
+                    base_name=archive_path,
+                    format='zip',
+                    root_dir=self._db_path
+                )
+                logger.info(f"Backup created at: {zip_file}")
+                return zip_file
+            except Exception as e:
+                logger.error(f"Backup failed: {e}")
+                raise e
+            finally:
+                logger.info("Backup finished. Unlocking DB.")
+
+    def restore_backup(self, zip_file_path: str):
+        """
+        Restores the database from a zip file and performs a HOT RELOAD.
+
+        Mechanism:
+        1. Acquire lock.
+        2. Dereference and unload the Chroma Client (attempt to release file handles).
+        3. Wipe the current DB directory.
+        4. Unzip the backup into the DB directory.
+        5. Re-initialize the Chroma Client.
+        """
+        if not os.path.exists(zip_file_path):
+            raise FileNotFoundError("Backup file not found")
+
+        with self._lock:
+            logger.info("Starting Restore... Service locked.")
+            try:
+                # 1. Unload resources to release file locks
+                self._repos.clear()  # Clear repo cache
+                del self._client  # Remove reference
+                self._client = None
+                gc.collect()  # Force Garbage Collection
+
+                logger.info("Client unloaded. Replacing files...")
+
+                # 2. Wipe current directory
+                # Warning: If this fails (e.g., file locked by OS), we are in trouble.
+                # In production, you might rename current to .bak before deleting.
+                if os.path.exists(self._db_path):
+                    shutil.rmtree(self._db_path)
+
+                os.makedirs(self._db_path, exist_ok=True)
+
+                # 3. Unzip
+                shutil.unpack_archive(zip_file_path, self._db_path)
+                logger.info("Files unpacked.")
+
+                # 4. Reload Client
+                import chromadb
+                self._client = chromadb.PersistentClient(path=self._db_path)
+
+                logger.info("Client re-initialized. Restore Complete.")
+
+            except Exception as e:
+                # If restore fails, the DB might be in a corrupted state.
+                self._status = "error"
+                self._error_message = f"Restore failed: {e}"
+                logger.error(f"FATAL: Restore failed: {e}")
+                raise e
 
 
 class VectorCollectionRepo:
