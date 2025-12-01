@@ -1,5 +1,6 @@
 import os
 import logging
+import argparse
 from typing import Optional, Callable, Dict, Any
 from flask import Flask, Blueprint, request, jsonify, send_file, Response
 
@@ -62,8 +63,26 @@ class VectorDBService:
             return decorator
 
         # --- Helper Method ---
+        class ServiceUnavailable(Exception):
+            pass
+
+        @bp.errorhandler(ServiceUnavailable)
+        def handle_service_unavailable(e):
+            return jsonify({"error": str(e), "status": "initializing"}), 503
+
         def get_repo(name: str):
-            # Parse query params for config
+            # NEW: Check readiness before proceeding
+            if not self.engine.is_ready():
+                # Get specific status details
+                status = self.engine.get_status()
+                if status["status"] == "error":
+                    # 500 Internal Server Error if init failed permanently
+                    raise Exception(f"Engine failed to start: {status['error']}")
+                else:
+                    # 503 Service Unavailable if just loading
+                    # We catch this custom exception below or handle strictly
+                    raise ServiceUnavailable("Engine is initializing")
+
             chunk_size = int(request.args.get("chunk_size", 512))
             chunk_overlap = int(request.args.get("chunk_overlap", 50))
             return self.engine.get_repository(name, chunk_size, chunk_overlap)
@@ -76,6 +95,11 @@ class VectorDBService:
             if os.path.exists(self._frontend_path):
                 return send_file(self._frontend_path)
             return "Frontend HTML not found.", 404
+
+        @route("/api/status")
+        def server_status():
+            """Returns the engine initialization status."""
+            return jsonify(self.engine.get_status())
 
         @route("/api/health")
         def health_check():
@@ -108,12 +132,14 @@ class VectorDBService:
             try:
                 repo = get_repo(name)
                 # Perform the upsert (delete-then-insert)
-                chunk_ids = repo.add_document(doc_id, text, metadata)
+                chunk_ids = repo.upsert_document(doc_id, text, metadata)
                 return jsonify({
                     "status": "success",
                     "doc_id": doc_id,
                     "chunks_created": len(chunk_ids)
                 })
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 logger.error(f"Upsert failed: {e}")
                 return jsonify({"error": str(e)}), 500
@@ -141,6 +167,8 @@ class VectorDBService:
                     filter_criteria=filter_criteria
                 )
                 return jsonify(results)
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 logger.error(f"Search failed: {e}")
                 return jsonify({"error": str(e)}), 500
@@ -154,6 +182,8 @@ class VectorDBService:
                     return jsonify({"status": "success", "doc_id": doc_id})
                 else:
                     return jsonify({"status": "warning", "message": "Document not found"}), 404
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
@@ -163,6 +193,8 @@ class VectorDBService:
                 repo = get_repo(name)
                 repo.clear()
                 return jsonify({"status": "cleared", "collection": name})
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
@@ -187,7 +219,7 @@ class VectorDBService:
         logger.info(f"VectorDB Service mounted at {url_prefix}")
         return True
 
-    def run_standalone(self, host="0.0.0.0", port=8000, debug=False):
+    def run_standalone(self, host="0.0.0.0", port=8001, debug=False):
         """Run as a standalone Flask app."""
         app = Flask(__name__)
         
@@ -200,16 +232,54 @@ class VectorDBService:
 
 # --- Usage Examples ---
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    # 1. Initialize the heavy engine
-    # Ideally, do this outside and pass it in, but for standalone script execution:
+    # --- Configuration Logic ---
+    parser = argparse.ArgumentParser(description="VectorDB Standalone Service")
+
+    # 1. Network Config
+    parser.add_argument("--host", type=str,
+                        default=os.getenv("VECTOR_HOST", "0.0.0.0"),
+                        help="Host to bind (default: 0.0.0.0 or env VECTOR_HOST)")
+
+    parser.add_argument("--port", type=int,
+                        default=int(os.getenv("VECTOR_PORT", 8001)),
+                        help="Port to bind (default: 8001 or env VECTOR_PORT)")
+
+    # 2. Storage Config
+    parser.add_argument("--db-path", type=str,
+                        default=os.getenv("VECTOR_DB_PATH", "./chroma_data"),
+                        help="Path to save vector data (default: ./chroma_data or env VECTOR_DB_PATH)")
+
+    # 3. Model Config
+    parser.add_argument("--model", type=str,
+                        default=os.getenv("VECTOR_MODEL", "all-MiniLM-L6-v2"),
+                        help="SentenceTransformer model name (default: all-MiniLM-L6-v2 or env VECTOR_MODEL)")
+
+    args = parser.parse_args()
+
+    print("=" * 50)
+    print(f"Starting VectorDB Service")
+    print(f" - Host:      {args.host}:{args.port}")
+    print(f" - DB Path:   {args.db_path}")
+    print(f" - Model:     {args.model}")
+    print("=" * 50)
+
+    # --- Initialization ---
+
+    # 1. Initialize Engine with Config
+    # Note: ensure directory exists or let Chroma create it
+    os.makedirs(args.db_path, exist_ok=True)
+
     engine_instance = VectorStorageEngine(
-        db_path="./chroma_db_data", 
-        model_name="paraphrase-multilingual-MiniLM-L12-v2"
+        db_path=args.db_path,
+        model_name=args.model
     )
 
-    # 2. Initialize the API Service
+    # 2. Initialize Service
     service = VectorDBService(engine=engine_instance)
 
     # 3. Run Standalone
-    service.run_standalone(port=8001, debug=False)
+    service.run_standalone(host=args.host, port=args.port, debug=False)

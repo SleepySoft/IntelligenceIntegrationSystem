@@ -1,0 +1,9 @@
+# Linux / Mac
+export VECTOR_DB_PATH="./production_data"
+export VECTOR_PORT=5000
+python vector_service_api.py
+
+# Windows (PowerShell)
+$env:VECTOR_DB_PATH="./production_data"
+$env:VECTOR_PORT=5000
+python vector_service_api.py

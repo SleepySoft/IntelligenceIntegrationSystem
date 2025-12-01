@@ -1,7 +1,10 @@
-# vector_storage.py
-
+import time
+import logging
 import threading
-from typing import List, Dict, Any, Union, Optional, Tuple
+from typing import List, Dict, Any, Union, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 # Note: Heavy imports (chromadb, sentence_transformers) are delayed inside methods
@@ -31,32 +34,79 @@ class VectorStorageEngine:
         """
         self._db_path = db_path
         self._model_name = model_name
-        self._lock = threading.RLock()  # Reentrant lock for thread safety
 
-        # Cache for instantiated repositories to avoid recreating them
-        self._repos: Dict[str, "VectorCollectionRepo"] = {}
+        # --- State Management ---
+        self._status = "initializing"  # initializing, ready, error
+        self._error_message = None
+        self._ready_event = threading.Event()  # For blocking waits
+        self._lock = threading.RLock()
 
-        print(f"[VectorEngine] Initializing engine at '{db_path}' with model '{model_name}'...")
+        # Resources (Initially None)
+        self._client = None
+        self._model = None
+        self._repos = {}
 
-        # --- Heavy Lifting Start ---
+        # Start loading in background
+        self._init_thread = threading.Thread(
+            target=self._load_heavy_resources,
+            name="VectorEngineInit",
+            daemon=True
+        )
+        self._init_thread.start()
+
+        logger.info(f"Engine instance created. Initialization started in background.")
+
+    def _load_heavy_resources(self):
+        """Internal method to load libraries and models."""
         try:
-            # Lazy imports to keep module import fast, but class init heavy
+            logger.info("Importing heavy libraries...")
+            # Lazy imports
             import chromadb
             from sentence_transformers import SentenceTransformer
 
-            # 1. Initialize DB Client
+            logger.info(f"Loading ChromaDB from {self._db_path}...")
             self._client = chromadb.PersistentClient(path=self._db_path)
 
-            # 2. Initialize Model
-            # Note: SentenceTransformer is generally thread-safe for encoding
+            logger.info(f"Loading Model {self._model_name}...")
             self._model = SentenceTransformer(self._model_name)
 
-        except ImportError as e:
-            raise ImportError(f"Missing required dependencies (chromadb or sentence-transformers): {e}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize VectorStorageEngine: {e}")
+            # Mark as Ready
+            with self._lock:
+                self._status = "ready"
+                self._ready_event.set()
 
-        print(f"[VectorEngine] Initialization complete. Engine is ready.")
+            logger.info("VectorStorageEngine is READY.")
+
+        except Exception as e:
+            logger.error(f"FATAL: Engine initialization failed: {e}")
+            with self._lock:
+                self._status = "error"
+                self._error_message = str(e)
+                # We do NOT set the ready event, so waiters will timeout or handle status manually
+
+    def get_status(self) -> Dict[str, Any]:
+        """Returns the current lifecycle status."""
+        return {
+            "status": self._status,
+            "error": self._error_message,
+            "db_path": self._db_path,
+            "model": self._model_name
+        }
+
+    def is_ready(self) -> bool:
+        return self._status == "ready"
+
+    def wait_until_ready(self, timeout: float = None) -> bool:
+        """
+        Blocks until the engine is ready.
+        Returns True if ready, False if timed out or errored.
+        """
+        if self._status == "ready":
+            return True
+        if self._status == "error":
+            return False
+
+        return self._ready_event.wait(timeout=timeout)
 
     def get_repository(self, collection_name: str, chunk_size: int = 512,
                        chunk_overlap: int = 50) -> "VectorCollectionRepo":
@@ -72,12 +122,21 @@ class VectorStorageEngine:
         Returns:
             VectorCollectionRepo: The handler for the requested collection.
         """
+        if not self.is_ready():
+            raise RuntimeError(
+                f"Engine is not ready (Status: {self._status}). "
+                f"Error: {self._error_message}"
+            )
+
         with self._lock:
             # Return existing repo if already created with this engine
             if collection_name in self._repos:
                 return self._repos[collection_name]
 
-            # Create new repo
+            # We assume VectorCollectionRepo is imported or available
+            # To avoid circular imports, you might define VectorCollectionRepo in the same file
+            # or import it inside the method if it's in a separate module.
+            # Assuming it's in the same file for this snippet context:
             repo = VectorCollectionRepo(
                 client=self._client,
                 model=self._model,
