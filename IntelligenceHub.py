@@ -14,20 +14,19 @@ from typing import Tuple, Optional, Dict, Union
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
 
-from AIClientCenter.AIClientManager import AIClientManager
+from prompts import ANALYSIS_PROMPT
 from GlobalConfig import EXPORT_PATH
-from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
-from ServiceComponent.RecommendationManager import RecommendationManager
-from VectorDB.VectorStorageEngine import VectorDBService, VectorStoreManager
-from prompts import ANALYSIS_PROMPT, SUGGESTION_PROMPT
+from ServiceComponent.IntelligenceHubDefines import *
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.DateTimeUtility import time_str_to_datetime, get_aware_time, Clock
+from Tools.DateTimeUtility import time_str_to_datetime, Clock
+from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
-from ServiceComponent.IntelligenceHubDefines import *
-from ServiceComponent.IntelligenceCache import IntelligenceCache
+from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
+from ServiceComponent.RecommendationManager import RecommendationManager
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
-from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai, aggressive_by_ai, generate_recommendation_by_ai
+from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
+from VectorDB.VectorDBClient import VectorDBClient, VectorDBInitializationError, RemoteCollection
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +55,7 @@ class IntelligenceHub:
 
     def __init__(self, *,
                  ref_url: str = 'http://locohost:8080',
-                 vector_db_service: Optional[VectorDBService] = None,
+                 vector_db_client: Optional[VectorDBClient] = None,
                  db_cache: Optional[MongoDBStorage] = None,
                  db_archive: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
@@ -64,17 +63,17 @@ class IntelligenceHub:
         """
         Init IntelligenceHub.
         :param ref_url: The reference url for sub-resource url generation.
-        :param self.vector_db_service: Vector DB for text RAG indexing.
+        :param self.vector_db_client: Vector DB for text RAG indexing.
         :param db_cache: The mongodb for caching collected data.
         :param db_archive: The mongodb for archiving processed data.
         :param db_recommendation: The mongodb for storing recommendation data.
-        :param ai_client: The openai-like client for data processing.
+        :param ai_client_manager: The openai-like client for data processing.
         """
 
         # ---------------- Parameters ----------------
 
         self.reference_url = ref_url
-        self.vector_db_service = vector_db_service
+        self.vector_db_client = vector_db_client
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
         self.mongo_db_recommendation = db_recommendation
@@ -100,8 +99,8 @@ class IntelligenceHub:
         self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
         self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
-        self.vector_db_summary: Optional[VectorStoreManager] = None
-        self.vector_db_full_text: Optional[VectorStoreManager] = None
+        self.vector_db_summary: Optional[RemoteCollection] = None
+        self.vector_db_full_text: Optional[RemoteCollection] = None
         self.vector_db_init_event = threading.Event()
         self.vector_db_init_failed = False
 
@@ -482,12 +481,12 @@ class IntelligenceHub:
 
                 # --------------------------------- AI Aggressive with Retry ---------------------------------
 
-                content = original_data.get('content', '')
-                if (not self.vector_db_init_failed) and (self.vector_db_full_text is not None):
-                    related_items = self.vector_db_full_text.search(content)
-                    item_uuids = [item["doc_id"] for item in related_items]
-                    intelligences = self.get_intelligence(item_uuids)
-                    recent
+                # content = original_data.get('content', '')
+                # if (not self.vector_db_init_failed) and (self.vector_db_full_text is not None):
+                #     related_items = self.vector_db_full_text.search(content)
+                #     item_uuids = [item["doc_id"] for item in related_items]
+                #     intelligences = self.get_intelligence(item_uuids)
+                #     recent
 
 
                 # TODO: 暂时不做，因为需要考虑的事情太多，且消耗token，后续可以考虑采用小模型实现。
@@ -591,12 +590,12 @@ class IntelligenceHub:
 
                         text_summary = f"{title}\n{brief}\n{text}".strip()
                         if text_summary:
-                            self.vector_db_summary.add_document(text_summary, _uuid)
+                            self.vector_db_summary.upsert(text_summary, _uuid)
 
                     if self.vector_db_full_text is not None:
                         raw_data = data.get('RAW_DATA', {}).get('content')
                         if raw_data:
-                            self.vector_db_full_text.add_document(str(raw_data), _uuid)
+                            self.vector_db_full_text.upsert(str(raw_data), _uuid)
 
                     logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
@@ -629,27 +628,8 @@ class IntelligenceHub:
             except Exception as e:
                 logger.error(f"Post process got unknown issue: {str(e)}")
 
-    # def _vector_db_init_worker(self):
-    #     if self.vector_db_service is not None:
-    #         logger.info('Waiting for vector DB init...')
-    #         clock = Clock()
-    #         while not self.shutdown_flag.is_set():
-    #             status = self.vector_db_service.get_status().get('status', '')
-    #             if status == "ready":
-    #                 self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
-    #                 self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
-    #                 logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
-    #             elif status == 'error':
-    #                 self.vector_db_service = None
-    #                 # self.vector_db_summary and self.vector_db_full_text are also None
-    #                 logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
-    #             else:
-    #                 time.sleep(1)
-    #                 continue
-    #             break
-
     def _vector_db_init_worker(self):
-        if self.vector_db_service is None:
+        if self.vector_db_client is None:
             logger.warning("Vector DB service is not configured, skipping init.")
             self.vector_db_init_failed = True
             self.vector_db_init_event.set()
@@ -658,31 +638,57 @@ class IntelligenceHub:
         logger.info('Waiting for vector DB init...')
         clock = Clock()
 
+        # 标记是否成功，默认为 False
+        self.vector_db_init_failed = False
+
         while not self.shutdown_flag.is_set():
             try:
-                status_info = self.vector_db_service.get_status()
-                status = status_info.get('status', '')
+                # 1. 尝试等待就绪，使用短超时（例如 2秒）
+                # 这样做的目的是为了每隔2秒就有机会检查一次 self.shutdown_flag
+                try:
+                    self.vector_db_client.wait_until_ready(timeout=2.0, poll_interval=0.5)
+                except TimeoutError:
+                    # 超时意味着这2秒内没准备好，但这不一定是错误，
+                    # 我们捕获它，让循环继续，从而再次检查 shutdown_flag
+                    continue
 
-                if status == "ready":
-                    self.vector_db_summary = self.vector_db_service.get_store(VECTOR_DB_SUMMARY)
-                    self.vector_db_full_text = self.vector_db_service.get_store(VECTOR_DB_FULL_TEXT)
-                    logger.info(f'Vector DB init successful. Time spending: {clock.elapsed_ms()}ms.')
-                    break
+                # 2. 如果代码走到这里，说明 wait_until_ready 成功返回了
+                logger.info("Vector DB is ready. Creating collections...")
 
-                elif status == 'error':
-                    logger.error(f'Vector DB init fail. Time spending: {clock.elapsed_s()}s.')
-                    self.vector_db_service = None
-                    self.vector_db_init_failed = True
-                    break
+                # 3. 创建 Collections
+                # 注意：如果此时发生网络错误，外层 except 会捕获并重试
 
-                else:
-                    time.sleep(1)
+                # We have to create collection after vector initialized.
+                # So we cannot create these 2 collections by config in IntelligenceHubStartup.py
 
-            except Exception as e:
-                logger.exception(f"Exception during vector db init: {e}")
-                self.vector_db_init_failed = True
+                self.vector_db_summary = self.vector_db_client.create_collection(
+                    name='intelligence_summary', chunk_size=256, chunk_overlap=30)
+
+                self.vector_db_full_text = self.vector_db_client.create_collection(
+                    name='intelligence_full_text', chunk_size=512, chunk_overlap=50)
+
+                # 4. 成功！退出循环
+                logger.info(f'Vector DB initialized successfully. Time elapsed: {clock.elapsed_s()}s')
                 break
 
+            except (VectorDBInitializationError, ConnectionError, Exception) as e:
+                # 5. 处理真正的错误（非超时）
+                # 比如服务返回 500，或者网络连接被拒绝
+                logger.error(f"Error connecting to Vector DB: {e}. Retrying in 5 seconds...")
+
+                # 简单的退避策略，防止疯狂刷日志
+                # 分段 sleep 也是为了能响应 shutdown
+                for _ in range(5):
+                    if self.shutdown_flag.is_set(): break
+                    time.sleep(1)
+
+        # 循环结束（可能是成功 break，也可能是 shutdown_flag 被设置）
+
+        if self.shutdown_flag.is_set():
+            logger.info("Vector DB init worker stopped due to shutdown signal.")
+            self.vector_db_init_failed = True  # 如果是因为关闭而结束，可视作未完成
+
+        # 最终设置事件，通知主线程等待结束
         self.vector_db_init_event.set()
 
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------

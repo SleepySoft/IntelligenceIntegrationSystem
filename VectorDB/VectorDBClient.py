@@ -1,6 +1,4 @@
-import os
 import time
-import argparse
 import requests
 from typing import List, Dict, Any, Optional
 
@@ -13,15 +11,10 @@ class VectorDBInitializationError(Exception):
 class VectorDBClient:
     """
     A Python client for the standalone VectorDB Service.
-
-    Now supports waiting for the backend to complete its heavy initialization.
     """
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:8001"):
         self.base_url = base_url.rstrip("/")
-
-    def get_collection(self, name: str) -> "RemoteCollection":
-        return RemoteCollection(self.base_url, name)
 
     def get_status(self) -> Dict[str, Any]:
         """Check the raw status of the server."""
@@ -30,51 +23,21 @@ class VectorDBClient:
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
-            # If server is down, we return a synthetic status
             return {"status": "unreachable", "error": str(e)}
 
     def wait_until_ready(self, timeout: float = 60.0, poll_interval: float = 2.0) -> bool:
         """
-        Blocks until the VectorDB service is fully initialized and ready to accept requests.
-
-        Args:
-            timeout (float): Max time to wait in seconds.
-            poll_interval (float): Seconds between checks.
-
-        Returns:
-            bool: True if ready.
-
-        Raises:
-            TimeoutError: If timeout is reached.
-            VectorDBInitializationError: If server reports a fatal error.
-
-        Usage:
-            try:
-                client.wait_until_ready(timeout=60)
-                kb = client.get_collection("knowledge_base")
-                print(f"Connected. Current docs: {kb.stats()}")
-
-            except TimeoutError:
-                print("CRITICAL: Vector Store timed out. Is the backend running?")
-                exit(1)
-
-            except VectorDBInitializationError as e:
-                print(f"CRITICAL: Vector Store failed to load model: {e}")
-                exit(1)
+        Blocks until the VectorDB service is fully initialized and ready.
         """
         start_time = time.time()
         print(f"[Client] Waiting for VectorDB at {self.base_url} (Timeout: {timeout}s)...")
 
         while True:
-            # Check timeout
             if (time.time() - start_time) > timeout:
                 raise TimeoutError(f"VectorDB service not ready after {timeout} seconds.")
 
             try:
-                # Call the status endpoint
-                # Note: We use a short timeout for the request itself so we don't hang
                 resp = requests.get(f"{self.base_url}/api/status", timeout=2)
-
                 if resp.status_code == 200:
                     data = resp.json()
                     status = data.get("status")
@@ -82,28 +45,59 @@ class VectorDBClient:
                     if status == "ready":
                         print(f"[Client] VectorDB is READY.")
                         return True
-
                     elif status == "error":
-                        error_msg = data.get("error", "Unknown error")
-                        raise VectorDBInitializationError(f"Server failed to initialize: {error_msg}")
-
-                    elif status == "initializing":
-                        # Still loading, just continue loop
-                        pass
-
-                # If we get 503, it might be the Flask app is up but our specific status handler logic 
-                # (if modified) or intermediate proxies are returning 503.
-                # Usually /api/status should return 200 even if initializing.
-
+                        raise VectorDBInitializationError(f"Server failed: {data.get('error')}")
+                    # If initializing, loop again
             except requests.exceptions.ConnectionError:
-                # The Flask server itself might not be running yet
                 pass
             except Exception as e:
-                # Other errors (DNS, etc.)
                 print(f"[Client] Warning during poll: {e}")
 
-            # Wait before next retry
             time.sleep(poll_interval)
+
+    def create_collection(self, name: str, chunk_size: int = 512, chunk_overlap: int = 50) -> "RemoteCollection":
+        """
+        Explicitly creates a collection or updates its configuration.
+        MUST be called before upserting if the collection does not exist.
+
+        Args:
+            name (str): Collection name.
+            chunk_size (int): Text splitter chunk size.
+            chunk_overlap (int): Text splitter overlap.
+
+        Returns:
+            RemoteCollection: A handle to the collection.
+        """
+        url = f"{self.base_url}/api/collections"
+        payload = {
+            "name": name,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap
+        }
+        resp = requests.post(url, json=payload)
+
+        # --- 优化错误处理 ---
+        if resp.status_code == 503:
+            raise RuntimeError(
+                "VectorDB is initializing. Please call client.wait_until_ready() before creating collections."
+            )
+        # ------------------
+
+        resp.raise_for_status()
+        return RemoteCollection(self.base_url, name)
+
+    def get_collection(self, name: str) -> "RemoteCollection":
+        """
+        Gets a handle to an EXISTING collection.
+        Note: This does not verify existence immediately. Operations will fail if it doesn't exist.
+        """
+        return RemoteCollection(self.base_url, name)
+
+    def list_collections(self) -> List[str]:
+        """Lists all available collections."""
+        resp = requests.get(f"{self.base_url}/api/collections")
+        resp.raise_for_status()
+        return resp.json().get("collections", [])
 
 
 class RemoteCollection:
@@ -111,17 +105,33 @@ class RemoteCollection:
         self.api_url = f"{base_url}/api/collections/{name}"
         self.name = name
 
-    def _handle_response(self, resp: requests.Response) -> Dict:
-        """Helper to handle errors, specifically 503s."""
+    def _handle_response(self, resp: requests.Response) -> Any:
+        """Helper to handle errors, specifically 503 (Loading) and 404 (Not Found)."""
         if resp.status_code == 503:
             raise RuntimeError(
-                "VectorDB is initializing. Please call client.wait_until_ready() before performing operations."
+                "VectorDB is initializing. Please call client.wait_until_ready()."
             )
-        resp.raise_for_status()
-        return resp.json()
+        if resp.status_code == 404:
+            raise ValueError(
+                f"Collection '{self.name}' not found. Please create it first using client.create_collection()."
+            )
+
+        try:
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            # Try to get backend error message
+            try:
+                err_msg = resp.json().get("error", str(e))
+            except:
+                err_msg = str(e)
+            raise RuntimeError(f"VectorDB Error: {err_msg}")
 
     def upsert(self, doc_id: str, text: str, metadata: Dict[str, Any] = None) -> Dict:
-        """Upserts a document to the remote DB."""
+        """
+        Upserts a document.
+        Will FAIL if collection was not created via create_collection().
+        """
         if metadata is None:
             metadata = {}
 
@@ -148,8 +158,6 @@ class RemoteCollection:
             "filter_criteria": filter_criteria
         }
         resp = requests.post(f"{self.api_url}/search", json=payload)
-        # Search returns a list, not a dict, so handle differently if needed, 
-        # but _handle_response expects json output which is fine.
         return self._handle_response(resp)
 
     def delete(self, doc_id: str) -> bool:
@@ -157,9 +165,16 @@ class RemoteCollection:
         resp = requests.delete(f"{self.api_url}/documents/{doc_id}")
         if resp.status_code == 404:
             return False
-        return self._handle_response(resp).get("status") == "success"
+        res = self._handle_response(resp)
+        return res.get("status") == "success"
 
     def stats(self) -> Dict:
         """Gets collection stats."""
         resp = requests.get(f"{self.api_url}/stats")
         return self._handle_response(resp)
+
+    def clear(self) -> bool:
+        """Clears all data in collection."""
+        resp = requests.post(f"{self.api_url}/clear")
+        res = self._handle_response(resp)
+        return res.get("status") == "cleared"

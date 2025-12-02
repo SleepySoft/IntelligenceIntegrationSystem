@@ -25,7 +25,7 @@ from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
 from MyPythonUtility.proc_utils import find_processes, kill_processes, start_program
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
-
+from VectorDB.VectorDBClient import VectorDBClient
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -123,6 +123,7 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
     embedding_model_name = config.get('intelligence_hub.vectordb.embedding_model_name', '')
     vector_stores = config.get('intelligence_hub.vectordb.stores', [])
 
+    vector_db_client = None
     if vector_enabled and vector_db_path and embedding_model_name:
         vector_db_path_abs = vector_db_path \
             if os.path.isabs(vector_db_path) \
@@ -148,8 +149,10 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
                            f"--db-path {vector_db_path_abs}"\
                            f"--model {embedding_model_name}"
             start_program(command_line, background=True, no_window=True)
-    else:
-        vector_db_service = None
+
+        vector_db_client = VectorDBClient(f"http://localhost:{str(vector_db_port)}")
+
+    return vector_db_client
 
 
 def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
@@ -160,10 +163,12 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
     # ------------------------------- AI Service -------------------------------
 
-    client_manager = build_ai_client_manager()
+    client_manager = build_ai_client_manager(config)
     client_manager.start_monitoring()
 
     # ------------------------------- Vector DB --------------------------------
+
+    vector_db_client = check_start_vector_db_service(config)
 
     # ------------------------------- Core: IHub -------------------------------
 
@@ -177,7 +182,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     hub = IntelligenceHub(
         ref_url=ref_host_url,
 
-        vector_db_service=vector_db_service,
+        vector_db_client=vector_db_client,
 
         db_cache=MongoDBStorage(
             host=mongodb_host,
