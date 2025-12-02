@@ -111,35 +111,26 @@ class VectorStorageEngine:
 
         return self._ready_event.wait(timeout=timeout)
 
-    def get_repository(self, collection_name: str, chunk_size: int = 512,
-                       chunk_overlap: int = 50) -> "VectorCollectionRepo":
+    def ensure_repository(self, collection_name: str, chunk_size: int = 512,
+                          chunk_overlap: int = 50) -> "VectorCollectionRepo":
         """
-        Factory method to get or create a repository for a specific collection.
-        Thread-safe.
-
-        Args:
-            collection_name (str): Unique name of the collection.
-            chunk_size (int): Character limit for text chunks.
-            chunk_overlap (int): Character overlap between chunks.
-
-        Returns:
-            VectorCollectionRepo: The handler for the requested collection.
+        Factory method: Creates a repo if not exists, OR updates the config of an existing one.
+        This is Thread-Safe.
         """
         if not self.is_ready():
-            raise RuntimeError(
-                f"Engine is not ready (Status: {self._status}). "
-                f"Error: {self._error_message}"
-            )
+            raise RuntimeError("Engine not ready")
 
         with self._lock:
-            # Return existing repo if already created with this engine
+            # 1. 如果已存在于内存缓存中
             if collection_name in self._repos:
-                return self._repos[collection_name]
+                repo = self._repos[collection_name]
+                # 更新 split 配置，以便后续写入使用新参数
+                # (注意：这不会改变已存入数据库的数据，只影响新数据)
+                repo.update_config(chunk_size, chunk_overlap)
+                return repo
 
-            # We assume VectorCollectionRepo is imported or available
-            # To avoid circular imports, you might define VectorCollectionRepo in the same file
-            # or import it inside the method if it's in a separate module.
-            # Assuming it's in the same file for this snippet context:
+            # 2. 如果内存没有，但 Chroma 物理文件可能存在，或者完全新建
+            # VectorCollectionRepo 的初始化逻辑会处理 get_or_create
             repo = VectorCollectionRepo(
                 client=self._client,
                 model=self._model,
@@ -149,6 +140,30 @@ class VectorStorageEngine:
             )
             self._repos[collection_name] = repo
             return repo
+
+    def get_repository(self, collection_name: str) -> Optional["VectorCollectionRepo"]:
+        """
+        Strictly retrieves an existing repository handle.
+        Returns None if not found in cache (and ideally checks DB presence).
+        """
+        if not self.is_ready():
+            raise RuntimeError("Engine not ready")
+
+        with self._lock:
+            if collection_name in self._repos:
+                return self._repos[collection_name]
+
+            # 检查 Chroma 中是否真的存在该 Collection
+            # 只有存在时，才以默认(或推测)配置加载它
+            try:
+                self._client.get_collection(collection_name)
+                # 存在，但内存没加载。我们必须加载它。
+                # 缺点：我们不知道上次用的 chunk_size 是多少，只能用默认值。
+                # 生产环境通常会将每个 Collection 的配置存入 SQLite 或 metadata 中，这里简化处理。
+                return self.ensure_repository(collection_name)  # Load with defaults
+            except Exception:
+                # 不存在
+                return None
 
     def list_collections(self) -> List[str]:
         """Returns a list of all available collection names."""
@@ -278,6 +293,8 @@ class VectorCollectionRepo:
         self._client = client
         self._model = model
         self._collection_name = collection_name
+        self._current_config = {}
+        self._text_splitter = Optional[RecursiveCharacterTextSplitter]
 
         # Get or create the actual Chroma collection
         self._collection = self._client.get_or_create_collection(
@@ -285,13 +302,20 @@ class VectorCollectionRepo:
             metadata={"hnsw:space": "cosine"}
         )
 
+        self.update_config(chunk_size, chunk_overlap)
+
+    def update_config(self, chunk_size: int, chunk_overlap: int):
+        """Updates the text splitter configuration for future operations."""
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
         self._text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             separators=["\n\n", "\n", "。", "！", "？", ". ", " ", ""]
         )
+        self._current_config = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
 
-        print(f"[VectorRepo] Repository ready for collection: '{collection_name}'")
+    def get_config(self):
+        return self._current_config
 
     def _vectorize(self, text: Union[str, List[str]]) -> Any:
         """Internal helper to generate embeddings."""

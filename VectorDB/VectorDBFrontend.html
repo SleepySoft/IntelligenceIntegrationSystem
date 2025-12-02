@@ -10,13 +10,17 @@
     <style>
         body { background-color: #f3f4f6; }
         .json-input { font-family: monospace; font-size: 0.85rem; }
+
         /* Toast Animation */
         .toast-enter-active, .toast-leave-active { transition: all 0.5s ease; }
         .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(20px); }
+
+        /* v-cloak: Hide elements until Vue is ready */
+        [v-cloak] { display: none !important; }
     </style>
 </head>
 <body>
-    <div id="app" class="flex h-screen">
+    <div id="app" class="flex h-screen" v-cloak>
 
         <div class="w-72 bg-slate-800 text-white flex flex-col p-4 shadow-xl z-10">
             <h1 class="text-2xl font-bold mb-6 flex items-center">
@@ -38,7 +42,7 @@
 
                 <div class="relative group">
                     <button @click="showCreateModal = true" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-xs py-2 rounded flex items-center justify-center transition">
-                        <i class="fa-solid fa-plus mr-2"></i> Create New
+                        <i class="fa-solid fa-plus mr-2"></i> Create / Configure
                     </button>
                 </div>
             </div>
@@ -151,7 +155,7 @@
                 </div>
 
                 <div v-else-if="currentTab === 'search'" class="max-w-4xl mx-auto space-y-6">
-                    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
+                     <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 space-y-4">
                         <div class="flex space-x-2">
                             <input v-model="searchQuery" @keyup.enter="performSearch" type="text" placeholder="Type query and press Enter..." class="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                             <button @click="performSearch" class="bg-blue-600 text-white px-8 rounded-lg hover:bg-blue-700 font-medium shadow-sm transition">Search</button>
@@ -240,13 +244,33 @@
             </div>
         </transition>
 
-        <div v-if="showCreateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
-                <h3 class="text-lg font-bold mb-4">Create New Collection</h3>
-                <input v-model="newCollectionName" @keyup.enter="createNewCollection" placeholder="Collection Name (e.g. logs_2024)" class="w-full p-2 border rounded mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
-                <div class="flex justify-end space-x-3">
-                    <button @click="showCreateModal = false" class="text-gray-500 hover:text-gray-700">Cancel</button>
-                    <button @click="createNewCollection" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Create</button>
+        <div v-if="showCreateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" v-cloak>
+            <div class="bg-white rounded-lg p-6 w-96 shadow-xl space-y-4">
+                <h3 class="text-lg font-bold border-b pb-2">Create / Configure Collection</h3>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">Name</label>
+                    <input v-model="newCollectionForm.name" @keyup.enter="createNewCollection" placeholder="e.g. logs_2024" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="flex space-x-4">
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">Chunk Size</label>
+                        <input v-model.number="newCollectionForm.chunk_size" type="number" class="w-full p-2 border rounded">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs font-bold text-gray-500 mb-1">Overlap</label>
+                        <input v-model.number="newCollectionForm.chunk_overlap" type="number" class="w-full p-2 border rounded">
+                    </div>
+                </div>
+
+                <p class="text-xs text-gray-400 italic">
+                    If collection exists, this will update the chunking config for <b>new</b> documents.
+                </p>
+
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button @click="showCreateModal = false" class="text-gray-500 hover:text-gray-700 text-sm">Cancel</button>
+                    <button @click="createNewCollection" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium">Create</button>
                 </div>
             </div>
         </div>
@@ -254,18 +278,20 @@
     </div>
 
     <script>
-        const { createApp, ref, onMounted, watch } = Vue;
+        const { createApp, ref, onMounted } = Vue;
 
         createApp({
             setup() {
                 // UI State
-                const currentTab = ref('browse'); // Default to Browse now
+                const currentTab = ref('browse');
                 const collections = ref([]);
                 const selectedCollection = ref('');
                 const stats = ref(null);
                 const showCreateModal = ref(false);
-                const newCollectionName = ref('');
                 const toast = ref({ show: false, message: '', type: 'success' });
+
+                // Config Form State
+                const newCollectionForm = ref({ name: '', chunk_size: 512, chunk_overlap: 50 });
 
                 // Browse State
                 const browseData = ref([]);
@@ -307,14 +333,37 @@
                     } catch(e) { console.error(e); }
                 };
 
-                const createNewCollection = () => {
-                    if (!newCollectionName.value) return;
-                    selectedCollection.value = newCollectionName.value;
-                    collections.value.push(newCollectionName.value);
-                    showCreateModal.value = false;
-                    newCollectionName.value = '';
-                    loadCollection(); // Init the collection in backend
-                    showToast(`Collection '${selectedCollection.value}' created.`);
+                const createNewCollection = async () => {
+                    if (!newCollectionForm.value.name) return;
+
+                    try {
+                        const res = await fetch('api/collections', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(newCollectionForm.value)
+                        });
+
+                        const data = await res.json();
+
+                        if (res.ok) {
+                            showToast(`Collection configured!`);
+                            if(!collections.value.includes(newCollectionForm.value.name)) {
+                                collections.value.push(newCollectionForm.value.name);
+                            }
+                            selectedCollection.value = newCollectionForm.value.name;
+                            showCreateModal.value = false;
+
+                            // Reset form
+                            newCollectionForm.value = { name: '', chunk_size: 512, chunk_overlap: 50 };
+
+                            loadCollection();
+                        } else {
+                            showToast(data.error || "Creation failed", "error");
+                        }
+                    } catch(e) {
+                        console.error(e);
+                        showToast("Network Error", "error");
+                    }
                 };
 
                 const loadCollection = async () => {
@@ -324,14 +373,13 @@
                         if (res.ok) {
                             stats.value = await res.json();
                             showToast(`Loaded ${selectedCollection.value}`);
-                            // Reset views
                             browsePage.value = 0;
                             browseData.value = [];
                             searchResults.value = [];
-                            // Load data if in browse tab
                             if (currentTab.value === 'browse') fetchDocuments();
                         } else {
-                            throw new Error("Stats failed");
+                            // If stats 404, implies collection not found (or strict mode block)
+                            showToast("Collection not ready", "error");
                         }
                     } catch(e) {
                         showToast(e.message, 'error');
@@ -365,7 +413,8 @@
                             filter_criteria: filters
                         })
                     });
-                    searchResults.value = await res.json();
+                    if(res.ok) searchResults.value = await res.json();
+                    else showToast("Search Failed", "error");
                 };
 
                 const doUpsert = async () => {
@@ -391,9 +440,9 @@
                         const data = await res.json();
                         showToast(`Saved! ${data.chunks_created} chunks.`);
                         upsertForm.value.text = '';
-                        loadCollection(); // Refresh stats/data
+                        loadCollection();
                     } else {
-                        showToast("Upsert Failed", "error");
+                        showToast("Upsert Failed - check if collection exists", "error");
                     }
                 };
 
@@ -401,7 +450,7 @@
                     if(!confirm(`Delete document ${docId}?`)) return;
                     await fetch(`${getBaseUrl()}/documents/${docId}`, { method: 'DELETE' });
                     showToast(`Deleted ${docId}`);
-                    loadCollection(); // Refresh UI
+                    loadCollection();
                 };
 
                 const clearCollection = async () => {
@@ -411,7 +460,6 @@
                      showToast("Collection Cleared");
                 };
 
-                // Admin Actions
                 const downloadBackup = () => window.location.href = "api/admin/backup";
                 const uploadRestore = async (event) => {
                     const file = event.target.files[0];
@@ -434,20 +482,18 @@
                     } catch(e) { showToast("Restore Error", "error"); }
                 };
 
-                // Utilities
                 const tabClass = (tab) => currentTab.value === tab
                     ? 'text-blue-600 border-b-2 border-blue-600'
                     : 'text-gray-500 hover:text-gray-700';
 
                 const getScoreColor = (s) => s > 0.7 ? 'text-green-600' : (s > 0.4 ? 'text-blue-600' : 'text-orange-500');
 
-                // Init
                 onMounted(() => {
                     refreshCollections();
                 });
 
                 return {
-                    currentTab, collections, selectedCollection, stats, showCreateModal, newCollectionName, toast,
+                    currentTab, collections, selectedCollection, stats, showCreateModal, newCollectionForm, toast,
                     browseData, browsePage, pageSize,
                     searchQuery, filterJson, topN, minScore, searchResults, upsertForm,
                     refreshCollections, createNewCollection, loadCollection, fetchDocuments,

@@ -15,7 +15,6 @@ from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
 from MyPythonUtility.easy_config import EasyConfig
-from VectorDB.VectorStorageEngine import VectorDBService
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from AIClientCenter.AIClients import OuterTokenRotatingOpenAIClient
@@ -23,6 +22,7 @@ from AIClientCenter.AIClientManager import AIClientManager
 from Tools.SystemMonotorLauncher import start_system_monitor
 from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
 from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
+from MyPythonUtility.proc_utils import find_processes, kill_processes, start_program
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 
@@ -39,6 +39,8 @@ wsgi_app.config.update(
 
 logger = logging.getLogger(__name__)
 
+self_path = os.path.dirname(os.path.abspath(__file__))
+
 
 def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
     prev_statistics = {}
@@ -49,25 +51,22 @@ def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
         time.sleep(2)
 
 
-def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
-    config = EasyConfig()
-
-    logger.info('Apply config: ')
-    logger.info(config.dump_text())
-
-    # ------------------------------- AI Service -------------------------------
-
+def build_ai_client_manager(config: EasyConfig):
     client_manager = AIClientManager()
     try:
         from _config.ai_client_config import AI_CLIENTS
+
         logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
+
         for client in AI_CLIENTS.values():
             logger.info(f"Register AI client: {client.name}.")
             client_manager.register_client(client)
+
         # Considering stable and limitation. Limit 2 Siliconflow service at the same time.
         client_manager.set_group_limit('silicon flow', 2)
         client_manager.set_group_limit('model scope', 1)
         client_manager.set_group_limit('zhipu', 1)
+
     except Exception as e:
         print(traceback.format_exc())
         logger.info(f"Import {CONFIG_PATH}/ai_client_config.py fail. Use traditional config.")
@@ -114,28 +113,57 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
             )
             rotator_thread.start()
 
-    client_manager.start_monitoring()
+    return client_manager
 
-    # ------------------------------- Vector DB --------------------------------
 
+def check_start_vector_db_service(config: EasyConfig, force_restart: bool = False):
     vector_enabled = config.get('intelligence_hub.vectordb.enabled', False)
+    vector_db_port = config.get('intelligence_hub.vectordb.vector_db_port', 8001)
     vector_db_path = config.get('intelligence_hub.vectordb.vector_db_path', '')
     embedding_model_name = config.get('intelligence_hub.vectordb.embedding_model_name', '')
     vector_stores = config.get('intelligence_hub.vectordb.stores', [])
 
     if vector_enabled and vector_db_path and embedding_model_name:
-        # Start from here: put vector db in data path.
         vector_db_path_abs = vector_db_path \
             if os.path.isabs(vector_db_path) \
             else os.path.join(DATA_PATH, vector_db_path)
 
-        vector_db_service = VectorDBService(
-            db_path = vector_db_path_abs,
-            model_name = embedding_model_name,
-            store_config = vector_stores
-        )
+        need_launch = False
+        pids = find_processes('VectorDBBService.py')
+        if pids:
+            if force_restart:
+                need_launch = True
+                killed_count = kill_processes(pids)
+                logger.info(f"Found running vector db service {', '.join(str(pids))}, killed {killed_count}.")
+            else:
+                logger.info(f"Found running vector db service {', '.join(str(pids))}, ignore.")
+        else:
+            need_launch = True
+
+        if need_launch:
+            vector_db_service_path_abs = os.path.join(self_path, 'VectorDB', 'VectorDBBService.py')
+            command_line = f"{vector_db_service_path_abs} "\
+                           f"--host 127.0.0.1 "\
+                           f"--port {str(vector_db_port)} "\
+                           f"--db-path {vector_db_path_abs}"\
+                           f"--model {embedding_model_name}"
+            start_program(command_line, background=True, no_window=True)
     else:
         vector_db_service = None
+
+
+def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
+    config = EasyConfig()
+
+    logger.info('Apply config: ')
+    logger.info(config.dump_text())
+
+    # ------------------------------- AI Service -------------------------------
+
+    client_manager = build_ai_client_manager()
+    client_manager.start_monitoring()
+
+    # ------------------------------- Vector DB --------------------------------
 
     # ------------------------------- Core: IHub -------------------------------
 
@@ -209,6 +237,20 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+# ------------------------------------- Path --------------------------------------
+
+def build_dirs():
+    # TODO: All not-project files will be put in this path. It's good for docker deployment.
+    Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
+    Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(EXPORT_PATH).mkdir(parents=True, exist_ok=True)
+    Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
+
+
+# -------------------------------------- Log --------------------------------------
+
 IIS_LOG_FILE = os.path.join(LOG_PATH, 'iis.log')
 HISTORY_LOG_FOLDER = os.path.join(LOG_PATH, 'history_log')
 
@@ -243,17 +285,7 @@ def config_log():
 
 
 def run():
-    # ---------------------------------- Path ----------------------------------
-
-    # TODO: All generated data will be put in this path. It's good for docker deployment.
-    Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
-    Path(DATA_PATH).mkdir(parents=True, exist_ok=True)
-    Path(CONFIG_PATH).mkdir(parents=True, exist_ok=True)
-    Path(EXPORT_PATH).mkdir(parents=True, exist_ok=True)
-    Path(PRODUCTS_PATH).mkdir(parents=True, exist_ok=True)
-
-    # ---------------------------------- Log -----------------------------------
-
+    build_dirs()
     config_log()
 
     # -------------------------------- Service ---------------------------------

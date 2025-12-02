@@ -47,7 +47,7 @@ class VectorDBService:
     def create_blueprint(self, wrapper: Optional[Callable] = None) -> Blueprint:
         """
         Creates the Flask Blueprint containing all API routes.
-        
+
         Args:
             wrapper (Callable): Optional decorator to wrap all routes (e.g., for auth).
         """
@@ -61,9 +61,10 @@ class VectorDBService:
                     f = wrapper(f)
                 bp.add_url_rule(rule, endpoint, f, **options)
                 return f
+
             return decorator
 
-        # --- Helper Method ---
+        # --- Error Handling ---
         class ServiceUnavailable(Exception):
             pass
 
@@ -71,22 +72,29 @@ class VectorDBService:
         def handle_service_unavailable(e):
             return jsonify({"error": str(e), "status": "initializing"}), 503
 
-        def get_repo(name: str):
-            # NEW: Check readiness before proceeding
+        # --- Helper Method ---
+        def get_repo_strict(name: str):
+            """
+            Retrieves a repository strictly.
+            Raises ServiceUnavailable if engine is loading.
+            Raises ValueError if collection does not exist.
+            """
+            # 1. Check readiness
             if not self.engine.is_ready():
-                # Get specific status details
                 status = self.engine.get_status()
                 if status["status"] == "error":
                     # 500 Internal Server Error if init failed permanently
                     raise Exception(f"Engine failed to start: {status['error']}")
                 else:
                     # 503 Service Unavailable if just loading
-                    # We catch this custom exception below or handle strictly
                     raise ServiceUnavailable("Engine is initializing")
 
-            chunk_size = int(request.args.get("chunk_size", 512))
-            chunk_overlap = int(request.args.get("chunk_overlap", 50))
-            return self.engine.get_repository(name, chunk_size, chunk_overlap)
+            # 2. Retrieve Repo
+            repo = self.engine.get_repository(name)
+            if not repo:
+                # Raise exception to be caught and returned as 404
+                raise ValueError(f"Collection '{name}' not found. Please create it via POST /api/collections first.")
+            return repo
 
         # --- Routes ---
 
@@ -106,43 +114,64 @@ class VectorDBService:
         def health_check():
             return jsonify({"status": "ok", "service": "VectorDBService"})
 
-        @route("/api/collections/<name>/stats", methods=["GET"])
-        def get_stats(name):
+        @route("/api/collections", methods=["POST"])
+        def create_collection():
+            """
+            Creates a new collection or updates config of existing one.
+            Body: { "name": str, "chunk_size": int, "chunk_overlap": int }
+            """
+            data = request.json or {}
+            name = data.get("name")
+            if not name:
+                return jsonify({"error": "Collection name is required"}), 400
+
+            chunk_size = int(data.get("chunk_size", 512))
+            chunk_overlap = int(data.get("chunk_overlap", 50))
+
             try:
-                repo = get_repo(name)
+                # Use ensure_repository: creates if missing, updates config if exists
+                repo = self.engine.ensure_repository(name, chunk_size, chunk_overlap)
                 return jsonify({
-                    "collection": name,
-                    "chunk_count": repo.count()
+                    "status": "success",
+                    "message": f"Collection '{name}' ready.",
+                    "config": repo.get_config()
                 })
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
         @route("/api/collections/<name>/upsert", methods=["POST"])
         def upsert_document(name):
-            """
-            Expects JSON: { "doc_id": str, "text": str, "metadata": dict }
-            """
-            data = request.json or {}
-            doc_id = data.get("doc_id")
-            text = data.get("text")
-            metadata = data.get("metadata", {})
-
-            if not doc_id or not text:
-                return jsonify({"error": "doc_id and text are required"}), 400
-
             try:
-                repo = get_repo(name)
-                # Perform the upsert (delete-then-insert)
-                chunk_ids = repo.upsert_document(doc_id, text, metadata)
-                return jsonify({
-                    "status": "success",
-                    "doc_id": doc_id,
-                    "chunks_created": len(chunk_ids)
-                })
+                # STRICT MODE: Only allow upsert to existing collections.
+                # If the collection does not exist, get_repo_strict raises ValueError (404).
+                repo = get_repo_strict(name)
+
+                # Call the repository method (ensure method name matches your VectorStorageEngine implementation)
+                # Usually 'add_document' or 'upsert_document' depending on your naming.
+                chunk_ids = repo.upsert_document(
+                    request.json['doc_id'],
+                    request.json['text'],
+                    request.json.get('metadata', {})
+                )
+                return jsonify({"status": "success", "chunks_created": len(chunk_ids)})
+
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
             except ServiceUnavailable as e:
                 return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
-                logger.error(f"Upsert failed: {e}")
+                return jsonify({"error": str(e)}), 500
+
+        @route("/api/collections/<name>/stats", methods=["GET"])
+        def get_stats(name):
+            try:
+                repo = get_repo_strict(name)
+                return jsonify({"collection": name, "chunk_count": repo.count()})
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
+            except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
         @route("/api/collections/<name>/search", methods=["POST"])
@@ -160,7 +189,7 @@ class VectorDBService:
             filter_criteria = data.get("filter_criteria", None)
 
             try:
-                repo = get_repo(name)
+                repo = get_repo_strict(name)
                 results = repo.search(
                     query_text=query,
                     top_n=top_n,
@@ -168,6 +197,8 @@ class VectorDBService:
                     filter_criteria=filter_criteria
                 )
                 return jsonify(results)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
             except ServiceUnavailable as e:
                 return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
@@ -177,12 +208,14 @@ class VectorDBService:
         @route("/api/collections/<name>/documents/<doc_id>", methods=["DELETE"])
         def delete_document(name, doc_id):
             try:
-                repo = get_repo(name)
+                repo = get_repo_strict(name)
                 success = repo.delete_document(doc_id)
                 if success:
                     return jsonify({"status": "success", "doc_id": doc_id})
                 else:
                     return jsonify({"status": "warning", "message": "Document not found"}), 404
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
             except ServiceUnavailable as e:
                 return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
@@ -191,9 +224,11 @@ class VectorDBService:
         @route("/api/collections/<name>/clear", methods=["POST"])
         def clear_collection(name):
             try:
-                repo = get_repo(name)
+                repo = get_repo_strict(name)
                 repo.clear()
                 return jsonify({"status": "cleared", "collection": name})
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
             except ServiceUnavailable as e:
                 return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
@@ -210,8 +245,6 @@ class VectorDBService:
                 zip_path = self.engine.create_backup(temp_dir)
 
                 # Send file and perform cleanup afterwards if possible
-                # Note: Flask's send_file doesn't automatically delete.
-                # For a simple solution, we leave it in /tmp or use a periodic cleaner.
                 filename = os.path.basename(zip_path)
                 return send_file(
                     zip_path,
@@ -254,7 +287,7 @@ class VectorDBService:
             except Exception as e:
                 return jsonify({"error": f"Restore failed: {str(e)}"}), 500
 
-        # 获取所有 Collection 列表
+        # Get list of all collections
         @route("/api/collections", methods=["GET"])
         def list_all_collections():
             try:
@@ -263,16 +296,20 @@ class VectorDBService:
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
-        # 分页浏览数据
+        # Paginated document browsing
         @route("/api/collections/<name>/documents", methods=["GET"])
         def list_documents(name):
             limit = int(request.args.get("limit", 20))
             offset = int(request.args.get("offset", 0))
 
             try:
-                repo = get_repo(name)
+                repo = get_repo_strict(name)
                 data = repo.list_documents(limit=limit, offset=offset)
                 return jsonify(data)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 404
+            except ServiceUnavailable as e:
+                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
 
