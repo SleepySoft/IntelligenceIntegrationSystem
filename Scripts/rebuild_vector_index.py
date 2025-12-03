@@ -2,89 +2,101 @@
 # -*- coding: utf-8 -*-
 
 """
-Vector Index Rebuild and Search Tool
+Vector Index Rebuild and Search Tool (Client Mode)
 
-This tool uses the VectorDB to rebuild indexes from MongoDB
-and perform interactive searches.
+This tool connects to the standalone VectorDB Service via HTTP to rebuild indexes
+from MongoDB and perform interactive searches.
 
-Startup is fast as all heavy loading is deferred to a background thread.
+It uses the IntelligenceVectorDBEngine to ensure data format and metadata
+consistency with the main service.
 """
 
-# --- Lightweight Imports ---
 import sys
 import time
 import argparse
 import traceback
+import copy
 from typing import Optional
 
-# --- (Requirement 1) Fast Import ---
-from VectorDB.VectorStorageEngine import VectorDBService, VectorStoreManager
+# --- New Architecture Imports ---
+from ServiceComponent.IntelligenceHubDefines import ArchivedData
+from VectorDB.VectorDBClient import VectorDBClient, RemoteCollection
+from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 
 # --- Configuration ---
+# MongoDB (Source)
 MONGO_URI = "mongodb://localhost:27017/"
 MONGO_DB_NAME = "IntelligenceIntegrationSystem"
 MONGO_COLLECTION_NAME = "intelligence_archived"
 
-VECTOR_DB_PATH = "./vector_stores"
-MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
+# VectorDB Service (Destination)
+VECTOR_SERVICE_URL = "http://localhost:8001"
 
+# Collections Configuration
+# Note: Chunk configs are handled by the server/client creation logic
 COLLECTION_FULL_TEXT = "intelligence_full_text"
+CONFIG_FULL_TEXT = {"chunk_size": 512, "chunk_overlap": 50}
+
 COLLECTION_SUMMARY = "intelligence_summary"
+CONFIG_SUMMARY = {"chunk_size": 256, "chunk_overlap": 30}
 
 SEARCH_SCORE_THRESHOLD = 0.5
 SEARCH_TOP_N = 5
 
 
-# --- Helper Functions (with lazy imports) ---
+# --- Helper Functions ---
 
-def connect_to_mongo() -> Optional["MongoClient"]:
+def connect_to_mongo():
     """Connects to MongoDB and returns the collection object."""
-    # Lazy import
     from pymongo import MongoClient
     try:
         client = MongoClient(MONGO_URI)
         client.server_info()  # Test connection
         db = client[MONGO_DB_NAME]
         collection = db[MONGO_COLLECTION_NAME]
-        print(f"Successfully connected to MongoDB: {MONGO_DB_NAME}.{MONGO_COLLECTION_NAME}")
+        print(f"[Mongo] Successfully connected to: {MONGO_DB_NAME}.{MONGO_COLLECTION_NAME}")
         return collection
     except Exception as e:
-        print(f"Failed to connect to MongoDB: {e}")
+        print(f"[Mongo] Failed to connect: {e}")
         return None
+
+
+def safe_get_collection(client: VectorDBClient, name: str, config: dict) -> RemoteCollection:
+    """Helper to create or get a collection via Client."""
+    # This creates the collection if missing, or updates config if exists
+    return client.create_collection(
+        name=name,
+        chunk_size=config["chunk_size"],
+        chunk_overlap=config["chunk_overlap"]
+    )
 
 
 # --- Core Logic Functions ---
 
 def func_rebuild(
-        store_full_text: VectorStoreManager,
-        store_summary: VectorStoreManager,
+        engine_full_text: IntelligenceVectorDBEngine,
+        engine_summary: IntelligenceVectorDBEngine,
         mode: str = "incremental"
-    ):
+):
     """
-    Fetches all data from MongoDB and rebuilds the vector indexes.
-    (Updated with robust batch processing and incremental/recreate modes)
-
-    Args:
-        store_full_text: VectorStoreManager for full text.
-        store_summary: VectorStoreManager for summaries.
-        mode (str): 'incremental' (default) checks for existing UUIDs and skips them.
-                    'recreate' clears the collections before rebuilding.
+    Fetches data from MongoDB and rebuilds vector indexes using the Engine.
     """
-    # Lazy import
     from tqdm import tqdm
 
     print(f"\n--- Starting Vector Index Build (Mode: {mode}) ---")
 
-    # 1. (NEW) Handle mode
+    # 1. Handle Recreation Mode
     if mode == "recreate":
-        print("Mode 'recreate' selected. Clearing existing vector stores...")
-        store_full_text.clear_collection()
-        store_summary.clear_collection()
-        print("Vector stores cleared.")
-    elif mode != "incremental":
-        print(f"Warning: Unknown mode '{mode}'. Defaulting to 'incremental'.")
-        mode = "incremental"
+        print("Mode 'recreate' selected. Clearing existing remote collections...")
+        try:
+            engine_full_text.collection.clear()
+            engine_summary.collection.clear()
+            print("Remote collections cleared.")
+        except Exception as e:
+            print(f"Error clearing collections: {e}")
+            return
 
+    # 2. Connect Source
     collection = connect_to_mongo()
     if collection is None:
         return
@@ -96,86 +108,82 @@ def func_rebuild(
         total_docs = 0
 
     if total_docs == 0:
-        print("No documents found in MongoDB collection. Nothing to build.")
+        print("No documents found in MongoDB. Nothing to build.")
         return
 
     print(f"Found {total_docs} documents to process.")
 
-    added_count = 0
-    skipped_existing_count = 0
+    processed_count = 0
     skipped_error_count = 0
+    batch_size = 100
+    last_id = None
 
-    batch_size = 500  # 每次从 Mongo 拉取 500 个文档
-    last_id = None  # 跟踪上一批的最后一个 _id
-
-    # 使用 'upsert' in add_document 是幂等的，所以我们只是处理所有。
-    with tqdm(total=total_docs, desc="Processing Documents") as pbar:
+    with tqdm(total=total_docs, desc="Upserting Documents") as pbar:
         while True:
-            # 1. 构建查询以获取下一批
+            # Batch Query
             query = {}
             if last_id:
                 query['_id'] = {'$gt': last_id}
 
-            # 2. 拉取一个批次 (这是一个短暂、全新的游标)
             try:
                 batch_docs = list(
                     collection.find(query)
-                    .sort('_id', 1)  # 必须按 _id 排序
+                    .sort('_id', 1)
                     .limit(batch_size)
                 )
             except Exception as e:
-                print(f"\nFATAL: Error fetching batch from MongoDB: {e}")
-                print(traceback.format_exc())
-                break  # 退出 while 循环
+                print(f"\nFATAL: MongoDB Error: {e}")
+                break
 
-            # 3. 检查是否所有批次都已处理完毕
             if not batch_docs:
-                break  # 没有更多文档了，退出 while 循环
+                break
 
-            # 4. (这是你的原始逻辑) 循环处理内存中的这一小批文档
+            # Process Batch
             for doc in batch_docs:
                 try:
-                    uuid = doc.get('UUID')
-                    if not uuid:
+                    # 1. Convert Mongo Dict -> ArchivedData Pydantic Model
+                    # We remove _id because Pydantic usually doesn't expect the Mongo ObjectId
+                    # unless explicitly defined.
+                    doc_clean = {k: v for k, v in doc.items() if k != '_id'}
+
+                    try:
+                        # Validation might fail if data is corrupt
+                        archived_data = ArchivedData(**doc_clean)
+                    except Exception as validation_e:
+                        # print(f"Validation error for doc {doc.get('UUID')}: {validation_e}")
                         skipped_error_count += 1
-                        pbar.update(1)
                         continue
 
-                    # Incremental Check ---
-                    if mode == "incremental":
-                        # 检查任一 store 中是否存在此 UUID
-                        if store_full_text.document_exists(uuid) or store_summary.document_exists(uuid):
-                            skipped_existing_count += 1
-                            pbar.update(1)
-                            continue  # 跳过这个已存在的文档
-                    # --- End of New Logic ---
-
-                    doc_added_flag = False # 标记此文档是否产生了任何向量
-
-                    # 1. Process 'intelligence_full_text'
-                    raw_data = doc.get('RAW_DATA', {}).get('content')
-                    if raw_data:
-                        store_full_text.add_document(str(raw_data), uuid)
-                        doc_added_flag = True
+                    if not archived_data.UUID:
+                        skipped_error_count += 1
+                        continue
 
                     # 2. Process 'intelligence_summary'
-                    title = doc.get('EVENT_TITLE', '') or ''
-                    brief = doc.get('EVENT_BRIEF', '') or ''
-                    text = doc.get('EVENT_TEXT', '') or ''
-                    text_summary = f"{title}\n{brief}\n{text}".strip()
+                    # Standard usage: Engine extracts Title/Brief/Text + Metadata
+                    engine_summary.upsert(archived_data, data_type='summary')
 
-                    if text_summary:
-                        store_summary.add_document(text_summary, uuid)
-                        doc_added_flag = True
+                    # 3. Process 'intelligence_full_text'
+                    # Requirement: Index the RAW_DATA content.
+                    # Trick: We reuse the Engine to ensure Metadata (Time, Rate, etc.) is consistent,
+                    # but we temporarily swap the text content to raw_data.
+                    raw_content = None
+                    if archived_data.RAW_DATA:
+                        raw_content = archived_data.RAW_DATA.get('content')
 
-                    if doc_added_flag:
-                        added_count += 1
-                    else:
-                        # 有 UUID 但没有有效内容
-                        skipped_error_count += 1
+                    if raw_content and isinstance(raw_content, str):
+                        # Create a shallow copy to avoid modifying the original used above
+                        data_for_full = copy.copy(archived_data)
+                        # Override fields so Engine uses Raw Data as the embedding text
+                        data_for_full.EVENT_TITLE = ""
+                        data_for_full.EVENT_BRIEF = ""
+                        data_for_full.EVENT_TEXT = raw_content
+
+                        engine_full_text.upsert(data_for_full, data_type='full')
+
+                    processed_count += 1
 
                 except Exception as e:
-                    print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
+                    # print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
                     skipped_error_count += 1
 
                 finally:
@@ -184,16 +192,22 @@ def func_rebuild(
             last_id = batch_docs[-1]['_id']
 
     print("\n--- Build Complete ---")
-    print(f"Successfully added (new): {added_count}")
-    print(f"Skipped (already existing): {skipped_existing_count}")
-    print(f"Skipped (error/no UUID/no content): {skipped_error_count}")
-    print(f"Total chunks in '{store_full_text.collection_name}': {store_full_text.count()}")
-    print(f"Total chunks in '{store_summary.collection_name}': {store_summary.count()}")
+    print(f"Processed / Upserted: {processed_count}")
+    print(f"Skipped (Validation/Empty): {skipped_error_count}")
+
+    # Optional: Print stats from remote
+    try:
+        stats_s = engine_summary.collection.stats()
+        stats_f = engine_full_text.collection.stats()
+        print(f"Remote Stats [Summary]:   {stats_s}")
+        print(f"Remote Stats [FullText]:  {stats_f}")
+    except:
+        pass
 
 
-def func_search(store_full_text: VectorStoreManager, store_summary: VectorStoreManager):
+def func_search(engine_full_text: IntelligenceVectorDBEngine, engine_summary: IntelligenceVectorDBEngine):
     """
-    Starts an interactive search loop.
+    Interactive search using the Engine's query interface.
     """
     print("\n--- Starting Interactive Search (type 'q' to quit) ---")
 
@@ -202,154 +216,121 @@ def func_search(store_full_text: VectorStoreManager, store_summary: VectorStoreM
         if query_text.lower() == 'q':
             break
 
-        mode = input("Search [f]ull text, [s]ummary, or [b]oth (intersection)? (f/s/b): ").lower()
+        mode = input("Search [f]ull text, [s]ummary, or [b]oth? (f/s/b): ").lower()
         if mode == 'q':
             break
+
+        # Optional: Add filters for testing metadata support
+        # e.g., rate_threshold = 0.5
 
         results_full = []
         results_summary = []
 
-        if mode in ['f', 'b']:
-            results_full = store_full_text.search(
-                query_text,
-                top_n=SEARCH_TOP_N,
-                score_threshold=SEARCH_SCORE_THRESHOLD
-            )
+        try:
+            if mode in ['f', 'b']:
+                results_full = engine_full_text.query(
+                    text=query_text,
+                    rate_threshold=SEARCH_SCORE_THRESHOLD  # Using Engine's native filter support
+                    # Note: Engine query returns list of dicts from RemoteCollection
+                )
 
-        if mode in ['s', 'b']:
-            results_summary = store_summary.search(
-                query_text,
-                top_n=SEARCH_TOP_N,
-                score_threshold=SEARCH_SCORE_THRESHOLD
-            )
+            if mode in ['s', 'b']:
+                results_summary = engine_summary.query(
+                    text=query_text,
+                    rate_threshold=SEARCH_SCORE_THRESHOLD
+                )
+        except Exception as e:
+            print(f"Search failed: {e}")
+            continue
 
+        # Extract IDs for intersection logic
+        # The engine/client returns 'doc_id' in results
         uuids_full = {res['doc_id'] for res in results_full}
         uuids_summary = {res['doc_id'] for res in results_summary}
 
-        print("\n--- Search Results ---")
+        print("\n--- Search Results (Top 5) ---")
+
+        def print_res(label, results):
+            print(f"[{label}] Found {len(results)} matches:")
+            for res in results:
+                # Handle potentially different result structures from different versions
+                score = res.get('score', 0.0)
+                doc_id = res.get('doc_id')
+                content = res.get('content', '') or res.get('chunk_text', '')
+                meta = res.get('metadata', {})
+
+                print(f"  - UUID: {doc_id} (Score: {score:.4f})")
+                print(f"    Time: {meta.get('pub_timestamp', 'N/A')}")
+                print(f"    Text: {content[:80].replace(chr(10), ' ')}...")
 
         if mode == 'f':
-            print(f"Found {len(uuids_full)} matching UUIDs in FULL TEXT (threshold > {SEARCH_SCORE_THRESHOLD}):")
-            for res in results_full:
-                print(f"  - UUID: {res['doc_id']} (Score: {res['score']:.4f})")
-                print(f"    Chunk: {res['chunk_text'][:80]}...")
-
+            print_res("Full Text", results_full)
         elif mode == 's':
-            print(f"Found {len(uuids_summary)} matching UUIDs in SUMMARY (threshold > {SEARCH_SCORE_THRESHOLD}):")
-            for res in results_summary:
-                print(f"  - UUID: {res['doc_id']} (Score: {res['score']:.4f})")
-                print(f"    Chunk: {res['chunk_text'][:80]}...")
-
+            print_res("Summary", results_summary)
         elif mode == 'b':
             intersection = uuids_full.intersection(uuids_summary)
-            print(f"Found {len(intersection)} matching UUIDs in BOTH (Intersection):")
-            print(f"  {intersection}")
-
-            print(f"\nDetails (Full Text Hits): {uuids_full}")
-            print(f"Details (Summary Hits):   {uuids_summary}")
-
-        else:
-            print("Invalid mode. Please enter 'f', 's', or 'b'.")
+            print(f"Intersection Count: {len(intersection)}")
+            print(f"IDs in Both: {intersection}")
+            print("-" * 20)
+            print_res("Full Text Hits", results_full)
+            print("-" * 20)
+            print_res("Summary Hits", results_summary)
 
 
 # --- Main Execution ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Vector Index Rebuild and Search Tool")
-    parser.add_argument(
-        'actions',
-        nargs='+',
-        choices=['rebuild', 'search'],
-        help="Action(s) to perform. 'rebuild' rebuilds the index. 'search' starts interactive search."
-    )
-    # 添加一个标志来控制重建模式
-    parser.add_argument(
-        '--full',
-        action='store_true',  # 如果存在此标志，args.full 将为 True
-        help="If 'rebuild' is specified, perform a full (recreate) build. "
-             "Default is incremental."
-    )
+    parser = argparse.ArgumentParser(description="Vector Index Rebuild Tool (Client Mode)")
+    parser.add_argument('actions', nargs='+', choices=['rebuild', 'search'], help="Action to perform")
+    parser.add_argument('--full', action='store_true', help="If rebuilding, clear existing data first (Recreate mode).")
     args = parser.parse_args()
 
-    # --- Initialize Service (Non-blocking) ---
-    print("\n[Main]: Initializing vector service (non-blocking)...")
-    service = VectorDBService(
-        db_path=VECTOR_DB_PATH,
-        model_name=MODEL_NAME
-    )
+    # 1. Initialize Client
+    print(f"\n[Main]: Connecting to VectorDB Service at {VECTOR_SERVICE_URL}...")
+    client = VectorDBClient(base_url=VECTOR_SERVICE_URL)
 
-    # --- Wait for Service to be Ready ---
-    print("[Main]: Waiting for shared components (model, db client) to load...")
-    while True:
-        status_info = service.get_status()
-        status = status_info["status"]
-
-        if status == "ready":
-            print("[Main]: Vector service is READY.")
-            break
-        if status == "error":
-            print(f"[Main]: FATAL: Failed to load service: {status_info['error']}")
-            sys.exit(1)
-
-        print("[Main]: Loader thread is working...")
-        time.sleep(2)
-
-    # --- Service is loaded. Get store managers (fast) ---
-    print("[Main]: Initializing vector store managers (this is fast)...")
     try:
-        store_full = service.get_store(
-            collection_name=COLLECTION_FULL_TEXT,
-            chunk_size=512
-        )
-
-        store_summary = service.get_store(
-            collection_name=COLLECTION_SUMMARY,
-            chunk_size=256  # Summaries are shorter
-        )
+        # Wait for service to be ready (load models etc.)
+        client.wait_until_ready(timeout=30)
+        print("[Main]: VectorDB Service is connected and ready.")
     except Exception as e:
-        print(f"[Main]: FATAL: Failed to get store managers: {e}")
+        print(f"[Main]: Failed to connect to VectorDB Service: {e}")
         sys.exit(1)
 
-    # --- Route to Core Logic ---
+    # 2. Initialize Collections & Engines
+    # We use safe_get_collection to ensure they exist with correct config
+    print("[Main]: Initializing remote collections...")
 
-    # 1. 处理 Rebuild 动作
+    try:
+        # Summary Collection
+        col_summary = safe_get_collection(client, COLLECTION_SUMMARY, CONFIG_SUMMARY)
+        engine_summary = IntelligenceVectorDBEngine(col_summary)
+
+        # Full Text Collection
+        col_full = safe_get_collection(client, COLLECTION_FULL_TEXT, CONFIG_FULL_TEXT)
+        engine_full = IntelligenceVectorDBEngine(col_full)
+
+    except Exception as e:
+        print(f"[Main]: Error initializing collections: {e}")
+        sys.exit(1)
+
+    # 3. Route Actions
     if 'rebuild' in args.actions:
-        build_mode = None  # 初始化
-
-        if args.full:
-            # --- 模式：Recreate (需要确认) ---
-            build_mode = "recreate"
-            print("--- FULL REBUILD ACTION REQUESTED ---")
+        mode = "recreate" if args.full else "incremental"
+        if mode == "recreate":
             confirm = input(
-                "ARE YOU SURE? This will DELETE existing data "
-                f"in '{COLLECTION_FULL_TEXT}' and '{COLLECTION_SUMMARY}'. (type 'yes' to confirm): "
-            )
-            if confirm.lower() == 'yes':
-                print("Proceeding with full rebuild...")
-            else:
-                print("Full rebuild cancelled.")
-                build_mode = None  # 阻止执行
+                f"WARNING: This will DELETE ALL DATA in '{COLLECTION_SUMMARY}' and '{COLLECTION_FULL_TEXT}'. Confirm? (yes/no): ")
+            if confirm.lower() != 'yes':
+                print("Aborted.")
+                sys.exit(0)
 
-        else:
-            # --- 模式：Incremental (默认, 无需确认) ---
-            build_mode = "incremental"
-            print("--- INCREMENTAL REBUILD ACTION REQUESTED ---")
+        func_rebuild(engine_full, engine_summary, mode)
 
-        # 如果 build_mode 有效 (即 'incremental' 或 'recreate' 且已确认)
-        if build_mode:
-            func_rebuild(store_full, store_summary, mode=build_mode)
-
-    # 2. 处理 Search 动作
-    # 即使 rebuild 被取消，如果 search 被指定，它仍会运行
     if 'search' in args.actions:
-        func_search(store_full, store_summary)
+        func_search(engine_full, engine_summary)
 
-    print("\n[Main]: Tool finished.")
+    print("\n[Main]: Done.")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(str(e))
-        print(traceback.format_exc())
+    main()
