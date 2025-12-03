@@ -14,6 +14,7 @@ from typing import Tuple, Optional, Dict, Union
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
 
+from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from prompts import ANALYSIS_PROMPT
 from GlobalConfig import EXPORT_PATH
 from ServiceComponent.IntelligenceHubDefines import *
@@ -99,8 +100,9 @@ class IntelligenceHub:
         self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
         self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
-        self.vector_db_summary: Optional[RemoteCollection] = None
-        self.vector_db_full_text: Optional[RemoteCollection] = None
+        self.vector_db_engine_summary: Optional[IntelligenceVectorDBEngine] = None
+        self.vector_db_engine_full_text: Optional[IntelligenceVectorDBEngine] = None
+
         self.vector_db_init_event = threading.Event()
         self.vector_db_init_failed = False
 
@@ -328,10 +330,10 @@ class IntelligenceHub:
         summary_result = []
         fulltext_result = []
 
-        if in_summary and self.vector_db_summary:
-            summary_result = self.vector_db_summary.search(text, top_n, score_threshold)
-        if in_fulltext and self.vector_db_full_text:
-            fulltext_result = self.vector_db_full_text.search(text, top_n, score_threshold)
+        if in_summary and self.vector_db_engine_summary:
+            summary_result = self.vector_db_engine_summary.query(text, top_n, score_threshold)
+        if in_fulltext and self.vector_db_engine_full_text:
+            fulltext_result = self.vector_db_engine_full_text.query(text, top_n, score_threshold)
 
         combined_results = summary_result + fulltext_result
 
@@ -578,25 +580,10 @@ class IntelligenceHub:
 
                 # ------------------------------- Post Process: Indexing -------------------------------
 
-                if self.vector_db_service:
+                if not self.vector_db_init_failed:
                     clock = Clock()
-
-                    _uuid = data.get('UUID')
-
-                    if self.vector_db_summary is not None:
-                        title = data.get('EVENT_TITLE', '') or ''
-                        brief = data.get('EVENT_BRIEF', '') or ''
-                        text = data.get('EVENT_TEXT', '') or ''
-
-                        text_summary = f"{title}\n{brief}\n{text}".strip()
-                        if text_summary:
-                            self.vector_db_summary.upsert(text_summary, _uuid)
-
-                    if self.vector_db_full_text is not None:
-                        raw_data = data.get('RAW_DATA', {}).get('content')
-                        if raw_data:
-                            self.vector_db_full_text.upsert(str(raw_data), _uuid)
-
+                    self.vector_db_engine_summary.upsert(ArchivedData.model_validate(data))
+                    self.vector_db_engine_full_text.upsert(ArchivedData.model_validate(data))
                     logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
                 # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
@@ -661,11 +648,14 @@ class IntelligenceHub:
                 # We have to create collection after vector initialized.
                 # So we cannot create these 2 collections by config in IntelligenceHubStartup.py
 
-                self.vector_db_summary = self.vector_db_client.create_collection(
+                vector_db_summary = self.vector_db_client.create_collection(
                     name='intelligence_summary', chunk_size=256, chunk_overlap=30)
+                self.vector_db_engine_summary = IntelligenceVectorDBEngine(vector_db_summary)
 
-                self.vector_db_full_text = self.vector_db_client.create_collection(
+                vector_db_full_text = self.vector_db_client.create_collection(
                     name='intelligence_full_text', chunk_size=512, chunk_overlap=50)
+                self.vector_db_engine_full_text = IntelligenceVectorDBEngine(vector_db_full_text)
+
 
                 # 4. 成功！退出循环
                 logger.info(f'Vector DB initialized successfully. Time elapsed: {clock.elapsed_s()}s')
