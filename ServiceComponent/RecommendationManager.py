@@ -18,6 +18,8 @@ from ServiceComponent.IntelligenceAnalyzerProxy import generate_recommendation_b
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+MAX_RECOMMENDATION_ATTEMPTS = 3
+
 
 class RecommendationManager:
     """
@@ -150,22 +152,52 @@ class RecommendationManager:
                 {'UUID': item['UUID'], 'EVENT_TITLE': item['EVENT_TITLE'], 'EVENT_BRIEF': item['EVENT_BRIEF']} for item
                 in result]
 
-            retries = 0
-            while True:
-                if ai_client := self.ai_client_manager.get_available_client('RecommendationManager'):
-                    recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
-                    # Because recommendation period is very long. Release it for other task using.
-                    self.ai_client_manager.release_client(ai_client)
-                    break
-                retries += 1
-                if retries % 10 == 0:
-                    logger.warning(f"Recommendation thread {threading.current_thread().name} waiting for AI client for {retries}s...")
-                time.sleep(1 + random.random() * 0.5)
-            if retries:
-                logger.info(f"Recommendation tries to get AI client for {retries} times.")
+            recommendation_uuids = None
+            last_error = None
+            client_acquire_retries = 0
 
+            for attempt in range(1, MAX_RECOMMENDATION_ATTEMPTS + 1):
+
+                # 1. 持续等待直到 Client 可用
+                while True:
+                    if ai_client := self.ai_client_manager.get_available_client('RecommendationManager'):
+                        break
+                    client_acquire_retries += 1
+                    if client_acquire_retries % 10 == 0:
+                        logger.warning(f"Recommendation waiting for AI client for {client_acquire_retries}s...")
+                    time.sleep(1 + random.random() * 0.5)
+
+                if client_acquire_retries:
+                    logger.info(f"Recommendation tried to get AI client for {client_acquire_retries} times.")
+                    client_acquire_retries = 0  # 重置计数
+
+                # 2. 执行 AI 调用
+                logger.info(f"Attempt {attempt}/{MAX_RECOMMENDATION_ATTEMPTS}: Calling AI Client {ai_client.name}...")
+                recommendation_uuids = generate_recommendation_by_ai(ai_client, SUGGESTION_PROMPT, title_brief)
+                self.ai_client_manager.release_client(ai_client)
+
+                # 3. 检查结果
+                if not recommendation_uuids or 'error' not in recommendation_uuids:
+                    # 成功或返回空列表 (业务成功)
+                    break
+
+                last_error = recommendation_uuids
+
+                # 4. 特殊处理：永久性请求错误 (HTTP 400 敏感词)
+                # 如果是敏感词错误 (HTTP 400)，则无需重试，立即退出整个任务。
+                if isinstance(recommendation_uuids, dict) and recommendation_uuids.get('api_error_code') == 'HTTP_400':
+                    logger.error(
+                        f"FATAL: Permanent Bad Request (HTTP 400) detected on attempt {attempt}. Stopping recommendation task.")
+                    return False  # 立即退出，等待下一个调度周期
+
+                # 5. 如果是其他瞬时错误 (网络/5xx)，Client Manager 会自动标记该 Client 为 ERROR，循环将尝试下一个 Client。
+                logger.warning(f"Transient error on attempt {attempt}: {last_error}. Retrying...")
+                time.sleep(2)  # 增加延迟，等待 Client 恢复
+
+            # --- 检查最终结果 ---
             if not recommendation_uuids or 'error' in recommendation_uuids:
-                logger.error(f"Failed to get recommendation from AI: {recommendation_uuids}")
+                logger.error(
+                    f"Failed to get recommendation from AI after {MAX_RECOMMENDATION_ATTEMPTS} attempts. Last error: {last_error}")
                 return False
 
             uuid_set = set(recommendation_uuids)

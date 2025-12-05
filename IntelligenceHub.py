@@ -391,9 +391,19 @@ class IntelligenceHub:
     # ---------------------------------------------------- Workers -----------------------------------------------------
 
     @staticmethod
-    def __is_result_an_error(result):
-        """Return True if the result is considered an error."""
-        return result is None or 'error' in result
+    def __is_retryable_error(result):
+        """Only retry if it's NOT a permanent client-side error (HTTP_400)."""
+        if not isinstance(result, dict) or 'error' not in result:
+            return False  # Not an error, or not a dict result we handle
+
+        # Stop retrying if the error is a Client-Side Input Error (HTTP 400)
+        # This assumes error structure is {'api_error_code': 'HTTP_400'}
+        if result.get('api_error_code') == 'HTTP_400':
+            logger.error("Non-retryable input error (HTTP_400) detected. Stopping tenacity loop.")
+            return False  # This will stop tenacity
+
+        # Otherwise, continue retrying
+        return True  # Retry on other errors (network, server, json parse error)
 
     @retry(
         # The wait strategy: start at 1s, multiply by 2 each time, max out at 30s
@@ -401,7 +411,7 @@ class IntelligenceHub:
         # The stop condition: stop after max_retry attempts
         stop=stop_after_attempt(3),
         # The retry condition: retry if an exception occurs OR the result is an error
-        retry=(retry_if_exception_type(Exception) | retry_if_result(__is_result_an_error))
+        retry = (retry_if_exception_type(Exception) | retry_if_result(__is_retryable_error))
     )
     def __robust_analyze_with_ai(self, original_data: dict, worker_index: int):
         """
@@ -454,6 +464,7 @@ class IntelligenceHub:
             original_uuid = None
             original_data = None
             current_queue = None  # 用于记录当前数据来自哪个队列，以便正确 task_done
+            is_sensitive_or_bad_request = False
 
             try:
                 try:
@@ -509,9 +520,24 @@ class IntelligenceHub:
 
                 result = self.__robust_analyze_with_ai(original_data, worker_index)
 
-                if not result or 'error' in result:
-                    error_msg = f"AI process error after all retries."
+                is_error = not result or 'error' in result
+
+                if is_error:
+                    # 检查是否是 HTTP_400 敏感词/请求参数错误
+                    # result 应该包含 BaseAIClient 返回的 api_error_code
+                    if isinstance(result, dict) and result.get('api_error_code') == 'HTTP_400':
+                        is_sensitive_or_bad_request = True
+                        error_msg = f"AI process failed: Permanent Bad Request (HTTP 400)."
+                    else:
+                        # 其他错误 (网络/服务器/JSON解析错，tenacity已重试 3 次)
+                        error_msg = f"AI process error after all retries."
+
+                    # 将错误提升为 Exception，以便进入 finally 块并进行标记
                     raise ValueError(error_msg)
+
+                # if not result or 'error' in result:
+                #     error_msg = f"AI process error after all retries."
+                #     raise ValueError(error_msg)
 
                 # ----------------------- Check Analysis Result and Fill Other Fields ------------------------
 
@@ -547,7 +573,15 @@ class IntelligenceHub:
                 with self.lock:
                     self.error_counter += 1
                 logger.error(f"{prefix} Analysis error: {str(e)}")
-                self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR)
+
+                if is_sensitive_or_bad_request:
+                    # 如果是敏感词或坏请求，使用特殊标记，避免丢弃但隔离
+                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_SENSITIVE)
+                    logger.warning(
+                        f"{prefix} Permanently Blocked: {original_uuid} marked BLOCKED due to HTTP 400 error.")
+                else:
+                    # 其他错误（网络、系统等）使用 ARCHIVED_FLAG_ERROR 标记
+                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR)
             finally:
                 if current_queue:
                     current_queue.task_done()
