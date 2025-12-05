@@ -614,11 +614,11 @@ class IntelligenceHub:
 
                 # ------------------------------- Post Process: Indexing -------------------------------
 
-                if not self.vector_db_init_failed:
-                    clock = Clock()
-                    self.vector_db_engine_summary.upsert(ArchivedData.model_validate(data))
-                    self.vector_db_engine_full_text.upsert(ArchivedData.model_validate(data))
-                    logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
+                # if not self.vector_db_init_failed:
+                #     clock = Clock()
+                #     self.vector_db_engine_summary.upsert(ArchivedData.model_validate(data))
+                #     self.vector_db_engine_full_text.upsert(ArchivedData.model_validate(data))
+                #     logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
                 # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
 
