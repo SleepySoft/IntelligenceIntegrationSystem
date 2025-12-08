@@ -4,8 +4,10 @@ import time
 import logging
 import threading
 import traceback
+from pathlib import Path
 from typing import Optional
 
+from GlobalConfig import *
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -196,8 +198,8 @@ class FileHandler(FileSystemEventHandler):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-CRAWL_LOG_FILE = 'crawls.log'
-HISTORY_LOG_FOLDER = 'crawls_history_log'
+CRAWL_LOG_FILE = os.path.join(LOG_PATH, 'crawls.log')
+HISTORY_LOG_FOLDER = os.path.join(LOG_PATH, 'crawls_history_log')
 
 
 def config_log_level():
@@ -214,6 +216,9 @@ def config_log_level():
 
 
 def main():
+    Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
+    Path(HISTORY_LOG_FOLDER).mkdir(parents=True, exist_ok=True)
+
     # ------------------------------------ Logger ------------------------------------
 
     backup_and_clean_previous_log_file(CRAWL_LOG_FILE, HISTORY_LOG_FOLDER)
