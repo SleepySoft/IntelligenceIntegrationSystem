@@ -237,6 +237,7 @@ function renderArticles(articles) {
         const max_rate_class = escapeHTML(appendix.APPENDIX_MAX_RATE_CLASS || '');
         const max_rate_score = appendix.APPENDIX_MAX_RATE_SCORE;
 
+        // 1. 处理评分
         let max_rate_display = "";
         if (max_rate_class && max_rate_score !== null && max_rate_score !== undefined) {
             max_rate_display = `
@@ -246,6 +247,31 @@ function renderArticles(articles) {
             </div>`;
         }
 
+        // 2. 处理 AI 服务和模型信息 (新增)
+        const ai_service_url = appendix.__AI_SERVICE__ || '';
+        const ai_model_name = escapeHTML(appendix.__AI_MODEL__ || '');
+        let ai_info_display = "";
+
+        if (ai_service_url || ai_model_name) {
+            let service_host = "";
+            try {
+                if (ai_service_url) {
+                    service_host = new URL(ai_service_url).hostname;
+                }
+            } catch (e) { /* Ignore invalid URL */ }
+
+            ai_info_display = `
+            <div class="ai-metadata mt-1 text-secondary small" style="font-size: 0.85em;">
+                <i class="bi bi-robot" title="AI Model"></i>
+                <strong>${ai_model_name || 'Unknown Model'}</strong>
+                ${service_host ? `
+                    <span class="mx-1 text-muted">|</span>
+                    <i class="bi bi-clouds" title="Service Provider"></i> ${service_host}
+                ` : ''}
+            </div>`;
+        }
+
+        // 3. 处理归档时间
         let archived_html = "";
         if (archived_time) {
             archived_html = `
@@ -269,7 +295,10 @@ function renderArticles(articles) {
             <p class="article-summary">${escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
             <div class="debug-info">
                 ${max_rate_display}
-                <span class="debug-label">UUID:</span> ${uuid}
+                ${ai_info_display}
+                <div class="mt-1">
+                    <span class="debug-label">UUID:</span> ${uuid}
+                </div>
             </div>
         </div>`;
     }).join('');
