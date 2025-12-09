@@ -183,3 +183,10 @@ requirements.txt.bak
 # config file
 config.json
 ai_client_config.py
+
+# Not-project folders
+_log
+_data
+_config
+_export
+_products
