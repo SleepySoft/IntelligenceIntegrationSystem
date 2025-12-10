@@ -63,6 +63,7 @@ def build_ai_client_manager(config: EasyConfig):
             client_manager.register_client(client)
 
         # Considering stable and limitation. Limit 2 Siliconflow service at the same time.
+        client_manager.set_group_limit('silicon flow proxy', 1)
         client_manager.set_group_limit('silicon flow', 2)
         client_manager.set_group_limit('model scope', 1)
         client_manager.set_group_limit('zhipu', 1)

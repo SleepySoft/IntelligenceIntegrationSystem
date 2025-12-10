@@ -38,33 +38,61 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadData() {
+        // 1. 获取当前状态（来源于浏览器地址栏，因为 updateUrl 已经在之前执行了）
         const state = getUrlState();
         syncControls(state);
         renderer.showLoading();
 
-        const apiPage = Math.floor(state.offset / state.count) + 1;
+        // 2. [关键修改] 构建发送给服务器的 URL 参数
+        // 即使是 POST 请求，也可以带 URL 参数 (Query String)
+        const queryParams = new URLSearchParams({
+            offset: state.offset,
+            count: state.count,
+            threshold: state.threshold
+        });
 
+        // 3. 构建 URL：将参数拼接到 API_URL 后面
+        // 结果类似：/intelligences?offset=0&count=10&threshold=6
+        const targetUrl = `${API_URL}?${queryParams.toString()}`;
+
+        // 4. 准备 Body (用于放置那些不适合放在 URL 里的复杂或过长参数)
+        // 注意：根据上一轮的后端代码，后端是用 'offset' 和 'count'，
+        // 但你这里传的是 'page' 和 'per_page'。为了保险，建议 Body 里也保持一致。
         const payload = {
-            page: apiPage,
-            per_page: state.count,
+            // 冗余发送，确保万无一失，但后端现在的逻辑会优先取 URL 里的
+            offset: state.offset,
+            count: state.count,
             threshold: state.threshold,
+
+            // 其他不需要体现在 URL 上的参数继续放在 Body 里
             search_mode: 'mongo',
-            start_time: '', end_time: '',
-            locations: '', peoples: '', organizations: '',
-            keywords: '', score_threshold: 0.5
+            start_time: '',
+            end_time: '',
+            locations: '',
+            peoples: '',
+            organizations: '',
+            keywords: '',
+            score_threshold: 0.5
         };
 
         try {
-            const response = await fetch(API_URL, {
+            // 5. 发起请求：使用带参数的 targetUrl
+            const response = await fetch(targetUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
             const data = await response.json();
+
+            // 计算当前页码用于前端分页渲染
+            const currentPage = Math.floor(state.offset / state.count) + 1;
+
             renderer.render(data.results, {
                 total: data.total,
-                page: apiPage,
+                page: currentPage,
                 per_page: state.count
             });
         } catch (error) {

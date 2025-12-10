@@ -318,16 +318,30 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligences', methods=['GET', 'POST'])
         def intelligences_view():
-            # 处理前端的数据获取请求
             if request.method == 'POST':
                 try:
-                    # 2. 获取参数
-                    # 兼容处理：优先尝试获取 JSON body (前端 fetch post)，如果为空则尝试获取 URL args
-                    data = request.get_json(silent=True) or request.args or request.form
+                    # 1. 先初始化一个字典存放合并后的参数
+                    combined_data = {}
 
-                    offset = int(data.get('offset', 0))
-                    count = int(data.get('count', 10))
-                    threshold = int(data.get('threshold', 6))
+                    # 2. 先加载 Body 中的数据 (优先级较低)
+                    # 获取 JSON，如果获取不到 (None) 则尝试获取 Form
+                    json_data = request.get_json(silent=True)
+                    if json_data:
+                        combined_data.update(json_data)
+                    else:
+                        combined_data.update(request.form)
+
+                    # 3. 再加载 URL 中的参数 (优先级最高)
+                    # 使用 update 方法，如果 URL 中有同名参数，会覆盖掉 Body 中的值
+                    combined_data.update(request.args)
+
+                    try:
+                        offset = int(combined_data.get('offset', 0))
+                        count = int(combined_data.get('count', 10))
+                        threshold = int(combined_data.get('threshold', 6))
+                    except ValueError:
+                        return jsonify(
+                            {'error': 'Invalid Parameter', 'message': 'offset/count/threshold must be integers'}), 400
 
                     if count > 100:
                         count = 100
