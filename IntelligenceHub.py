@@ -555,7 +555,7 @@ class IntelligenceHub:
                 if original_informant := str(original_data.get('INFORMANT', '')).strip():
                     result['INFORMANT'] = original_informant
 
-                validated_data, error_text = check_sanitize_dict(dict(result), ProcessedData)
+                validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
                 if error_text:
                     raise ValueError(error_text)
 

@@ -36,9 +36,9 @@ class ProcessedData(BaseModel):
 
 
 class ArchivedDataExtraFields(BaseModel):
-    RAW_DATA: dict | None
-    SUBMITTER: str | None
-    APPENDIX: dict | None
+    RAW_DATA: dict | None = None
+    SUBMITTER: str | None = None
+    APPENDIX: dict | None = None
 
 
 class ArchivedData(ProcessedData, ArchivedDataExtraFields):
