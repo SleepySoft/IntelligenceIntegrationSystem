@@ -57,6 +57,7 @@ class ArticleRenderer {
         }
 
         const html = articles.map(article => {
+            // 1. 基础信息
             const uuid = this.escapeHTML(article.UUID);
             const informant = this.escapeHTML(article.INFORMANT || "");
             const intelUrl = `/intelligence/${uuid}`;
@@ -65,27 +66,64 @@ class ArticleRenderer {
                 ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
                 : (informant || 'Unknown Source');
 
+            // 2. 解析 Appendix
             const appendix = article.APPENDIX || {};
 
-            // Python: APPENDIX_TIME_ARCHIVED = '__TIME_ARCHIVED__'
+            // 提取旧字段
             const archived_time = this.escapeHTML(appendix['__TIME_ARCHIVED__'] || '');
-
-            // Python: APPENDIX_MAX_RATE_CLASS = '__MAX_RATE_CLASS__'
             const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
-
-            // Python: APPENDIX_MAX_RATE_SCORE = '__MAX_RATE_SCORE__'
             const max_rate_score = appendix['__MAX_RATE_SCORE__'];
 
-            let max_rate_display = "";
-            // 检查分数是否有效 (不是 null 也不是 undefined)
+            // --- [新增] 提取 AI 服务和模型字段 ---
+            // 兼容性：如果字段不存在，得到空字符串
+            const ai_service = this.escapeHTML(appendix['__AI_SERVICE__'] || '');
+            const ai_model = this.escapeHTML(appendix['__AI_MODEL__'] || '');
+
+            // 3. 构建左侧 HTML (评分 + UUID)
+            let left_content = "";
+
+            // 评分行
             if (max_rate_class && max_rate_score !== null && max_rate_score !== undefined) {
-                max_rate_display = `
-                <div class="article-rating mt-2">
-                    ${max_rate_class}：
+                // 去掉 class="mt-2"，去掉 article-rating 上的额外 margin
+                // 仅仅保留 class="article-rating"
+                left_content += `
+                <div class="article-rating">
+                    <span class="debug-label">${max_rate_class}:</span>
                     ${this.createRatingStars(max_rate_score)}
                 </div>`;
+            } else {
+                // 如果没有评分，也可以留个空或者显示占位，这里保持不显示
             }
 
+            // UUID 行 (始终显示)
+            left_content += `
+            <div>
+                <span class="debug-label">UUID:</span> ${uuid}
+            </div>`;
+
+            // 4. 构建右侧 HTML (AI Service + Model)
+            let right_content = "";
+
+            if (ai_service || ai_model) {
+                if (ai_service) {
+                    // 给 Service 加上截断样式
+                    right_content += `
+                    <div>
+                        <span class="debug-label">Service:</span>
+                        <span class="debug-value-truncate" title="${ai_service}">${ai_service}</span>
+                    </div>`;
+                }
+                if (ai_model) {
+                    // Model 通常不长，可以不加截断，或者为了统一也加上
+                    right_content += `
+                    <div>
+                        <span class="debug-label">Model:</span>
+                        <span class="debug-value-truncate" title="${ai_model}">${ai_model}</span>
+                    </div>`;
+                }
+            }
+
+            // 5. 构建顶部时间
             let archived_html = "";
             if (archived_time) {
                 archived_html = `
@@ -94,6 +132,7 @@ class ArticleRenderer {
                 </span>`;
             }
 
+            // 6. 组合最终 HTML
             return `
             <div class="article-card">
                 <h3>
@@ -107,10 +146,13 @@ class ArticleRenderer {
                     <span class="article-source">Source: ${informant_html}</span>
                 </div>
                 <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
+
                 <div class="debug-info">
-                    ${max_rate_display}
-                    <div style="margin-top:5px">
-                        <span class="debug-label">UUID:</span> ${uuid}
+                    <div class="debug-left">
+                        ${left_content}
+                    </div>
+                    <div class="debug-right">
+                        ${right_content}
                     </div>
                 </div>
             </div>`;
