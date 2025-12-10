@@ -1,26 +1,14 @@
-/* --- 来自 render_query_page 的样式 --- */
-.card {
-    margin-bottom: 20px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-}
-.form-label {
-    font-weight: 500;
-}
-.pagination {
-    margin-top: 20px;
-}
-.results-header {
+/* static/css/intelligence_table.css */
+
+/* --- 1. 全局与容器 (来自 ArticleListRender.py) --- */
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 20px;
     background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 5px;
-    margin-bottom: 15px;
-}
-.required:after {
-    content: "*";
-    color: red;
+    margin: 0;
 }
 
-/* --- 来自 article_table_style 的样式 --- */
+/* 原始的主容器样式 */
 .article-list {
     max-width: 1000px;
     margin: 0 auto;
@@ -29,12 +17,82 @@
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
+
 .article-list h1 {
     color: #343a40;
     border-bottom: 2px solid #e9ecef;
     padding-bottom: 15px;
     margin-bottom: 25px;
 }
+
+/* --- 2. 原始分页样式 (来自 ArticleListRender.py) --- */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 10px;
+    margin-bottom: 40px;
+    gap: 15px;
+}
+
+.page-btn {
+    padding: 8px 25px;
+    background-color: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #0d47a1;
+    transition: all 0.3s;
+    font-weight: 500;
+    cursor: pointer; /* 因为现在是JS点击，加个手型 */
+    user-select: none;
+}
+
+.page-btn:hover {
+    background-color: #bbdefb;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.page-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.page-info {
+    color: #546e7a;
+    font-size: 0.95rem;
+}
+
+/* --- 3. 顶部控制栏 (新增：为了让筛选器在没有Bootstrap时不丑) --- */
+.controls-container {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: flex-end; /* 靠右对齐 */
+    gap: 15px;
+    align-items: center;
+    font-size: 0.9rem;
+    color: #5f6368;
+}
+
+.controls-container select {
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: inherit;
+}
+
+.refresh-btn {
+    padding: 5px 10px;
+    cursor: pointer;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* --- 4. 文章卡片样式 (来自 ArticleTableRender.py) --- */
 .article-card {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
@@ -67,6 +125,7 @@
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
+    align-items: center;
 }
 .article-time {
     background: #e3f2fd;
@@ -78,13 +137,33 @@
     background: #e3f2fd;
     padding: 3px 8px;
     border-radius: 4px;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: nowrap;
+}
+.source-link-container {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+.source-prefix {
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 1.1em;
+    vertical-align: middle;
 }
 .source-link {
     color: #1565c0;
     text-decoration: none;
+    word-break: break-all;
 }
 .source-link:hover {
     text-decoration: underline;
+}
+.domain-highlight {
+    background-color: #FFFF00;
+    padding: 1px 2px;
+    border-radius: 3px;
 }
 .article-summary {
     color: #202124;
@@ -107,34 +186,18 @@
     color: #37474f;
     margin-right: 5px;
 }
-.debug-link {
-    color: #0288d1;
-    text-decoration: none;
+.article-rating {
+    margin-bottom: 8px;
+    font-size: 1rem;
 }
-.debug-link:hover {
-    text-decoration: underline;
+.text-warning {
+    color: #ffc107 !important;
 }
-.article-source {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: nowrap;
-}
-.source-link-container {
-    display: inline-flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-}
-.source-prefix {
-    display: inline-block;
-    margin-right: 6px;
-    font-size: 1.1em;
-    vertical-align: middle;
-}
-.domain-highlight {
-    background-color: #FFFF00;
-    padding: 1px 2px;
-    border-radius: 3px;
-}
-.source-link {
-    word-break: break-all;
+
+/* 手写一个简单的 Loading 动画，因为去掉了 Bootstrap */
+.loading-spinner {
+    text-align: center;
+    padding: 40px;
+    color: #1a73e8;
+    font-weight: 500;
 }

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligence Integration System (IIS)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+</head>
+<body>
+
+    <div class="article-list">
+        <div class="controls-container">
+            <label>
+                Threshold:
+                <select id="threshold-select">
+                    <option value="0">All (0+)</option>
+                    <option value="4">Wait (> 4)</option>
+                    <option value="6" selected>Good (> 6)</option>
+                    <option value="8">High (> 8)</option>
+                </select>
+            </label>
+
+            <label>
+                Count:
+                <select id="count-select">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </label>
+
+            <button id="refresh-btn" class="refresh-btn" title="Refresh">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+
+        <h1>Intelligences</h1>
+
+        <div id="pagination-top" class="pagination-container"></div>
+
+        <div id="article-list-container">
+            </div>
+
+        <div id="pagination-bottom" class="pagination-container"></div>
+    </div>
+
+    <script src="/static/js/intelligence_table_renderer.js"></script>
+    <script src="/static/js/intelligence_list.js"></script>
+</body>
+</html>

@@ -316,23 +316,55 @@ class IntelligenceHubWebService:
         #         logger.error(f'rssfeed_api() error: {str(e)}', stack_info=True)
         #         return 'Error'
 
-        @app.route('/intelligences', methods=['GET'])
-        def intelligences_list_api():
-            try:
-                offset = request.args.get('offset', default=0, type=int)
-                count = request.args.get('count', default=10, type=int)
-                threshold = request.args.get('threshold', default=6, type=int)
+        @app.route('/intelligences', methods=['GET', 'POST'])
+        def intelligences_view():
+            # 处理前端的数据获取请求
+            if request.method == 'POST':
+                try:
+                    # 2. 获取参数
+                    # 兼容处理：优先尝试获取 JSON body (前端 fetch post)，如果为空则尝试获取 URL args
+                    data = request.get_json(silent=True) or request.args or request.form
 
-                if count > 100:
-                    count = 100
+                    offset = int(data.get('offset', 0))
+                    count = int(data.get('count', 10))
+                    threshold = int(data.get('threshold', 6))
 
-                intelligences, total_count = self.intelligence_hub.query_intelligence(
-                    threshold = threshold, skip = offset, limit = count)
-                return default_article_list_render(intelligences, offset, count, total_count)
+                    if count > 100:
+                        count = 100
 
-            except Exception as e:
-                logger.error(f'intelligences_list_api() error: {str(e)}', stack_info=True)
-                return jsonify({"error": "Server error"}), 500
+                    # 3. 执行查询
+                    # 注意：如果是普通函数视图，这里不能用 self。假设 intelligence_hub 是全局对象。
+                    # 如果你在类视图(MethodView)中，请保留 self.
+                    intelligences, total_count = self.intelligence_hub.query_intelligence(
+                        threshold=threshold, skip=offset, limit=count
+                    )
+
+                    # 4. 数据预处理 (非常重要)
+                    # 数据库返回的对象(如 MongoDB ObjectId 或 datetime)可能无法直接 JSON 序列化
+                    # 建议在这里将其转为普通字典，并将时间转为字符串
+                    results_list = []
+                    for item in intelligences:
+                        # 这是一个防御性转换，确保得到的是字典
+                        item_dict = item if isinstance(item, dict) else item.__dict__
+
+                        # 如果有 ObjectId 或 datetime 需要在这里转 str，例如：
+                        # if '_id' in item_dict: item_dict['_id'] = str(item_dict['_id'])
+
+                        results_list.append(item_dict)
+
+                    # 5. 返回 JSON 给前端
+                    return jsonify({
+                        'results': results_list,
+                        'total': total_count
+                    })
+
+                except Exception as e:
+                    logger.error(f'View rendering error: {str(e)}')
+                    # 返回 JSON 格式的错误信息，方便前端捕获
+                    return jsonify({'error': 'Server Error', 'message': str(e)}), 500
+
+            # 处理浏览器直接访问页面的请求 (GET)
+            return render_template('intelligence_list.html')
 
         @app.route('/recommendations', methods=['GET'])
         def intelligences_recommendations_page():
@@ -357,6 +389,7 @@ class IntelligenceHubWebService:
                         'locations': _split(data.get('locations', '')),
                         'peoples': _split(data.get('peoples', '')),
                         'organizations': _split(data.get('organizations', '')),
+                        'threshold': float(data.get('threshold', 0)),
                         'page': int(data.get('page', 1)),
                         'per_page': int(data.get('per_page', 10)),
                         # 模式开关
@@ -384,7 +417,7 @@ class IntelligenceHubWebService:
                     traceback.print_exc()
                     return jsonify({'error': str(e)}), 500
 
-            return render_template('intelligence_query.html')
+            return render_template('intelligence_search.html')
 
         def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
             """走 Mongo 过滤"""

@@ -1,0 +1,127 @@
+/**
+ * static/js/intelligence_search.js
+ * 负责情报查询页面的表单交互、API请求和状态管理
+ * 依赖: article_renderer.js
+ */
+
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- 1. 初始化 ---
+    
+    // 实例化渲染器 (传入 HTML 中的容器 ID)
+    const renderer = new ArticleRenderer('article-list-content', 'pagination-container');
+
+    const searchForm = document.getElementById('search-form');
+    const searchButton = document.getElementById('search-button');
+    const spinner = searchButton.querySelector('.spinner-border');
+    const resultsContainer = document.getElementById('results-container');
+    const resultsCountEl = document.getElementById('results-count');
+    const resultsTotalEl = document.getElementById('results-total');
+    
+    // 存储当前查询状态
+    let currentQueryState = {
+        page: 1,
+        per_page: 10,
+        search_mode: 'mongo' // 默认值
+    };
+
+    // --- 2. 核心功能 ---
+
+    /**
+     * 执行查询 API
+     */
+    async function fetchResults(queryParams) {
+        // UI Loading 状态
+        searchButton.disabled = true;
+        spinner.style.display = 'inline-block';
+        renderer.showLoading();
+        resultsContainer.style.display = 'block';
+
+        try {
+            const response = await fetch('/intelligences/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryParams),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Network response was not ok');
+            }
+
+            const data = await response.json();
+
+            // 使用 Renderer 展示数据
+            renderer.render(data.results, {
+                total: data.total,
+                page: queryParams.page,
+                per_page: queryParams.per_page
+            });
+
+            // 更新统计文本
+            resultsCountEl.textContent = data.results.length;
+            resultsTotalEl.textContent = data.total;
+
+        } catch (error) {
+            console.error('Fetch error:', error);
+            renderer.showError(error.message);
+            resultsTotalEl.textContent = 0;
+            resultsCountEl.textContent = 0;
+        } finally {
+            // 恢复 UI
+            searchButton.disabled = false;
+            spinner.style.display = 'none';
+        }
+    }
+
+    // --- 3. 事件监听 ---
+
+    // A. 表单提交
+    searchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(searchForm);
+        const params = Object.fromEntries(formData.entries());
+        const activeTab = document.querySelector('#search-mode-tabs .nav-link.active');
+
+        // 构建 Payload
+        const payload = {
+            page: 1, // 每次新搜索重置为第一页
+            per_page: Number(params.per_page) || 10,
+            search_mode: activeTab ? activeTab.dataset.mode : 'mongo'
+        };
+
+        if (payload.search_mode === 'vector') {
+            payload.keywords = params.keywords || '';
+            payload.score_threshold = Number(params.score_threshold) || 0.5;
+            payload.in_summary = document.getElementById('in_summary').checked;
+            payload.in_fulltext = document.getElementById('in_fulltext').checked;
+        } else {
+            // Mongo Search
+            if (params.start_time) payload.start_time = params.start_time;
+            if (params.end_time) payload.end_time = params.end_time;
+            if (params.locations) payload.locations = params.locations;
+            if (params.peoples) payload.peoples = params.peoples;
+            if (params.organizations) payload.organizations = params.organizations;
+        }
+
+        // 更新状态并请求
+        currentQueryState = { ...payload };
+        fetchResults(payload);
+    });
+
+    // B. 分页点击 (委托给 Pagination 容器)
+    const paginationContainer = document.getElementById('pagination-container');
+    paginationContainer.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = e.target.closest('.page-link');
+
+        if (target && !target.closest('.page-item.disabled')) {
+            const newPage = Number(target.dataset.page);
+            if (newPage && newPage !== currentQueryState.page) {
+                currentQueryState.page = newPage;
+                fetchResults(currentQueryState);
+            }
+        }
+    });
+});
