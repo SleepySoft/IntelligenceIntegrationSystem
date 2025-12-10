@@ -47,7 +47,33 @@ class ArticleRenderer {
         }
     }
 
-    // --- 文章列表渲染 (核心逻辑未变) ---
+    formatLocalTime(timeStr) {
+        if (!timeStr) return 'No Datetime';
+
+        // 尝试解析时间
+        // 技巧：如果后端传的是 "2023-10-10 10:00:00" 这种不带时区的格式且你确定它是GMT，
+        // 你可能需要在字符串后加 'Z' 或 ' GMT'，但在标准 ISO8601 格式下直接 parse 即可。
+        let date = new Date(timeStr);
+
+        // 如果解析失败（例如 Invalid Date），直接返回原字符串
+        if (isNaN(date.getTime())) {
+            // 尝试处理常见的 Python 默认字符串格式 (如果 new Date 失败的话)
+            // 这里做一个兼容：如果原来不含时区信息，为了保险起见，可以视为 UTC
+            // date = new Date(timeStr + 'Z');
+            return timeStr;
+        }
+
+        // 格式化为：YYYY-MM-DD HH:mm
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0'); // 月份从0开始
+        const d = String(date.getDate()).padStart(2, '0');
+        const h = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+
+        return `${y}-${m}-${d} ${h}:${min}`;
+    }
+
+    // --- 文章列表渲染 ---
     renderArticles(articles) {
         if (!this.listContainer) return;
 
@@ -62,6 +88,8 @@ class ArticleRenderer {
             const informant = this.escapeHTML(article.INFORMANT || "");
             const intelUrl = `/intelligence/${uuid}`;
 
+            const pub_time_display = this.formatLocalTime(article.PUB_TIME);
+
             const informant_html = this.isValidUrl(informant)
                 ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
                 : (informant || 'Unknown Source');
@@ -70,7 +98,11 @@ class ArticleRenderer {
             const appendix = article.APPENDIX || {};
 
             // 提取旧字段
-            const archived_time = this.escapeHTML(appendix['__TIME_ARCHIVED__'] || '');
+            const raw_archived_time = appendix['__TIME_ARCHIVED__'] || '';
+
+            // 注意：保留 raw_archived_time 给 data-archived 属性使用，以便 calculate 颜色逻辑不出错
+            const archived_time_display = this.formatLocalTime(raw_archived_time);
+
             const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
             const max_rate_score = appendix['__MAX_RATE_SCORE__'];
 
@@ -125,10 +157,12 @@ class ArticleRenderer {
 
             // 5. 构建顶部时间
             let archived_html = "";
-            if (archived_time) {
+            if (raw_archived_time) {
+                // 注意：data-archived 仍然使用原始 raw 字符串，确保 updateTimeBackgrounds 计算正确
+                // 显示出来的文本使用 formatted 字符串
                 archived_html = `
-                <span class="article-time archived-time" data-archived="${archived_time}">
-                    Archived: ${archived_time}
+                <span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">
+                    Archived: ${archived_time_display}
                 </span>`;
             }
 
@@ -142,7 +176,7 @@ class ArticleRenderer {
                 </h3>
                 <div class="article-meta">
                     ${archived_html}
-                    <span class="article-time">Publish: ${this.escapeHTML(article.PUB_TIME || 'No Datetime')}</span>
+                    <span class="article-time">Publish: ${pub_time_display}</span>
                     <span class="article-source">Source: ${informant_html}</span>
                 </div>
                 <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
