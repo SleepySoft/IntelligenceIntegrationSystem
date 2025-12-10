@@ -428,6 +428,7 @@ class IntelligenceHub:
         while True:
             if ai_client := self.ai_client_manager.get_available_client(client_user):
                 result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+                self.ai_client_manager.release_client(ai_client)        # Release client so other task will have chance to get it.
                 result['APPENDIX'] = {
                     APPENDIX_AI_SERVICE: ai_client.get_api_base_url(),
                     APPENDIX_AI_MODEL: ai_client.get_current_model()
