@@ -190,3 +190,9 @@ _data
 _config
 _export
 _products
+
+# Generated files
+templates/generated
+Authentication.db
+conversation
+crawl_record
