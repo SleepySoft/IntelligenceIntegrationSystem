@@ -4,6 +4,10 @@
 
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
+## 临时下线通知
+
+20251210: 由于域名账户连同账号下域名被服务商ban，所以当前无法通过域名访问该Demo，正在和客服沟通恢复中。
+
 ## 起因
 
 现在的新闻素质堪忧，特别是国内媒体。
