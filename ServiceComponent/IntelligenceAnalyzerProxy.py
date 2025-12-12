@@ -139,6 +139,31 @@ def conversation_common_process(category, messages, response) -> dict:
     return ai_json
 
 
+def build_analyze_message(
+        prompt: str,
+        structured_data: Dict[str, Any],
+        context: Optional[List[Dict[str, str]]] = None):
+    try:
+        sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
+    except ValidationError as e:
+        logger.error(f'AI require data field missing: {str(e)}')
+        return {'error': str(e)}
+    except Exception as e:
+        logger.error(f'Validate AI data fail: {str(e)}')
+        return {'error': str(e)}
+
+    metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
+    metadata_block = '## metadata\n' + "\n".join(metadata_items)
+    content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
+    user_message = metadata_block + content_block
+
+    messages = context if context else []
+    messages.append({"role": "system", "content": prompt})
+    messages.append({"role": "user", "content": user_message})
+
+    return messages
+
+
 def analyze_with_ai(
         ai_client: BaseAIClient,
         prompt: str,
@@ -157,23 +182,7 @@ def analyze_with_ai(
     Returns:
     Dict[str, Any]: JSON object processed by AI, converted to a Python dictionary.
     """
-    try:
-        sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
-    except ValidationError as e:
-        logger.error(f'AI require data field missing: {str(e)}')
-        return {'error': str(e)}
-    except Exception as e:
-        logger.error(f'Validate AI data fail: {str(e)}')
-        return {'error': str(e)}
-
-    metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
-    metadata_block = '## metadata\n' + "\n".join(metadata_items)
-    content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
-    user_message = metadata_block + content_block
-
-    messages = context if context else []
-    messages.append({"role": "system", "content": prompt})
-    messages.append({"role": "user", "content": user_message})
+    messages = build_analyze_message(prompt, structured_data, context)
 
     start = time.time()
 

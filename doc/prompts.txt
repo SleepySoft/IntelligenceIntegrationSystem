@@ -2872,3 +2872,183 @@ APPENDIX_AI_MODEL           = '__AI_MODEL__'
 
 
 
+
+
+
+
+
+我想进行大语言模型微调，请帮我编写python程序一步一步地进行数据提取和预处理，每步只依赖上一步的结果，每个步骤相对独立。
+
+数据存储在mongodb仓库IntelligenceIntegrationSystem中，其中包含两个collection：
+1. intelligence_cached - 未处理的原始/缓存数据，遵循CollectedData定义。
+2. intelligence_archived - 已处理的数据/归档数据，遵循ArchivedData定义。
+
+数据定义如下，请记住并充分理解。下面我的说明将围绕着这个定义进行：
+
+```
+class CollectedData(BaseModel):
+    UUID: str = Field(..., min_length=1)    # [MUST]: The UUID to identify a message.
+    token: str = Field(..., min_length=1)   # [MUST]: The token to identify the legal end point.
+    source: str | None = None               # (Optional): Message source. If it requires reply.
+    target: str | None = None               # (Optional): Message source. If it requires reply.
+    prompt: str | None = None               # (Optional): The prompt to ask LLM to process this message.
+
+    title: str | None = None                # [MUST]: The content to be processed.
+    authors: List[str] | None = []          # (Optional): Article authors.
+    content: str                            # [MUST]: The content to be processed.
+    pub_time: object | None = None          # (Optional): Content publish time. Can be time.struct_time, datetime, str, ...
+    informant: str | None = None            # (Optional): The source of message (like URL).
+
+
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None = None
+    SUBMITTER: str | None = None
+    APPENDIX: dict | None = None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+
+
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+```
+
+第一步：
+    * 数据抽取和基本清洗
+        + 最后结果分别保存到json文件，utf-8，易读格式
+
+    * 列出所有清洗后丢弃的数据的摘要：
+        + 从intelligence_cached中找到 f"APPENDIX.{APPENDIX_ARCHIVED_FLAG}" 为 f"{ARCHIVED_FLAG_DROP}"标记的项。
+        + 记录以下字段（不需要按照原有格式）： UUID、pub_time、informant。
+        + 去除UUID及informant有重复的项，去除informant不是url的项，并给出报告。
+
+    * 列出所有清洗后归档数据的摘要：
+        + 从intelligence_archived中提取数据，记录以下字段（不需要按照原有格式）：
+            + UUID
+            + INFORMANT
+            + f"APPENDIX.{APPENDIX_TIME_ARCHIVED}"
+            + f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
+        + 去除以下项，并给出报告：
+            + UUID及INFORMANT重复
+            + UUID必须同时在intelligence_cached中存在，且 f"APPENDIX.{APPENDIX_ARCHIVED_FLAG}" 必须为 f"{ARCHIVED_FLAG_ARCHIVED}"
+            + INFORMANT不是url的项
+            + EVENT_TITLE，EVENT_BRIEF，EVENT_TEXT主体必须是中文（使用简单方法判定，不要使用重型AI）
+
+第二步：
+    * 训练及测试、验证数据采样：
+        + 指定需要的训练数据条数，计算出额外需要的测试及验证集数据量
+        + 根据以上分析，给出丢弃数据及归档数据中采样的比例的建议（也可以由用户指定）。
+        + 输出数据采样详细统计信息。
+        + 采样完成后分训练集、测试集、验证集保存为三个json文件，理论上只需要保存UUID。
+
+    * 在丢弃数据中采样：
+        + 按前一步确定的数量，综合考虑informant和pub_time，使这二者的项均匀分布
+
+    * 在归档数据中采样：
+        + 按前一步确定的数量，综合考虑INFORMANT，APPENDIX_TIME_ARCHIVED，APPENDIX_MAX_RATE_SCORE，使这几项合理分布（不一定均匀，我也不确定，请给出建议）。
+
+第三步：
+    生成训练数据（Alpaca格式）
+        + 仔细阅读并理解以下要求，提取数据并组织为训练数据，需要显示处理进度。
+        + 最后同样分训练集、测试集、验证集保存。
+        + 同样给出结果详细摘要。
+
+    输入数据（原始数据）：
+        + 根据上一步的采样结果，通过UUID从intelligence_cached中获取原始数据。
+        + 数据原本的分析是通过以下函数构建对话的，请参考或使用它，尽量按对话时同样的格式构建训练数据。
+        + 其中prompt请仔细思考，设计一个简单有效，且具有一定泛用性的文本。如果我没理解错，这段文本将作为该模型今后的“功能开关”。
+        + 特殊要求：评分减1（不得小于0），如果为0则归为丢弃数据一类。
+        ```
+        def build_analyze_message(
+                prompt: str,
+                structured_data: Dict[str, Any],
+                context: Optional[List[Dict[str, str]]] = None):
+            try:
+                sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
+            except ValidationError as e:
+                logger.error(f'AI require data field missing: {str(e)}')
+                return {'error': str(e)}
+            except Exception as e:
+                logger.error(f'Validate AI data fail: {str(e)}')
+                return {'error': str(e)}
+
+            metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
+            metadata_block = '## metadata\n' + "\n".join(metadata_items)
+            content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
+            user_message = metadata_block + content_block
+
+            messages = context if context else []
+            messages.append({"role": "system", "content": prompt})
+            messages.append({"role": "user", "content": user_message})
+
+            return messages
+        ```
+
+    输出数据：
+        对于被判定为需要丢弃的数据，输出结果为：
+            ````{"UUID": "输入的UUID原值"}````
+
+        对于非丢弃的数据，输出结果为：
+            ProcessedData格式，对应数据从intelligence_archived中提取。
+
+为了使输出不混乱且可验证，我们先分析并执行第一步。
+
+
+
+
+
+有两点不知道你有没有注意：
+1. URL要对比domain部分，而不要比较文章完整URL
+2. 如果样本数不足，怎么处理？
+
+
+
+
+
+
+
+
+
+
+
