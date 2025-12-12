@@ -29,7 +29,7 @@ FILE_OUT_VAL = "alpaca_val.json"
 # 4. 预览模式设置
 # 如果设置为整数 (如 10)，则每个文件只生成前 10 条数据，方便快速检查。
 # 如果设置为 None 或 0，则生成全量数据。
-PREVIEW_LIMIT = 10
+PREVIEW_LIMIT = 0
 
 # 5. 系统指令 (Instruction / Prompt)
 # 采用你优化后的精简版本

@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 
 # ================= 配置区域 =================
 # 1. 目标总样本数
-TARGET_TOTAL_COUNT = 3000
+TARGET_TOTAL_COUNT = 7000
 
 # 2. 期望的丢弃数据 (负样本) 比例
 # 0.5 表示 1:1。如果你的正样本（归档）很少，可以适当降低这个值，比如 0.4 或 0.3，

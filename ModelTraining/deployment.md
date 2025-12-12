@@ -20,33 +20,11 @@ rocm-smi
 *如果能看到两张 MI50 卡的信息，说明驱动正常。*
 
 ### 2. 安装 Docker 及 ROCm 容器运行时
-为了让 Docker 能使用 AMD 显卡，必须安装 `rocm-container-runtime` (类似于 NVIDIA 的 nvidia-container-toolkit)。
 
 ```bash
 # 1. 安装 Docker (如果已安装可跳过)
 sudo apt-get update
 sudo apt-get install -y docker.io
-
-# 2. 添加 AMD 仓库并安装 rocm-container-runtime
-# 注意：以下是通用步骤，请根据你的 ROCm 版本调整
-sudo apt-get update
-sudo apt-get install -y rocm-container-runtime
-
-# 3. 配置 Docker Daemon (关键步骤)
-sudo mkdir -p /etc/docker
-sudo tee /etc/docker/daemon.json <<EOF
-{
-  "runtimes": {
-    "rocm": {
-      "path": "/opt/rocm/bin/rocm-container-runtime",
-      "runtimeArgs": []
-    }
-  }
-}
-EOF
-
-# 4. 重启 Docker
-sudo systemctl restart docker
 ```
 
 ---
@@ -109,6 +87,40 @@ ENV DS_BUILD_OPS=1
 
 CMD ["/bin/bash"]
 ```
+
+
+sudo usermod -aG docker $USER
+
+
+
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo nano /etc/systemd/system/docker.service.d/http-proxy.conf
+
+
+
+```
+[Service]
+Environment="HTTP_PROXY=http://127.0.0.1:20171"
+Environment="HTTPS_PROXY=http://127.0.0.1:20171"
+Environment="NO_PROXY=localhost,127.0.0.1,::1"
+```
+
+
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+docker info | grep Proxy
+
+
+docker build \
+  --build-arg http_proxy=http://127.0.0.1:20171 \
+  --build-arg https_proxy=http://127.0.0.1:20171 \
+  -t qwen-rocm-trainer .
+
+
+
+
+
 
 ### 2. 构建镜像
 在 `Dockerfile` 所在目录运行：
