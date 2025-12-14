@@ -81,6 +81,20 @@
 
 - **解决: 修改 Grub 启动参数，添加 intel_iommu=off 并重启。**
 
+```bash
+# 1. 编辑 grub 文件
+sudo nano /etc/default/grub
+
+# 2. 修改启动参数
+# 找到以 GRUB_CMDLINE_LINUX_DEFAULT 开头的这一行。 在引号内部，添加 intel_iommu=off （Intel CPU 专用）。
+
+# 保存文件 (Ctrl+O, Enter) 并退出 (Ctrl+X)。 然后执行更新命令：
+sudo update-grub
+
+# 3. 更新完成后，必须重启服务器才能生效。
+sudo reboot
+```
+
 - **结果: 彻底解除物理层通信限制，软件层可重新开启 P2P。**
 
 ### 阶段三：计算效率与算子优化
