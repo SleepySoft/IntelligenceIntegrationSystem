@@ -18,23 +18,33 @@ def fetch_content(
     :return: The same as base.
     """
 
+    def handler(page, response):
+        if not response:
+            return {'content': '', "errors": ['No response']}
+
+        if response.status >= 400:
+            return {'content': '', "errors": [f'HTTP response: {response.status}']}
+
+        error_msgs = []
+
+        try:
+            page.wait_for_load_state('domcontentloaded', timeout=timeout_ms)
+        except Exception as e:
+            err_str = f"Wait for load state failed: {str(e)}"
+            print(err_str)
+            error_msgs.append(err_str)
+
+        try:
+            page_content = page.content()
+        except Exception as e:
+            err_str = f"Failed to get page content: {str(e)}"
+            print(err_str)
+            error_msgs.append(err_str)
+            return {'content': '', "errors": error_msgs}
+
+        return {'content': page_content, "errors": error_msgs}
+
     try:
-        def handler(page, response):
-            if not response:
-                return {'content': '', "errors": 'No response'}
-            if response.status >= 400:
-                return {'content': '', "errors": f'HTTP response: {response.status}'}
-
-            try:
-                # page.wait_for_load_state('load', timeout=self.timeout)
-                page.wait_for_load_state('domcontentloaded', timeout=timeout_ms)
-                # page.wait_for_load_state('networkidle', timeout=self.timeout)
-            except Exception as e:
-                print(f'Rendered scraper gets error: {str(e)}')
-            finally:
-                page_content = page.content()
-                return {'content': page_content, "errors": []}
-
         result = request_by_browser(url, handler, timeout_ms, proxy)
         return result
     except Exception as e:
