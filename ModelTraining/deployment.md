@@ -237,3 +237,220 @@ bash /workspace/project/train_qwen.sh
 
 4.  **`HSA_OVERRIDE_GFX_VERSION`**:
     * 如果 PyTorch 抱怨显卡架构不匹配，确保在 Docker 环境变量中设置了 `export HSA_OVERRIDE_GFX_VERSION=9.0.6` (对应 MI50)。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.4.1 jammy main" | sudo tee /etc/apt/sources.list.d/rocm.list
+sudo apt-get update
+
+
+
+# 1. 更新 apt
+sudo apt update
+
+# 2. 安装编译工具和依赖 (DeepSpeed 需要 libaio 和 openmpi)
+sudo apt install -y git build-essential libaio-dev libopenmpi-dev python3-dev
+
+# 3. (关键) 安装 ROCm 开发套件
+# 之前你只用了 rocm-smi，现在需要编译器和头文件来编译 DeepSpeed
+# 确保你之前的 rocm.list 还在
+sudo apt install -y rocm-dev rocm-libs
+
+
+
+# 检查编译器是否就位
+/opt/rocm/bin/hipcc --version
+
+
+
+
+
+
+# 1. 接受 main 通道的条款
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+
+# 2. 接受 r 通道的条款 (错误信息里也提到了这个)
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+
+
+
+# 1. 创建环境 (Python 3.10 是最稳的)
+conda create -n iis_finetune python=3.10 -y
+
+# 2. 激活环境
+conda activate iis_finetune
+
+# 3. 配置 pip 清华源 (解决网络问题的核心)
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+
+
+
+# 激活你的 conda 环境
+conda activate iis_finetune
+
+# 安装 PyTorch (ROCm 6.1 版，兼容性最好)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1
+
+
+
+# 编译 DeepSpeed (关键一步)
+
+# 这是唯一需要“连接”宿主机 ROCm 6.4.1 和 Python PyTorch 的地方。DeepSpeed 会调用宿主机的 /opt/rocm/bin/hipcc (版本 6.4.1) 来为当前显卡编译代码。
+
+# 由于版本跨度不大 (6.1 -> 6.4)，ABI 通常是兼容的。
+
+# 1. 设置环境变量 (MI50 必须！)
+export ROCM_HOME=/opt/rocm
+export HSA_OVERRIDE_GFX_VERSION=9.0.6
+
+
+pip cache purge
+
+
+# 显式禁用推理相关的算子，避免 dskernels 报错
+export DS_BUILD_INFERENCE=0
+export DS_BUILD_INFERENCE_HALIDE=0
+export DS_BUILD_INFERENCE_CUTLASS=0
+
+# 开启训练核心算子
+export DS_BUILD_CPU_ADAM=1
+export DS_BUILD_FUSED_ADAM=1
+export DS_BUILD_FUSED_LAMB=1
+export DS_BUILD_TRANSFORMER=1
+export DS_BUILD_STOCHASTIC_TRANSFORMER=1
+export DS_BUILD_UTILS=1
+
+# 执行安装
+pip install deepspeed --no-build-isolation
+
+
+
+
+
+
+
+
+
+
+
+
+# 1. 确保在 conda 环境中
+conda activate iis_finetune
+
+# 2. 进入工作目录 (假设你在 ~/Public/ModelTrain)
+cd ~/Public/ModelTrain
+
+# 3. 拉取最新代码
+git clone https://github.com/hiyouga/LLaMA-Factory.git
+cd LLaMA-Factory
+
+# 4. 安装框架依赖 (加上 metrics 以支持训练过程中的评估)
+pip install -e ".[metrics]"
+
+
+
+
+
+
+
+
+
+
+
+# 1. 安装 modelscope 库
+pip install modelscope
+
+# 2. 运行 Python 命令下载模型
+# 模型将保存在当前目录下的 Qwen2.5-7B-Instruct 文件夹中
+python -c "from modelscope import snapshot_download; snapshot_download('qwen/Qwen2.5-7B-Instruct', cache_dir='.', revision='master')"
+
+
+
+
+
+
+
+
+
+
+
+
+
+https://blog.csdn.net/private_void_main/article/details/143701866
+
+
+
+
+1. 编辑 GRUB 配置文件
+打开终端，编辑 grub 文件：
+
+Bash
+
+sudo nano /etc/default/grub
+2. 修改启动参数
+找到以 GRUB_CMDLINE_LINUX_DEFAULT 开头的这一行。 在引号内部，添加 intel_iommu=off。
+
+修改前（示例）：
+
+Bash
+
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+修改后（Intel CPU 专用）：
+
+Bash
+
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=off"
+(如果这行里原本有别的参数，保留它们，只需在后面加个空格然后加上 intel_iommu=off)
+
+3. 更新 GRUB 并重启
+保存文件 (Ctrl+O, Enter) 并退出 (Ctrl+X)。 然后执行更新命令：
+
+Bash
+
+sudo update-grub
+更新完成后，必须重启服务器才能生效：
+
+Bash
+
+sudo reboot
+重启后的操作
+重启回来后，你的系统层级已经彻底放开了显卡间的通信限制。
+
+
+
+
+
+
+
+
+
+

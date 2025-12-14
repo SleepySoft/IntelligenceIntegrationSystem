@@ -1,64 +1,60 @@
 #!/bin/bash
 
-# ================= 环境变量设置 =================
-# 指定使用哪几张卡，ROCm 环境下通常用 0,1
+# ================= 1. 基础硬件适配 =================
+export HSA_OVERRIDE_GFX_VERSION=9.0.6
+export ROCM_HOME=/opt/rocm
 export HIP_VISIBLE_DEVICES=0,1
+export DISABLE_VERSION_CHECK=1
 
-# 强制使用离线模式，防止连接 HuggingFace 超时（前提是你已经下载好了模型）
-# export HF_DATASETS_OFFLINE=1
-# export TRANSFORMERS_OFFLINE=1
+# ================= 2. 核弹级防死锁配置 (纯 TCP 模式) =================
+# [关键] 禁用 P2P (卡间直连)
+export NCCL_P2P_DISABLE=1
+# [关键] 禁用 Shared Memory (共享内存)，强制走 Socket，解决本地死锁
+export NCCL_SHM_DISABLE=1
+# [关键] 禁用 InfiniBand
+export NCCL_IB_DISABLE=1
+# [关键] 强制只用本地回环网络
+export NCCL_SOCKET_IFNAME=lo
+# 启用阻塞报错，如果有问题直接抛出异常而不是卡死
+export NCCL_ASYNC_ERROR_HANDLING=1
+export PL_TORCH_DISTRIBUTED_BACKEND=nccl
 
-# ================= 核心路径配置 =================
-# 1. 模型路径：请修改为你本地 Qwen2.5-7B-Instruct 的实际路径
-MODEL_PATH="/path/to/your/Qwen2.5-7B-Instruct"
+# ================= 3. 离线模式 =================
+export HF_DATASETS_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 
-# 2. 输出路径：训练好的 LoRA 权重保存位置
-OUTPUT_PATH="./saves/qwen2.5-7b-intelligence/lora/sft"
+# ================= 4. 路径配置 =================
+MODEL_PATH="/home/sleepy/Depot/ModelTrain/qwen/Qwen2___5-7B-Instruct"
+OUTPUT_PATH="./saves/qwen2.5-7b-intelligence/lora/sft_dual_gpu_safe"
 
-# 3. 数据集名称：对应 dataset_info.json 里的 key
-DATASET_NAME="intelligence_alpaca"
-
-# ================= 启动命令 =================
-# 使用 deepspeed 启动，自动检测双卡
-deepspeed --num_gpus 2 src/train.py \
+# ================= 5. 启动命令 =================
+# 显存优化：Batch=2 + GradCheck=True
+deepspeed --num_gpus 2 --master_port=29502 src/train.py \
     --deepspeed ds_z2_config.json \
     --stage sft \
     --do_train \
-    --use_param_tokenizer_template False \
-    \
     --model_name_or_path "$MODEL_PATH" \
-    --dataset "$DATASET_NAME" \
+    --dataset "intelligence_alpaca" \
     --template qwen \
     --finetuning_type lora \
-    \
     --lora_target all \
     --lora_rank 64 \
     --lora_alpha 128 \
     --lora_dropout 0.05 \
-    \
     --output_dir "$OUTPUT_PATH" \
     --overwrite_output_dir \
-    \
-    --per_device_train_batch_size 4 \
-    --gradient_accumulation_steps 8 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 16 \
     --learning_rate 5e-5 \
     --num_train_epochs 5.0 \
     --lr_scheduler_type cosine \
     --warmup_ratio 0.1 \
-    \
     --bf16 True \
-    --logging_steps 10 \
+    --logging_steps 1 \
     --save_steps 500 \
     --plot_loss True \
-    \
-    --cutoff_len 4096 \
+    --cutoff_len 2048 \
     --preprocessing_num_workers 16 \
-    --ddp_timeout 18000000
-
-# 注释说明：
-# 1. --template qwen: 必须正确，否则对话模板会乱，导致模型学不会。
-# 2. --lora_target all: 这是一个快捷方式，自动微调 q_proj, v_proj 等所有线性层，效果最好。
-# 3. --per_device_train_batch_size 4: 单卡Batch 4，双卡就是 8。
-# 4. --gradient_accumulation_steps 8: 梯度累积 8 步。
-#    实际总 Batch Size = 4 * 2(GPUs) * 8 = 64。这是一个非常稳健的数值。
-# 5. --cutoff_len 4096: 如果显存爆了 (OOM)，把这个数值降低到 2048。
+    --gradient_checkpointing True \
+    --ddp_timeout 18000000 \
+    --optim adamw_torch
