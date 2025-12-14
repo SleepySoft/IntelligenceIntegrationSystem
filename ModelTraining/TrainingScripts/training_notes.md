@@ -33,5 +33,34 @@ Note：offload_optimizer 设为 none 表示把优化器状态留在 GPU 上。MI
 
 
 
+./train_qwen.sh 2>&1 | tee train_log.txt
+
+
+
+
+
+
+
+
+
+
+按 Ctrl+Z 暂停它，然后输入 bg 放入后台，再输入 disown -h 脱离终端关联。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

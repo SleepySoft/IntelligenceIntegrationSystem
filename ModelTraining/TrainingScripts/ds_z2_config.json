@@ -5,10 +5,15 @@
   "gradient_clipping": "auto",
   "zero_allow_untested_optimizer": true,
   "fp16": {
-    "enabled": false
+    "enabled": true,
+    "loss_scale": 0,
+    "loss_scale_window": 1000,
+    "initial_scale_power": 16,
+    "hysteresis": 2,
+    "min_loss_scale": 1
   },
   "bf16": {
-    "enabled": true
+    "enabled": false
   },
   "zero_optimization": {
     "stage": 2,
@@ -22,5 +27,13 @@
       "device": "none",
       "pin_memory": true
     }
+  },
+  "flops_profiler": {
+    "enabled": true,
+    "profile_step": 1,
+    "module_depth": -1,
+    "top_modules": 1,
+    "detailed": true,
+    "output_file": "./profile_log.txt"
   }
 }
