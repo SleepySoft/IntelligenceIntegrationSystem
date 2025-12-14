@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from typing import Optional, Dict, Any, List
 from playwright.sync_api import sync_playwright
 
+from IntelligenceCrawler.BrowserMonitor import AutoTrackedBrowser
 from Scraper.ScraperBase import ScraperResult, ProxyConfig
 from Tools.ProxyFormatParser import to_playwright_format, parse_to_intermediate
 
@@ -68,7 +69,8 @@ class BrowserManager:
             self.playwright = sync_playwright().start()
             try:
                 options = self._prepare_launch_options(headless=True)
-                self.browser = self.playwright.chromium.launch(**options)
+                real_browser = self.playwright.chromium.launch(**options)
+                self.browser: "Browser" = AutoTrackedBrowser(real_browser)
             except Exception as e:
                 self.playwright.stop()
                 raise
