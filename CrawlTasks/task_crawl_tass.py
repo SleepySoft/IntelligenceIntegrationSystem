@@ -3,15 +3,15 @@
 from IntelligenceCrawler.CrawlPipeline import *
 
 # === Fetcher init parameters ===
-d_fetcher_init_param = {'log_callback': log_cb, 'proxy': None, 'timeout_s': 10, 'stealth': True, 'pause_browser': False, 'render_page': False}
-e_fetcher_init_param = {'log_callback': log_cb, 'proxy': None, 'timeout_s': 20, 'stealth': True, 'pause_browser': False, 'render_page': True}
+d_fetcher_init_param = {'log_callback': log_cb, 'proxy': 'http://127.0.0.1:10809', 'timeout_s': 30, 'stealth': True, 'pause_browser': False, 'render_page': False}
+e_fetcher_init_param = {'log_callback': log_cb, 'proxy': 'http://127.0.0.1:10809', 'timeout_s': 30, 'stealth': True, 'pause_browser': False, 'render_page': True}
 
 # === Crawl parameters ===
 entry_point = ['https://tass.com/world', 'https://tass.com/emergencies', 'https://tass.com/politics', 'https://tass.com/economy', 'https://tass.com/defense', 'https://tass.com/society']
 start_date = None
 end_date = None
-d_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 10, 'scroll_pages': 5}
-e_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20, 'scroll_pages': 0}
+d_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 30, 'scroll_pages': 5}
+e_fetcher_kwargs = {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 30, 'scroll_pages': 0}
 extractor_kwargs = {}
 channel_filter_list = []
 
