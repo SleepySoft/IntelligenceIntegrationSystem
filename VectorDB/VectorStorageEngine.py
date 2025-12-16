@@ -4,8 +4,9 @@ import shutil
 import datetime
 import logging
 import threading
+import queue
+import time
 from typing import List, Dict, Any, Union, Optional
-
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class VectorStorageEngine:
     per application lifecycle, but multiple instances are allowed (e.g., for different DB paths).
     """
 
-    def __init__(self, db_path: str, model_name: str):
+    def __init__(self, db_path: str, model_name: str, worker_enabled: bool = True):
         """
         Initializes the engine. This operation is blocking and heavy.
 
@@ -38,26 +39,28 @@ class VectorStorageEngine:
         self._db_path = db_path
         self._model_name = model_name
 
-        # --- State Management ---
-        self._status = "initializing"  # initializing, ready, error
+        self._status = "initializing"
         self._error_message = None
-        self._ready_event = threading.Event()  # For blocking waits
+        self._ready_event = threading.Event()
         self._lock = threading.RLock()
 
         # Resources (Initially None)
         self._client = None
         self._model = None
+        # Use an LRU-like strategy or simple dict.
+        # For now, just keep it, but be aware of memory if collections are infinite.
         self._repos = {}
 
-        # Start loading in background
-        self._init_thread = threading.Thread(
-            target=self._load_heavy_resources,
-            name="VectorEngineInit",
-            daemon=True
-        )
-        self._init_thread.start()
+        # --- Async Task Queue Setup ---
+        self._queue = queue.Queue(maxsize=100)  # Limit queue to prevent OOM on backlog
+        self._worker_thread = None
+        self._stop_worker = threading.Event()
 
-        logger.info(f"Engine instance created. Initialization started in background.")
+        # Start initialization
+        threading.Thread(target=self._load_heavy_resources, name="EngineInit", daemon=True).start()
+
+        if worker_enabled:
+            self._start_worker()
 
     def _load_heavy_resources(self):
         """Internal method to load libraries and models."""
@@ -71,6 +74,7 @@ class VectorStorageEngine:
             self._client = chromadb.PersistentClient(path=self._db_path)
 
             logger.info(f"Loading Model {self._model_name}...")
+            # device='cpu' is default, can be 'cuda' if GPU available
             self._model = SentenceTransformer(self._model_name)
 
             # Mark as Ready
@@ -86,6 +90,82 @@ class VectorStorageEngine:
                 self._status = "error"
                 self._error_message = str(e)
                 # We do NOT set the ready event, so waiters will timeout or handle status manually
+
+    # --- Worker Logic ---
+
+    def _start_worker(self):
+        """Starts the background worker thread for processing heavy write tasks."""
+        self._worker_thread = threading.Thread(target=self._worker_loop, name="VectorWorker", daemon=True)
+        self._worker_thread.start()
+        logger.info("Background worker started.")
+
+    def _worker_loop(self):
+        """Consumers tasks from the queue strictly sequentially to manage memory."""
+        while not self._stop_worker.is_set():
+            try:
+                # Wait for a task (blocking with timeout to allow checking stop_event)
+                task = self._queue.get(timeout=2)
+            except queue.Empty:
+                continue
+
+            try:
+                task_type = task.get("type")
+                logger.info(f"Processing task: {task_type}")
+
+                if task_type == "upsert":
+                    self._handle_upsert_task(task)
+
+                # Add other async tasks here (e.g., delete, batch_import)
+
+            except Exception as e:
+                logger.error(f"Worker failed processing task: {e}")
+            finally:
+                self._queue.task_done()
+                # Optional: Force GC after heavy tasks if memory is tight
+                # gc.collect()
+
+    def _handle_upsert_task(self, task: Dict):
+        """Process the upsert logic inside the worker thread."""
+        collection_name = task["collection_name"]
+        doc_id = task["doc_id"]
+        text = task["text"]
+        metadata = task["metadata"]
+
+        # Ensure repo exists (thread-safe)
+        repo = self.ensure_repository(collection_name)
+
+        # Perform the heavy lifting
+        repo.upsert_document(doc_id, text, metadata)
+        logger.info(f"Async Upsert Completed: {doc_id} in {collection_name}")
+
+    def submit_upsert(self, collection_name: str, doc_id: str, text: str, metadata: Dict = None) -> bool:
+        """
+        Public API to submit a task. Non-blocking.
+        Returns True if queued, False if queue is full.
+        """
+        if not self.is_ready():
+            raise RuntimeError("Engine not ready")
+
+        task = {
+            "type": "upsert",
+            "collection_name": collection_name,
+            "doc_id": doc_id,
+            "text": text,
+            "metadata": metadata or {}
+        }
+
+        try:
+            self._queue.put(task, block=False)
+            return True
+        except queue.Full:
+            logger.warning("Task queue is full! Dropping request.")
+            return False
+
+    def get_queue_status(self):
+        return {
+            "qsize": self._queue.qsize(),
+            "status": "running" if self._worker_thread.is_alive() else "stopped"
+        }
 
     def get_status(self) -> Dict[str, Any]:
         """Returns the current lifecycle status."""
@@ -317,9 +397,13 @@ class VectorCollectionRepo:
     def get_config(self):
         return self._current_config
 
-    def _vectorize(self, text: Union[str, List[str]]) -> Any:
-        """Internal helper to generate embeddings."""
-        return self._model.encode(text)
+    def _vectorize(self, texts: List[str]) -> Any:
+        """
+        MEMORY FIX: Use batch_size to prevent OOM with large inputs.
+        """
+        # batch_size=32 is a safe default for CPUs and small GPUs.
+        # If texts list is huge (e.g. 10k chunks), this processes them 32 at a time.
+        return self._model.encode(texts, batch_size=32, show_progress_bar=False, convert_to_numpy=True)
 
     def upsert_document(self, doc_id: str, text: str, metadata: Dict[str, Any] = None) -> List[str]:
         """
@@ -337,63 +421,42 @@ class VectorCollectionRepo:
         Returns:
             List[str]: The list of generated chunk IDs.
         """
-        if not text:
-            return []
+        if not text: return []
+        if metadata is None: metadata = {}
 
-        if metadata is None:
-            metadata = {}
-
-        # 1. Clean up OLD data first (The "Delete" part of Upsert)
-        # We must remove all chunks with this original_doc_id.
-        # If we skip this, and the new text is shorter than the old text,
-        # the extra chunks from the old version will remain as "ghost" data.
+        # 1. Delete old
         try:
             self._collection.delete(where={"original_doc_id": doc_id})
-        except Exception as e:
-            # It's acceptable if the doc didn't exist, but other errors should be logged
-            print(f"[VectorRepo] Warning: Failed to clear old data for {doc_id} (might be new): {e}")
+        except Exception:
+            pass
 
-        # 2. Split new text
+        # 2. Split
         chunks = self._text_splitter.split_text(text)
-        if not chunks:
-            print(f"[VectorRepo] Warning: Document {doc_id} resulted in empty chunks.")
-            return []
+        if not chunks: return []
 
-        # 3. Prepare new data
-        chunk_ids = []
+        # 3. Prepare Data
+        chunk_ids = [f"{doc_id}#chunk_{i}" for i in range(len(chunks))]
         chunk_metadatas = []
-
-        for i, chunk_text in enumerate(chunks):
-            # ID format: doc_id#chunk_index
-            c_id = f"{doc_id}#chunk_{i}"
-            chunk_ids.append(c_id)
-
-            # Construct metadata
-            meta = {
-                "original_doc_id": doc_id,  # Link chunk back to parent doc
-                "chunk_index": i,
-                "total_chunks": len(chunks)
-            }
-            # Merge user metadata
+        for i in range(len(chunks)):
+            meta = {"original_doc_id": doc_id, "chunk_index": i, "total_chunks": len(chunks)}
             meta.update(metadata)
             chunk_metadatas.append(meta)
 
-        # 4. Generate Embeddings
+        # 4. Vectorize (Optimized with batching)
         embeddings = self._vectorize(chunks).tolist()
 
-        # 5. Insert new data
-        # We use upsert here just to be safe, though add would work since we deleted.
-        try:
+        # 5. Insert (Batch limit for ChromaDB limit is usually high, but can be chunked too if needed)
+        MAX_BATCH = 5000
+        for i in range(0, len(chunk_ids), MAX_BATCH):
+            end = i + MAX_BATCH
             self._collection.upsert(
-                ids=chunk_ids,
-                documents=chunks,
-                embeddings=embeddings,
-                metadatas=chunk_metadatas
+                ids=chunk_ids[i:end],
+                documents=chunks[i:end],
+                embeddings=embeddings[i:end],
+                metadatas=chunk_metadatas[i:end]
             )
-            return chunk_ids
-        except Exception as e:
-            print(f"[VectorRepo] Error upserting document {doc_id}: {e}")
-            return []
+
+        return chunk_ids
 
     def exists(self, doc_id: str) -> bool:
         """Checks if a document (any of its chunks) exists in the DB."""

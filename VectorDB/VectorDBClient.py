@@ -25,6 +25,15 @@ class VectorDBClient:
         except requests.exceptions.RequestException as e:
             return {"status": "unreachable", "error": str(e)}
 
+    def get_queue_status(self) -> Dict[str, Any]:
+        """Check the depth of the async processing queue."""
+        try:
+            resp = requests.get(f"{self.base_url}/api/status/queue", timeout=2)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return {"qsize": -1, "status": "unknown"}
+
     def wait_until_ready(self, timeout: float = 60.0, poll_interval: float = 2.0) -> bool:
         """
         Blocks until the VectorDB service is fully initialized and ready.
@@ -76,12 +85,8 @@ class VectorDBClient:
         }
         resp = requests.post(url, json=payload)
 
-        # --- 优化错误处理 ---
         if resp.status_code == 503:
-            raise RuntimeError(
-                "VectorDB is initializing. Please call client.wait_until_ready() before creating collections."
-            )
-        # ------------------
+            raise RuntimeError("VectorDB Service Unavailable (Initializing or Busy).")
 
         resp.raise_for_status()
         return RemoteCollection(self.base_url, name)
@@ -108,9 +113,18 @@ class RemoteCollection:
     def _handle_response(self, resp: requests.Response) -> Any:
         """Helper to handle errors, specifically 503 (Loading) and 404 (Not Found)."""
         if resp.status_code == 503:
-            raise RuntimeError(
-                "VectorDB is initializing. Please call client.wait_until_ready()."
-            )
+            try:
+                error_msg = resp.json().get("error", "Unknown error")
+            except:
+                error_msg = "Service Unavailable"
+
+            if "initializing" in error_msg.lower():
+                raise RuntimeError("VectorDB is initializing. Please call client.wait_until_ready().")
+            elif "queue" in error_msg.lower() or "busy" in error_msg.lower():
+                raise RuntimeError("VectorDB is busy: Task Queue is full. Slow down requests.")
+            else:
+                raise RuntimeError(f"VectorDB 503 Error: {error_msg}")
+
         if resp.status_code == 404:
             raise ValueError(
                 f"Collection '{self.name}' not found. Please create it first using client.create_collection()."
@@ -118,6 +132,8 @@ class RemoteCollection:
 
         try:
             resp.raise_for_status()
+            if resp.status_code == 204:
+                return {}
             return resp.json()
         except requests.exceptions.HTTPError as e:
             # Try to get backend error message
@@ -129,8 +145,11 @@ class RemoteCollection:
 
     def upsert(self, doc_id: str, text: str, metadata: Dict[str, Any] = None) -> Dict:
         """
-        Upserts a document.
-        Will FAIL if collection was not created via create_collection().
+        Upserts a document ASYNCHRONOUSLY.
+
+        Returns:
+            Dict: {'status': 'queued', 'message': '...', 'doc_id': '...'}
+                  The operation is NOT finished when this returns.
         """
         if metadata is None:
             metadata = {}
@@ -141,6 +160,10 @@ class RemoteCollection:
             "metadata": metadata
         }
         resp = requests.post(f"{self.api_url}/upsert", json=payload)
+
+        if resp.status_code == 202:
+            return resp.json()
+
         return self._handle_response(resp)
 
     def search(

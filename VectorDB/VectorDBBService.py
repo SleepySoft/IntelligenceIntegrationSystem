@@ -141,26 +141,45 @@ class VectorDBService:
 
         @route("/api/collections/<name>/upsert", methods=["POST"])
         def upsert_document(name):
+            """
+            Modified to use Async Queue.
+            Returns 202 Accepted immediately.
+            """
             try:
-                # STRICT MODE: Only allow upsert to existing collections.
-                # If the collection does not exist, get_repo_strict raises ValueError (404).
-                repo = get_repo_strict(name)
+                data = request.json
+                doc_id = data.get('doc_id')
+                text = data.get('text')
+                metadata = data.get('metadata', {})
 
-                # Call the repository method (ensure method name matches your VectorStorageEngine implementation)
-                # Usually 'add_document' or 'upsert_document' depending on your naming.
-                chunk_ids = repo.upsert_document(
-                    request.json['doc_id'],
-                    request.json['text'],
-                    request.json.get('metadata', {})
-                )
-                return jsonify({"status": "success", "chunks_created": len(chunk_ids)})
+                # Validation
+                if not doc_id or not text:
+                    return jsonify({"error": "doc_id and text are required"}), 400
 
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 404
-            except ServiceUnavailable as e:
-                return jsonify({"error": "Engine initializing", "retry_after": 5}), 503
+                # Ensure collection logic is mostly strictly checked in worker,
+                # but we can check basic readiness here.
+                if not self.engine.is_ready():
+                    return jsonify({"error": "Engine initializing"}), 503
+
+                # Submit to Queue
+                success = self.engine.submit_upsert(name, doc_id, text, metadata)
+
+                if success:
+                    return jsonify({
+                        "status": "queued",
+                        "message": "Document accepted for processing.",
+                        "doc_id": doc_id
+                    }), 202
+                else:
+                    return jsonify({"error": "Server busy (queue full)"}), 503
+
             except Exception as e:
+                logger.error(f"Upsert request failed: {e}")
                 return jsonify({"error": str(e)}), 500
+
+        @route("/api/status/queue", methods=["GET"])
+        def queue_status():
+            """New endpoint to monitor queue depth."""
+            return jsonify(self.engine.get_queue_status())
 
         @route("/api/collections/<name>/stats", methods=["GET"])
         def get_stats(name):

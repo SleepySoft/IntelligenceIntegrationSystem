@@ -52,9 +52,20 @@
                     <span class="text-gray-400 text-sm">Status</span>
                     <span class="text-green-400 text-xs font-bold bg-green-900/30 px-2 py-1 rounded">READY</span>
                 </div>
+
                 <div class="flex justify-between items-center">
                     <span class="text-gray-400 text-sm">Total Chunks</span>
                     <span class="font-mono text-xl">{{ stats.chunk_count }}</span>
+                </div>
+
+                <div class="flex justify-between items-center pt-2 border-t border-slate-600/50">
+                    <span class="text-gray-400 text-sm">Queue Pending</span>
+                    <div class="flex items-center">
+                        <i v-if="queueStats.qsize > 0" class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2 text-xs"></i>
+                        <span class="font-mono text-sm" :class="queueStats.qsize > 0 ? 'text-orange-400 font-bold' : 'text-gray-500'">
+                            {{ queueStats.qsize || 0 }}
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -436,14 +447,24 @@
                         })
                     });
 
-                    if (res.ok) {
+                    // === CHANGED LOGIC START ===
+                    if (res.status === 202) {
+                        // Handle Async Response
+                        showToast(`Document Queued. ID: ${upsertForm.value.doc_id}`, 'success');
+                        upsertForm.value.text = ''; // Clear form immediately
+                        // We don't reloadCollection immediately because it's async
+                    }
+                    else if (res.ok) {
+                        // Handle potential synchronous success (if enabled in future)
                         const data = await res.json();
-                        showToast(`Saved! ${data.chunks_created} chunks.`);
+                        showToast(`Saved! ${data.chunks_created || 0} chunks.`);
                         upsertForm.value.text = '';
                         loadCollection();
                     } else {
-                        showToast("Upsert Failed - check if collection exists", "error");
+                        showToast("Upsert Failed or Queue Full", "error");
                     }
+                    fetchQueueStatus(); // Update queue UI immediately
+                    // === CHANGED LOGIC END ===
                 };
 
                 const deleteDoc = async (docId) => {
@@ -490,7 +511,20 @@
 
                 onMounted(() => {
                     refreshCollections();
+                    // Start polling queue status every 2 seconds
+                    setInterval(fetchQueueStatus, 2000);
                 });
+
+                // 1. ADD: Queue State
+                const queueStats = ref({ qsize: 0, status: 'stopped' });
+
+                // 2. ADD: Polling Function
+                const fetchQueueStatus = async () => {
+                    try {
+                        const res = await fetch('api/status/queue');
+                        if (res.ok) queueStats.value = await res.json();
+                    } catch (e) { console.error(e); }
+                };
 
                 return {
                     currentTab, collections, selectedCollection, stats, showCreateModal, newCollectionForm, toast,
@@ -498,7 +532,7 @@
                     searchQuery, filterJson, topN, minScore, searchResults, upsertForm,
                     refreshCollections, createNewCollection, loadCollection, fetchDocuments,
                     performSearch, doUpsert, deleteDoc, clearCollection,
-                    downloadBackup, uploadRestore, tabClass, getScoreColor
+                    downloadBackup, uploadRestore, tabClass, getScoreColor, queueStats
                 };
             }
         }).mount('#app');
