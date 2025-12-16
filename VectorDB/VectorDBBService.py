@@ -176,6 +176,27 @@ class VectorDBService:
                 logger.error(f"Upsert request failed: {e}")
                 return jsonify({"error": str(e)}), 500
 
+        @route("/api/collections/<name>/upsert_batch", methods=["POST"])
+        def upsert_batch(name):
+            data = request.json  # Expecting list of {doc_id, text, metadata}
+            if not isinstance(data, list):
+                return jsonify({"error": "Expected a list"}), 400
+
+            # 构建内部任务格式
+            tasks = []
+            for item in data:
+                tasks.append({
+                    "collection_name": name,
+                    "doc_id": item.get("doc_id"),
+                    "text": item.get("text"),
+                    "metadata": item.get("metadata", {})
+                })
+
+            if self.engine.submit_upsert_batch(tasks):
+                return jsonify({"status": "queued", "count": len(tasks)}), 202
+            else:
+                return jsonify({"error": "Queue full"}), 503
+
         @route("/api/status/queue", methods=["GET"])
         def queue_status():
             """New endpoint to monitor queue depth."""

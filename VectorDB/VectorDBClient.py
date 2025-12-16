@@ -166,6 +166,15 @@ class RemoteCollection:
 
         return self._handle_response(resp)
 
+    def upsert_batch(self, documents: List[Dict]) -> Dict:
+        """
+        documents: List of {"doc_id": str, "text": str, "metadata": dict}
+        """
+        resp = requests.post(f"{self.api_url}/upsert_batch", json=documents)
+        if resp.status_code == 202:
+            return resp.json()
+        return self._handle_response(resp)
+
     def search(
             self,
             query: str,

@@ -11,8 +11,10 @@ from ServiceComponent.IntelligenceHubDefines import (
 
 
 class IntelligenceVectorDBEngine:
-    def __init__(self, vector_db_collection: RemoteCollection):
+    def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50):
         self.collection = vector_db_collection
+        self.batch_size = batch_size
+        self._buffer: List[Dict] = []
 
     def _parse_timestamp_safe(self, time_val: Any) -> Optional[float]:
         """
@@ -45,14 +47,12 @@ class IntelligenceVectorDBEngine:
         # Unknown type
         return None
 
-    def upsert(self, intelligence: ArchivedData, data_type: str):
+    def _prepare_document(self, intelligence: ArchivedData, data_type: str) -> Optional[Dict]:
         """
-        Extracts content and metadata from ArchivedData.
-        Handles potentially malformed PUB_TIME by omitting the field from metadata.
+        [重构] 纯函数：只负责将 ArchivedData 清洗为 VectorDB 需要的字典格式。
         """
         # 1. Text Construction
         if data_type == 'summary':
-            # Combine Title, Brief, and Text (handle None)
             text_parts = [
                 intelligence.EVENT_TITLE,
                 intelligence.EVENT_BRIEF,
@@ -60,48 +60,65 @@ class IntelligenceVectorDBEngine:
             ]
             full_text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
         else:
-            full_text = intelligence.RAW_DATA.get('content', '')
+            full_text = intelligence.RAW_DATA.get('content', '') if intelligence.RAW_DATA else ''
 
         if not full_text:
-            return  # Skip empty documents
+            return None
 
         # 2. Metadata Extraction
         appendix = intelligence.APPENDIX or {}
-
         metadata = {
             "uuid": intelligence.UUID,
             "informant": intelligence.INFORMANT,
-
-            # Rating Fields (Default to safe values if missing)
             "max_rate_class": str(appendix.get(APPENDIX_MAX_RATE_CLASS, "")),
             "max_rate_score": float(appendix.get(APPENDIX_MAX_RATE_SCORE, 0.0))
         }
 
         # 3. Time Handling
-
-        # A. Archived Time (Mandatory & Reliable per definition)
-        # We fall back to 0.0 only if the system logic is severely broken (missing key)
         raw_archived_time = appendix.get(APPENDIX_TIME_ARCHIVED)
         archived_ts = self._parse_timestamp_safe(raw_archived_time)
-        if archived_ts is not None:
-            metadata["archived_timestamp"] = archived_ts
-        else:
-            # Fallback: Use current ingestion time or 0.0 if strictly required
-            metadata["archived_timestamp"] = datetime.datetime.now().timestamp()
+        metadata["archived_timestamp"] = archived_ts if archived_ts is not None else datetime.datetime.now().timestamp()
 
-        # B. Pub Time (Unreliable)
-        # CRITICAL: If parsing fails, we DO NOT add the key to metadata.
-        # This ensures that time-range queries will simply ignore this record.
         pub_ts = self._parse_timestamp_safe(intelligence.PUB_TIME)
         if pub_ts is not None:
             metadata["pub_timestamp"] = pub_ts
 
-        # 4. Perform Upsert
-        self.collection.upsert(
-            doc_id=intelligence.UUID,
-            text=full_text,
-            metadata=metadata
-        )
+        return {
+            "doc_id": intelligence.UUID,
+            "text": full_text,
+            "metadata": metadata
+        }
+
+    def upsert(self, intelligence: ArchivedData, data_type: str):
+        """
+        Extracts content and metadata from ArchivedData.
+        Handles potentially malformed PUB_TIME by omitting the field from metadata.
+        """
+        doc = self._prepare_document(intelligence, data_type)
+        if doc:
+            self.collection.upsert(**doc)
+
+    def add_to_batch(self, intelligence: ArchivedData, data_type: str):
+        doc = self._prepare_document(intelligence, data_type)
+        if doc:
+            self._buffer.append(doc)
+
+        if len(self._buffer) >= self.batch_size:
+            self.commit()
+
+    def commit(self):
+        if not self._buffer:
+            return
+
+        try:
+            self.collection.upsert_batch(self._buffer)
+            # print(f"Batch committed: {len(self._buffer)} items.")
+        except Exception as e:
+            print(f"Error committing batch: {e}")
+            # 这里可以根据需求决定是否清空 buffer，或者保留以便重试
+            # 现在我们选择清空，避免死循环
+        finally:
+            self._buffer.clear()
 
     def query(self,
               text: str,

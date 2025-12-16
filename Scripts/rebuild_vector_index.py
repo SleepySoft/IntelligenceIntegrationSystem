@@ -113,9 +113,12 @@ def func_rebuild(
 
     print(f"Found {total_docs} documents to process.")
 
+    engine_full_text.batch_size = 100
+    engine_summary.batch_size = 100
+
     processed_count = 0
     skipped_error_count = 0
-    batch_size = 100
+    batch_size = 500
     last_id = None
 
     with tqdm(total=total_docs, desc="Upserting Documents") as pbar:
@@ -160,7 +163,7 @@ def func_rebuild(
 
                     # 2. Process 'intelligence_summary'
                     # Standard usage: Engine extracts Title/Brief/Text + Metadata
-                    engine_summary.upsert(archived_data, data_type='summary')
+                    engine_summary.add_to_batch(archived_data, data_type='summary')
 
                     # 3. Process 'intelligence_full_text'
                     # Requirement: Index the RAW_DATA content.
@@ -178,7 +181,7 @@ def func_rebuild(
                         data_for_full.EVENT_BRIEF = ""
                         data_for_full.EVENT_TEXT = raw_content
 
-                        engine_full_text.upsert(data_for_full, data_type='full')
+                        engine_full_text.add_to_batch(data_for_full, data_type='full')
 
                     processed_count += 1
 
@@ -190,6 +193,11 @@ def func_rebuild(
                     pbar.update(1)
 
             last_id = batch_docs[-1]['_id']
+
+    # === [关键] 循环结束后，提交剩余的数据 ===
+    print("Committing remaining buffers...")
+    engine_summary.commit()
+    engine_full_text.commit()
 
     print("\n--- Build Complete ---")
     print(f"Processed / Upserted: {processed_count}")

@@ -114,6 +114,9 @@ class VectorStorageEngine:
 
                 if task_type == "upsert":
                     self._handle_upsert_task(task)
+                elif task_type == "batch_upsert":
+                    for item in task['items']:
+                        self._handle_upsert_task(item)
 
                 # Add other async tasks here (e.g., delete, batch_import)
 
@@ -159,6 +162,21 @@ class VectorStorageEngine:
             return True
         except queue.Full:
             logger.warning("Task queue is full! Dropping request.")
+            return False
+
+    def submit_upsert_batch(self, tasks: List[Dict]) -> bool:
+        if not self.is_ready():
+            return False
+
+        batch_task = {
+            "type": "batch_upsert",
+            "items": tasks  # [{collection, doc_id, text, metadata}, ...]
+        }
+
+        try:
+            self._queue.put(batch_task, block=True, timeout=5)
+            return True
+        except queue.Full:
             return False
 
     def get_queue_status(self):
