@@ -89,3 +89,5 @@ PyRSS2Gen==1.1               # RSS generator
 # sentence-transformers       # Text embedding models (requires `transformers`)
 # hnswlib                     # Approximate nearest neighbor search library
 # PyQtWebEngine
+
+streamlit
