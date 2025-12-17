@@ -35,6 +35,8 @@
 
 + [自动备份与上传](https://pan.baidu.com/s/1Fpf32ZJAVITglTAqKkH1GQ?pwd=yucs)
 
++ [不定期手工导出](https://pan.baidu.com/s/122mewzpNkd6A8UjMDpIMsg?pwd=tfx7)
+
 ## 赞助该项目
 
 本项目使用硅基流动提供的AI服务。如果你能通过我的邀请链接注册，那么我的账户将会获得14元赠金，为该系统增加约半天的AI分析额度。
