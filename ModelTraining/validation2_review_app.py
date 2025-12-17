@@ -1,10 +1,11 @@
 import streamlit as st
 import json
 import os
+import re
 import pandas as pd
 
 # ================= 配置 =================
-DATA_FILE = "eval_results.jsonl"
+DATA_FILE = "result_ckpt150.jsonl"
 REVIEWED_FILE = "eval_reviewed.jsonl"
 
 st.set_page_config(layout="wide", page_title="Model Evaluation Tool")
@@ -35,6 +36,114 @@ def save_progress(index, label, comment, current_data):
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def extract_primary_category(rate_data):
+    """
+    从 RATE 字典中提取除 [内容准确率, 规模及影响, 潜力及传承] 之外的最高分领域。
+    返回: (CategoryName, Score)
+    """
+    if not isinstance(rate_data, dict):
+        return "N/A", 0
+
+    # 1. 定义黑名单 (不需要参与比较的 key)
+    exclude_keys = {"内容准确率", "规模及影响", "潜力及传承"}
+
+    # 2. 筛选：只保留不在黑名单里的项
+    # candidates 格式: {'国家政策': 0, '社会事件': 3, ...}
+    candidates = {k: v for k, v in rate_data.items() if k not in exclude_keys}
+
+    if not candidates:
+        return "无有效领域", 0
+
+    # 3. 找出分数最高的 Key
+    # max(candidates, key=candidates.get) 会返回 value 最大的那个 key
+    best_category = max(candidates, key=candidates.get)
+    best_score = candidates[best_category]
+
+    return best_category, best_score
+
+
+def safe_parse_json(text):
+    """尝试从模型输出的字符串中解析出 JSON 对象"""
+    if isinstance(text, dict):
+        return text
+    try:
+        # 1. 尝试直接解析
+        return json.loads(text)
+    except:
+        # 2. 尝试提取 ```json ... ``` 包裹的内容
+        match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except:
+                pass
+        # 3. 尝试从第一个 { 到最后一个 }
+        match = re.search(r'(\{.*\})', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except:
+                pass
+    return None
+
+
+# --- 修改后的渲染卡片函数 ---
+def render_content_card(column, title, raw_data, style="default"):
+    """
+    raw_data: 可能是字符串(模型输出)，也可能是字典(Ground Truth)
+    """
+    # 1. 尝试解析数据结构
+    data_dict = raw_data if isinstance(raw_data, dict) else safe_parse_json(raw_data)
+
+    # 2. 提取核心指标
+    primary_cat, primary_score = "N/A", 0
+    impact_score = 0
+    accuracy_score = 0
+
+    if data_dict and "RATE" in data_dict:
+        # A. 提取最高分领域 (你的需求)
+        primary_cat, primary_score = extract_primary_category(data_dict["RATE"])
+
+        # B. 顺便提取一下你要排除的那几项，作为辅助参考
+        impact_score = data_dict["RATE"].get("规模及影响", 0)
+        accuracy_score = data_dict["RATE"].get("内容准确率", 0)
+
+    with column:
+        st.markdown(f"### {title}")
+
+        # --- 顶部：醒目显示分类结果 ---
+        if data_dict:
+            # 使用 3列布局显示核心指标
+            m1, m2, m3 = st.columns(3)
+            m1.metric(label="主要领域", value=primary_cat, delta=f"{primary_score}分")
+            m2.metric(label="规模影响", value=impact_score)
+            m3.metric(label="内容准确", value=accuracy_score)
+            st.divider()
+
+        # --- 中部：显示具体文本内容 ---
+        # 假设我们只想看 EVENT_TEXT 或 EVENT_BRIEF，而不是整个 JSON
+        display_text = raw_data
+        if data_dict:
+            # 如果解析成功，优先显示易读的摘要
+            display_text = data_dict.get("EVENT_TEXT", str(raw_data))
+
+            # 也可以显示提取出的 IMPACT 评价
+            if "IMPACT" in data_dict:
+                st.caption(f"**Impact Analysis:** {data_dict['IMPACT']}")
+
+        # 根据风格显示文本框
+        if style == "success":
+            st.success(display_text)
+        elif style == "warning":
+            st.warning(display_text)
+        else:
+            st.info(display_text)
+
+        # --- 底部：折叠显示完整 JSON ---
+        with st.expander("查看原始 JSON 数据"):
+            st.json(data_dict if data_dict else raw_data)
+
+
 # --- Main App Logic ---
 def main():
     st.title("🤖 LLM Fine-tuning Human Reviewer")
@@ -63,25 +172,23 @@ def main():
         # --- 界面布局 ---
         st.subheader(f"Sample #{idx + 1}")
 
-        # 输入展示区 (折叠以节省空间)
-        with st.expander("Input Prompt / Instruction", expanded=True):
-            st.info(f"**Instruction:** {item['instruction']}")
-            st.text(f"**Input:** {item['input']}")
-
         # 对比区 (左右两栏)
         col1, col2 = st.columns(2)
 
-        with col1:
-            st.markdown("### ✅ Ground Truth (期望值)")
-            st.success(item['ground_truth'])
+        render_content_card(
+            column=col1,
+            title="✅ Ground Truth",
+            raw_data=item.get('ground_truth', '{}'),
+            style="success"
+        )
 
-        with col2:
-            st.markdown("### 🤖 Model Output (实际值)")
-            # 如果有 score，可以用正则高亮显示
-            st.warning(item['model_output'])
-
-            st.info(f"🤖 AI Judge Score: {item.get('judge_score', 'N/A')}/10")
-            st.caption(f"Reasoning: {item.get('judge_reasoning', '')}")
+        # 右边：Model Output
+        render_content_card(
+            column=col2,
+            title="🤖 Model Output",
+            raw_data=item.get('model_output', '{}'),
+            style="warning"
+        )
 
         # --- 操作区 ---
         st.divider()
@@ -116,6 +223,11 @@ def main():
         if next_btn.button("Next"):
             st.session_state.current_index = min(len(data) - 1, idx + 1)
             st.rerun()
+
+        # 输入展示区 (折叠以节省空间)
+        with st.expander("Input Prompt / Instruction", expanded=True):
+            st.info(f"**Instruction:** {item['instruction']}")
+            st.text(f"**Input:** {item['input']}")
 
     else:
         st.balloons()
