@@ -5,7 +5,7 @@ import re
 import pandas as pd
 
 # ================= 配置 =================
-DATA_FILE = "result_ckpt150.jsonl"
+DATA_FILE = "result_ckpt100.jsonl"
 REVIEWED_FILE = "eval_reviewed.jsonl"
 
 st.set_page_config(layout="wide", page_title="Model Evaluation Tool")
@@ -62,86 +62,110 @@ def extract_primary_category(rate_data):
     return best_category, best_score
 
 
+# --- 1. 增强版 JSON 解析器 ---
 def safe_parse_json(text):
-    """尝试从模型输出的字符串中解析出 JSON 对象"""
+    """
+    尝试解析 JSON，如果失败返回 None。
+    支持处理字典对象、标准 JSON 字符串、Markdown 代码块包裹的 JSON。
+    """
+    if text is None:
+        return None
     if isinstance(text, dict):
         return text
+
+    # 如果是字符串，尝试解析
+    text = str(text).strip()
+
+    # 情况 A: 已经是干净的 JSON
     try:
-        # 1. 尝试直接解析
         return json.loads(text)
     except:
-        # 2. 尝试提取 ```json ... ``` 包裹的内容
-        match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except:
-                pass
-        # 3. 尝试从第一个 { 到最后一个 }
-        match = re.search(r'(\{.*\})', text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1))
-            except:
-                pass
+        pass
+
+    # 情况 B: 被 ```json ... ``` 包裹
+    match = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except:
+            pass
+
+    # 情况 C: 只有一部分是 JSON，尝试提取第一个 { 到最后一个 }
+    match = re.search(r'(\{.*\})', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except:
+            pass
+
+    # 解析失败
     return None
 
 
-# --- 修改后的渲染卡片函数 ---
+# --- 2. 改进版渲染函数：出错时展示原文 ---
 def render_content_card(column, title, raw_data, style="default"):
     """
     raw_data: 可能是字符串(模型输出)，也可能是字典(Ground Truth)
     """
-    # 1. 尝试解析数据结构
-    data_dict = raw_data if isinstance(raw_data, dict) else safe_parse_json(raw_data)
-
-    # 2. 提取核心指标
-    primary_cat, primary_score = "N/A", 0
-    impact_score = 0
-    accuracy_score = 0
-
-    if data_dict and "RATE" in data_dict:
-        # A. 提取最高分领域 (你的需求)
-        primary_cat, primary_score = extract_primary_category(data_dict["RATE"])
-
-        # B. 顺便提取一下你要排除的那几项，作为辅助参考
-        impact_score = data_dict["RATE"].get("规模及影响", 0)
-        accuracy_score = data_dict["RATE"].get("内容准确率", 0)
+    # 尝试解析
+    data_dict = safe_parse_json(raw_data)
 
     with column:
         st.markdown(f"### {title}")
 
-        # --- 顶部：醒目显示分类结果 ---
-        if data_dict:
-            # 使用 3列布局显示核心指标
+        # =================================================
+        # 【核心修改】 如果解析失败 (data_dict 为 None)
+        # =================================================
+        if data_dict is None:
+            st.error("⚠️ JSON Parse Error (格式错误)")
+
+            # 这种情况下，直接把 raw_data 作为普通文本展示出来
+            # 使用 st.code 可以保留格式（换行符等），方便 debug
+            st.caption("原始输出 (Raw Output):")
+            st.code(str(raw_data), language="text", line_numbers=True)
+
+            # 可以在这里结束，也可以继续显示下面的完整查看器
+            # return
+
+        # =================================================
+        #  如果解析成功，显示漂亮的指标
+        # =================================================
+        else:
+            # 1. 提取指标
+            primary_cat, primary_score = "N/A", 0
+            impact_score = 0
+            accuracy_score = 0
+
+            if "RATE" in data_dict:
+                primary_cat, primary_score = extract_primary_category(data_dict["RATE"])
+                impact_score = data_dict["RATE"].get("规模及影响", 0)
+                accuracy_score = data_dict["RATE"].get("内容准确率", 0)
+
+            # 2. 显示三列指标
             m1, m2, m3 = st.columns(3)
             m1.metric(label="主要领域", value=primary_cat, delta=f"{primary_score}分")
             m2.metric(label="规模影响", value=impact_score)
             m3.metric(label="内容准确", value=accuracy_score)
             st.divider()
 
-        # --- 中部：显示具体文本内容 ---
-        # 假设我们只想看 EVENT_TEXT 或 EVENT_BRIEF，而不是整个 JSON
-        display_text = raw_data
-        if data_dict:
-            # 如果解析成功，优先显示易读的摘要
+            # 3. 显示摘要文本
             display_text = data_dict.get("EVENT_TEXT", str(raw_data))
+            if style == "success":
+                st.success(display_text)
+            elif style == "warning":
+                st.warning(display_text)
+            else:
+                st.info(display_text)
 
-            # 也可以显示提取出的 IMPACT 评价
-            if "IMPACT" in data_dict:
-                st.caption(f"**Impact Analysis:** {data_dict['IMPACT']}")
-
-        # 根据风格显示文本框
-        if style == "success":
-            st.success(display_text)
-        elif style == "warning":
-            st.warning(display_text)
-        else:
-            st.info(display_text)
-
-        # --- 底部：折叠显示完整 JSON ---
-        with st.expander("查看原始 JSON 数据"):
-            st.json(data_dict if data_dict else raw_data)
+        # =================================================
+        #  底部：无论成功失败，都提供折叠框查看原始数据
+        # =================================================
+        with st.expander("查看原始数据 (Source)"):
+            if data_dict:
+                st.json(data_dict)
+            else:
+                # 解析失败时，这里再次显示 raw_data，防止上面没看清
+                st.text(str(raw_data))
 
 
 # --- Main App Logic ---
