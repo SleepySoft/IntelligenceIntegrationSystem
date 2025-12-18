@@ -13,3 +13,7 @@
 	path = AIClientCenter
 	url = https://github.com/SleepySoft/AIClientCenter.git
 	branch = main
+[submodule "VectorDB"]
+	path = VectorDB
+	url = https://github.com/SleepySoft/VectorDB.git
+	branch = main
