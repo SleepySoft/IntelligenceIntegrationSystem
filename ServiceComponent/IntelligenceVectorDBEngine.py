@@ -41,7 +41,6 @@ class IntelligenceVectorDBEngine:
                 return datetime.datetime.fromisoformat(time_val).timestamp()
             except ValueError:
                 # 2. Add more formats here if needed (e.g., '%Y-%m-%d')
-                # For now, if it's not ISO, we treat it as invalid
                 return None
 
         # Unknown type
@@ -49,7 +48,8 @@ class IntelligenceVectorDBEngine:
 
     def _prepare_document(self, intelligence: ArchivedData, data_type: str) -> Optional[Dict]:
         """
-        [重构] 纯函数：只负责将 ArchivedData 清洗为 VectorDB 需要的字典格式。
+        Pure function: Prepares the document dictionary for VectorDB.
+        ADAPTATION: Adds 'timestamp' for DB clustering compatibility.
         """
         # 1. Text Construction
         if data_type == 'summary':
@@ -65,23 +65,41 @@ class IntelligenceVectorDBEngine:
         if not full_text:
             return None
 
-        # 2. Metadata Extraction
+        # 2. Basic Metadata Extraction
         appendix = intelligence.APPENDIX or {}
+
+        # Parse times first to determine the primary 'timestamp'
+        raw_archived_time = appendix.get(APPENDIX_TIME_ARCHIVED)
+        archived_ts = self._parse_timestamp_safe(raw_archived_time)
+        # Fallback to now() if archived time is missing, ensuring every doc has a timestamp
+        if archived_ts is None:
+            archived_ts = datetime.datetime.now().timestamp()
+
+        pub_ts = self._parse_timestamp_safe(intelligence.PUB_TIME)
+
+        # 3. Construct Metadata
         metadata = {
+            # Business Identifiers
             "uuid": intelligence.UUID,
             "informant": intelligence.INFORMANT,
+
+            # Filtering Fields (Used in query method)
+            "archived_timestamp": archived_ts,
+
+            # Rate Scores
             "max_rate_class": str(appendix.get(APPENDIX_MAX_RATE_CLASS, "")),
             "max_rate_score": float(appendix.get(APPENDIX_MAX_RATE_SCORE, 0.0))
         }
 
-        # 3. Time Handling
-        raw_archived_time = appendix.get(APPENDIX_TIME_ARCHIVED)
-        archived_ts = self._parse_timestamp_safe(raw_archived_time)
-        metadata["archived_timestamp"] = archived_ts if archived_ts is not None else datetime.datetime.now().timestamp()
-
-        pub_ts = self._parse_timestamp_safe(intelligence.PUB_TIME)
+        # Optional Pub Time
         if pub_ts is not None:
             metadata["pub_timestamp"] = pub_ts
+
+        # --- CRITICAL ADAPTATION FOR DB ENGINE ---
+        # The VectorStorageEngine's default clustering analysis ('analyze_clusters')
+        # looks for a specific key "timestamp" to calculate temporal density.
+        # We map the most relevant business time (Pub Time) to it, falling back to Archived Time.
+        metadata["timestamp"] = pub_ts if pub_ts is not None else archived_ts
 
         return {
             "doc_id": intelligence.UUID,
@@ -91,11 +109,11 @@ class IntelligenceVectorDBEngine:
 
     def upsert(self, intelligence: ArchivedData, data_type: str):
         """
-        Extracts content and metadata from ArchivedData.
-        Handles potentially malformed PUB_TIME by omitting the field from metadata.
+        Upserts a single document.
         """
         doc = self._prepare_document(intelligence, data_type)
         if doc:
+            # Unpacking dictionary to match signature: (doc_id, text, metadata)
             self.collection.upsert(**doc)
 
     def add_to_batch(self, intelligence: ArchivedData, data_type: str):
@@ -112,11 +130,8 @@ class IntelligenceVectorDBEngine:
 
         try:
             self.collection.upsert_batch(self._buffer)
-            # print(f"Batch committed: {len(self._buffer)} items.")
         except Exception as e:
             print(f"Error committing batch: {e}")
-            # 这里可以根据需求决定是否清空 buffer，或者保留以便重试
-            # 现在我们选择清空，避免死循环
         finally:
             self._buffer.clear()
 
@@ -130,13 +145,11 @@ class IntelligenceVectorDBEngine:
               rate_threshold: Optional[float] = None
               ) -> List[Dict]:
         """
-        Semantic search with conditional metadata filtering.
+        Semantic search with metadata filtering.
         """
         filters = []
 
         # 1. Event Period Filter (PUB_TIME)
-        # Note: Records without 'pub_timestamp' in metadata will NOT match this filter
-        # and thus will be excluded from results, which meets the requirement.
         if event_period:
             start_ts = event_period[0].timestamp()
             end_ts = event_period[1].timestamp()

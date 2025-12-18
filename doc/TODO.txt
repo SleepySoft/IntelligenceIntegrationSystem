@@ -7,9 +7,9 @@
 
     AI Client增强
         多实例轮转 - Done
-        并行分析
+        并行分析 - Done
         维护自己的状态 - Done
-        在获取不到可用的AI Client时暂停分析
+        在获取不到可用的AI Client时暂停分析 - Done
 
     增加recommendation页面显示信息：
         更新时间，涉及的情报周期，数量
@@ -41,7 +41,7 @@
     将数据转移到data目录中，同时兼容以前的路径。
 
 
-加入塔斯社新闻：
+加入塔斯社新闻： - Done
     https://tass.com/world
     https://tass.com/emergencies
     https://tass.com/politics
