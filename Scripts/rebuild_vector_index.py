@@ -163,7 +163,7 @@ def func_rebuild(
 
                     # 2. Process 'intelligence_summary'
                     # Standard usage: Engine extracts Title/Brief/Text + Metadata
-                    engine_summary.add_to_batch(archived_data, data_type='summary')
+                    engine_summary.add_to_batch(archived_data, data_type='summary', timeout=10000000)
 
                     # 3. Process 'intelligence_full_text'
                     # Requirement: Index the RAW_DATA content.
@@ -181,7 +181,7 @@ def func_rebuild(
                         data_for_full.EVENT_BRIEF = ""
                         data_for_full.EVENT_TEXT = raw_content
 
-                        engine_full_text.add_to_batch(data_for_full, data_type='full')
+                        engine_full_text.add_to_batch(data_for_full, data_type='full', timeout=10000000)
 
                     processed_count += 1
 
@@ -196,8 +196,8 @@ def func_rebuild(
 
     # === [关键] 循环结束后，提交剩余的数据 ===
     print("Committing remaining buffers...")
-    engine_summary.commit()
-    engine_full_text.commit()
+    engine_summary.commit(timeout=10000000)
+    engine_full_text.commit(timeout=10000000)
 
     print("\n--- Build Complete ---")
     print(f"Processed / Upserted: {processed_count}")
