@@ -107,29 +107,29 @@ class IntelligenceVectorDBEngine:
             "metadata": metadata
         }
 
-    def upsert(self, intelligence: ArchivedData, data_type: str):
+    def upsert(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
         """
         Upserts a single document.
         """
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             # Unpacking dictionary to match signature: (doc_id, text, metadata)
-            self.collection.upsert(**doc)
+            self.collection.upsert(**doc, timeout=timeout)
 
-    def add_to_batch(self, intelligence: ArchivedData, data_type: str):
+    def add_to_batch(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             self._buffer.append(doc)
 
         if len(self._buffer) >= self.batch_size:
-            self.commit()
+            self.commit(timeout)
 
-    def commit(self):
+    def commit(self, timeout: float = 120):
         if not self._buffer:
             return
 
         try:
-            self.collection.upsert_batch(self._buffer)
+            self.collection.upsert_batch(self._buffer, timeout=timeout)
         except Exception as e:
             print(f"Error committing batch: {e}")
         finally:
