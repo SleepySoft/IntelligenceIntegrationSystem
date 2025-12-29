@@ -4,9 +4,17 @@
 
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
-## 临时下线通知
+## 更新与通知
 
-20251210: 由于域名账户连同账号下域名被服务商ban，所以当前无法通过域名访问该Demo，正在和客服沟通恢复中。
+20251229: 
+
+> 家里公网的DDNS出现无法访问的问题，正积极恢复中。未来可能会全部迁移到VPS，避免频繁出现访问问题。
+
+20251229: 
+
+> 模型训练单独提取为一个项目：[IntelligenceIntegrationSystemModelTraining](https://github.com/SleepySoft/IntelligenceIntegrationSystemModelTraining)
+> 
+> 今后本项目中的 [ModelTraining](ModelTraining) 内容不再更新。
 
 ## 起因
 
