@@ -488,6 +488,8 @@ class IntelligenceHubWebService:
                 doc_id = article.get('UUID')
                 article['APPENDIX'][APPENDIX_VECTOR_SCORE] = score_map.get(doc_id, 0.0)
 
+            articles.sort(key=lambda x: x['APPENDIX'][APPENDIX_VECTOR_SCORE], reverse=True)
+
             return articles, len(raw)
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
