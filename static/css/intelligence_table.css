@@ -329,3 +329,107 @@ body {
         max-width: 100%;
     }
 }
+
+/* =========================================
+   8. 相似度评分徽章 (Similarity Score Badge)
+   ========================================= */
+
+/* 相似度评分徽章基础样式 */
+
+.similarity-badge {
+    font-size: 0.85em;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 12px;
+    vertical-align: middle;
+    color: white;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 徽章内的分数数字样式 */
+.similarity-score {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+/* 微调元数据区域，确保徽章对齐 */
+.article-meta {
+    color: #5f6368;
+    font-size: 0.95em;
+    margin: 10px 0;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* 鼠标悬停效果 */
+.similarity-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* 评分颜色系统 - 覆盖Bootstrap默认颜色 */
+.bg-success.similarity-badge {
+    background: linear-gradient(135deg, #28a745, #20c997) !important;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.bg-primary.similarity-badge {
+    background: linear-gradient(135deg, #0d6efd, #0dcaf0) !important;
+    border: 1px solid rgba(13, 110, 253, 0.3);
+}
+
+.bg-warning.similarity-badge {
+    background: linear-gradient(135deg, #ffc107, #fd7e14) !important;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    color: #212529 !important; /* 深色文字在浅色背景上更易读 */
+    text-shadow: none;
+}
+
+.bg-danger.similarity-badge {
+    background: linear-gradient(135deg, #dc3545, #fd7e14) !important;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.bg-secondary.similarity-badge {
+    background: linear-gradient(135deg, #6c757d, #adb5bd) !important;
+    border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+/* 评分徽章前的图标（可选） */
+.similarity-badge::before {
+    content: '★';
+    font-size: 0.8em;
+    opacity: 0.9;
+}
+
+/* 确保在移动设备上也能良好显示 */
+@media (max-width: 768px) {
+    .similarity-badge {
+        font-size: 0.8em;
+        padding: 3px 8px;
+        border-radius: 10px;
+    }
+
+    .article-meta {
+        gap: 8px;
+    }
+}
+
+/* 在暗色模式下的适配（可选） */
+@media (prefers-color-scheme: dark) {
+    .similarity-badge {
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .similarity-badge:hover {
+        box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+    }
+}

@@ -106,8 +106,33 @@ class ArticleRenderer {
             const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
             const max_rate_score = appendix['__MAX_RATE_SCORE__'];
 
-            // --- [新增] 提取 AI 服务和模型字段 ---
-            // 兼容性：如果字段不存在，得到空字符串
+            // --- 检查并处理向量搜索评分 ---
+            const vector_score = appendix['__VECTOR_SCORE__'];
+            const hasVectorScore = vector_score !== undefined && vector_score !== null;
+
+            // 构建向量评分显示HTML
+            let vector_score_html = "";
+            if (hasVectorScore) {
+                const formattedScore = parseFloat(vector_score).toFixed(3);
+
+                // 根据评分设置徽章颜色
+                let badgeClass = 'bg-secondary';
+                if (vector_score >= 0.8) {
+                    badgeClass = 'bg-success';
+                } else if (vector_score >= 0.6) {
+                    badgeClass = 'bg-primary';
+                } else if (vector_score >= 0.4) {
+                    badgeClass = 'bg-warning';
+                } else {
+                    badgeClass = 'bg-danger';
+                }
+
+                vector_score_html = `
+                <span class="badge ${badgeClass} similarity-badge">
+                    <span class="similarity-score">${formattedScore}</span>
+                </span>`;
+            }
+
             const ai_service = this.escapeHTML(appendix['__AI_SERVICE__'] || '');
             const ai_model = this.escapeHTML(appendix['__AI_MODEL__'] || '');
 
@@ -116,8 +141,6 @@ class ArticleRenderer {
 
             // 评分行
             if (max_rate_class && max_rate_score !== null && max_rate_score !== undefined) {
-                // 去掉 class="mt-2"，去掉 article-rating 上的额外 margin
-                // 仅仅保留 class="article-rating"
                 left_content += `
                 <div class="article-rating">
                     <span class="debug-label">${max_rate_class}:</span>
@@ -138,7 +161,6 @@ class ArticleRenderer {
 
             if (ai_service || ai_model) {
                 if (ai_service) {
-                    // 给 Service 加上截断样式
                     right_content += `
                     <div>
                         <span class="debug-label">Service:</span>
@@ -146,7 +168,6 @@ class ArticleRenderer {
                     </div>`;
                 }
                 if (ai_model) {
-                    // Model 通常不长，可以不加截断，或者为了统一也加上
                     right_content += `
                     <div>
                         <span class="debug-label">Model:</span>
@@ -158,8 +179,6 @@ class ArticleRenderer {
             // 5. 构建顶部时间
             let archived_html = "";
             if (raw_archived_time) {
-                // 注意：data-archived 仍然使用原始 raw 字符串，确保 updateTimeBackgrounds 计算正确
-                // 显示出来的文本使用 formatted 字符串
                 archived_html = `
                 <span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">
                     Archived: ${archived_time_display}
@@ -177,6 +196,7 @@ class ArticleRenderer {
                 <div class="article-meta">
                     ${archived_html}
                     <span class="article-time">Publish: ${pub_time_display}</span>
+                    ${vector_score_html}
                     <span class="article-source">Source: ${informant_html}</span>
                 </div>
                 <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>

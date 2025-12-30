@@ -1,4 +1,3 @@
-import datetime
 import os
 import random
 import time
@@ -6,19 +5,20 @@ import traceback
 import uuid
 import queue
 import logging
+
 import pymongo
 import threading
 
 from attr import dataclass
-from typing import Tuple, Optional, Dict, Union
+from abc import ABC, abstractmethod
+from typing import Tuple, Optional, Dict, Union, Callable
 from pymongo.errors import ConnectionFailure
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result, TryAgain
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
-from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from prompts import ANALYSIS_PROMPT
 from GlobalConfig import EXPORT_PATH
-from ServiceComponent.IntelligenceHubDefines import *
 from Tools.MongoDBAccess import MongoDBStorage
+from ServiceComponent.IntelligenceHubDefines import *
 from Tools.DateTimeUtility import time_str_to_datetime, Clock
 from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
@@ -26,6 +26,7 @@ from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.RecommendationManager import RecommendationManager
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
+from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from VectorDB.VectorDBClient import VectorDBClient, VectorDBInitializationError, RemoteCollection
 
@@ -197,6 +198,7 @@ class IntelligenceHub:
     def startup(self):
         self.start_analysis_threads(3)
         self.post_process_thread.start()
+        self.vector_db_init_thread.start()
 
     def shutdown(self, timeout=10):
         logger.info("Intelligence hub shutting down...")
@@ -292,7 +294,7 @@ class IntelligenceHub:
     def get_intelligence(self,
                          _uuid: Union[str, List[str]],
                          db: str = 'archive'
-                         ) -> dict:
+                         ) -> Union[dict, List[dict]]:
         if db == 'cache':
             query_engine = self.cache_db_query_engine
         else:
@@ -326,7 +328,41 @@ class IntelligenceHub:
                                    in_summary: bool = True,
                                    in_fulltext: bool = False,
                                    top_n: int = 10,
-                                   score_threshold: float = 0.5) -> List[Tuple[str, float, str]]:
+                                   score_threshold: float = 0.5) -> List[Tuple[str, float, dict]]:
+        """
+        Perform semantic search across both summary and full-text vector databases,
+        returning deduplicated results with the best matches per document.
+
+        This function enables intelligent hybrid search by querying either or both
+        summary and full-text vector stores, then consolidates the results to ensure
+        each document appears only once with its highest-scoring text chunk.
+
+        Args:
+            text: The query text for semantic search.
+            in_summary: If True, search in the summary vector database. Defaults to True.
+            in_fulltext: If True, search in the full-text vector database. Defaults to False.
+            top_n: Maximum number of results to retrieve from each database. Defaults to 10.
+            score_threshold: Minimum similarity score (0.0 to 1.0) for filtering results.
+                             Defaults to 0.5.
+
+        Returns:
+            List[Tuple[str, float, str]]: A list of tuples, where each tuple contains:
+                - str: The document identifier (doc_id)
+                - float: The highest similarity score for that document (range: 0.0-1.0)
+                - dict: Vector DB search result
+
+            The list is not explicitly sorted, as the function preserves the document
+            deduplication order. Each document appears only once, represented by its
+            best-matching text chunk (highest similarity score).
+
+        Notes:
+            - If a document appears in both summary and full-text results, only the
+              instance with the highest similarity score is retained.
+            - Results below the score_threshold are filtered out at the database query level.
+            - The function expects the underlying vector database query methods to return
+              dictionaries containing at least "doc_id", "score", and "content" keys.
+        """
+
         summary_result = []
         fulltext_result = []
 
@@ -343,7 +379,7 @@ class IntelligenceHub:
             score = result["score"]
 
             if doc_id not in best_records or score > best_records[doc_id][0]:
-                best_records[doc_id] = (score, result["chunk_text"])
+                best_records[doc_id] = (score, result)
 
         # [(doc_id, score, chunk_text)]
         result_list = [(doc_id, record[0], record[1]) for doc_id, record in best_records.items()]

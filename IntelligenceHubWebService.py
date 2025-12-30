@@ -15,7 +15,7 @@ from flask import Flask, g, request, jsonify, session, redirect, url_for, render
 from GlobalConfig import *
 from Scripts.mongodb_exporter import export_mongodb_data
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
-from ServiceComponent.IntelligenceHubDefines import APPENDIX_MAX_RATE_SCORE
+from ServiceComponent.IntelligenceHubDefines import APPENDIX_MAX_RATE_SCORE, APPENDIX_VECTOR_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.UserManager import UserManager
 from Tools.CommonPost import common_post
@@ -66,10 +66,14 @@ def to_bool(value, default=False):
         return default
 
 
-def only_summary_result(result: List[dict]):
-    summary_result = [
-        ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True) for data in result
-    ]
+def exclude_raw_data(result: List[dict]):
+    summary_result = []
+    for data in result:
+        appendix = data.pop('APPENDIX', None)
+        clean_data = ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True)
+        if appendix:
+            clean_data['APPENDIX'] = appendix
+        summary_result.append(clean_data)
     return summary_result
 
 
@@ -423,7 +427,7 @@ class IntelligenceHubWebService:
                     if not results:
                         return jsonify({ 'results': [], 'total': total })
                     else:
-                        summary_result = only_summary_result(results)
+                        summary_result = exclude_raw_data(results)
                         return jsonify({ 'results': summary_result, 'total': total })
 
                 except Exception as e:
@@ -455,7 +459,7 @@ class IntelligenceHubWebService:
                 return [], 0
 
             top_n = p['page'] * p['per_page']  # 先多拿一点
-            raw: List[Tuple[str, float, str]] = self.intelligence_hub.vector_search_intelligence(
+            raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(
                 text=p['keywords'],
                 in_summary=p['in_summary'],
                 in_fulltext=p['in_fulltext'],
@@ -473,10 +477,18 @@ class IntelligenceHubWebService:
             #     for doc_id, score, chunk in page_items
             # ]
 
-            uuids = [doc_id for doc_id, _, _ in page_items]
+            uuids = []
+            score_map = {}
+            for doc_id, score, _ in page_items:
+                uuids.append(doc_id)
+                score_map[doc_id] = score
             articles = self.intelligence_hub.get_intelligence(uuids)
 
-            return articles, len(raw)  # total 为向量去重后的总数
+            for article in articles:
+                doc_id = article.get('UUID')
+                article['APPENDIX'][APPENDIX_VECTOR_SCORE] = score_map.get(doc_id, 0.0)
+
+            return articles, len(raw)
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):

@@ -63,6 +63,8 @@ APPENDIX_AI_MODEL           = '__AI_MODEL__'
 APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
 APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
 
+APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
+
 
 ARCHIVED_FLAG_DROP = 'D'
 ARCHIVED_FLAG_ERROR = 'E'
