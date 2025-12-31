@@ -10,7 +10,7 @@
 
 + [Recommendations List](/recommendations)
 
-+ [Intelligence Query](/intelligences/query)
++ [Intelligence Search](/intelligences/search)
 
 -----------------------------------------------
 

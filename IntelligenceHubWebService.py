@@ -8,7 +8,7 @@ import dateutil
 import threading
 import traceback
 from functools import wraps
-from typing import List, Tuple
+from typing import List, Tuple, Any, Dict
 from dateutil import parser as date_parser
 from flask import Flask, g, request, jsonify, session, redirect, url_for, render_template, abort, send_file
 
@@ -390,52 +390,132 @@ class IntelligenceHubWebService:
             return default_article_list_render(
                 recommendations, offset=0, count=len(recommendations), total_count=len(recommendations))
 
+        @app.route('/intelligences/search', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def intelligences_search_page():
+            return render_template('intelligence_search.html')
+
+        # ----------------------------------------------------------------------------------------
+
+        def _get_combined_params() -> Dict[str, Any]:
+            """
+            统一参数解析与清洗器。
+            优先级：URL Query (GET) > JSON Body > Form Data。
+
+            Returns:
+                Dict[str, Any]: 包含清洗和类型转换后的参数字典。
+
+            Param Details:
+                -------------------- 模式选择 (Mode) --------------------
+                search_mode (str): 搜索策略，默认为 'mongo'。
+                    - 'mongo': [普通搜索] 仅使用 MongoDB 字段精准/模糊筛选。
+                    - 'vector_text': [文本向量] 根据 'keywords' 进行自然语言语义搜索。
+                    - 'vector_similar': [相似推荐] 根据 'reference' (UUID) 寻找内容相似的文章。
+
+                --------------------- 通用 (General) ---------------------
+                page (int): 页码，默认为 1。
+                per_page (int): 每页数量，默认为 10 (最大限制 100)。
+                keywords (str): 搜索文本/关键词。
+                    - Mongo模式: 视底层实现用于文本匹配。
+                    - Vector模式: 作为语义搜索的 Embedding 输入。
+                start_time (str): 时间下限 (ISO 8601 格式字符串)。
+                end_time (str): 时间上限 (ISO 8601 格式字符串)。
+                    - Mongo模式: 对应数据库中的 period 或 archived_time。
+                    - Vector模式: 对应向量库 metadata 中的 timestamp。
+                threshold (float): 通用评分/过滤阈值，默认为 0。
+
+                --------------------- Mongo 专属 ------------------------
+                peoples (List[str]): 人物实体列表 (逗号分隔自动转列表)。
+                locations (List[str]): 地点实体列表。
+                organizations (List[str]): 组织实体列表。
+                    * 逻辑说明: 单字段内为 OR 关系 (包含任一即匹配)，字段间为 AND 关系。
+
+                --------------------- Vector 专属 -----------------------
+                in_summary (bool): 是否在摘要库中召回，默认为 True。
+                in_fulltext (bool): 是否在全文库中召回，默认为 False。
+                score_threshold (float): 向量相似度截断阈值，默认为 0.5。
+                reference (str): 目标文章 UUID。仅在 'vector_similar' 模式下必填。
+                """
+            combined = {}
+
+            # 1. 基础数据源获取
+            # 如果是 POST，尝试获取 Body
+            if request.method == 'POST':
+                json_data = request.get_json(silent=True)
+                if json_data:
+                    combined.update(json_data)
+                else:
+                    combined.update(request.form)
+
+            # 2. URL 参数覆盖 (优先级最高，保证分享链接的有效性)
+            # request.args 是 ImmutableMultiDict，转为 dict
+            combined.update(request.args.to_dict())
+
+            def _split(v: Any) -> List[str]:
+                if not v: return []
+                if isinstance(v, list): return v
+                return [x.strip() for x in v.split(',') if x.strip()]
+
+            # 3. 参数构造
+            params = {
+                'search_mode': combined.get('search_mode', 'mongo'),
+                'page': int(combined.get('page', 1)),
+                'per_page': int(combined.get('per_page', 10)),
+                # 保持原始字符串，在具体逻辑中再转 datetime，避免在此处 crash
+                'start_time': combined.get('start_time', ''),
+                'end_time': combined.get('end_time', ''),
+                'threshold': float(combined.get('threshold', 0)),
+                'keywords': combined.get('keywords', '').strip(),  # 去除首尾空格
+
+                # Mongo 筛选字段
+                'peoples': _split(combined.get('peoples', '')),
+                'locations': _split(combined.get('locations', '')),
+                'organizations': _split(combined.get('organizations', '')),
+
+                # Vector 字段
+                'in_summary': to_bool(combined.get('in_summary'), default=True),
+                'in_fulltext': to_bool(combined.get('in_fulltext'), default=False),
+                'score_threshold': float(combined.get('score_threshold', 0.5)),
+                'reference': combined.get('reference', ''),
+            }
+
+            # 限制每页最大数量，防止恶意攻击
+            if params['per_page'] > 100:
+                params['per_page'] = 100
+
+            return params
+
+        def _perform_search_logic(params: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            执行实际的搜索分发逻辑
+            """
+            results = []
+            total = 0
+
+            mode = params['search_mode']
+
+            if mode.startswith('vector'):
+                results, total = _do_vector_search(params)
+            else:
+                results, total = _do_mongo_search(params)
+
+            if not results:
+                return {'results': [], 'total': 0}
+            else:
+                summary_result = exclude_raw_data(results)
+                return {'results': summary_result, 'total': total}
+
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         @WebServiceAccessManager.login_required
         def intelligences_query_api():
-            if request.method == 'POST':
-                try:
-                    data = request.get_json(silent=True) or request.form
-                    # data = request.args
-
-                    def _split(v: str) -> List[str]:
-                        return [x.strip() for x in v.split(',') if x.strip()]
-
-                    params = {
-                        'start_time': data.get('start_time', ''),
-                        'end_time': data.get('end_time', ''),
-                        'locations': _split(data.get('locations', '')),
-                        'peoples': _split(data.get('peoples', '')),
-                        'organizations': _split(data.get('organizations', '')),
-                        'threshold': float(data.get('threshold', 0)),
-                        'page': int(data.get('page', 1)),
-                        'per_page': int(data.get('per_page', 10)),
-                        # 模式开关
-                        'search_mode': data.get('search_mode', 'mongo'),  # 'mongo' | 'vector'
-                        # 向量模式专用
-                        'keywords': data.get('keywords', ''),
-                        'in_summary': to_bool(data.get('in_summary'), default=True),
-                        'in_fulltext': to_bool(data.get('in_fulltext'), default=False),
-                        'score_threshold': float(data.get('score_threshold', 0.5)),
-                    }
-
-                    if params['search_mode'] == 'vector':
-                        results, total = _do_vector_search(params)
-                    else:
-                        results, total = _do_mongo_search(params)
-
-                    if not results:
-                        return jsonify({ 'results': [], 'total': total })
-                    else:
-                        summary_result = exclude_raw_data(results)
-                        return jsonify({ 'results': summary_result, 'total': total })
-
-                except Exception as e:
-                    logger.exception("intelligences_query_api error")
-                    traceback.print_exc()
-                    return jsonify({'error': str(e)}), 500
-
-            return render_template('intelligence_search.html')
+            try:
+                params = _get_combined_params()
+                data = _perform_search_logic(params)
+                return jsonify(data)
+            except Exception as e:
+                logger.exception("intelligences_query_api error")
+                traceback.print_exc()
+                return jsonify({'error': str(e)}), 500
 
         def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
             """走 Mongo 过滤"""
@@ -455,12 +535,27 @@ class IntelligenceHubWebService:
 
         def _do_vector_search(p: dict) -> Tuple[List[dict], int]:
             """走向量召回 + 内存分页"""
-            if not p['keywords']:
+
+            text = ''
+            if p['search_mode'] == 'vector_text':
+                text = p.get('keywords', '')
+            elif p['search_mode'] == 'vector_similar':
+                if ref_uuids := p.get('reference', ''):
+                    intelligence = self.intelligence_hub.get_intelligence(ref_uuids)
+                    if intelligence:
+                        # Almost the same as IntelligenceVectorDBEngine preparing data.
+                        text_parts = [
+                            intelligence.get('EVENT_TITLE', ''),
+                            intelligence.get('EVENT_BRIEF', ''),
+                            intelligence.get('EVENT_TEXT', '')
+                        ]
+                        text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
+            if not text:
                 return [], 0
 
-            top_n = p['page'] * p['per_page']  # 先多拿一点
+            top_n = p['page'] * p['per_page']
             raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(
-                text=p['keywords'],
+                text=text,
                 in_summary=p['in_summary'],
                 in_fulltext=p['in_fulltext'],
                 top_n=top_n,

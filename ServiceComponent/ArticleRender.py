@@ -160,6 +160,12 @@ def default_article_render(article_dict: dict):
     # Build rating table
     rating_table = gen_rating_table(article_dict)
 
+    similar_btn_html = f'''
+        <a href="/search_page_url?mode=similar&target_uuid={uuid_val}" target="_blank" class="btn btn-outline-light btn-sm ms-2">
+            <i class="bi bi-intersect"></i> Find Similar
+        </a>
+        '''
+
     # Build HTML
     html_content = f"""
     <!DOCTYPE html>
@@ -232,6 +238,7 @@ def default_article_render(article_dict: dict):
                         <h1 class="display-5 fw-bold">{title}</h1>
                         <div>
                             {f'<a href="{informant}" class="btn btn-sm btn-light"><i class="bi bi-link-45deg"></i> Source</a>' if informant else ''}
+                            {similar_btn_html}
                         </div>
                     </div>
                     <div class="lead">{brief}</div>
@@ -322,35 +329,3 @@ def default_article_render(article_dict: dict):
     """
 
     return html_content
-
-
-# Test case
-if __name__ == "__main__":
-    sample_article = {
-        "UUID": "a3d8f7c9-4b2e-4567-8c29-1234abcd5678",
-        "INFORMANT": "https://news.example.com/article/12345",
-        "PUB_TIME": "2023-10-15",
-        "TIME": ["2023-10-18", "2023-11-01"],
-        "LOCATION": ["China", "Guangdong Province", "Shenzhen"],
-        "PEOPLE": ["Zhang San", "Li Si", "Wang Wu"],
-        "ORGANIZATION": ["Tencent Inc", "Shenzhen Municipal Government"],
-        "EVENT_TITLE": "New Infrastructure Project Launched in Shenzhen Tech Park",
-        "EVENT_BRIEF": "Shenzhen Technology Park announces launch of next-gen digital infrastructure project with ¥50B investment",
-        "EVENT_TEXT": "<p>The Shenzhen Municipal Government and several tech companies jointly announced the launch of a new digital infrastructure project in Shenzhen Technology Park. The project is expected to involve a total investment of ¥50 billion yuan, with completion planned within three years.</p><p>The project includes construction of 5G base stations, AI computing centers, IoT facilities and other advanced technical infrastructure. Zhang San, member of Shenzhen Municipal Standing Committee stated: 'This project will further solidify Shenzhen's leading position in technological innovation.'</p><p>Li Si, CEO of Tencent Technology commented: 'The new infrastructure construction will provide strong support for Shenzhen tech companies and accelerate digital transformation.'</p>",
-        "RATE": {
-            "Strategic Relevance": 8,
-            "Global Connectivity": 4,
-            "Financial Impact": 9,
-            "Policy Relevance": 10,
-            "Technical Innovation": 8,
-            "Investment Value": 9,
-            "Accuracy": 7,
-        },
-        "IMPACT": "This event may increase valuation of technology companies in Shenzhen, especially in 5G and AI sectors, while creating opportunities in infrastructure industry",
-        "TIPS": "Investors should watch opportunities in 5G, AI, and IoT companies"
-    }
-
-    html_output = default_article_render(sample_article)
-
-    with open('default_article_render.html', 'wt', encoding='utf-8') as f:
-        f.write(html_output)
