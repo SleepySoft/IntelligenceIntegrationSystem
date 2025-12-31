@@ -1,34 +1,14 @@
-import os
-import random
-import time
-import traceback
-import uuid
 import queue
 import logging
-
-import pymongo
 import threading
 
-from attr import dataclass
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Dict, Union, Callable
-from pymongo.errors import ConnectionFailure
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
+from typing import Callable
 
-from prompts import ANALYSIS_PROMPT
-from GlobalConfig import EXPORT_PATH
-from Tools.MongoDBAccess import MongoDBStorage
-from ServiceComponent.IntelligenceHubDefines import *
-from Tools.DateTimeUtility import time_str_to_datetime, Clock
-from AIClientCenter.AIClientManager import AIClientManager
-from MyPythonUtility.DictTools import check_sanitize_dict
-from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
-from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
-from ServiceComponent.RecommendationManager import RecommendationManager
-from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
+from ServiceComponent.IntelligenceHubDefines import ArchivedData
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
-from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
-from VectorDB.VectorDBClient import VectorDBClient, VectorDBInitializationError, RemoteCollection
+from Tools.DateTimeUtility import Clock
+from VectorDB.VectorDBClient import VectorDBClient
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +34,8 @@ class AsyncHubPostProcess(IHubPostProcess):
         Initialize the async processor.
 
         Args:
-            data_processor: An object implementing IHubPostProcess interface
+            init_func: Function to run once when the worker thread starts.
+            process_func: Function to process each item from the queue.
         """
         self._init_func = init_func
         self._process_func = process_func
@@ -76,31 +57,36 @@ class AsyncHubPostProcess(IHubPostProcess):
         Args:
             data: Dictionary containing data to be processed
         """
+        if not self.running:
+            logger.warning("Attempting to process data while processor is not running.")
         self.queue.put(data)
 
     def _do_process_data(self):
         """Background thread function that processes data from the queue."""
-        if self._init_func:
-            self._init_func()
+        try:
+            if self._init_func:
+                self._init_func()
+        except Exception as e:
+            logger.critical(f"Initialization failed in background thread: {e}", exc_info=True)
+            self.running = False  # 标记停止，避免假死
+            return
 
         while self.running:
             try:
                 # Get data from queue with timeout to allow checking running flag
                 data = self.queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
 
+            try:
                 # Process data using the provided processor
                 if self._process_func:
                     self._process_func(data)
-
-                # Mark task as done
-                self.queue.task_done()
-
-            except queue.Empty:
-                # Timeout occurred, continue loop to check running flag
-                continue
             except Exception as e:
-                # Handle any exceptions during processing
-                print(f"Error processing data: {e}")
+                # 捕获处理逻辑本身的错误，不要让线程崩溃
+                logger.error(f"Error processing data item: {e}", exc_info=True)
+            finally:
+                # Ensure task is marked done even if processing failed
                 self.queue.task_done()
 
     def stop_processing(self):
@@ -109,32 +95,34 @@ class AsyncHubPostProcess(IHubPostProcess):
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5.0)
 
-    def wait_for_completion(self, timeout=None):
+    def wait_for_completion(self):  # 移除了不支持的 timeout 参数
         """
         Wait for all queued tasks to be processed.
-
-        Args:
-            timeout: Maximum time to wait in seconds
-
-        Returns:
-            bool: True if all tasks completed, False if timeout occurred
+        Note: This blocks until the queue is empty.
         """
-        try:
-            self.queue.join()
-            return True
-        except Exception as e:
-            print(f"Error waiting for completion: {e}")
-            return False
+        self.queue.join()
 
 
 class PostProcessVectorize(AsyncHubPostProcess):
-    def __init__(self, vector_db_client: VectorDBClient):
+    def __init__(
+            self,
+            vector_db_engine_summary: IntelligenceVectorDBEngine,
+            vector_db_engine_full_text: IntelligenceVectorDBEngine
+    ):
+        # 先赋值，防止线程启动时访问 self.vector_db_client 报错
+        self.vector_db_engine_summary = vector_db_engine_summary
+        self.vector_db_engine_full_text = vector_db_engine_full_text
+
+        # 这里的 super().__init__ 会启动线程，在这之前成员变量要就绪
         super().__init__(self._wait_for_vector_db_ready, self._submit_to_vector_db)
 
-        self.vector_db_client = vector_db_client
-
     def _wait_for_vector_db_ready(self):
+        # Already wait in IHub
         pass
 
     def _submit_to_vector_db(self, data: dict):
-        pass
+        clock = Clock()
+        validated_data = ArchivedData.model_validate(data)
+        self.vector_db_engine_summary.upsert(validated_data, timeout=3600)
+        self.vector_db_engine_full_text.upsert(validated_data, timeout=3600)
+        logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
