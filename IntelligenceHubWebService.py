@@ -320,68 +320,8 @@ class IntelligenceHubWebService:
         #         logger.error(f'rssfeed_api() error: {str(e)}', stack_info=True)
         #         return 'Error'
 
-        @app.route('/intelligences', methods=['GET', 'POST'])
+        @app.route('/intelligences', methods=['GET'])
         def intelligences_view():
-            if request.method == 'POST':
-                try:
-                    # 1. 先初始化一个字典存放合并后的参数
-                    combined_data = {}
-
-                    # 2. 先加载 Body 中的数据 (优先级较低)
-                    # 获取 JSON，如果获取不到 (None) 则尝试获取 Form
-                    json_data = request.get_json(silent=True)
-                    if json_data:
-                        combined_data.update(json_data)
-                    else:
-                        combined_data.update(request.form)
-
-                    # 3. 再加载 URL 中的参数 (优先级最高)
-                    # 使用 update 方法，如果 URL 中有同名参数，会覆盖掉 Body 中的值
-                    combined_data.update(request.args)
-
-                    try:
-                        offset = int(combined_data.get('offset', 0))
-                        count = int(combined_data.get('count', 10))
-                        threshold = int(combined_data.get('threshold', 6))
-                    except ValueError:
-                        return jsonify(
-                            {'error': 'Invalid Parameter', 'message': 'offset/count/threshold must be integers'}), 400
-
-                    if count > 100:
-                        count = 100
-
-                    # 3. 执行查询
-                    # 注意：如果是普通函数视图，这里不能用 self。假设 intelligence_hub 是全局对象。
-                    # 如果你在类视图(MethodView)中，请保留 self.
-                    intelligences, total_count = self.intelligence_hub.query_intelligence(
-                        threshold=threshold, skip=offset, limit=count
-                    )
-
-                    # 4. 数据预处理 (非常重要)
-                    # 数据库返回的对象(如 MongoDB ObjectId 或 datetime)可能无法直接 JSON 序列化
-                    # 建议在这里将其转为普通字典，并将时间转为字符串
-                    results_list = []
-                    for item in intelligences:
-                        # 这是一个防御性转换，确保得到的是字典
-                        item_dict = item if isinstance(item, dict) else item.__dict__
-
-                        # 如果有 ObjectId 或 datetime 需要在这里转 str，例如：
-                        # if '_id' in item_dict: item_dict['_id'] = str(item_dict['_id'])
-
-                        results_list.append(item_dict)
-
-                    # 5. 返回 JSON 给前端
-                    return jsonify({
-                        'results': results_list,
-                        'total': total_count
-                    })
-
-                except Exception as e:
-                    logger.error(f'View rendering error: {str(e)}')
-                    # 返回 JSON 格式的错误信息，方便前端捕获
-                    return jsonify({'error': 'Server Error', 'message': str(e)}), 500
-
-            # 处理浏览器直接访问页面的请求 (GET)
             return render_template('intelligence_list.html')
 
         @app.route('/recommendations', methods=['GET'])
@@ -396,6 +336,44 @@ class IntelligenceHubWebService:
             return render_template('intelligence_search.html')
 
         # ----------------------------------------------------------------------------------------
+
+        @app.route('/intelligences/query', methods=['GET', 'POST'])
+        def intelligences_query_api():
+            try:
+                # 1. 获取参数
+                params = _get_combined_params()
+
+                # 2. 获取当前登录状态
+                is_logged_in = session.get('logged_in', False)
+
+                # 3. 定义权限策略
+                mode = params['search_mode']
+
+                # 策略 A: 向量搜索 (高级功能) -> 必须登录
+                if mode.startswith('vector'):
+                    if not is_logged_in:
+                        return jsonify({
+                            'error': 'Unauthorized',
+                            'message': '高级语义搜索和相似推荐功能需要登录后使用。'
+                        }), 401
+
+                # 策略 B: 普通列表 (基础功能) -> 允许游客访问，但可以加限制
+                elif mode == 'mongo':
+                    # [可选] 例如：游客只能看前 3 页
+                    # if not is_logged_in and params['page'] > 3:
+                    #     return jsonify({
+                    #         'error': 'Unauthorized',
+                    #         'message': '访客仅可浏览最新 3 页内容，请登录查看更多历史数据。'
+                    #     }), 401
+                    pass
+
+                # 4. 执行业务逻辑
+                data = _perform_search_logic(params)
+                return jsonify(data)
+
+            except Exception as e:
+                logger.exception("intelligences_query_api error")
+                return jsonify({'error': str(e)}), 500
 
         def _get_combined_params() -> Dict[str, Any]:
             """
@@ -486,12 +464,6 @@ class IntelligenceHubWebService:
             return params
 
         def _perform_search_logic(params: Dict[str, Any]) -> Dict[str, Any]:
-            """
-            执行实际的搜索分发逻辑
-            """
-            results = []
-            total = 0
-
             mode = params['search_mode']
 
             if mode.startswith('vector'):
@@ -504,18 +476,6 @@ class IntelligenceHubWebService:
             else:
                 summary_result = exclude_raw_data(results)
                 return {'results': summary_result, 'total': total}
-
-        @app.route('/intelligences/query', methods=['GET', 'POST'])
-        @WebServiceAccessManager.login_required
-        def intelligences_query_api():
-            try:
-                params = _get_combined_params()
-                data = _perform_search_logic(params)
-                return jsonify(data)
-            except Exception as e:
-                logger.exception("intelligences_query_api error")
-                traceback.print_exc()
-                return jsonify({'error': str(e)}), 500
 
         def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
             """走 Mongo 过滤"""
@@ -586,6 +546,8 @@ class IntelligenceHubWebService:
             articles.sort(key=lambda x: x['APPENDIX'][APPENDIX_VECTOR_SCORE], reverse=True)
 
             return articles, len(raw)
+
+        # --------------------------------------------------------------------------------------------
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):

@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.showLoading();
 
         try {
-            const response = await fetch('/intelligences/query', { // 确保后端路由也是这个
+            const response = await fetch('/intelligences/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -90,39 +90,50 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
 
         const formData = new FormData(searchForm);
-        const params = Object.fromEntries(formData.entries());
+        // 注意：FormData 对于未选中的 checkbox 不会包含 key，对于选中的值为 "on"
 
-        // 获取当前激活的 Tab (Mongo 或 Vector)
+        // 1. 获取当前激活的 Tab 模式
         const activeTabBtn = document.querySelector('#search-mode-tabs .nav-link.active');
-        const mode = activeTabBtn ? activeTabBtn.dataset.mode : 'mongo';
+        const rawMode = activeTabBtn ? activeTabBtn.dataset.mode : 'mongo';
 
-        // 构建基础 Payload
+        // 模式映射：前端 'vector' -> 后端 'vector_text'
+        const searchMode = rawMode === 'vector' ? 'vector_text' : 'mongo';
+
+        // 2. 构建通用 Payload
         const payload = {
-            page: 1, // 新搜索总是第 1 页
-            per_page: Number(params.per_page) || 10,
-            search_mode: mode
+            page: 1,
+            per_page: Number(formData.get('per_page')) || 10,
+            search_mode: searchMode,
+            // Keywords 在 Mongo 和 Vector 模式下都可能有用，统统传过去
+            keywords: formData.get('keywords') || ''
         };
 
-        if (mode === 'vector') {
-            payload.keywords = params.keywords || '';
-            payload.score_threshold = Number(params.score_threshold) || 0.5;
-            // 处理 Checkbox
-            payload.in_summary = !!params.in_summary; // 转布尔值
-            payload.in_fulltext = !!params.in_fulltext;
+        // 3. 根据模式追加特定字段
+        if (searchMode === 'vector_text') {
+            payload.score_threshold = Number(formData.get('score_threshold')) || 0.5;
+
+            // Checkbox 显式转 Boolean
+            // formData.get('xx') 存在则为 'on' (truthy)，不存在则为 null (falsy)
+            payload.in_summary = formData.get('in_summary') !== null;
+            payload.in_fulltext = formData.get('in_fulltext') !== null;
+
         } else {
             // Mongo 模式
-            if (params.start_time) payload.start_time = params.start_time;
-            if (params.end_time) payload.end_time = params.end_time;
+            if (formData.get('start_time')) payload.start_time = formData.get('start_time');
+            if (formData.get('end_time')) payload.end_time = formData.get('end_time');
 
-            // 处理逗号分隔的字符串
-            if (params.locations) payload.locations = params.locations;
-            if (params.peoples) payload.peoples = params.peoples;
-            if (params.organizations) payload.organizations = params.organizations;
+            // 字符串直接传，后端 _split 会处理逗号
+            if (formData.get('locations')) payload.locations = formData.get('locations');
+            if (formData.get('peoples')) payload.peoples = formData.get('peoples');
+            if (formData.get('organizations')) payload.organizations = formData.get('organizations');
+
+            // 确保 Mongo 模式下清理掉 Vector 特有的参数，避免混淆（虽然后端会忽略）
         }
 
         // 更新状态缓存
         currentQueryState.payload_cache = payload;
         currentQueryState.page = 1;
+        currentQueryState.search_mode = searchMode;
 
         fetchResults(payload);
     });
@@ -130,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // B. 分页点击 (全局委托，适配 .page-btn)
     // 注意：这里监听的是 document.body 或者结果容器，确保能捕获到动态生成的按钮
     document.body.addEventListener('click', (e) => {
-        // [关键修改] 匹配 .page-btn 而不是 .page-link
+        // 匹配 .page-btn 而不是 .page-link
         const target = e.target.closest('.page-btn');
 
         if (target && !target.classList.contains('disabled')) {

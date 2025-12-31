@@ -10,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
         page: 1,
         per_page: 10,
         threshold: 0,      // 后端默认是 0
-        search_mode: 'mongo'
+        search_mode: 'mongo',
+        score_threshold: 0.6
     };
 
     const renderer = new ArticleRenderer('article-list-container', 'pagination-container');
@@ -20,29 +21,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return {
             page: parseInt(params.get('page')) || DEFAULTS.page,
             per_page: parseInt(params.get('per_page')) || DEFAULTS.per_page,
-            threshold: parseFloat(params.get('threshold')) || DEFAULTS.threshold
+            threshold: parseFloat(params.get('threshold')) || DEFAULTS.threshold,
+
+            // 读取搜索模式和引用ID
+            search_mode: params.get('search_mode') || DEFAULTS.search_mode,
+            reference: params.get('reference') || '',
+            score_threshold: parseFloat(params.get('score_threshold')) || DEFAULTS.score_threshold
         };
     }
 
+    // updateUrl 需要保留这些特殊参数，否则翻页时会丢失
     function updateUrl(state) {
         const params = new URLSearchParams();
 
-        if (state.page !== DEFAULTS.page) {
-            params.set('page', state.page);
-        }
-        if (state.per_page !== DEFAULTS.per_page) {
-            params.set('per_page', state.per_page);
-        }
-        if (state.threshold !== DEFAULTS.threshold) {
-            params.set('threshold', state.threshold);
+        if (state.page !== DEFAULTS.page) params.set('page', state.page);
+        if (state.per_page !== DEFAULTS.per_page) params.set('per_page', state.per_page);
+        if (state.threshold !== DEFAULTS.threshold) params.set('threshold', state.threshold);
+
+        // 新增：如果当前是非 mongo 模式，必须保留 mode 和 reference 到 URL 中
+        if (state.search_mode !== 'mongo') {
+            params.set('search_mode', state.search_mode);
+            if (state.reference) params.set('reference', state.reference);
+            if (state.score_threshold) params.set('score_threshold', state.score_threshold);
         }
 
-        // 保持 URL 干净
         const queryString = params.toString();
-        const newUrl = queryString ?
-            `${window.location.pathname}?${queryString}` :
-            window.location.pathname;
-
+        const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
         window.history.pushState({ path: newUrl }, '', newUrl);
     }
 
@@ -60,12 +64,20 @@ document.addEventListener('DOMContentLoaded', () => {
         syncControls(state);
         renderer.showLoading();
 
+        // 构建请求参数，透传所有必要字段
         const requestParams = new URLSearchParams();
 
         requestParams.set('page', state.page);
         requestParams.set('per_page', state.per_page);
+        requestParams.set('search_mode', state.search_mode); // 传给后端
 
         if (state.threshold > 0) requestParams.set('threshold', state.threshold);
+
+        // 只有 vector_similar 模式才需要传 reference
+        if (state.search_mode === 'vector_similar') {
+            requestParams.set('reference', state.reference);
+            requestParams.set('score_threshold', state.score_threshold);
+        }
 
         const targetUrl = `${API_URL}?${requestParams.toString()}`;
 
@@ -75,6 +87,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 // body: JSON.stringify({}) // Body 为空，因为参数都在 URL query 中了
             });
+
+            // [新增] 专门拦截 401 未登录状态
+            if (response.status === 401) {
+                const errData = await response.json();
+                // 渲染器显示错误
+                renderer.showError(`
+                    <div class="text-center py-4">
+                        <h4><i class="bi bi-lock-fill"></i> ${errData.error}</h4>
+                        <p>${errData.message}</p>
+                    </div>
+                `);
+
+                return; // 终止后续处理
+            }
 
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
 

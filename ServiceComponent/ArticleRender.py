@@ -161,7 +161,8 @@ def default_article_render(article_dict: dict):
     rating_table = gen_rating_table(article_dict)
 
     similar_btn_html = f'''
-        <a href="/search_page_url?mode=similar&target_uuid={uuid_val}" target="_blank" class="btn btn-outline-light btn-sm ms-2">
+        <a href="/intelligences?search_mode=vector_similar&reference={uuid_val}&score_threshold=0.6" 
+            target="_blank" class="btn btn-outline-light btn-sm ms-2">
             <i class="bi bi-intersect"></i> Find Similar
         </a>
         '''
