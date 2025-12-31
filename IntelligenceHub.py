@@ -105,7 +105,6 @@ class IntelligenceHub:
         self.vector_db_engine_full_text: Optional[IntelligenceVectorDBEngine] = None
 
         self.vector_db_init_event = threading.Event()
-        self.vector_db_init_failed = False
 
         self.scheduler = AdvancedScheduler(logger=logging.getLogger('Scheduler'))
         # TODO: This cache seems to be ugly.
@@ -362,29 +361,57 @@ class IntelligenceHub:
             - The function expects the underlying vector database query methods to return
               dictionaries containing at least "doc_id", "score", and "content" keys.
         """
+        # 1. 线程安全快照 (Thread-Safe Snapshot)
+        # 在锁内获取引用，后续只用这两个局部变量，不用担心 self.xxx 突然变 None
+        with self.lock:
+            engine_summary = self.vector_db_engine_summary
+            engine_full = self.vector_db_engine_full_text
 
         summary_result = []
         fulltext_result = []
 
-        if in_summary and self.vector_db_engine_summary:
-            summary_result = self.vector_db_engine_summary.query(text, top_n, score_threshold)
-        if in_fulltext and self.vector_db_engine_full_text:
-            fulltext_result = self.vector_db_engine_full_text.query(text, top_n, score_threshold)
+        # 2. 独立查询 (Best Effort Strategy)
+        if in_summary:
+            if engine_summary:
+                summary_result = engine_summary.query(text, top_n, score_threshold)
+            else:
+                logger.warning("Summary search requested but engine is not ready yet.")
 
+        if in_fulltext:
+            if engine_full:
+                fulltext_result = engine_full.query(text, top_n, score_threshold)
+            else:
+                logger.warning("Fulltext search requested but engine is not ready yet.")
+
+        # 如果两个都没查（或者都不可用），直接返回
+        if not summary_result and not fulltext_result:
+            return []
+
+        # 3. 结果合并与去重 (Merge & Deduplicate)
+        # 策略：同一文档 ID，保留分数最高的那个
         combined_results = summary_result + fulltext_result
+        best_records = {}  # Format: {doc_id: (score, raw_result_dict)}
 
-        best_records = {}
         for result in combined_results:
-            doc_id = result["doc_id"]
-            score = result["score"]
+            doc_id = result.get("doc_id")  # 使用 .get 防止 key 不存在报错
+            score = result.get("score", 0.0)
+
+            if doc_id is None: continue
 
             if doc_id not in best_records or score > best_records[doc_id][0]:
                 best_records[doc_id] = (score, result)
 
-        # [(doc_id, score, chunk_text)]
-        result_list = [(doc_id, record[0], record[1]) for doc_id, record in best_records.items()]
+        # 4. 转换格式 -> [(doc_id, score, result_dict)]
+        result_list = [
+            (doc_id, val[0], val[1])
+            for doc_id, val in best_records.items()
+        ]
 
-        return result_list
+        # 5. 排序与截断 (Sort & Slice)
+        # 合并后的结果必须重新按分数降序排列，并只取前 N 个
+        result_list.sort(key=lambda x: x[1], reverse=True)
+
+        return result_list[:top_n]
 
     def get_intelligence_summary(self) -> Tuple[int, str]:
         query_engine = self.archive_db_query_engine
@@ -693,68 +720,63 @@ class IntelligenceHub:
     def _vector_db_init_worker(self):
         if self.vector_db_client is None:
             logger.warning("Vector DB service is not configured, skipping init.")
-            self.vector_db_init_failed = True
             self.vector_db_init_event.set()
             return
 
         logger.info('Waiting for vector DB init...')
         clock = Clock()
 
-        # 标记是否成功，默认为 False
-        self.vector_db_init_failed = False
-
-        while not self.shutdown_flag.is_set():
-            try:
-                # 1. 尝试等待就绪，使用短超时（例如 2秒）
-                # 这样做的目的是为了每隔2秒就有机会检查一次 self.shutdown_flag
+        try:
+            while not self.shutdown_flag.is_set():
                 try:
-                    self.vector_db_client.wait_until_ready(timeout=2.0, poll_interval=0.5)
-                except TimeoutError:
-                    # 超时意味着这2秒内没准备好，但这不一定是错误，
-                    # 我们捕获它，让循环继续，从而再次检查 shutdown_flag
-                    continue
+                    # 1. 尝试等待就绪，使用短超时（例如 2秒）
+                    # 这样做的目的是为了每隔2秒就有机会检查一次 self.shutdown_flag
+                    try:
+                        self.vector_db_client.wait_until_ready(timeout=2.0, poll_interval=0.5)
+                    except TimeoutError:
+                        # 超时意味着这2秒内没准备好，但这不一定是错误，
+                        # 我们捕获它，让循环继续，从而再次检查 shutdown_flag
+                        continue
 
-                # 2. 如果代码走到这里，说明 wait_until_ready 成功返回了
-                logger.info("Vector DB is ready. Creating collections...")
+                    # 2. 如果代码走到这里，说明 wait_until_ready 成功返回了
+                    logger.info("Vector DB is ready. Creating collections...")
 
-                # 3. 创建 Collections
-                # 注意：如果此时发生网络错误，外层 except 会捕获并重试
+                    # 3. 创建 Collections
+                    # 注意：如果此时发生网络错误，外层 except 会捕获并重试
 
-                # We have to create collection after vector initialized.
-                # So we cannot create these 2 collections by config in IntelligenceHubStartup.py
+                    # We have to create collection after vector initialized.
+                    # So we cannot create these 2 collections by config in IntelligenceHubStartup.py
 
-                vector_db_summary = self.vector_db_client.create_collection(
-                    name='intelligence_summary', chunk_size=256, chunk_overlap=30)
-                self.vector_db_engine_summary = IntelligenceVectorDBEngine(vector_db_summary)
+                    vector_db_summary = self.vector_db_client.create_collection(
+                        name='intelligence_summary', chunk_size=256, chunk_overlap=30)
+                    vector_db_full_text = self.vector_db_client.create_collection(
+                        name='intelligence_full_text', chunk_size=512, chunk_overlap=50)
 
-                vector_db_full_text = self.vector_db_client.create_collection(
-                    name='intelligence_full_text', chunk_size=512, chunk_overlap=50)
-                self.vector_db_engine_full_text = IntelligenceVectorDBEngine(vector_db_full_text)
+                    with self.lock:
+                        self.vector_db_engine_summary = IntelligenceVectorDBEngine(vector_db_summary)
+                        self.vector_db_engine_full_text = IntelligenceVectorDBEngine(vector_db_full_text)
 
+                    # 4. 成功！退出循环
+                    logger.info(f'Vector DB initialized successfully. Time elapsed: {clock.elapsed_s()}s')
+                    break
 
-                # 4. 成功！退出循环
-                logger.info(f'Vector DB initialized successfully. Time elapsed: {clock.elapsed_s()}s')
-                break
+                except (VectorDBInitializationError, ConnectionError, Exception) as e:
+                    # 5. 处理真正的错误（非超时）
+                    # 比如服务返回 500，或者网络连接被拒绝
+                    logger.error(f"Error connecting to Vector DB: {e}. Retrying in 5 seconds...")
 
-            except (VectorDBInitializationError, ConnectionError, Exception) as e:
-                # 5. 处理真正的错误（非超时）
-                # 比如服务返回 500，或者网络连接被拒绝
-                logger.error(f"Error connecting to Vector DB: {e}. Retrying in 5 seconds...")
-
-                # 简单的退避策略，防止疯狂刷日志
-                # 分段 sleep 也是为了能响应 shutdown
-                for _ in range(5):
-                    if self.shutdown_flag.is_set(): break
-                    time.sleep(1)
-
-        # 循环结束（可能是成功 break，也可能是 shutdown_flag 被设置）
-
-        if self.shutdown_flag.is_set():
-            logger.info("Vector DB init worker stopped due to shutdown signal.")
-            self.vector_db_init_failed = True  # 如果是因为关闭而结束，可视作未完成
-
-        # 最终设置事件，通知主线程等待结束
-        self.vector_db_init_event.set()
+                    # 简单的退避策略，防止疯狂刷日志
+                    # 分段 sleep 也是为了能响应 shutdown
+                    for _ in range(5):
+                        if self.shutdown_flag.is_set(): break
+                        time.sleep(1)
+        finally:
+            # 确保无论如何（成功、失败、被 Kill、代码崩溃）都会通知主线程
+            # 循环结束（可能是成功 break，也可能是 shutdown_flag 被设置）
+            if self.shutdown_flag.is_set():
+                logger.info("Vector DB init worker stopped due to shutdown signal.")
+            # 最终设置事件，通知主线程等待结束
+            self.vector_db_init_event.set()
 
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------
 
