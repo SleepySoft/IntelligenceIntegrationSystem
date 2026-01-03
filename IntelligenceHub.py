@@ -276,7 +276,7 @@ class IntelligenceHub:
 
     def submit_archived_data(self, data: dict) -> True or Error:
         try:
-            if self._check_data_duplication(data, False):
+            if self._check_duplication_in_archived_db(data, False):
                 return IntelligenceHub.Error(error_list=[f"Archived message duplicated {data.get('UUID', '')}."])
 
             validated_data, error_text = check_sanitize_dict(dict(data), ArchivedData)
@@ -658,6 +658,7 @@ class IntelligenceHub:
         # -------------------------------------- Post process loop --------------------------------------
 
         while not self.shutdown_flag.is_set():
+            data = None
             try:
                 try:
                     data = self.processed_queue.get(block=True)
@@ -666,6 +667,9 @@ class IntelligenceHub:
                         continue
                 except queue.Empty:
                     continue
+
+                if self._check_duplication_in_archived_db(data, False):
+                    raise NameError('Found duplication. Not archive this data.')
 
                 # ----------------------- Record the max rate for easier filter -----------------------
 
@@ -713,6 +717,15 @@ class IntelligenceHub:
                 # ---------------------------------------------------------------------------------------
             except queue.Empty:
                 continue
+
+            except NameError as e:
+                with self.lock:
+                    self.drop_counter += 1
+                logger.info(str(e))
+                if data is not None:
+                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DUPLICATED)
+                else:
+                    logger.error("Data is None. It's impossible.")
 
             except Exception as e:
                 logger.error(f"Post process got unknown issue: {str(e)}")
@@ -888,7 +901,7 @@ class IntelligenceHub:
 
     # ---------------------------- Before Process ----------------------------
 
-    def _check_data_duplication(self, data: dict, allow_empty_informant: bool) -> bool:
+    def _check_get_identifier(self, data: dict, allow_empty_informant: bool):
         target_uuid = data.get('UUID', '').strip()
         target_informant = data.get('informant', '').strip()
 
@@ -898,6 +911,10 @@ class IntelligenceHub:
         if not allow_empty_informant and not target_informant:
             raise ValueError('No valid informant.')
 
+        return target_uuid, target_informant
+
+    def _check_duplication_in_queue(self, data: dict, allow_empty_informant: bool):
+        target_uuid, target_informant = self._check_get_identifier(data, allow_empty_informant)
         queues_to_check = [self.original_queue, self.processed_queue, self.unarchived_queue]
 
         for q in queues_to_check:
@@ -907,18 +924,33 @@ class IntelligenceHub:
                         return True
                     if target_informant and item.get('informant') == target_informant:
                         return True
+        return False
+
+    def _check_duplication_in_db(self, data: dict, allow_empty_informant: bool,
+                                 query_engine: IntelligenceQueryEngine):
+
+        target_uuid, target_informant = self._check_get_identifier(data, allow_empty_informant)
 
         conditions = {'UUID': target_uuid}
         if target_informant:
-            conditions['informant'] = target_informant
+            conditions['INFORMANT'] = target_informant
             operator = "$or"
         else:
             operator = "$or"
 
-        query_engine = self.archive_db_query_engine
         duplicated =  bool(query_engine.common_query(conditions=conditions, operator=operator))
 
         return duplicated
+
+    def _check_duplication_in_cache_db(self, data: dict, allow_empty_informant: bool):
+        return self._check_duplication_in_db(data, allow_empty_informant, self.cache_db_query_engine)
+
+    def _check_duplication_in_archived_db(self, data: dict, allow_empty_informant: bool):
+        return self._check_duplication_in_db(data, allow_empty_informant, self.archive_db_query_engine)
+
+    def _check_data_duplication(self, data: dict, allow_empty_informant: bool) -> bool:
+        return (self._check_duplication_in_queue(data, allow_empty_informant) or
+                self._check_duplication_in_archived_db(data, allow_empty_informant))
 
     def _enqueue_collected_data(self, data: dict) -> True or Error:
         del data['token']
@@ -962,7 +994,10 @@ class IntelligenceHub:
     def _cache_original_data(self, data: dict):
         try:
             if self.mongo_db_cache:
-                self.mongo_db_cache.insert(data)
+                if self._check_duplication_in_cache_db(data, False):
+                    logger.info(f"Found duplicated data in cache db. Drop.")
+                else:
+                    self.mongo_db_cache.insert(data)
         except Exception as e:
             logger.error(f'Cache original data fail: {str(e)}')
 
