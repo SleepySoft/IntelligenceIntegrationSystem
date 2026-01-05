@@ -3142,6 +3142,16 @@ ARCHIVED_FLAG_SENSITIVE = 'S'
 
 
 
+请思考并做以下调整：
+1. 'list' or 'content'不是task type而是url type（在提交url时指定），一个task会先拉取列表再拉取其中的文章。分类是为了区别不同url的记录和展示方式。
+2. 做好多线程保护，每个crawler会运行在不同的线程中，线程冲突是必然的。
+3. 由于目的是统一管理，所以CrawlerMonitor可以做成单件模式。
+
+
+
+
+
+
 
 
 

@@ -8,6 +8,8 @@ from typing import Dict, Optional, List, Any
 from datetime import datetime
 from enum import Enum
 
+from Tools.CrawlRecord import CrawlRecord, STATUS_SUCCESS, STATUS_IGNORED, STATUS_ERROR
+
 
 # Import your existing class
 # from crawl_record import CrawlRecord, STATUS_SUCCESS, STATUS_ERROR, STATUS_IGNORED, STATUS_NOT_EXIST
