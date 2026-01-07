@@ -8,7 +8,7 @@ from collections import Counter
 from dataclasses import dataclass, asdict
 from typing import Optional, Tuple, List, Dict
 
-from prompts import SUGGESTION_PROMPT
+from prompts_v1x import SUGGESTION_PROMPT
 from Tools.MongoDBAccess import MongoDBStorage
 from AIClientCenter.AIClientManager import AIClientManager
 from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware

@@ -7,7 +7,7 @@ from flask import Flask, request, jsonify
 from IntelligenceHub import IntelligenceHub, CollectedData
 from IntelligenceHubWebService import post_collected_intelligence
 from recycled.TestContent import CONTENT_TRUMP_GOT_FUCKED
-from prompts import ANALYSIS_PROMPT
+from prompts_v1x import ANALYSIS_PROMPT
 from MyPythonUtility.DictTools import DictPrinter
 
 

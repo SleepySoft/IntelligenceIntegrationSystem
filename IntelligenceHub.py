@@ -15,7 +15,7 @@ from typing import Tuple, Optional, Dict, Union, Callable
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
-from prompts import ANALYSIS_PROMPT
+from prompts_v1x import ANALYSIS_PROMPT
 from GlobalConfig import EXPORT_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceHubDefines import *

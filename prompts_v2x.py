@@ -369,7 +369,8 @@ interface ValuableIntelligence {
 }
 """
 
-ANALYSIS_PROMPT_V13_CoT = """# 角色
+
+ANALYSIS_PROMPT_V23_CoT = """# 角色
 你是一个极其严谨的情报逻辑学家。
 时间：{{CURRENT_DATE}}
 
@@ -435,3 +436,14 @@ interface ValuableIntelligence {
   TIPS: string;
 }
 """
+
+
+ANALYSIS_PROMPT_LIST = [
+    ANALYSIS_PROMPT_V20_ORIGIN,
+    ANALYSIS_PROMPT_V21_SHORT_MULT_LANG,
+    ANALYSIS_PROMPT_V22_SHORT_CN,
+    ANALYSIS_PROMPT_V23_CoT
+]
+
+
+ANALYSIS_PROMPT = ANALYSIS_PROMPT_V22_SHORT_CN

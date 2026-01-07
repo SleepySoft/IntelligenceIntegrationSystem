@@ -92,7 +92,7 @@
 
 ### 分析
 
-+ [prompts.py](prompts.py)
++ [prompts.py](prompts_v1x.py)
 
 情报分析的所有prompt。程序中的dict校验和该prompt指示的输出格式紧密相关，如果prompt改变，那么校验规则同样需要改变。
 
