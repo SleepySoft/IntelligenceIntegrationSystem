@@ -2,6 +2,7 @@ import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QToolBar, QAction, QLineEdit,
                              QTabWidget, QVBoxLayout, QWidget, QStatusBar, QProgressBar, QMessageBox)
+from PyQt5.QtWebEngineWidgets import QWebEngineSettings
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineProfile, QWebEnginePage
 from PyQt5.QtCore import QUrl, QSize, Qt
 from PyQt5.QtGui import QIcon
@@ -15,6 +16,63 @@ AUTH_PASS = ""
 
 # ===========================================
 
+class CustomWebEnginePage(QWebEnginePage):
+    def __init__(self, profile, parent=None):
+        super().__init__(profile, parent)
+        self.setup_settings()
+
+    def setup_settings(self):
+        settings = self.settings()
+
+        # 启用所有必要的Web特性
+        # 使用正确的属性名
+        try:
+            # PyQt5 支持的属性
+            settings.setAttribute(QWebEngineSettings.JavascriptEnabled, True)
+            settings.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, True)
+            settings.setAttribute(QWebEngineSettings.LocalStorageEnabled, True)
+            settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+            settings.setAttribute(QWebEngineSettings.WebGLEnabled, True)
+            settings.setAttribute(QWebEngineSettings.Accelerated2dCanvasEnabled, True)
+            settings.setAttribute(QWebEngineSettings.FullScreenSupportEnabled, True)
+            settings.setAttribute(QWebEngineSettings.ScreenCaptureEnabled, True)
+            settings.setAttribute(QWebEngineSettings.AllowRunningInsecureContent, True)
+            settings.setAttribute(QWebEngineSettings.HyperlinkAuditingEnabled, True)
+            settings.setAttribute(QWebEngineSettings.ScrollAnimatorEnabled, True)
+            settings.setAttribute(QWebEngineSettings.ErrorPageEnabled, True)
+            settings.setAttribute(QWebEngineSettings.PluginsEnabled, True)
+            settings.setAttribute(QWebEngineSettings.PdfViewerEnabled, True)
+
+            # 尝试设置一些可能在较新版本中可用的属性
+            # 使用try-except避免属性不存在时崩溃
+            try:
+                settings.setAttribute(QWebEngineSettings.WebSecurityEnabled, True)
+            except AttributeError:
+                pass
+
+            try:
+                settings.setAttribute(QWebEngineSettings.AllowWindowActivationFromJavaScript, True)
+            except AttributeError:
+                pass
+
+            try:
+                settings.setAttribute(QWebEngineSettings.ShowScrollBars, True)
+            except AttributeError:
+                pass
+
+        except Exception as e:
+            print(f"设置WebEngine属性时出错: {e}")
+
+        # 设置未知URL方案策略
+        try:
+            settings.setUnknownUrlSchemePolicy(QWebEngineSettings.AllowAllUnknownUrlSchemes)
+        except AttributeError:
+            pass
+
+    def acceptNavigationRequest(self, url, _type, isMainFrame):
+        return True
+
+
 class BrowserEngine(QWebEngineView):
     """
     封装每一个标签页的浏览器视图
@@ -23,12 +81,45 @@ class BrowserEngine(QWebEngineView):
     def __init__(self, profile, main_window):
         super().__init__()
         self.main_window = main_window
+
+        # 设置现代User-Agent
+        profile.setHttpUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+
         # 使用传入的全局 Profile (保持 Session/Cookie)
-        page = QWebEnginePage(profile, self)
+        page = CustomWebEnginePage(profile, self)
         self.setPage(page)
 
         # 绑定代理认证信号 (关键！)
         page.proxyAuthenticationRequired.connect(self.main_window.handle_proxy_auth)
+
+        self.loadFinished.connect(self.on_load_finished)
+
+    def on_load_finished(self, success):
+        if success and "gemini.google.com" in self.url().toString():
+            # 针对Gemini页面，注入一些修复脚本
+            script = """
+            // 尝试修复可能的CSS/JS加载问题
+            document.body.style.visibility = 'visible';
+
+            // 确保所有元素可见
+            const allElements = document.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el.style.visibility === 'hidden') {
+                    el.style.visibility = 'visible';
+                }
+                if (el.style.display === 'none') {
+                    el.style.display = 'block';
+                }
+                if (el.style.opacity === '0') {
+                    el.style.opacity = '1';
+                }
+            });
+            """
+            self.page().runJavaScript(script)
 
     # 重写 createWindow，支持点击 target="_blank" 链接时在新标签页打开
     def createWindow(self, _type):
@@ -47,6 +138,18 @@ class MainWindow(QMainWindow):
         self.profile = QWebEngineProfile("ProSession", self)
         self.profile.setPersistentStoragePath(storage_path)
         self.profile.setCachePath(storage_path)
+
+        # 设置现代 User-Agent
+        self.profile.setHttpUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        # 启用所有必要特性
+        self.profile.setHttpAcceptLanguage("zh-CN,zh;q=0.9,en;q=0.8")
+        self.profile.setPersistentCookiesPolicy(QWebEngineProfile.AllowPersistentCookies)
+        self.profile.setCachePath(os.path.join(storage_path, "cache"))
 
         # 2. UI 布局初始化
         self.tabs = QTabWidget()
