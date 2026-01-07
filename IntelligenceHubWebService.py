@@ -485,7 +485,7 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
                 )
-            for field in ('locations', 'peoples', 'organizations'):
+            for field in ('locations', 'locations', 'peoples', 'organizations', 'keywords', 'threshold'):
                 if p[field]:
                     query[field] = p[field]
 
