@@ -118,7 +118,6 @@ class IntelligenceHub:
 
         # ------------------ Loads ------------------
 
-        self._load_vector_db()
         self._load_unarchived_data()
         # self.intelligence_cache.load_cache()
 
@@ -158,9 +157,6 @@ class IntelligenceHub:
             use_new_thread=True
         )
         self.scheduler.start_scheduler()
-
-    def _load_vector_db(self):
-        pass
 
     def _load_unarchived_data(self):
         """Load unarchived data into a queue, compatible with both old and new archival markers."""
