@@ -80,6 +80,9 @@ def func_rebuild(
 ):
     """
     Fetches data from MongoDB and rebuilds vector indexes using the Engine.
+
+    In incremental mode, this function checks if documents already exist in the
+    vector database before submitting them, to avoid unnecessary reprocessing.
     """
     from tqdm import tqdm
 
@@ -117,11 +120,12 @@ def func_rebuild(
     engine_summary.batch_size = 100
 
     processed_count = 0
+    skipped_exists_count = 0
     skipped_error_count = 0
     batch_size = 500
     last_id = None
 
-    with tqdm(total=total_docs, desc="Upserting Documents") as pbar:
+    with tqdm(total=total_docs, desc="Processing Documents") as pbar:
         while True:
             # Batch Query
             query = {}
@@ -140,6 +144,36 @@ def func_rebuild(
 
             if not batch_docs:
                 break
+
+            # Extract UUIDs for existence checking (only in incremental mode)
+            batch_uuids = []
+            for doc in batch_docs:
+                uuid = doc.get('UUID')
+                if uuid:
+                    batch_uuids.append(uuid)
+
+            # Check existence in vector databases (only in incremental mode)
+            full_text_exists_map = {}
+            summary_exists_map = {}
+
+            if mode == "incremental" and batch_uuids:
+                try:
+                    # Batch check existence in both collections
+                    print(f"Checking existence of {len(batch_uuids)} documents...")
+                    full_text_exists_map = engine_full_text.collection.exists_batch(batch_uuids)
+                    summary_exists_map = engine_summary.collection.exists_batch(batch_uuids)
+
+                    # Count how many documents already exist
+                    full_exists_count = sum(1 for exists in full_text_exists_map.values() if exists)
+                    summary_exists_count = sum(1 for exists in summary_exists_map.values() if exists)
+                    print(f"Found {full_exists_count} documents already in full_text collection")
+                    print(f"Found {summary_exists_count} documents already in summary collection")
+                except Exception as e:
+                    print(f"Warning: Failed to check document existence: {e}")
+                    # If existence check fails, proceed as if no documents exist
+                    # This ensures we don't skip documents due to a transient error
+                    full_text_exists_map = {uuid: False for uuid in batch_uuids}
+                    summary_exists_map = {uuid: False for uuid in batch_uuids}
 
             # Process Batch
             for doc in batch_docs:
@@ -161,47 +195,61 @@ def func_rebuild(
                         skipped_error_count += 1
                         continue
 
+                    uuid = archived_data.UUID
+
                     # 2. Process 'intelligence_summary'
-                    # Standard usage: Engine extracts Title/Brief/Text + Metadata
-                    engine_summary.add_to_batch(archived_data, data_type='summary', timeout=10000000)
+                    # Skip if already exists in incremental mode
+                    if mode == "incremental" and summary_exists_map.get(uuid, False):
+                        skipped_exists_count += 1
+                    else:
+                        engine_summary.add_to_batch(archived_data, data_type='summary', timeout=10000000)
 
                     # 3. Process 'intelligence_full_text'
-                    # Requirement: Index the RAW_DATA content.
-                    # Trick: We reuse the Engine to ensure Metadata (Time, Rate, etc.) is consistent,
-                    # but we temporarily swap the text content to raw_data.
+                    # Skip if already exists in incremental mode
                     raw_content = None
                     if archived_data.RAW_DATA:
                         raw_content = archived_data.RAW_DATA.get('content')
 
                     if raw_content and isinstance(raw_content, str):
-                        # Create a shallow copy to avoid modifying the original used above
-                        data_for_full = copy.copy(archived_data)
-                        # Override fields so Engine uses Raw Data as the embedding text
-                        data_for_full.EVENT_TITLE = ""
-                        data_for_full.EVENT_BRIEF = ""
-                        data_for_full.EVENT_TEXT = raw_content
+                        if mode == "incremental" and full_text_exists_map.get(uuid, False):
+                            # Already exists, skip
+                            pass
+                        else:
+                            # Create a shallow copy to avoid modifying the original used above
+                            data_for_full = copy.copy(archived_data)
+                            # Override fields so Engine uses Raw Data as the embedding text
+                            data_for_full.EVENT_TITLE = ""
+                            data_for_full.EVENT_BRIEF = ""
+                            data_for_full.EVENT_TEXT = raw_content
 
-                        engine_full_text.add_to_batch(data_for_full, data_type='full', timeout=10000000)
+                            engine_full_text.add_to_batch(data_for_full, data_type='full', timeout=10000000)
+                    else:
+                        # No raw content, skip full text processing
+                        pass
 
                     processed_count += 1
 
                 except Exception as e:
-                    # print(f"\nError processing doc {doc.get('UUID', 'N/A')}: {e}")
                     skipped_error_count += 1
+                    print(f"Error processing document {doc.get('UUID', 'N/A')}: {e}")
 
                 finally:
                     pbar.update(1)
 
             last_id = batch_docs[-1]['_id']
 
-    # === [关键] 循环结束后，提交剩余的数据 ===
+    # === Commit remaining data ===
     print("Committing remaining buffers...")
     engine_summary.commit(timeout=10000000)
     engine_full_text.commit(timeout=10000000)
 
     print("\n--- Build Complete ---")
-    print(f"Processed / Upserted: {processed_count}")
-    print(f"Skipped (Validation/Empty): {skipped_error_count}")
+    print(f"Total documents processed: {processed_count}")
+    print(f"Skipped (already exists): {skipped_exists_count}")
+    print(f"Skipped (validation/error): {skipped_error_count}")
+
+    if mode == "incremental":
+        print(f"Note: In incremental mode, existing documents were skipped to avoid duplication.")
 
     # Optional: Print stats from remote
     try:
@@ -209,8 +257,8 @@ def func_rebuild(
         stats_f = engine_full_text.collection.stats()
         print(f"Remote Stats [Summary]:   {stats_s}")
         print(f"Remote Stats [FullText]:  {stats_f}")
-    except:
-        pass
+    except Exception as e:
+        print(f"Could not fetch remote stats: {e}")
 
 
 def func_search(engine_full_text: IntelligenceVectorDBEngine, engine_summary: IntelligenceVectorDBEngine):
