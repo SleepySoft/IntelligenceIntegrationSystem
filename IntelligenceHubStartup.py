@@ -143,15 +143,16 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
             need_launch = True
 
         if need_launch:
-            vector_db_service_path_abs = os.path.join(self_path, 'VectorDB', 'VectorDBBService.py')
-            command_line = f"python "\
-                           f"{vector_db_service_path_abs} "\
-                           f"--host 127.0.0.1 "\
-                           f"--port {str(vector_db_port)} "\
-                           f"--db-path {vector_db_path_abs} "\
-                           f"--model {embedding_model_name}"
-            logger.info(f"Starting vector DB service, command: `{command_line}`")
-            start_program(command_line, background=True, no_window=False)
+            # vector_db_service_path_abs = os.path.join(self_path, 'VectorDB', 'VectorDBBService.py')
+            # command_line = f"python "\
+            #                f"{vector_db_service_path_abs} "\
+            #                f"--host 127.0.0.1 "\
+            #                f"--port {str(vector_db_port)} "\
+            #                f"--db-path {vector_db_path_abs} "\
+            #                f"--model {embedding_model_name}"
+            # logger.info(f"Starting vector DB service, command: `{command_line}`")
+            # start_program(command_line, background=True, no_window=False)
+            pass
 
         vector_db_client = VectorDBClient(f"http://localhost:{str(vector_db_port)}")
 
