@@ -433,3 +433,74 @@ body {
         box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
     }
 }
+
+/* =========================================
+   9. V2 数据结构适配样式 (New for V2)
+   ========================================= */
+
+/* 版本号徽章 */
+.version-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    background-color: #e0e0e0;
+    color: #616161;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-left: 8px;
+    font-family: monospace;
+    vertical-align: middle;
+}
+
+/* V2 子分类标签容器 */
+.v2-tags-container {
+    margin-bottom: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* 单个子分类标签 */
+.v2-category-tag {
+    background-color: #e8f0fe;
+    color: #1967d2;
+    border: 1px solid #d2e3fc;
+    border-radius: 12px;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* V2 多维度评分列表 */
+.v2-rating-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 5px;
+}
+
+/* V2 单行评分项 */
+.v2-rating-row {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+}
+
+.v2-rating-label {
+    width: 80px; /* 固定宽度确保对齐 */
+    color: #5f6368;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 微调 V2 下的星星大小，使其更紧凑 */
+.v2-rating-row i {
+    font-size: 0.75rem !important;
+    margin-right: 1px !important;
+}
+
+.v2-rating-score-text {
+    margin-left: 5px;
+    color: #6c757d;
+    font-size: 0.75rem;
+}

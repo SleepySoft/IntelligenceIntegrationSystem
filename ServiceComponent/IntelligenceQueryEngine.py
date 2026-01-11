@@ -239,16 +239,27 @@ class IntelligenceQueryEngine:
             peoples: Optional[Union[str, List[str]]] = None,
             organizations: Optional[Union[str, List[str]]] = None,
             keywords: Optional[str] = None,
-            threshold: Optional[float] = None  # New threshold parameter
+            threshold: Optional[float] = None  # Filter by score
     ) -> dict:
         query_conditions = []
 
+        # 1. Time Period (Compatibility Mode)
+        # v1 stores in "PUB_TIME", v2 stores in "APPENDIX.__TIME_PUB__"
         if period:
-            query_conditions.append(self.build_time_condition("PUB_TIME", *period))
+            # We generate two conditions: one for v1, one for v2
+            v1_condition = self.build_time_condition("PUB_TIME", *period)
+            v2_condition = self.build_time_condition("APPENDIX.__TIME_PUB__", *period)
 
+            # Use $or operator: matches if the time exists in EITHER field and satisfies range
+            query_conditions.append({"$or": [v1_condition, v2_condition]})
+
+        # 2. Archive Period (Stable)
+        # Both v1 and v2 store this in APPENDIX
         if archive_period:
             query_conditions.append(self.build_time_condition("APPENDIX.__TIME_ARCHIVED__", *archive_period))
 
+        # 3. Entities (Stable)
+        # Both v1 and v2 store these at the root level (LIST[str])
         if locations:
             query_conditions.append(self.build_list_condition("LOCATION", locations))
 
@@ -258,15 +269,67 @@ class IntelligenceQueryEngine:
         if organizations:
             query_conditions.append(self.build_list_condition("ORGANIZATION", organizations))
 
+        # 4. Keywords (Suggest Updating internal method)
+        # Ensure `build_keyword_or_condition` checks fields:
+        # ['title', 'content', 'EVENT_TITLE', 'EVENT_BRIEF', 'EVENT_TEXT']
         if keywords:
             query_conditions.append(self.build_keyword_or_condition(keywords))
 
-        # Add threshold condition if provided
+        # 5. Score Threshold (Hybrid Strategy)
         if threshold is not None:
-            score_field = f"APPENDIX.__MAX_RATE_SCORE__"
+            # We assume the Archiver calculates the max score for v2 and saves it
+            # to '__MAX_RATE_SCORE__' to maintain efficient querying.
+            # If not, dynamic querying on the 'RATE' dict is very slow/complex in MongoDB.
+            score_field = "APPENDIX.__MAX_RATE_SCORE__"
+
+            # Optional: If you want to support filtering by Vector Similarity Score as well
+            # vector_score_field = "APPENDIX.__VECTOR_SCORE__"
+            # query_conditions.append({"$or": [
+            #     {score_field: {"$gte": threshold}},
+            #     {vector_score_field: {"$gte": threshold}}
+            # ]})
+
+            # Default behavior: Query the standardized max score
             query_conditions.append({score_field: {"$gte": threshold}})
 
         return {"$and": query_conditions} if query_conditions else {}
+
+    # def build_intelligence_query(
+    #         self,
+    #         period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+    #         archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+    #         locations: Optional[Union[str, List[str]]] = None,
+    #         peoples: Optional[Union[str, List[str]]] = None,
+    #         organizations: Optional[Union[str, List[str]]] = None,
+    #         keywords: Optional[str] = None,
+    #         threshold: Optional[float] = None  # New threshold parameter
+    # ) -> dict:
+    #     query_conditions = []
+    #
+    #     if period:
+    #         query_conditions.append(self.build_time_condition("PUB_TIME", *period))
+    #
+    #     if archive_period:
+    #         query_conditions.append(self.build_time_condition("APPENDIX.__TIME_ARCHIVED__", *archive_period))
+    #
+    #     if locations:
+    #         query_conditions.append(self.build_list_condition("LOCATION", locations))
+    #
+    #     if peoples:
+    #         query_conditions.append(self.build_list_condition("PEOPLE", peoples))
+    #
+    #     if organizations:
+    #         query_conditions.append(self.build_list_condition("ORGANIZATION", organizations))
+    #
+    #     if keywords:
+    #         query_conditions.append(self.build_keyword_or_condition(keywords))
+    #
+    #     # Add threshold condition if provided
+    #     if threshold is not None:
+    #         score_field = f"APPENDIX.__MAX_RATE_SCORE__"
+    #         query_conditions.append({score_field: {"$gte": threshold}})
+    #
+    #     return {"$and": query_conditions} if query_conditions else {}
 
     def common_query(
             self,

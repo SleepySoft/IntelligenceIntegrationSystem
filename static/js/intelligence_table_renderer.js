@@ -83,114 +83,129 @@ class ArticleRenderer {
         }
 
         const html = articles.map(article => {
-            // 1. 基础信息
-            const uuid = this.escapeHTML(article.UUID);
-            const informant = this.escapeHTML(article.INFORMANT || "");
+            // ============================================================
+            // 1. 统一变量定义 (防止 ReferenceError)
+            // ============================================================
+
+            // 1.1 获取 Appendix (防止 undefined)
+            const appendix = article.APPENDIX || {};
+
+            // 1.2 ID 获取 (兼容 v1:UUID, v2:uuid, MongoDB:_id)
+            const uuid = this.escapeHTML(article.UUID || article.uuid || article._id || "Unknown-UUID");
             const intelUrl = `/intelligence/${uuid}`;
 
-            const pub_time_display = this.formatLocalTime(article.PUB_TIME);
-
+            // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
+            const informant_val = article.INFORMANT || article.informant || article.source || "";
+            const informant = this.escapeHTML(informant_val);
             const informant_html = this.isValidUrl(informant)
                 ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
                 : (informant || 'Unknown Source');
 
-            // 2. 解析 Appendix
-            const appendix = article.APPENDIX || {};
+            // 1.4 发布时间获取 (兼容 v2:APPENDIX, v1:PUB_TIME, 采集时间兜底)
+            // 顺序: Appendix -> Root PUB_TIME -> Root pub_time -> Root collect_time
+            const pub_time_raw = appendix['__TIME_PUB__'] || article.PUB_TIME || article.pub_time || article.collect_time;
+            const pub_time_display = this.formatLocalTime(pub_time_raw);
 
-            // 提取旧字段
+            // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
             const raw_archived_time = appendix['__TIME_ARCHIVED__'] || '';
-
-            // 注意：保留 raw_archived_time 给 data-archived 属性使用，以便 calculate 颜色逻辑不出错
             const archived_time_display = this.formatLocalTime(raw_archived_time);
 
-            const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
-            const max_rate_score = appendix['__MAX_RATE_SCORE__'];
-
-            // --- 检查并处理向量搜索评分 ---
-            const vector_score = appendix['__VECTOR_SCORE__'];
-            const hasVectorScore = vector_score !== undefined && vector_score !== null;
-
-            // 构建向量评分显示HTML
-            let vector_score_html = "";
-            if (hasVectorScore) {
-                const formattedScore = parseFloat(vector_score).toFixed(3);
-
-                // 根据评分设置徽章颜色
-                let badgeClass = 'bg-secondary';
-                if (vector_score >= 0.8) {
-                    badgeClass = 'bg-success';
-                } else if (vector_score >= 0.6) {
-                    badgeClass = 'bg-primary';
-                } else if (vector_score >= 0.4) {
-                    badgeClass = 'bg-warning';
-                } else {
-                    badgeClass = 'bg-danger';
-                }
-
-                vector_score_html = `
-                <span class="badge ${badgeClass} similarity-badge">
-                    <span class="similarity-score">${formattedScore}</span>
-                </span>`;
+            // 生成归档时间 HTML 片段
+            let archived_html = "";
+            if (raw_archived_time) {
+                // 注意：这里用到了 raw_archived_time，所以它必须在上面定义
+                archived_html = `<span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">Archived: ${archived_time_display}</span>`;
             }
 
+            // 1.6 向量评分 (Vector Score)
+            const vector_score = appendix['__VECTOR_SCORE__'];
+            let vector_score_html = "";
+            if (vector_score !== undefined && vector_score !== null) {
+                const formattedScore = parseFloat(vector_score).toFixed(3);
+                let badgeClass = vector_score >= 0.8 ? 'bg-success' :
+                                 (vector_score >= 0.6 ? 'bg-primary' :
+                                 (vector_score >= 0.4 ? 'bg-warning' : 'bg-danger'));
+                vector_score_html = `<span class="badge ${badgeClass} similarity-badge"><span class="similarity-score">${formattedScore}</span></span>`;
+            }
+
+            // 1.7 AI 服务信息
             const ai_service = this.escapeHTML(appendix['__AI_SERVICE__'] || '');
             const ai_model = this.escapeHTML(appendix['__AI_MODEL__'] || '');
 
-            // 3. 构建左侧 HTML (评分 + UUID)
+            // ============================================================
+            // 2. 版本逻辑分支 (V1 vs V2) - 生成 left_content
+            // ============================================================
+
+            const prompt_version = appendix['__PROMPT_VERSION__'];
+            // 判断是否为 v2 (存在版本号 且 >= 20)
+            const is_v2 = prompt_version && !isNaN(Number(prompt_version)) && Number(prompt_version) >= 20;
+
             let left_content = "";
 
-            // 评分行
-            if (max_rate_class && max_rate_score !== null && max_rate_score !== undefined) {
-                left_content += `
-                <div class="article-rating">
-                    <span class="debug-label">${max_rate_class}:</span>
-                    ${this.createRatingStars(max_rate_score)}
+            if (is_v2) {
+                // --- [V2 Logic] ---
+                const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
+                const sub_categories = article.SUB_CATEGORY || [];
+                const rate_dict = article.RATE || {};
+
+                // 子分类标签
+                let tags_html = "";
+                if (Array.isArray(sub_categories) && sub_categories.length > 0) {
+                    tags_html = `<div class="v2-tags-container">` +
+                        sub_categories.map(tag => `<span class="v2-category-tag">${this.escapeHTML(tag)}</span>`).join('') +
+                        `</div>`;
+                }
+
+                // 多维度评分
+                const rating_html = this.createV2RatingList(rate_dict);
+
+                left_content = `
+                <div style="margin-bottom: 6px;">
+                    <span class="debug-label" style="font-size:0.95rem; color:#1a73e8;">${taxonomy}</span>
+                    <span class="version-badge" title="Prompt Version: ${prompt_version}">v${prompt_version}</span>
+                </div>
+                ${tags_html}
+                ${rating_html}
+                <div style="margin-top:4px;">
+                    <span class="debug-label">UUID:</span> ${uuid}
                 </div>`;
+
             } else {
-                // 如果没有评分，也可以留个空或者显示占位，这里保持不显示
+                // --- [V1 Logic] ---
+                const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
+                const max_rate_score = appendix['__MAX_RATE_SCORE__'];
+
+                if (max_rate_class && max_rate_score !== null) {
+                    left_content += `
+                    <div class="article-rating">
+                        <span class="debug-label">${max_rate_class}:</span>
+                        ${this.createRatingStars(max_rate_score)}
+                    </div>`;
+                }
+
+                left_content += `
+                <div>
+                    <span class="debug-label">UUID:</span> ${uuid}
+                </div>`;
             }
 
-            // UUID 行 (始终显示)
-            left_content += `
-            <div>
-                <span class="debug-label">UUID:</span> ${uuid}
-            </div>`;
-
-            // 4. 构建右侧 HTML (AI Service + Model)
+            // ============================================================
+            // 3. 构建右侧调试信息 (right_content)
+            // ============================================================
             let right_content = "";
-
             if (ai_service || ai_model) {
-                if (ai_service) {
-                    right_content += `
-                    <div>
-                        <span class="debug-label">Service:</span>
-                        <span class="debug-value-truncate" title="${ai_service}">${ai_service}</span>
-                    </div>`;
-                }
-                if (ai_model) {
-                    right_content += `
-                    <div>
-                        <span class="debug-label">Model:</span>
-                        <span class="debug-value-truncate" title="${ai_model}">${ai_model}</span>
-                    </div>`;
-                }
+                if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
+                if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
             }
 
-            // 5. 构建顶部时间
-            let archived_html = "";
-            if (raw_archived_time) {
-                archived_html = `
-                <span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">
-                    Archived: ${archived_time_display}
-                </span>`;
-            }
-
-            // 6. 组合最终 HTML
+            // ============================================================
+            // 4. 返回最终 HTML
+            // ============================================================
             return `
             <div class="article-card">
                 <h3>
                     <a href="${intelUrl}" target="_blank" class="article-title">
-                        ${this.escapeHTML(article.EVENT_TITLE || "No Title")}
+                        ${this.escapeHTML(article.EVENT_TITLE || article.title || "No Title")}
                     </a>
                 </h3>
                 <div class="article-meta">
@@ -213,6 +228,39 @@ class ArticleRenderer {
         }).join('');
 
         this.listContainer.innerHTML = html;
+    }
+
+    // --- 新增: V2 评分列表生成辅助函数 ---
+    createV2RatingList(rateDict) {
+        if (!rateDict || Object.keys(rateDict).length === 0) return "";
+
+        // 将对象转换为数组并排序（可选：按分数降序或按Key排序，这里默认按Key）
+        const entries = Object.entries(rateDict);
+
+        let html = '<div class="v2-rating-list">';
+
+        entries.forEach(([key, score]) => {
+            const numScore = Number(score);
+            // 复用 createRatingStars 但需要微调样式，这里直接手写简化版以适配紧凑布局
+            let stars = "";
+            const full_stars = Math.floor(numScore / 2);
+            const half_star = (numScore % 2 >= 1);
+            const empty_stars = 5 - full_stars - (half_star ? 1 : 0);
+
+            for(let i=0; i<full_stars; i++) stars += '<i class="bi bi-star-fill text-warning"></i>';
+            if(half_star) stars += '<i class="bi bi-star-half text-warning"></i>';
+            for(let i=0; i<empty_stars; i++) stars += '<i class="bi bi-star text-warning" style="color:#dee2e6 !important"></i>'; // 空星颜色淡一点
+
+            html += `
+            <div class="v2-rating-row">
+                <span class="v2-rating-label" title="${key}">${key}</span>
+                <span style="display:inline-flex; align-items:center;">${stars}</span>
+                <span class="v2-rating-score-text">${numScore}</span>
+            </div>`;
+        });
+
+        html += '</div>';
+        return html;
     }
 
     // --- 分页渲染：恢复原始 HTML 结构 ---
