@@ -88,19 +88,6 @@ class ProcessedData(BaseModel):
     Design Philosophy: Fields are Optional to handle the "NonIntelligence" branching logic.
     """
 
-    # --- System Fields (Inherited/Generated) ---
-    UUID: str = Field(
-        ...,
-        min_length=1,
-        description="[MUST] Unique identifier for the message/article."
-    )
-
-    INFORMANT: str = Field(
-        ...,
-        min_length=1,
-        description="[MUST] The specific source URL or informant ID."
-    )
-
     # --- Core Classification (Prompt: TAXONOMY, SUB_CATEGORY) ---
     TAXONOMY: str = Field(
         ...,
@@ -188,6 +175,18 @@ class ArchivedDataExtraFields(BaseModel):
     """
     Additional fields appended during the persistence layer (Database insertion).
     """
+    UUID: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] Unique identifier for the message/article."
+    )
+
+    INFORMANT: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] The specific source URL or informant ID."
+    )
+
     RAW_DATA: Dict[str, Any] | None = Field(
         None,
         description="The full raw original message."
@@ -220,20 +219,17 @@ APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to p
 APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
 APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
 
-APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
 APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
-APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
-APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
-APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
 
+APPENDIX_TOTAL_SCORE        = '__TOTAL_SCORE__'
 APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
 
 APPENDIX_PROMPT_VERSION     = '__PROMPT_VERSION__'
 APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
 APPENDIX_AI_MODEL           = '__AI_MODEL__'
 
-APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
-APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+# APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+# APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
 
 APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
 

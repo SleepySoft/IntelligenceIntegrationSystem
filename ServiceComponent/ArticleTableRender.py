@@ -2,7 +2,8 @@ import re
 import html
 from typing import List
 
-from IntelligenceHub import APPENDIX_TIME_ARCHIVED, APPENDIX_MAX_RATE_CLASS, APPENDIX_MAX_RATE_SCORE
+from ServiceComponent.IntelligenceHubDefines import APPENDIX_MAX_RATE_CLASS, APPENDIX_MAX_RATE_SCORE
+from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TIME_GOT, APPENDIX_TIME_ARCHIVED
 
 
 article_table_style = """

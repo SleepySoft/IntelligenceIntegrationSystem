@@ -3239,9 +3239,350 @@ ARCHIVED_FLAG_SENSITIVE = 'S'
 
 
 
+我升级了数据结构，因此一系列代码都需要调整。
+
+版本v1的数据结构定义如下：
+
+```
+import datetime
+from typing import List
+from pydantic import BaseModel, Field
 
 
+class CollectedData(BaseModel):
+    UUID: str = Field(..., min_length=1)    # [MUST]: The UUID to identify a message.
+    token: str = Field(..., min_length=1)   # [MUST]: The token to identify the legal end point.
+    source: str | None = None               # (Optional): Message source. If it requires reply.
+    target: str | None = None               # (Optional): Message source. If it requires reply.
+    prompt: str | None = None               # (Optional): The prompt to ask LLM to process this message.
 
+    title: str | None = None                # [MUST]: The content to be processed.
+    authors: List[str] | None = []          # (Optional): Article authors.
+    content: str                            # [MUST]: The content to be processed.
+    pub_time: object | None = None          # (Optional): Content publish time. Can be time.struct_time, datetime, str, ...
+    informant: str | None = None            # (Optional): The source of message (like URL).
+
+
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None = None
+    SUBMITTER: str | None = None
+    APPENDIX: dict | None = None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+
+
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+ARCHIVED_FLAG_DUPLICATED = 'U'
+
+
+VECTOR_DB_SUMMARY = 'intelligence_summary'
+VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
+```
+
+
+版本v2的数据结构定义如下：
+
+```
+import datetime
+from typing import List, Dict, Optional, Any, Union
+from pydantic import BaseModel, Field, AnyHttpUrl
+
+
+# ==========================================
+# Phase 1: Input Data (Before LLM Processing)
+# ==========================================
+
+class CollectedData(BaseModel):
+    """
+    Data collected from raw sources (crawlers, API, RSS, etc.).
+    Passed as context to the LLM.
+    """
+    uuid: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Unique identifier for the message/article."
+    )
+
+    token: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Validation token for the endpoint/source."
+    )
+
+    source: str | None = Field(
+        None,
+        description="(Optional): Origin platform (e.g., 'Twitter', 'BBC')."
+    )
+
+    target: str | None = Field(
+        None,
+        description="(Optional): Intended recipient or channel."
+    )
+
+    prompt: str | None = Field(
+        None,
+        description="(Optional): Custom prompt override for this specific item."
+    )
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Raw title of the article."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list,
+        description="(Optional): List of authors found in metadata."
+    )
+
+    content: str = Field(
+        ...,
+        min_length=10,
+        description="[MUST]: The main text body to be analyzed by LLM."
+    )
+
+    pub_time: Union[datetime.datetime, str, float] | None = Field(
+        None,
+        description="(Optional): Original publish time."
+    )
+
+    collect_time: datetime.datetime | None = Field(
+        default_factory=datetime.datetime.now,
+        description="(Optional): Content collect time."
+    )
+
+    # 建议：如果 informant 是 URL，可以用 AnyHttpUrl 增强验证
+    informant: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: The specific source URL or informant ID."
+    )
+
+    class Config:
+        # 可选：如果传入的数据包含 extra 字段，是否允许（默认忽略，设为 forbid 会报错）
+        extra = "ignore"
+
+
+# ==========================================
+# Phase 2: Processed Output (LLM Result)
+# ==========================================
+
+class ProcessedData(BaseModel):
+    """
+    Structured intelligence data extracted and validated from LLM output.
+    Design Philosophy: Fields are Optional to handle the "NonIntelligence" branching logic.
+    """
+
+    # --- System Fields (Inherited/Generated) ---
+    UUID: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] Unique identifier for the message/article."
+    )
+
+    INFORMANT: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] The specific source URL or informant ID."
+    )
+
+    # --- Core Classification (Prompt: TAXONOMY, SUB_CATEGORY) ---
+    TAXONOMY: str = Field(
+        ...,
+        description="High-level category (e.g., 'Politics', 'NonIntelligence'). Dynamic string."
+    )
+
+    SUB_CATEGORY: list[str] | None = Field(  # 建议使用 list[str]
+        default_factory=list,
+        description="Specific tags selected from the prompt list (e.g., ['International Relations']). Dynamic list."
+    )
+
+    # --- Analysis Reasoning (Prompt: REASON) ---
+    REASON: str | None = Field(
+        None,
+        description="Explanation for the classification (Used for both Valuable and Non-Intelligent items)."
+    )
+
+    # --- Event Details (Prompt: EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT) ---
+    EVENT_TITLE: str | None = Field(
+        None,
+        min_length=1,
+        description="Core title of the intelligence event (<20 chars)."
+    )
+
+    EVENT_BRIEF: str | None = Field(
+        None,
+        min_length=1,
+        description="Factual summary of the event (<50 chars)."
+    )
+
+    EVENT_TEXT: str | None = Field(
+        None,
+        description="Detailed intelligence report/briefing generated by LLM (>2000 chars if content allows)."
+    )
+
+    # --- Entities & Context (Prompt: TIME, LOCATION, GEOGRAPHY, PEOPLE, ORGANIZATION) ---
+    TIME: list[str] | None = Field(
+        default_factory=list,
+        description="Standardized event dates extracted from text (Format: YYYY-MM-DD)."
+    )
+
+    LOCATION: list[str] | None = Field(
+        default_factory=list,
+        description="Specific locations mentioned (Cities, Regions)."
+    )
+
+    GEOGRAPHY: str | None = Field(
+        None,
+        description="Country ISO code (e.g., 'CN', 'US') or English name."
+    )
+
+    PEOPLE: list[str] | None = Field(
+        default_factory=list,
+        description="Key individuals involved."
+    )
+
+    ORGANIZATION: list[str] | None = Field(
+        default_factory=list,
+        description="Key organizations or groups involved."
+    )
+
+    # --- Impact Analysis (Prompt: IMPACT, RATE, TIPS) ---
+    IMPACT: str | None = Field(
+        None,
+        description="Brief description of the event's impact (<50 chars)."
+    )
+
+    # 建议使用 dict[str, int]
+    RATE: dict[str, int] | None = Field(
+        default_factory=dict,
+        description="Scoring dictionary (1-10) for dimensions like Impact, Novelty, Actionability."
+    )
+
+    TIPS: str | None = Field(
+        None,
+        description="Analyst remarks or handling difficulties."
+    )
+
+
+# ==========================================
+# Phase 3: Archival Storage (Database Schema)
+# ==========================================
+
+class ArchivedDataExtraFields(BaseModel):
+    """
+    Additional fields appended during the persistence layer (Database insertion).
+    """
+    RAW_DATA: Dict[str, Any] | None = Field(
+        None,
+        description="The full raw original message."
+    )
+
+    SUBMITTER: str | None = Field(
+        None,
+        description="Where the intelligence comes from."
+    )
+
+    APPENDIX: Dict[str, Any] | None = Field(
+        None,
+        description="Any extra metadata, file attachments, or extended properties."
+    )
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    """
+    Final model representing a record stored in the database.
+    Combines processed intelligence with system archival metadata.
+    """
+    pass
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+APPENDIX_TIME_PUB           = '__TIME_PUB__'            # Timestamp of article published
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_PROMPT_VERSION     = '__PROMPT_VERSION__'
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+ARCHIVED_FLAG_DUPLICATED = 'U'
+
+
+VECTOR_DB_SUMMARY = 'intelligence_summary'
+VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
+```
+
+主要区别是评分模式：从各个领域维度评分，以最高的评分维度作为主领域，变为：识别分类领域，评分采用统一标准。
+
+因此接下来设计评分（）
 
 
 

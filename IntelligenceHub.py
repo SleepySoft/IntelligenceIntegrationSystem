@@ -17,16 +17,18 @@ from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
 from GlobalConfig import EXPORT_PATH
+
 from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
+from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time
 from ServiceComponent.IntelligenceHubDefines_v2 import *
-from Tools.DateTimeUtility import time_str_to_datetime, Clock, get_aware_time
 from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.RecommendationManager import RecommendationManager
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
+from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from VectorDB.VectorDBClient import VectorDBClient, VectorDBInitializationError, RemoteCollection
@@ -625,6 +627,10 @@ class IntelligenceHub:
 
                 result['UUID'] = original_uuid
                 result['INFORMANT'] = str(original_data.get('informant', '')).strip()
+
+                scoring_engine = IntelligenceScoringEngine()
+                total_score = scoring_engine.calculate_single(result)
+                result['APPENDIX'][APPENDIX_TOTAL_SCORE] = total_score
 
                 validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
                 if error_text:
