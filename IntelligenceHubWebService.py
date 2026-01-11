@@ -70,6 +70,11 @@ def exclude_raw_data(result: List[dict]):
     summary_result = []
     for data in result:
         appendix = data.pop('APPENDIX', None)
+
+        # Compatible with v1 analysis result
+        if 'TAXONOMY' not in data:
+            data['TAXONOMY'] = 'N/A'
+
         clean_data = ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True)
         if appendix:
             clean_data['APPENDIX'] = appendix

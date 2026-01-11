@@ -680,16 +680,17 @@ class IntelligenceHub:
 
                 # ----------------------- Record the max rate for easier filter -----------------------
 
-                if 'APPENDIX' not in data:
-                    data['APPENDIX'] = {}
-                rate_dict = data.get('RATE', {'N/A': '0'})
-                numeric_rates = {k: int(v) for k, v in rate_dict.items() if k != APPENDIX_MAX_RATE_CLASS_EXCLUDE}
-                if numeric_rates:
-                    max_key, max_value = max(numeric_rates.items(), key=lambda x: x[1])
-                else:
-                    max_key, max_value = 'N/A', 0
-                data['APPENDIX'][APPENDIX_MAX_RATE_CLASS] = max_key
-                data['APPENDIX'][APPENDIX_MAX_RATE_SCORE] = max_value
+                # if 'APPENDIX' not in data:
+                #     data['APPENDIX'] = {}
+
+                # rate_dict = data.get('RATE', {'N/A': '0'})
+                # numeric_rates = {k: int(v) for k, v in rate_dict.items() if k != APPENDIX_MAX_RATE_CLASS_EXCLUDE}
+                # if numeric_rates:
+                #     max_key, max_value = max(numeric_rates.items(), key=lambda x: x[1])
+                # else:
+                #     max_key, max_value = 'N/A', 0
+                # data['APPENDIX'][APPENDIX_MAX_RATE_CLASS] = max_key
+                # data['APPENDIX'][APPENDIX_MAX_RATE_SCORE] = max_value
 
                 # ------------------------------- Post Process: Indexing -------------------------------
 
@@ -702,6 +703,8 @@ class IntelligenceHub:
                 # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
 
                 try:
+                    data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = get_aware_time()
+
                     self._archive_processed_data(data)
                     with self.lock:
                         self.archived_counter += 1
