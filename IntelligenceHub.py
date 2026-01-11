@@ -532,7 +532,7 @@ class IntelligenceHub:
             logger.info(f'{prefix} **** NO AI API client - Thread QUIT ****')
             return
 
-        self.vector_db_init_event.wait(timeout=60)
+        # self.vector_db_init_event.wait(timeout=60)
 
         # ------------------------------------ Analysis Main Loop ------------------------------------
 
@@ -624,7 +624,7 @@ class IntelligenceHub:
                 # 20260111: In v2x prompt, AI will not extract UUID and informant from original message.
 
                 result['UUID'] = original_uuid
-                result['INFORMANT'] = str(original_data.get('INFORMANT', '')).strip()
+                result['INFORMANT'] = str(original_data.get('informant', '')).strip()
 
                 validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
                 if error_text:
@@ -959,7 +959,7 @@ class IntelligenceHub:
 
     def _process_appendix_time(self, original_data: dict, processed_data: dict):
         processed_data['APPENDIX'][APPENDIX_TIME_PUB] = original_data.get('pub_time', None)
-        processed_data['APPENDIX'][APPENDIX_TIME_GOT] = original_data.get('collect_time')
+        processed_data['APPENDIX'][APPENDIX_TIME_GOT] = original_data.get('collect_time') or original_data.get('__TIME_GOT__')
         processed_data['APPENDIX'][APPENDIX_TIME_POST] = original_data.get(APPENDIX_TIME_POST, None)
         processed_data['APPENDIX'][APPENDIX_TIME_DONE] = get_aware_time()
 

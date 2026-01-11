@@ -56,12 +56,12 @@ class CollectedData(BaseModel):
         description="[MUST]: The main text body to be analyzed by LLM."
     )
 
-    pub_time: Union[datetime, str, float] | None = Field(
+    pub_time: Union[datetime.datetime, str, float] | None = Field(
         None,
         description="(Optional): Original publish time."
     )
 
-    collect_time: datetime | None = Field(
+    collect_time: datetime.datetime | None = Field(
         default_factory=datetime.datetime.now,
         description="(Optional): Content collect time."
     )
