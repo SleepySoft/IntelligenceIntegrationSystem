@@ -1,3 +1,4 @@
+import datetime
 import os
 import random
 import time
@@ -15,11 +16,11 @@ from typing import Tuple, Optional, Dict, Union, Callable
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
-from prompts_v1x import ANALYSIS_PROMPT
 from GlobalConfig import EXPORT_PATH
+from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
-from ServiceComponent.IntelligenceHubDefines import *
-from Tools.DateTimeUtility import time_str_to_datetime, Clock
+from ServiceComponent.IntelligenceHubDefines_v2 import *
+from Tools.DateTimeUtility import time_str_to_datetime, Clock, get_aware_time
 from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
@@ -263,6 +264,10 @@ class IntelligenceHub:
 
             validated_data, error_text = check_sanitize_dict(dict(data), CollectedData)
 
+            if not isinstance(validated_data.get('collect_time', None), datetime.datetime):
+                validated_data['collect_time'] = get_aware_time()
+            validated_data[APPENDIX_TIME_POST] = get_aware_time()
+
             return IntelligenceHub.Error(error_list=[error_text]) \
                 if error_text else self._enqueue_collected_data(validated_data)
 
@@ -483,15 +488,22 @@ class IntelligenceHub:
 
         # --------------------------- Wait until one AI client available ---------------------------
 
+        selected_prompt_index = random.choice(list(ANALYSIS_PROMPT_TABLE.keys()))
+        selected_prompt = ANALYSIS_PROMPT_TABLE[selected_prompt_index]
+
         retries = 0
         while True:
             if ai_client := self.ai_client_manager.get_available_client(client_user):
-                result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+                result = analyze_with_ai(ai_client, selected_prompt, original_data)
                 self.ai_client_manager.release_client(ai_client)        # Release client so other task will have chance to get it.
+
                 result['APPENDIX'] = {
+                    APPENDIX_PROMPT_VERSION: selected_prompt_index,
                     APPENDIX_AI_SERVICE: ai_client.get_api_base_url(),
-                    APPENDIX_AI_MODEL: ai_client.get_current_model()
+                    APPENDIX_AI_MODEL: ai_client.get_current_model(),
                 }
+
+                self._process_appendix_time(original_data, result)
                 break
             retries += 1
             if retries % 10 == 0:
@@ -609,11 +621,10 @@ class IntelligenceHub:
                 if 'EVENT_TEXT' not in result:
                     raise IntelligenceHub.Exception('drop', 'Article has no value')
 
-                # Just user original UUID and Informant. The value from AI can be a reference.
+                # 20260111: In v2x prompt, AI will not extract UUID and informant from original message.
 
                 result['UUID'] = original_uuid
-                if original_informant := str(original_data.get('INFORMANT', '')).strip():
-                    result['INFORMANT'] = original_informant
+                result['INFORMANT'] = str(original_data.get('INFORMANT', '')).strip()
 
                 validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
                 if error_text:
@@ -942,13 +953,15 @@ class IntelligenceHub:
     # ---------------------------- Before Process ----------------------------
 
     def _enqueue_collected_data(self, data: dict) -> True or Error:
-        del data['token']
-        data[APPENDIX_TIME_GOT] = time.time()
-
         self._cache_original_data(data)
         self.original_queue.put(data)
-
         return True
+
+    def _process_appendix_time(self, original_data: dict, processed_data: dict):
+        processed_data['APPENDIX'][APPENDIX_TIME_PUB] = original_data.get('pub_time', None)
+        processed_data['APPENDIX'][APPENDIX_TIME_GOT] = original_data.get('collect_time')
+        processed_data['APPENDIX'][APPENDIX_TIME_POST] = original_data.get(APPENDIX_TIME_POST, None)
+        processed_data['APPENDIX'][APPENDIX_TIME_DONE] = get_aware_time()
 
     def _enqueue_processed_data(self, data: dict) -> True or Error:
         try:
@@ -960,10 +973,10 @@ class IntelligenceHub:
             if not isinstance(article_time, datetime.datetime) or article_time > ts:
                 article_time = ts
 
-            data['PUB_TIME'] = article_time
-            if 'APPENDIX' not in data:
-                data['APPENDIX'] = {}
-            data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = ts
+            # data['PUB_TIME'] = article_time
+            # if 'APPENDIX' not in data:
+            #     data['APPENDIX'] = {}
+            # data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = ts
 
             self.processed_queue.put(data)
 
