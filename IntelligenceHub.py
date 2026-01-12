@@ -65,15 +65,18 @@ class IntelligenceHub:
                  db_archive: Optional[MongoDBStorage] = None,
                  db_low_value: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
-                 ai_client_manager: AIClientManager = None):
+                 ai_client_manager: AIClientManager = None,
+                 **kwargs):
         """
         Init IntelligenceHub.
         :param ref_url: The reference url for sub-resource url generation.
-        :param self.vector_db_client: Vector DB for text RAG indexing.
+        :param vector_db_client: Vector DB for text RAG indexing.
         :param db_cache: The mongodb for caching collected data.
         :param db_archive: The mongodb for archiving processed data.
+        :param db_low_value: The mongodb for saving low-value data.
         :param db_recommendation: The mongodb for storing recommendation data.
         :param ai_client_manager: The openai-like client for data processing.
+        :param kwargs: Extra but not key parameters.
         """
 
         # ---------------- Parameters ----------------
@@ -195,8 +198,11 @@ class IntelligenceHub:
 
     # ----------------------------------------------- Startup / Shutdown -----------------------------------------------
 
-    def startup(self):
-        self.start_analysis_threads(3)
+    def startup(self, ai_analysis_thread: int):
+        """
+        ai_analysis_thread: The thread count of _ai_analysis_worker(), which should be less or equal to AI client count.
+        """
+        self.start_analysis_threads(ai_analysis_thread)
         self.post_process_thread.start()
         self.vector_db_init_thread.start()
 

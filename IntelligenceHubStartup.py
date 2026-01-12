@@ -176,6 +176,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
     # ------------------------------- Core: IHub -------------------------------
 
+    ai_analysis_thread = config.get('intelligence_hub.ai_analysis_thread', 1)
     ref_host_url = config.get('intelligence_hub_web_service.service.host_url', 'http://127.0.0.1:5000')
 
     mongodb_host = config.get('mongodb.host', 'localhost')
@@ -222,7 +223,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
 
             ai_client_manager = client_manager
     )
-    hub.startup()
+    hub.startup(ai_analysis_thread)
 
     # ----------------------- Main Service and Access Control -----------------------
 
