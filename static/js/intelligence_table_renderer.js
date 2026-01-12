@@ -90,8 +90,8 @@ class ArticleRenderer {
             // 1.1 获取 Appendix (防止 undefined)
             const appendix = article.APPENDIX || {};
 
-            // 1.2 ID 获取 (兼容 v1:UUID, v2:uuid, MongoDB:_id)
-            const uuid = this.escapeHTML(article.UUID || article.uuid || article._id || "Unknown-UUID");
+            // 1.2 ID 获取
+            const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
             const intelUrl = `/intelligence/${uuid}`;
 
             // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
@@ -146,27 +146,36 @@ class ArticleRenderer {
                 // --- [V2 Logic] ---
                 const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
                 const sub_categories = article.SUB_CATEGORY || [];
-                const rate_dict = article.RATE || {};
+
+                // 获取总分
+                const total_score = appendix['__TOTAL_SCORE__'];
 
                 // 子分类标签
                 let tags_html = "";
                 if (Array.isArray(sub_categories) && sub_categories.length > 0) {
-                    tags_html = `<div class="v2-tags-container">` +
-                        sub_categories.map(tag => `<span class="v2-category-tag">${this.escapeHTML(tag)}</span>`).join('') +
-                        `</div>`;
+                    tags_html = sub_categories.map(tag => `<span class="v2-category-tag">${this.escapeHTML(tag)}</span>`).join('');
                 }
 
-                // 多维度评分
-                const rating_html = this.createV2RatingList(rate_dict);
+                // 分类和标签放在同一行
+                const category_line = `<div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span class="debug-label" style="color:#1a73e8; font-size:0.95rem;">${taxonomy}</span>
+                    ${tags_html}
+                </div>`;
+
+                // 总分显示（如果有总分的话）
+                let total_score_html = "";
+                if (total_score !== undefined && total_score !== null) {
+                    total_score_html = `
+                    <div class="article-rating" style="margin: 6px 0 4px 0;">
+                        <span class="debug-label">总分:</span>
+                        ${this.createRatingStars(total_score)}
+                    </div>`;
+                }
 
                 left_content = `
-                <div style="margin-bottom: 6px;">
-                    <span class="debug-label" style="font-size:0.95rem; color:#1a73e8;">${taxonomy}</span>
-                    <span class="version-badge" title="Prompt Version: ${prompt_version}">v${prompt_version}</span>
-                </div>
-                ${tags_html}
-                ${rating_html}
-                <div style="margin-top:4px;">
+                ${category_line}
+                ${total_score_html}
+                <div>
                     <span class="debug-label">UUID:</span> ${uuid}
                 </div>`;
 
@@ -177,7 +186,7 @@ class ArticleRenderer {
 
                 if (max_rate_class && max_rate_score !== null) {
                     left_content += `
-                    <div class="article-rating">
+                    <div class="article-rating" style="margin-bottom: 4px;">
                         <span class="debug-label">${max_rate_class}:</span>
                         ${this.createRatingStars(max_rate_score)}
                     </div>`;
@@ -196,6 +205,10 @@ class ArticleRenderer {
             if (ai_service || ai_model) {
                 if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
                 if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
+            }
+            // 添加Prompt版本号
+            if (is_v2 && prompt_version) {
+                right_content += `<div><span class="debug-label">Prompt:</span><span class="debug-value-truncate" title="Prompt Version ${prompt_version}">v${prompt_version}</span></div>`;
             }
 
             // ============================================================

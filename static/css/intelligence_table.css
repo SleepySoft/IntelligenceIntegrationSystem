@@ -469,38 +469,3 @@ body {
     font-size: 0.75rem;
     font-weight: 500;
 }
-
-/* V2 多维度评分列表 */
-.v2-rating-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-bottom: 5px;
-}
-
-/* V2 单行评分项 */
-.v2-rating-row {
-    display: flex;
-    align-items: center;
-    font-size: 0.8rem;
-}
-
-.v2-rating-label {
-    width: 80px; /* 固定宽度确保对齐 */
-    color: #5f6368;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* 微调 V2 下的星星大小，使其更紧凑 */
-.v2-rating-row i {
-    font-size: 0.75rem !important;
-    margin-right: 1px !important;
-}
-
-.v2-rating-score-text {
-    margin-left: 5px;
-    color: #6c757d;
-    font-size: 0.75rem;
-}

@@ -69,15 +69,21 @@ def to_bool(value, default=False):
 def exclude_raw_data(result: List[dict]):
     summary_result = []
     for data in result:
+        # In v2, we extract those fields to ArchivedDataExtraFields
+        _uuid = data.pop('UUID', None)
         appendix = data.pop('APPENDIX', None)
+        informant = data.pop('INFORMANT', None)
 
         # Compatible with v1 analysis result
         if 'TAXONOMY' not in data:
             data['TAXONOMY'] = 'N/A'
 
         clean_data = ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True)
-        if appendix:
-            clean_data['APPENDIX'] = appendix
+
+        if _uuid: clean_data['UUID'] = _uuid
+        if appendix: clean_data['APPENDIX'] = appendix
+        if informant: clean_data['INFORMANT'] = informant
+
         summary_result.append(clean_data)
     return summary_result
 
