@@ -26,6 +26,7 @@ from MyPythonUtility.proc_utils import find_processes, kill_processes, start_pro
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 from VectorDB.VectorDBClient import VectorDBClient
+from _config.ai_client_config import AI_CLIENT_LIMIT
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -59,14 +60,10 @@ def build_ai_client_manager(config: EasyConfig):
         logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
 
         for client in AI_CLIENTS.values():
-            logger.info(f"Register AI client: {client.name}.")
             client_manager.register_client(client)
 
-        # Considering stable and limitation. Limit 2 Siliconflow service at the same time.
-        client_manager.set_group_limit('silicon flow proxy', 1)
-        client_manager.set_group_limit('silicon flow', 3)
-        client_manager.set_group_limit('model scope', 1)
-        client_manager.set_group_limit('zhipu', 1)
+        for group, limit in AI_CLIENT_LIMIT.items():
+            client_manager.set_group_limit(group, limit)
 
     except Exception as e:
         print(traceback.format_exc())
