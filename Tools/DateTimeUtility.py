@@ -6,7 +6,7 @@ import time
 import pytz
 import logging
 import datetime
-from typing import Union, Optional
+from typing import Union, Optional, List
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -219,6 +219,44 @@ def time_str_to_datetime(text: str) -> Optional[datetime.datetime]:
 
     logger.error(f"All parsing attempts failed for: {text}")
     return None
+
+
+def time_digit_list_to_datetime(time_digit_list: List[int]) -> Optional[datetime.datetime]:
+    if not isinstance(time_digit_list, (list, tuple)) or len(time_digit_list) < 6:
+        return None
+
+    try:
+        # 提取基本的时间信息
+        year = time_digit_list[0]
+        month = time_digit_list[1]
+        day = time_digit_list[2]
+        hour = time_digit_list[3]
+        minute = time_digit_list[4]
+        second = time_digit_list[5]
+
+        # 如果列表长度足够，提取毫秒
+        microsecond = 0
+        if len(time_digit_list) >= 7:
+            # 第6个索引是毫秒，需要转换为微秒
+            millisecond = time_digit_list[6]
+            microsecond = millisecond * 1000
+
+        # 如果还有第7个元素，可能是额外的微秒
+        if len(time_digit_list) >= 8:
+            microsecond += time_digit_list[7]
+
+        return datetime.datetime(
+            year=year,
+            month=month,
+            day=day,
+            hour=hour,
+            minute=minute,
+            second=second,
+            microsecond=microsecond
+        )
+    except (ValueError, IndexError, TypeError) as e:
+        logger.debug(f"Parse time digit list fail: {e}")
+        return None
 
 
 # ------------------------------------------------------- Clock --------------------------------------------------------

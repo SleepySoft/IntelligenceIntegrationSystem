@@ -20,7 +20,7 @@ from GlobalConfig import EXPORT_PATH
 
 from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time
+from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time, time_digit_list_to_datetime
 from ServiceComponent.IntelligenceHubDefines_v2 import *
 from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
@@ -999,7 +999,12 @@ class IntelligenceHub:
         return True
 
     def _process_appendix_time(self, original_data: dict, processed_data: dict):
-        processed_data['APPENDIX'][APPENDIX_TIME_PUB] = original_data.get('pub_time', None)
+        if pub_time := original_data.get('pub_time', None):
+            pub_time_dt = time_digit_list_to_datetime(pub_time) or time_str_to_datetime(pub_time) or pub_time
+            processed_data['APPENDIX'][APPENDIX_TIME_PUB] = pub_time_dt
+        else:
+            processed_data['APPENDIX'][APPENDIX_TIME_PUB] = None
+
         processed_data['APPENDIX'][APPENDIX_TIME_GOT] = original_data.get('collect_time') or original_data.get('__TIME_GOT__')
         processed_data['APPENDIX'][APPENDIX_TIME_POST] = original_data.get(APPENDIX_TIME_POST, None)
         processed_data['APPENDIX'][APPENDIX_TIME_DONE] = get_aware_time()
