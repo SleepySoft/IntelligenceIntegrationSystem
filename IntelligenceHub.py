@@ -63,6 +63,7 @@ class IntelligenceHub:
                  vector_db_client: Optional[VectorDBClient] = None,
                  db_cache: Optional[MongoDBStorage] = None,
                  db_archive: Optional[MongoDBStorage] = None,
+                 db_low_value: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
                  ai_client_manager: AIClientManager = None):
         """
@@ -81,6 +82,7 @@ class IntelligenceHub:
         self.vector_db_client = vector_db_client
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
+        self.mongo_db_low_value = db_low_value
         self.mongo_db_recommendation = db_recommendation
         self.ai_client_manager = ai_client_manager
 
@@ -619,9 +621,17 @@ class IntelligenceHub:
 
                 # ----------------------- Check Analysis Result and Fill Other Fields ------------------------
 
-                # If this article has no value. No EVENT_TEXT field.
-                if 'EVENT_TEXT' not in result:
-                    raise IntelligenceHub.Exception('drop', 'Article has no value')
+                # ------------------- Check low value data -------------------
+
+                if self._is_low_value_data(result):
+                    # 20260112: Put it in processed queue, and save into intelligence_low_value
+                    #           For model training: negative sample.
+                    self.processed_queue.put(result)
+                    raise IntelligenceHub.Exception('drop', 'Low value data.')
+
+                # # If this article has no value. No EVENT_TEXT field.
+                # if 'EVENT_TEXT' not in result:
+                #     raise IntelligenceHub.Exception('drop', 'Article has no value')
 
                 # 20260111: In v2x prompt, AI will not extract UUID and informant from original message.
 
@@ -681,8 +691,18 @@ class IntelligenceHub:
                 except queue.Empty:
                     continue
 
-                if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
-                    raise NameError('Found duplication. Not archive this data.')
+                try:
+                    if self._is_low_value_data(data):
+                        try:
+                            # Low value data has been marked as ARCHIVED_FLAG_DROP in _ai_analysis_worker
+                            if self.mongo_db_low_value:
+                                self.mongo_db_low_value.insert(data)
+                        except Exception as e:
+                            logger.error(f'Low-value data persists fail.')
+                        continue
+
+                    if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
+                        raise NameError('Found duplication. Not archive this data.')
 
                 # ----------------------- Record the max rate for easier filter -----------------------
 
@@ -708,7 +728,6 @@ class IntelligenceHub:
 
                 # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
 
-                try:
                     data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = get_aware_time()
 
                     self._archive_processed_data(data)
@@ -914,6 +933,13 @@ class IntelligenceHub:
         self.scheduler.execute_task('generate_recommendation_task', 2)
 
     # ------------------------------------------------ Helpers ------------------------------------------------
+
+    def _is_low_value_data(self, data: dict):
+        # Simplify check low-value data
+        # Strictly check:
+        #  v1: Only has UUID field.
+        #  v2: ｛　TAXONOMY: "无情报价值"　｝
+        return 'EVENT_TEXT' not in data
 
     # ---------------------------- Duplication Check ----------------------------
     # TODO: Optimise informant check.

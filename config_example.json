@@ -19,7 +19,7 @@
     "vectordb": {
       "enabled": true,
       "vector_db_path": "vectordb",
-      "embedding_model_name": "paraphrase-multilingual-MiniLM-L12-v2",
+      "embedding_model_name": "BAAI/bge-m3",
       "stores": [
         {
           "collection_name": "intelligence_full_text",
@@ -34,6 +34,7 @@
           "description": "Index of processed data 'EVENT_TITLE' + 'EVENT_BRIEF' + 'EVENT_TEXT'."
         }
       ]
+    }
   },
 
   "ai_service_rotator": {

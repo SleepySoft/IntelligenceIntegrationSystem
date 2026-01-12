@@ -204,6 +204,14 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
             password=mongodb_pass,
             collection_name='intelligence_archived'),
 
+        db_low_value=MongoDBStorage(
+            host=mongodb_host,
+            port=mongodb_port,
+            db_name='IntelligenceIntegrationSystem',
+            username=mongodb_user,
+            password=mongodb_pass,
+            collection_name='intelligence_low_value'),
+
         db_recommendation=MongoDBStorage(
             host=mongodb_host,
             port=mongodb_port,
