@@ -51,8 +51,8 @@ class IntelligenceScoringEngine:
         # 3. 计算最终分并保留1位小数
         final_score = round(raw_score * multiplier, 1)
 
-        # 4. 边界处理 (0-100)
-        return min(100.0, max(0.0, final_score))
+        # 4. 边界处理 (0-100)/10
+        return (min(100.0, max(0.0, final_score))) / 10
 
     def get_mongo_update_pipeline(self) -> List[Dict]:
         """
