@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CGS Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: { 850: '#1f2937', 900: '#111827', 950: '#0b0f19' }
+                    },
+                    fontFamily: { mono: ['Menlo', 'Monaco', 'Consolas', 'monospace'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for high density look */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        .text-xxs { font-size: 0.65rem; line-height: 1rem; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-300 h-screen overflow-hidden flex flex-col font-sans" x-data="dashboard()">
+
+    <header class="bg-gray-900 border-b border-gray-800 h-14 flex items-center px-4 justify-between shrink-0 z-10">
+        <div class="flex items-center gap-4">
+            <h1 class="font-bold text-emerald-500 tracking-wider">CGS <span class="text-gray-500 font-normal">Governance</span></h1>
+            <div class="h-6 w-px bg-gray-700"></div>
+            <div class="flex gap-6 text-sm">
+                <div>
+                    <span class="text-gray-500 text-xs uppercase">Active Spiders</span>
+                    <div class="font-mono font-bold text-white" x-text="stats.active_spiders">0</div>
+                </div>
+                <div>
+                    <span class="text-gray-500 text-xs uppercase">Success Rate</span>
+                    <div class="font-mono font-bold text-white" x-text="stats.success_rate + '%'">0%</div>
+                </div>
+                <div>
+                    <span class="text-gray-500 text-xs uppercase">Net Errors (Today)</span>
+                    <div class="font-mono font-bold text-yellow-500" x-text="stats.network_errors">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+             <button @click="refreshData()" class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded border border-gray-700 transition">
+                Refresh Now
+            </button>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Live
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 flex overflow-hidden">
+
+        <aside class="w-1/3 max-w-md border-r border-gray-800 flex flex-col bg-gray-900">
+            <div class="p-2 bg-gray-850 border-b border-gray-800 flex justify-between items-center">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Recurrent Tasks</h2>
+                <span class="text-xxs bg-gray-700 px-1.5 rounded" x-text="tasks.length">0</span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-2 space-y-2">
+                <template x-for="task in tasks" :key="task.id">
+                    <div class="bg-gray-800 border border-gray-700 rounded p-3 hover:border-gray-500 transition group relative">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="text-xs font-bold text-blue-400" x-text="task.group_name"></span>
+                            <span class="text-xxs bg-gray-900 px-1 py-0.5 rounded text-gray-400" x-text="task.spider"></span>
+                        </div>
+                        <div class="text-xs text-gray-300 truncate mb-2" x-text="task.url" :title="task.url"></div>
+
+                        <div class="flex justify-between items-end">
+                            <div>
+                                <div class="text-xxs text-gray-500">Next Run</div>
+                                <div class="text-xs font-mono" x-text="formatDate(task.next_run)"></div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xxs px-1.5 py-0.5 rounded"
+                                      :class="{
+                                          'bg-emerald-900 text-emerald-300': task.status === 'WAITING',
+                                          'bg-blue-900 text-blue-300': task.status === 'RUNNING',
+                                          'bg-red-900 text-red-300': task.status === 'ERROR'
+                                      }"
+                                      x-text="task.status">
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="absolute inset-0 bg-gray-800/90 hidden group-hover:flex items-center justify-center gap-2 backdrop-blur-sm">
+                            <button class="text-xs bg-emerald-600 text-white px-2 py-1 rounded">Run Now</button>
+                            <button class="text-xs bg-gray-600 text-white px-2 py-1 rounded">Config</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </aside>
+
+        <section class="flex-1 flex flex-col bg-gray-950">
+            <div class="p-2 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400">Live Crawl Stream</h2>
+                <div class="flex gap-2">
+                    <button @click="filter = 'ALL'" :class="filter === 'ALL' ? 'text-white' : 'text-gray-500'" class="text-xs hover:text-white">All</button>
+                    <button @click="filter = 2" :class="filter === 2 ? 'text-yellow-400' : 'text-gray-500'" class="text-xs hover:text-yellow-400">Retries</button>
+                    <button @click="filter = 3" :class="filter === 3 ? 'text-red-400' : 'text-gray-500'" class="text-xs hover:text-red-400">Errors</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-12 gap-2 px-3 py-1.5 border-b border-gray-800 bg-gray-900/50 text-xxs font-bold text-gray-500 uppercase">
+                <div class="col-span-1">Time</div>
+                <div class="col-span-1">Spider</div>
+                <div class="col-span-1">Stat</div>
+                <div class="col-span-1">Code</div>
+                <div class="col-span-5">URL</div>
+                <div class="col-span-1 text-right">Dur.</div>
+                <div class="col-span-2 text-right">Actions</div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto overflow-x-hidden relative" id="logContainer">
+                <template x-for="log in filteredLogs" :key="log.id">
+                    <div class="grid grid-cols-12 gap-2 px-3 py-1 border-b border-gray-800/50 text-xs font-mono items-center hover:bg-gray-800 transition-colors">
+
+                        <div class="col-span-1 text-gray-500 text-xxs" x-text="log.updated_at.substring(11, 19)"></div>
+
+                        <div class="col-span-1 truncate text-gray-400" x-text="log.spider"></div>
+
+                        <div class="col-span-1">
+                            <span class="px-1.5 rounded-sm text-xxs font-bold"
+                                  :class="{
+                                    'text-emerald-400 bg-emerald-400/10': log.status === 1,
+                                    'text-yellow-400 bg-yellow-400/10': log.status === 2,
+                                    'text-red-400 bg-red-400/10': log.status === 3 || log.status === 5,
+                                    'text-gray-400 bg-gray-400/10': log.status === 0
+                                  }"
+                                  x-text="getStatusLabel(log.status)">
+                            </span>
+                            <span x-show="log.retry_count > 0" class="text-xxs text-yellow-600 ml-1" x-text="'(x'+log.retry_count+')'"></span>
+                        </div>
+
+                        <div class="col-span-1"
+                             :class="log.http_code >= 400 ? 'text-red-400' : 'text-green-600'"
+                             x-text="log.http_code || '-'"></div>
+
+                        <div class="col-span-5 truncate text-gray-300 cursor-pointer hover:text-white"
+                             :title="log.url" x-text="log.url"></div>
+
+                        <div class="col-span-1 text-right text-gray-500" x-text="log.duration + 's'"></div>
+
+                        <div class="col-span-2 text-right flex justify-end gap-2">
+                            <button @click="viewSnapshot(log)" x-show="log.content_path" class="text-xxs text-blue-400 hover:underline">View</button>
+                            <button x-show="log.error_msg" class="text-xxs text-red-400 hover:underline" :title="log.error_msg">Error</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </section>
+    </main>
+
+    <div x-show="modalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" style="display: none;">
+        <div class="bg-white w-3/4 h-5/6 rounded shadow-2xl flex flex-col overflow-hidden">
+            <div class="bg-gray-100 p-2 flex justify-between items-center border-b">
+                <span class="text-sm font-bold text-black" x-text="'Snapshot Preview'"></span>
+                <button @click="modalOpen = false" class="text-gray-600 hover:text-black px-2">✕</button>
+            </div>
+            <iframe :src="previewUrl" class="flex-1 w-full bg-white"></iframe>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                stats: { active_spiders: 0, success_rate: 0, network_errors: 0 },
+                tasks: [],
+                logs: [],
+                filter: 'ALL',
+                modalOpen: false,
+                previewUrl: '',
+
+                init() {
+                    this.refreshData();
+                    setInterval(() => this.refreshData(), 2000); // Poll every 2s
+                },
+
+                async refreshData() {
+                    // Fetch Stats
+                    this.stats = await (await fetch('/api/dashboard/stats')).json();
+
+                    // Fetch Tasks
+                    this.tasks = await (await fetch('/api/tasks')).json();
+
+                    // Fetch Logs (Simple limit 100 for demo)
+                    this.logs = await (await fetch('/api/logs?limit=100')).json();
+                },
+
+                get filteredLogs() {
+                    if (this.filter === 'ALL') return this.logs;
+                    return this.logs.filter(l => l.status == this.filter);
+                },
+
+                getStatusLabel(s) {
+                    const map = {0: 'PEND', 1: 'OK', 2: 'RETRY', 3: 'FAIL', 5: 'GIVEUP'};
+                    return map[s] || s;
+                },
+
+                formatDate(iso) {
+                    if (!iso) return '-';
+                    const d = new Date(iso);
+                    return d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                },
+
+                viewSnapshot(log) {
+                    // Assuming content_path ends with the file hash or we need to extract filename
+                    // In real implementation, the API returns the file by hash or ID.
+                    // Here we extract hash from path for the demo API: /api/snapshot/{hash}
+                    // Hacky for demo: Extract filename from path
+                    const parts = log.content_path.split(/[/\\]/);
+                    const filename = parts[parts.length - 1];
+                    const hash = filename.split('.')[0];
+
+                    this.previewUrl = `/api/snapshot/${hash}`;
+                    this.modalOpen = true;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
