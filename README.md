@@ -56,7 +56,7 @@
 
 > 本程序只通过RSS抓取公开新闻，原因在于这类新闻抓取难度小（本身就是给RSS阅读器的公开信息），且法律风险低。
 
-程序中由[ServiceEngine.py](ServiceEngine.py)**启动**并驱动[CrawlTasks](CrawlTasks)目录下的抓取模块，
+程序中由[CrawlerServiceEngine.py](CrawlerServiceEngine.py)**启动**并驱动[CrawlTasks](CrawlTasks)目录下的抓取模块，
 > 
 > 该服务框架会监控该目录下的文件更新并重新加载更新后的模块。
 > 
@@ -312,7 +312,7 @@ playwright install chromium
 python IntelligenceHubLauncher.py
 
 # Run collectors
-python ServiceEngine.py
+python CrawlerServiceEngine.py
 ```
 
 #### 程序以外的配置

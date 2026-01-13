@@ -9,7 +9,7 @@ from typing import Dict, Optional, Any
 from datetime import datetime
 from enum import Enum
 
-from Tools.CrawlRecord import CrawlRecord, STATUS_SUCCESS, STATUS_IGNORED, STATUS_ERROR
+from Tools.CrawlRecord import CrawlRecord, STATUS_SUCCESS, STATUS_IGNORED, STATUS_ERROR, STATUS_DB_ERROR
 
 
 # --- Enums ---
@@ -39,7 +39,7 @@ class CrawlerConfig:
 
 
 @dataclass
-class RuntimeStats:
+class RuntimeStatistics:
     """动态统计：高频更新"""
     start_time: float = field(default_factory=time.time)
 
@@ -76,11 +76,11 @@ class CrawlerContext:
     包含：配置、统计、数据库句柄、控制锁、暂停信号、最近日志
     """
 
-    def __init__(self, config: CrawlerConfig, db_handler):
-        self.config = config
-        self.db_handler = db_handler
+    def __init__(self, crawl_config: CrawlerConfig, crawl_record: CrawlRecord):
+        self.crawl_config = crawl_config
+        self.crawl_record = crawl_record
 
-        self.stats = RuntimeStats()
+        self.statistics = RuntimeStatistics()
         self.state = CrawlerState.IDLE
 
         # 线程安全锁：保护 stats 和 recent_logs 的并发读写
@@ -91,7 +91,7 @@ class CrawlerContext:
         self.pause_event.set()
 
         # 最近 N 条记录 (用于前端实时流展示，不查库)
-        self.recent_logs = deque(maxlen=100)
+        self.recent_logs = deque(maxlen=1000)
 
 
 # --- Singleton Monitor Class ---
@@ -122,11 +122,11 @@ class CrawlerMonitor:
 
     def _setup_logger(self):
         self.logger = logging.getLogger('CrawlerMonitor')
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
-            self.logger.addHandler(handler)
-            self.logger.setLevel(logging.INFO)
+        # if not self.logger.handlers:
+        #     handler = logging.StreamHandler()
+        #     handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+        #     self.logger.addHandler(handler)
+        #     self.logger.setLevel(logging.INFO)
 
     # ===========================
     # 1. Registration (注册)
@@ -181,19 +181,19 @@ class CrawlerMonitor:
             return True
 
         # 如果是内容页，检查历史记录
-        # 注意：这里直接调用 db_handler，它是线程安全的(sqlite3 connect时check_same_thread=False)
-        status = ctx.db_handler.get_url_status(url, from_db=True)
+        # 注意：这里直接调用 crawl_record，它是线程安全的(sqlite3 connect时check_same_thread=False)
+        status = ctx.crawl_record.get_url_status(url, from_db=True)
 
-        if status == 100:  # STATUS_SUCCESS
+        if status == STATUS_SUCCESS:
             return False
 
-        if status == 110:  # STATUS_IGNORED
+        if status == STATUS_IGNORED:
             return False
 
-        if status >= 10:  # STATUS_ERROR
-            err_count = ctx.db_handler.get_error_count(url, from_db=True)
+        if status in [STATUS_DB_ERROR, STATUS_ERROR]:
+            err_count = ctx.crawl_record.get_error_count(url, from_db=True)
             if err_count >= ctx.config.max_retries:
-                return False  # 放弃
+                return False
 
         return True
 
@@ -221,7 +221,7 @@ class CrawlerMonitor:
 
         # 1. 落盘 (仅 Content 类型且成功时保存文件，List通常不需要保存历史HTML)
         file_path = ""
-        if status == 100 and content and url_type == UrlType.CONTENT:
+        if status == STATUS_SUCCESS and content and url_type == UrlType.CONTENT:
             file_path = self._save_content(ctx, url, content)
 
         # 2. 记录到 SQLite (复用 CrawlRecord)
@@ -232,21 +232,25 @@ class CrawlerMonitor:
             "msg": error_msg
         }
 
-        if status == 100:
-            ctx.db_handler.record_url_status(url, status, json.dumps(extra_info))
+        if status == STATUS_SUCCESS:
+            ctx.crawl_record.record_url_status(url, status, json.dumps(extra_info))
             if url_type == UrlType.CONTENT:
-                ctx.db_handler.clear_error_count(url)
+                ctx.crawl_record.clear_error_count(url)
+        elif status == STATUS_IGNORED:
+            pass
         else:
-            ctx.db_handler.increment_error_count(url)
-            ctx.db_handler.record_url_status(url, status, json.dumps(extra_info))
+            ctx.crawl_record.increment_error_count(url)
+            ctx.crawl_record.record_url_status(url, status, json.dumps(extra_info))
 
         # 3. 更新内存统计 & 最近日志 (必须加锁)
         with ctx.lock:
             ctx.stats.total_processed += 1
             ctx.stats.total_response_time += duration
 
-            if status == 100:
+            if status == STATUS_SUCCESS:
                 ctx.stats.total_success += 1
+            elif status == STATUS_IGNORED:
+                pass
             else:
                 ctx.stats.total_error += 1
                 err_key = str(status)
@@ -367,10 +371,10 @@ class CrawlerMonitor:
             url = params.get('url')
             new_status = params.get('status')
             if url and new_status is not None:
-                ctx.db_handler.record_url_status(url, new_status, extra_info="Manual Update")
+                ctx.crawl_record.record_url_status(url, new_status, extra_info="Manual Update")
                 # 如果是重置为未抓取，可能还需要清除错误计数
                 if new_status < 10:
-                    ctx.db_handler.clear_error_count(url)
+                    ctx.crawl_record.clear_error_count(url)
 
         return True
 
@@ -402,66 +406,6 @@ class CrawlerMonitor:
         except Exception as e:
             self.logger.error(f"Save file error: {e}")
             return ""
-
-
-# ===========================
-# USAGE DEMO (Multi-threaded)
-# ===========================
-if __name__ == "__main__":
-    monitor = CrawlerMonitor()  # Singleton instance
-    monitor.register_crawler("blog_spider", base_interval=0.5)
-
-
-    def spider_worker(name):
-        monitor = CrawlerMonitor()  # Gets the same instance
-
-        # 模拟：先抓列表，再抓详情
-        list_url = "http://blog.com/index"
-
-        while True:
-            # 1. 列表阶段
-            monitor.wait_interval(name)
-            if monitor.should_crawl(name, list_url, UrlType.LIST):
-                monitor.report_start_task(name, list_url, UrlType.LIST)
-                time.sleep(0.2)  # Network
-                # 假设解析出了文章链接
-                article_urls = [f"http://blog.com/post/{int(time.time())}_{i}" for i in range(3)]
-                monitor.report_finish_task(name, list_url, UrlType.LIST, 100)
-
-            # 2. 详情阶段
-            for url in article_urls:
-                monitor.wait_interval(name)  # 包含暂停/速率控制
-
-                if monitor.should_crawl(name, url, UrlType.CONTENT):
-                    monitor.report_start_task(name, url, UrlType.CONTENT)
-                    print(f"[{name}] Crawling content: {url}")
-                    time.sleep(0.3)  # Network
-
-                    # 模拟结果
-                    monitor.report_finish_task(
-                        name, url, UrlType.CONTENT,
-                        status=100,
-                        content=b"<html>...</html>"
-                    )
-
-            # 3. 轮次等待
-            monitor.wait_round(name)
-
-
-    t = threading.Thread(target=spider_worker, args=("blog_spider",))
-    t.start()
-
-    # 模拟前端读取数据
-    for _ in range(5):
-        time.sleep(1)
-        data = monitor.get_snapshot()
-        logs = data['blog_spider']['recent_logs']
-        print(f"\n--- Monitor Stats: Processed {data['blog_spider']['stats']['processed']} ---")
-        if logs:
-            print(f"Latest Log: {logs[0]}")  # 打印最新一条日志
-
-    # 停止测试
-    # t.join() # 实际使用中需要优雅退出机制
 
 
 """
