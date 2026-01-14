@@ -7,4 +7,4 @@ from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
 from Workflow.CommonFlowUtility import CrawlContext
 from Workflow.CommonFeedsCrawFlow import feeds_craw_flow
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx

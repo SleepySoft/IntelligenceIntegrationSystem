@@ -157,7 +157,7 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
 
 
 def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
-    config = EasyConfig()
+    config = EasyConfig(DEFAULT_CONFIG_FILE)
 
     logger.info('Apply config: ')
     logger.info(config.dump_text())

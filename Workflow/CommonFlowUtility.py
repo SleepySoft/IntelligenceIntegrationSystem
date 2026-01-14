@@ -22,7 +22,7 @@ from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_
 from Tools.CrawlStatistics import CrawlStatistics
 from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
 from Tools.RSSFetcher import FeedData
-
+from Tools.governance_core import GovernanceManager, CrawlSession
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
 
@@ -89,11 +89,13 @@ class CrawlContext:
                  flow_name: str,
                  i_hub_url: str,
                  collector_token: str,
+                 crawler_governor: GovernanceManager,
                  error_threshold: int = DEFAULT_CRAWL_ERROR_THRESHOLD,
                  logger: Logger = None
                  ):
         self.flow_name = flow_name
         self.i_hub_url = i_hub_url
+        self.crawler_governor = crawler_governor
         self.collector_token = collector_token or DEFAULT_COLLECTOR_TOKEN
         self.error_threshold = error_threshold
         self.logger = PrefixLogger(logger or
@@ -106,38 +108,81 @@ class CrawlContext:
 
         self._submit_collected_data = post_collected_intelligence
 
-    def check_raise_url_status(self, article_link: str, crawl_record: CrawlRecord, levels: str | List[str] = ''):
-        """
-        This function returns nothing. If everything is OK, this function will pass through otherwise raise exceptions.
-        :param article_link: The link to be checked.
-        :param crawl_record: The crawl record instance.
-        :param levels: Levels of logging and record.
-        :return: None
-        """
-        full_levels = self._full_levels(levels)
-        url_status = crawl_record.get_url_status(article_link, from_db=False)
-
-        if url_status >= STATUS_SUCCESS:
-            raise ProcessSkip('already exists', article_link, leveling=full_levels)
-        elif url_status <= STATUS_UNKNOWN:
-            pass  # <- Process going on here
-        elif url_status == STATUS_ERROR:
-            url_error_count = crawl_record.get_error_count(article_link, from_db=False)
-            if url_error_count < 0:
-                raise ProcessProblem('db_error', article_link, leveling=full_levels)
-            if url_error_count >= self.error_threshold:
-                raise ProcessSkip('max retry exceed', article_link, leveling=full_levels)
-            else:
-                pass  # <- Process going on here
-        else:  # STATUS_DB_ERROR
-            raise ProcessProblem('db_error', article_link, leveling=full_levels)
-
-        # ----- Also keep old mechanism checking to make it compatible -----
-        if has_url(article_link):
-            raise ProcessSkip('already exists', article_link, leveling=full_levels)
+    # def check_raise_url_status(self, article_link: str, crawl_record: CrawlRecord, levels: str | List[str] = ''):
+    #     """
+    #     This function returns nothing. If everything is OK, this function will pass through otherwise raise exceptions.
+    #     :param article_link: The link to be checked.
+    #     :param crawl_record: The crawl record instance.
+    #     :param levels: Levels of logging and record.
+    #     :return: None
+    #     """
+    #     full_levels = self._full_levels(levels)
+    #     url_status = crawl_record.get_url_status(article_link, from_db=False)
+    #
+    #     if url_status >= STATUS_SUCCESS:
+    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
+    #     elif url_status <= STATUS_UNKNOWN:
+    #         pass  # <- Process going on here
+    #     elif url_status == STATUS_ERROR:
+    #         url_error_count = crawl_record.get_error_count(article_link, from_db=False)
+    #         if url_error_count < 0:
+    #             raise ProcessProblem('db_error', article_link, leveling=full_levels)
+    #         if url_error_count >= self.error_threshold:
+    #             raise ProcessSkip('max retry exceed', article_link, leveling=full_levels)
+    #         else:
+    #             pass  # <- Process going on here
+    #     else:  # STATUS_DB_ERROR
+    #         raise ProcessProblem('db_error', article_link, leveling=full_levels)
+    #
+    #     # ----- Also keep old mechanism checking to make it compatible -----
+    #     if has_url(article_link):
+    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
 
     def check_get_cached_data(self, url: str = None)-> CollectedData:
         return self.crawl_cache.pop_content(url)
+
+    def submit_collected_data(self,
+                              collected_data: CollectedData,
+                              levels: str | List[str] = '',
+                              cache_on_error: bool = True,
+                              persists: bool = True
+                              ):
+        full_levels = self._full_levels(levels)
+        collected_data.token = self.collector_token
+
+        # -------------------------------- Submit Data Here --------------------------------
+
+        if self._submit_collected_data:
+            self.logger.info(f"Submit collected data to: {self.i_hub_url}")
+            result = self._submit_collected_data(self.i_hub_url, collected_data, 10)
+
+            if result.get('status', 'success') == 'error':
+                if cache_on_error:
+                    # Only cache on submission error.
+                    self.crawl_cache.cache_content(collected_data.informant, collected_data)
+                raise ProcessProblem('commit_error', leveling=full_levels)
+        else:
+            self.logger.warning(f'no method to submit collected data, data dropped.')
+
+        # ------------------------------- Persists Data Here -------------------------------
+
+        # if persists and collected_data.content:
+        #     success, file_path = save_content(
+        #         collected_data.informant,
+        #         collected_data.content,
+        #         collected_data.title,
+        #         self.flow_name,
+        #         '.md'
+        #     )
+        #     if not success:
+        #         self.logger.error(f'Save content {file_path} fail.')
+
+        # --------------------------- Record and Statistics Here ---------------------------
+
+        # self.crawl_record.record_url_status(collected_data.informant, STATUS_SUCCESS)
+        # self.crawl_statistics.sub_item_log(full_levels, collected_data.informant, 'success')
+
+        self.logger.debug(f'Article finished.')
 
     def submit_cached_data(self, limit: int = -1):
         count = 0
@@ -155,60 +200,18 @@ class CrawlContext:
         if count:
             self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
 
-    def submit_collected_data(self,
-                              collected_data: CollectedData,
-                              levels: str | List[str] = '',
-                              cache_on_error: bool = True,
-                              persists: bool = True
-                              ):
-        full_levels = self._full_levels(levels)
-        collected_data.token = self.collector_token
-
-        # -------------------------------- Submit Data Here --------------------------------
-
-        if self._submit_collected_data:
-            self.logger.info(f"Submit collected data to: {self.i_hub_url}")
-            result = self._submit_collected_data(self.i_hub_url, collected_data, 10)
-            if result.get('status', 'success') == 'error':
-                if cache_on_error:
-                    # Only cache on submission error.
-                    self.crawl_cache.cache_content(collected_data.informant, collected_data)
-                raise ProcessProblem('commit_error', leveling=full_levels)
-        else:
-            self.logger.warning(f'no method to submit collected data.')
-
-        # ------------------------------- Persists Data Here -------------------------------
-
-        if persists and collected_data.content:
-            success, file_path = save_content(
-                collected_data.informant,
-                collected_data.content,
-                collected_data.title,
-                self.flow_name,
-                '.md'
-            )
-            if not success:
-                self.logger.error(f'Save content {file_path} fail.')
-
-        # --------------------------- Record and Statistics Here ---------------------------
-
-        self.crawl_record.record_url_status(collected_data.informant, STATUS_SUCCESS)
-        self.crawl_statistics.sub_item_log(full_levels, collected_data.informant, 'success')
-
-        self.logger.debug(f'Article finished.')
-
-    def handle_process_exception(self, e: Exception):
+    def handle_process_exception(self, task: CrawlSession, e: Exception):
         try:
             raise e
         except ProcessSkip:
-            print('*', end='', flush=True)
+            # print('*', end='', flush=True)
             self.logger.debug(f'Article skipped.')
 
         except ProcessIgnore as e:
             # print('o', end='', flush=True)
             self.logger.debug(f'Article ignored.')
-            self.crawl_record.record_url_status(e.item, STATUS_IGNORED)
-            self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.reason)
+            # self.crawl_record.record_url_status(e.item, STATUS_IGNORED)
+            # self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.reason)
 
         except ProcessProblem as e:
             if e.problem == 'db_error':
@@ -220,8 +223,9 @@ class CrawlContext:
                 # print('x', end='', flush=True)
                 self.logger.error(e.problem)
                 if e.problem != 'commit_error':
-                    self.crawl_record.increment_error_count(e.item)
-                self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.problem)
+                    # self.crawl_record.increment_error_count(e.item)
+                    pass
+                # self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.problem)
             else:
                 pass
         except Exception as e:

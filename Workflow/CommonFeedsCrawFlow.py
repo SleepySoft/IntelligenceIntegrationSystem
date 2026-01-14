@@ -5,6 +5,7 @@ import threading
 from uuid import uuid4
 from typing import Callable, TypedDict, Dict, List, Tuple
 
+from CrawlerServiceEngine import ServiceContext
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceHub import CollectedData
 from MyPythonUtility.easy_config import EasyConfig
@@ -15,7 +16,8 @@ from Streamer.ToFileAndHistory import to_file_and_history
 from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_DB_ERROR, STATUS_UNKNOWN, STATUS_IGNORED
 from Tools.CrawlStatistics import CrawlStatistics
 from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
-from Tools.RSSFetcher import FeedData
+from Tools.RSSFetcher import FeedData, RssItem
+from Tools.governance_core import TaskType
 from Workflow.CommonFlowUtility import CrawlContext
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -30,31 +32,33 @@ class FetchContentResult(TypedDict):
     content: str
 
 
-def build_crawl_ctx_by_config(name, config: EasyConfig) -> CrawlContext:
+def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> CrawlContext:
+    config = service_context.config
+    governor = service_context.crawler_governor
     submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
     collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
     token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
-    crawl_context = CrawlContext(name, submit_ihub_url, token)
+    crawl_context = CrawlContext(name, submit_ihub_url, token, governor)
     return crawl_context
 
 
 # --------------------------------- Helper Functions ---------------------------------
 
-def fetch_process_article(article_link: str,
+def fetch_process_article(article: RssItem,
                           fetch_content: Callable[[str], FetchContentResult],
-                          scrubbers: List[Callable[[str], str]]) -> Tuple[str, str]:
+                          scrubbers: List[Callable[[str], str]]
+                          ) -> CollectedData:
     try:
-        content = fetch_content(article_link)
+        content = fetch_content(article.link)
     except Exception:
-        return '', 'fetch'
+        raise ProcessProblem('fetch_error', article.link)
+
+    # ---------------------------------------------------
+    # TODO: If an article always convert fail. Need a special treatment.
 
     raw_html = content['content']
     if not raw_html:
-        # context.logger.error(f'{prefix}   |--Got empty HTML content.')
-        # craw_statistics.sub_item_log(stat_name, article_link, 'fetch emtpy')
-        return '', 'fetch'
-
-    # TODO: If an article always convert fail. Need a special treatment.
+        raise ProcessIgnore('Got empty content at fetch.')
 
     text = raw_html
     for scrubber in scrubbers:
@@ -62,11 +66,22 @@ def fetch_process_article(article_link: str,
         if not text:
             break
     if not text:
-        # context.logger.error(f'{prefix}   |--Got empty content when applying scrubber {str(scrubber)}.')
-        # craw_statistics.sub_item_log(stat_name, article_link, 'scrub emtpy')
-        return '', 'scrub'
+        raise ProcessIgnore('Got empty content after scrub.')
 
-    return text, ''
+    # --------------- Pack Fetched Data ---------------
+
+    collected_data = CollectedData(
+        UUID=str(uuid4()),
+        token='-',  # Will be filled in submit_collected_data()
+
+        title=article.title,
+        authors=article.authors,
+        content=text,
+        pub_time=article.published,
+        informant=article.link
+    )
+
+    return collected_data
 
 
 # ---------------------------------- Main process ----------------------------------
@@ -113,61 +128,53 @@ def feeds_craw_flow(flow_name: str,
             break
         level_names = [flow_name, feed_name]
 
+        context.crawler_governor.register_task(feed_url, feed_name, 60 * 15)
+        if not context.crawler_governor.should_crawl(feed_url, TaskType.LIST):
+            continue
+
         # ----------------------------------- Fetch and Parse feeds -----------------------------------
 
         context.logger.info(f'Processing feed: [{feed_name}] - {feed_url}')
 
-        try:
-            result = fetch_feed(feed_url)
-            if result.fatal:
-                raise ProcessError(error_text = '\n'.join(result.errors))
-            context.crawl_statistics.counter_log(level_names, 'success')
-        except Exception as e:
-            context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
-            context.crawl_record.increment_error_count(feed_url)
-            context.crawl_statistics.counter_log(level_names, 'exception')
-            continue
+        with context.crawler_governor.transaction(feed_url, flow_name, TaskType.LIST) as task:
+            try:
+                result = fetch_feed(feed_url)
+                if result.fatal:
+                    raise ProcessError(error_text = '\n'.join(result.errors))
+                task.success()
+                # context.crawl_statistics.counter_log(level_names, 'success')
+            except Exception as e:
+                context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
+                task.fail_temp(error_msg=str(e))
+                # context.crawl_record.increment_error_count(feed_url)
+                # context.crawl_statistics.counter_log(level_names, 'exception')
+                continue
 
         context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
 
         # ----------------------------------- Process Articles in Feed ----------------------------------
 
         for article in result.entries:
-            try:
-                article_link = article.link
-                if article_link:
-                    context.logger.info(f'Processing article: {article_link}')
+            if article_link := article.link:
+                context.logger.info(f'Processing article: {article_link}')
+            else:
+                context.logger.info(f'Got empty article link from feed: {feed_url}')
+                continue
+            if not context.crawler_governor.should_crawl(article_link, TaskType.ARTICLE):
+                continue
 
-                if collected_data := context.check_get_cached_data(article_link):
-                    context.logger.info(f'[cache] Get data from cache: {article_link}')
+            with context.crawler_governor.transaction(article_link, feed_name, TaskType.ARTICLE) as task:
+                try:
+                    if collected_data := context.check_get_cached_data(article_link):
+                        context.logger.info(f'[cache] Got data from cache: {article_link}')
+                    else:
+                        collected_data = fetch_process_article(article, fetch_content, scrubbers)
 
-                else:
-                    text, error_place = fetch_process_article(article_link, fetch_content, scrubbers)
+                    context.submit_collected_data(collected_data, level_names)
+                    task.success()
 
-                    # TODO: How to detect it's fetch issue or the empty content is work as design?
-                    if error_place == 'fetch':
-                        raise ProcessProblem('fetch_error', article_link)
-
-                    if not text:
-                        raise ProcessIgnore('empty when ' + error_place)
-
-                    # --------------- Pack Fetched Data ---------------
-
-                    collected_data = CollectedData(
-                        UUID=str(uuid4()),
-                        token='-',              # Will be filled in submit_collected_data()
-
-                        title=article.title,
-                        authors=article.authors,
-                        content=text,
-                        pub_time=article.published,
-                        informant=article.link
-                    )
-
-                context.submit_collected_data(collected_data, level_names)
-
-            except Exception as e:
-                context.handle_process_exception(e)
+                except Exception as e:
+                    context.handle_process_exception(task, e)
 
         # ---------------------------------------- Log feed statistics ----------------------------------------
 

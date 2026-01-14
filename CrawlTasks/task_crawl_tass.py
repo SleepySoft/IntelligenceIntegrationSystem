@@ -68,7 +68,7 @@ import random
 from ServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx
 from Workflow.IntelligenceCrawlFlow import (
     intelligence_crawler_result_handler,
     intelligence_crawler_fileter, \
@@ -83,7 +83,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_config(NAME, config)
+    crawl_context = build_crawl_ctx_by_service_ctx(NAME, config)
 
 
 def start_task(stop_event):

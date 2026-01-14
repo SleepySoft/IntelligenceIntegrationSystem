@@ -6,17 +6,17 @@ import threading
 import traceback
 from pathlib import Path
 from typing import Optional
-
-from GlobalConfig import *
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
+from GlobalConfig import *
 from MyPythonUtility.easy_config import EasyConfig
 from PyLoggingBackend import LoggerBackend
 from PyLoggingBackend.LogUtility import set_tls_logger, backup_and_clean_previous_log_file, setup_logging, \
     limit_logger_level
 from MyPythonUtility.plugin_manager import PluginManager, PluginWrapper
+from Tools.governance_backend import governer
+from Tools.governance_core import GovernanceManager
 
 logger = logging.getLogger(__name__)
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -26,10 +26,16 @@ class ServiceContext:
     """
     Use this class to pass parameters to plugins and to selectively expose functions to plugins.
     """
-    def __init__(self, module_logger: Optional[logging.Logger] = None, module_config: Optional[dict] = None):
+    def __init__(
+            self,
+            module_logger: Optional[logging.Logger] = None,
+            module_config: Optional[EasyConfig] = None,
+            crawler_governor: GovernanceManager = None
+    ):
         self.sys = sys
         self.logger = module_logger or logger
         self.config = module_config or EasyConfig()
+        self.crawler_governor = crawler_governor
         self.project_root = project_root
 
     def solve_import_path(self):
@@ -59,6 +65,13 @@ class TaskManager:
     def __init__(self, watch_dir: str, security_config=None):
         self.watch_dir = watch_dir
         self.security = security_config     # Reserved for SecurityConfig
+
+        self.config = EasyConfig(DEFAULT_CONFIG_FILE)
+        self.crawler_governance = GovernanceManager(
+            spider_name='CrawlerServiceEngine',
+            db_path=os.path.join(DATA_PATH, 'spider_governance.db'),
+            files_path=os.path.join(DATA_PATH, 'spider_governance_files')
+        )
 
         # {plugin_name: (module_ref, thread, stop_event)}
         self.tasks: dict[str, tuple[PluginWrapper, threading.Thread, threading.Event]] = {}
@@ -160,7 +173,8 @@ class TaskManager:
         try:
             plugin.module_init(ServiceContext(
                 module_logger=module_logger,
-                module_config=EasyConfig()
+                module_config=self.config,
+                crawler_governor=self.crawler_governance
             ))
             while not stop_event.is_set():
                 plugin.start_task(stop_event)

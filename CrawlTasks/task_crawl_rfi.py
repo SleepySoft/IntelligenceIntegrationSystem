@@ -1,12 +1,12 @@
 from functools import partial
-from ServiceEngine import ServiceContext
 from Tools.RSSFetcher import fetch_feed
+from CrawlerServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
 from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
 from Workflow.CommonFlowUtility import CrawlContext
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config, feeds_craw_flow
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx, feeds_craw_flow
 
 from Scraper.PlaywrightRawScraper import fetch_content as feed_fetcher
 from Scraper.PlaywrightRenderedScraper import fetch_content as article_fetcher
@@ -36,7 +36,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_config('rfi', config)
+    crawl_context = build_crawl_ctx_by_service_ctx('rfi', service_context)
 
 
 def start_task(stop_event):

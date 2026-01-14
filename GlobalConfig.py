@@ -60,6 +60,10 @@ DEFAULT_COLLECTOR_TOKEN = 'SleepySoft'
 DEFAULT_PROCESSOR_TOKEN = 'SleepySoft'
 
 
+CONFIG_FILE = 'config.json'
+DEFAULT_CONFIG_FILE = resolve_active_path(CONFIG_FILE, os.path.join(DATA_PATH, CONFIG_FILE))
+
+
 USER_DB_FILE = 'Authentication.db'
 DEFAULT_USER_DB_PATH = resolve_active_path(USER_DB_FILE, os.path.join(DATA_PATH, USER_DB_FILE))
 

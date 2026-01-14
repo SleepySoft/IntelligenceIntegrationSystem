@@ -6,7 +6,7 @@ from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
 from Workflow.CommonFlowUtility import CrawlContext
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_config, feeds_craw_flow
+from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx, feeds_craw_flow
 
 from Scraper.RequestsScraper import fetch_content
 
@@ -31,7 +31,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_config('nhk', config)
+    crawl_context = build_crawl_ctx_by_service_ctx('nhk', config)
 
 
 def start_task(stop_event):

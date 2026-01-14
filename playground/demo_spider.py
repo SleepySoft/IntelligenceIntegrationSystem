@@ -1,6 +1,6 @@
 import random
 import time
-from governance_core import GovernanceManager, TaskType
+from Tools.governance_core import GovernanceManager, TaskType
 
 
 # Mock function to simulate network request
