@@ -22,7 +22,7 @@ class Status(IntEnum):
     SUCCESS = 1  # Successfully crawled and parsed
     TEMP_FAIL = 2  # Network error, timeout (Retryable)
     PERM_FAIL = 3  # Parse error, 404, empty content (Non-retryable)
-    IGNORED = 4  # Skipped by logic
+    SKIPPED = 4  # Skipped by logic
     GIVE_UP = 5  # Retries exhausted
 
 
@@ -81,7 +81,7 @@ class DatabaseHandler:
                     http_code INTEGER,
                     duration REAL,
                     content_path TEXT,
-                    error_msg TEXT,
+                    state_msg TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -168,7 +168,7 @@ class CrawlSession:
         self.start_time = time.time()
         self.status = Status.PENDING
         self.http_code = None
-        self.error_msg = None
+        self.state_msg = None
         self.content_path = None
         self._finished = False
 
@@ -179,11 +179,11 @@ class CrawlSession:
     def __exit__(self, exc_type, exc_val, exc_tb):
         # If exception occurred and finish() wasn't called manually
         if exc_type and not self._finished:
-            self.fail_perm(http_code=500, error_msg=str(exc_val))
+            self.fail_perm(http_code=500, state_msg=str(exc_val))
 
         # Auto-commit if not finished
         if not self._finished:
-            self.fail_perm(error_msg="Session exited without explicit status")
+            self.fail_perm(state_msg="Session exited without explicit status")
 
     def save_snapshot(self, content: Union[bytes, str], ext=".html"):
         """Save request content to disk"""
@@ -191,20 +191,26 @@ class CrawlSession:
             content = content.encode('utf-8')
         self.content_path = self.manager.storage.save(self.spider, content, ext)
 
-    def success(self):
+    def success(self, state_msg=""):
         """Mark transaction as SUCCESS"""
+        self.state_msg = state_msg
         self._finalize(Status.SUCCESS)
 
-    def fail_temp(self, http_code=0, error_msg="Unknown Network Error"):
+    def skip(self, state_msg="Empty Content"):
+        """Mark transaction as IGNORE"""
+        self.state_msg = state_msg
+        self._finalize(Status.SKIPPED)
+
+    def fail_temp(self, http_code=0, state_msg="Unknown Network Error"):
         """Mark as TEMPORARY FAILURE (Retryable)"""
         self.http_code = http_code
-        self.error_msg = error_msg
+        self.state_msg = state_msg
         self._finalize(Status.TEMP_FAIL)
 
-    def fail_perm(self, http_code=0, error_msg="Unknown Permanent Error"):
+    def fail_perm(self, http_code=0, state_msg="Unknown Permanent Error"):
         """Mark as PERMANENT FAILURE (Non-retryable)"""
         self.http_code = http_code
-        self.error_msg = error_msg
+        self.state_msg = state_msg
         self._finalize(Status.PERM_FAIL)
 
     def _finalize(self, status: Status):
@@ -222,7 +228,7 @@ class CrawlSession:
             status=status,
             duration=duration,
             http_code=self.http_code,
-            error_msg=self.error_msg,
+            state_msg=self.state_msg,
             content_path=self.content_path
         )
         self._finished = True
@@ -297,7 +303,7 @@ class GovernanceManager:
             if status == Status.SUCCESS:
                 return False  # Already done
 
-            if status == Status.PERM_FAIL or status == Status.GIVE_UP:
+            if status in [Status.PERM_FAIL, Status.GIVE_UP, Status.SKIPPED]:
                 return False  # Given up
 
             if status == Status.TEMP_FAIL:
@@ -319,7 +325,7 @@ class GovernanceManager:
         """
         return CrawlSession(self, url, self.spider_name, group_name, task_type)
 
-    def _commit_transaction(self, task_type, spider, group, url, status, duration, http_code, error_msg, content_path):
+    def _commit_transaction(self, task_type, spider, group, url, status, duration, http_code, state_msg, content_path):
         """
         Internal method called by CrawlSession to write to DB.
         """
@@ -350,29 +356,29 @@ class GovernanceManager:
             if status == Status.TEMP_FAIL:
                 # Increment retry count, keep updated_at current
                 self.db.execute("""
-                    INSERT INTO crawl_log (spider, group_name, url_hash, url, status, retry_count, http_code, error_msg, duration, updated_at)
+                    INSERT INTO crawl_log (spider, group_name, url_hash, url, status, retry_count, http_code, state_msg, duration, updated_at)
                     VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
                     ON CONFLICT(url_hash) DO UPDATE SET
                         status = excluded.status,
                         retry_count = retry_count + 1,
                         http_code = excluded.http_code,
-                        error_msg = excluded.error_msg,
+                        state_msg = excluded.state_msg,
                         updated_at = excluded.updated_at
-                """, (spider, group, url_hash, url, status, http_code, error_msg, duration, timestamp))
+                """, (spider, group, url_hash, url, status, http_code, state_msg, duration, timestamp))
 
             else:
                 # Success or Perm Fail
                 self.db.execute("""
-                    INSERT INTO crawl_log (spider, group_name, url_hash, url, status, http_code, duration, content_path, error_msg, updated_at)
+                    INSERT INTO crawl_log (spider, group_name, url_hash, url, status, http_code, duration, content_path, state_msg, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(url_hash) DO UPDATE SET
                         status = excluded.status,
                         http_code = excluded.http_code,
                         duration = excluded.duration,
                         content_path = excluded.content_path,
-                        error_msg = excluded.error_msg,
+                        state_msg = excluded.state_msg,
                         updated_at = excluded.updated_at
-                """, (spider, group, url_hash, url, status, http_code, duration, content_path, error_msg, timestamp))
+                """, (spider, group, url_hash, url, status, http_code, duration, content_path, state_msg, timestamp))
 
                 if status == Status.SUCCESS:
                     logger.info(f"[{group}] SUCCESS: {url}")

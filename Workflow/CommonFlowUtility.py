@@ -205,6 +205,7 @@ class CrawlContext:
             raise e
         except ProcessSkip:
             # print('*', end='', flush=True)
+            task.ignore()
             self.logger.debug(f'Article skipped.')
 
         except ProcessIgnore as e:
