@@ -18,12 +18,12 @@ logger = logging.getLogger("CrawlGoverner")
 # --- Enums & Constants ---
 
 class Status(IntEnum):
-    PENDING = 0  # Ready to be crawled
-    SUCCESS = 1  # Successfully crawled and parsed
-    TEMP_FAIL = 2  # Network error, timeout (Retryable)
-    PERM_FAIL = 3  # Parse error, 404, empty content (Non-retryable)
-    SKIPPED = 4  # Skipped by logic
-    GIVE_UP = 5  # Retries exhausted
+    PENDING = 0     # Ready to be crawled
+    SUCCESS = 1     # Successfully crawled and parsed
+    TEMP_FAIL = 2   # Network error, timeout (Retryable)
+    PERM_FAIL = 3   # Parse error, 404, empty content (Non-retryable)
+    SKIPPED = 4     # Skipped by logic
+    GIVE_UP = 5     # Retries exhausted
 
 
 class TaskType(Enum):
@@ -200,6 +200,10 @@ class CrawlSession:
         """Mark transaction as IGNORE"""
         self.state_msg = state_msg
         self._finalize(Status.SKIPPED)
+
+    def ignore(self):
+        """Ignored like should_crawl() returns false."""
+        self._finished = True
 
     def fail_temp(self, http_code=0, state_msg="Unknown Network Error"):
         """Mark as TEMPORARY FAILURE (Retryable)"""
@@ -387,11 +391,15 @@ class GovernanceManager:
 
     # --- 4. Flow Control (Wait & Pause) ---
 
-    def wait_round(self, group_name: str):
+    def wait_round(self, group_name: str, stop_event: threading.Event = None):
         """
         Wait logic for Recurrent Tasks (Lists).
         Simple implementation: Just logs for now.
         Real implementation would calculate sleep time until next_run of the group.
+
+        Args:
+            group_name: Name of the task group
+            stop_event: Optional event to signal external stop request
         """
         # Logic: Find the earliest next_run for this group
         row = self.db.fetch_one("""
@@ -405,29 +413,46 @@ class GovernanceManager:
             if wait_seconds > 0:
                 logger.info(f"[{group_name}] Round finished. Waiting {wait_seconds:.1f}s for next round...")
                 # We can reuse wait_interval logic here to support interruption
-                self._sleep_interruptible(wait_seconds)
+                self._sleep_interruptible(wait_seconds, stop_event)
             else:
                 logger.info(f"[{group_name}] Round finished. Immediate restart.")
 
-    def wait_interval(self, default_seconds=2.0):
+    def wait_interval(self, default_seconds=2.0, stop_event: threading.Event = None):
         """
         Wait logic between URLs.
         Checks for PAUSE signals every 0.1s.
+
+        Args:
+            default_seconds: Default wait interval in seconds
+            stop_event: Optional event to signal external stop request
         """
         # TODO: Read dynamic interval from DB config table
         # For now, use default
-        self._sleep_interruptible(default_seconds)
+        self._sleep_interruptible(default_seconds, stop_event)
 
-    def _sleep_interruptible(self, seconds):
+    def _sleep_interruptible(self, seconds, stop_event: threading.Event = None):
         """
-        Sleeps for `seconds` but checks for pause signals.
+        Sleeps for `seconds` but checks for pause signals and stop events.
+
+        Args:
+            seconds: Total seconds to sleep
+            stop_event: Optional event to signal external stop request
         """
         end_time = time.time() + seconds
         while time.time() < end_time:
+            # Check for external stop event first
+            if stop_event and stop_event.is_set():
+                logger.info("Sleep interrupted by stop event")
+                break
+
             # Check for PAUSE signal from DB (Future feature)
             # if self.db.is_paused(self.spider_name):
             #     time.sleep(1)
             #     end_time += 1 # Extend deadline
             #     continue
 
-            time.sleep(0.1)
+            # Sleep in small chunks to remain responsive
+            remaining = end_time - time.time()
+            sleep_chunk = min(0.1, remaining)
+            if sleep_chunk > 0:
+                time.sleep(sleep_chunk)

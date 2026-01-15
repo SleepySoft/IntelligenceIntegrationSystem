@@ -73,6 +73,11 @@ class CollectedData(BaseModel):
         description="[MUST]: The specific source URL or informant ID."
     )
 
+    temp_data: dict = Field(
+        default_factory=dict,
+        description="(Optional): Temporary data for data management."
+    )
+
     class Config:
         # 可选：如果传入的数据包含 extra 字段，是否允许（默认忽略，设为 forbid 会报错）
         extra = "ignore"

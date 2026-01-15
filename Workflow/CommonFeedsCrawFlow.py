@@ -3,34 +3,26 @@ import logging
 import urllib3
 import threading
 from uuid import uuid4
-from typing import Callable, TypedDict, Dict, List, Tuple
+from typing import Callable, TypedDict, Dict, List
 
-from CrawlerServiceEngine import ServiceContext
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceHub import CollectedData
+from CrawlerServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
-from PyLoggingBackend.LogUtility import get_tls_logger
-from Tools.ContentHistory import has_url
-from IntelligenceHubWebService import post_collected_intelligence, DEFAULT_IHUB_PORT
-from Streamer.ToFileAndHistory import to_file_and_history
-from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_DB_ERROR, STATUS_UNKNOWN, STATUS_IGNORED
-from Tools.CrawlStatistics import CrawlStatistics
-from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
+from IntelligenceHubWebService import DEFAULT_IHUB_PORT
+from Workflow.CommonFlowUtility import CrawlContext
 from Tools.RSSFetcher import FeedData, RssItem
 from Tools.governance_core import TaskType
-from Workflow.CommonFlowUtility import CrawlContext
+from Tools.ProcessCotrolException import ProcessError, ProcessProblem, ProcessIgnore, ProcessSkip
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
-CRAWL_ERROR_FEED_FETCH = 'Feed fetch error'
-CRAWL_ERROR_FEED_PARSE = 'Feed parse error'
-CRAWL_ERROR_ARTICLE_FETCH = 'Article fetch error'
 
 
 class FetchContentResult(TypedDict):
     content: str
 
+
+# --------------------------------- Helper Functions ---------------------------------
 
 def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> CrawlContext:
     config = service_context.config
@@ -41,8 +33,6 @@ def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> Cra
     crawl_context = CrawlContext(name, submit_ihub_url, token, governor)
     return crawl_context
 
-
-# --------------------------------- Helper Functions ---------------------------------
 
 def fetch_process_article(article: RssItem,
                           fetch_content: Callable[[str], FetchContentResult],
@@ -58,7 +48,7 @@ def fetch_process_article(article: RssItem,
 
     raw_html = content['content']
     if not raw_html:
-        raise ProcessIgnore('Got empty content at fetch.')
+        raise ProcessSkip('Got empty content at fetch.')
 
     text = raw_html
     for scrubber in scrubbers:
@@ -66,7 +56,7 @@ def fetch_process_article(article: RssItem,
         if not text:
             break
     if not text:
-        raise ProcessIgnore('Got empty content after scrub.')
+        raise ProcessSkip('Got empty content after scrub.')
 
     # --------------- Pack Fetched Data ---------------
 
@@ -82,6 +72,25 @@ def fetch_process_article(article: RssItem,
     )
 
     return collected_data
+
+
+def get_and_submit_article(feed_name: str, article: RssItem, context: CrawlContext,
+                           fetch_content: Callable[[str], FetchContentResult],
+                           scrubbers: List[Callable[[str], str]]
+                           ):
+    with context.crawler_governor.transaction(article.link, feed_name, TaskType.ARTICLE) as task:
+        try:
+            if collected_data := context.check_get_cached_data(article.link):
+                context.logger.info(f'[cache] Got data from cache: {article.link}')
+            else:
+                collected_data = fetch_process_article(article, fetch_content, scrubbers)
+
+            collected_data.temp_data['feed_name'] = feed_name
+            context.submit_collected_data(collected_data, task)
+            task.success()
+
+        except Exception as e:
+            context.handle_process_exception(task, e)
 
 
 # ---------------------------------- Main process ----------------------------------
@@ -126,7 +135,6 @@ def feeds_craw_flow(flow_name: str,
     for feed_name, feed_url in { **feeds, "cached": "" }.items():
         if stop_event.is_set():
             break
-        level_names = [flow_name, feed_name]
 
         context.crawler_governor.register_task(feed_url, feed_name, 60 * 15)
         if not context.crawler_governor.should_crawl(feed_url, TaskType.LIST):
@@ -142,12 +150,9 @@ def feeds_craw_flow(flow_name: str,
                 if result.fatal:
                     raise ProcessError(error_text = '\n'.join(result.errors))
                 task.success()
-                # context.crawl_statistics.counter_log(level_names, 'success')
             except Exception as e:
                 context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
                 task.fail_temp(error_msg=str(e))
-                # context.crawl_record.increment_error_count(feed_url)
-                # context.crawl_statistics.counter_log(level_names, 'exception')
                 continue
 
         context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
@@ -159,53 +164,26 @@ def feeds_craw_flow(flow_name: str,
                 context.logger.info(f'Processing article: {article_link}')
             else:
                 context.logger.info(f'Got empty article link from feed: {feed_url}')
-                continue
+                raise ProcessSkip('Empty article.')
             if not context.crawler_governor.should_crawl(article_link, TaskType.ARTICLE):
-                continue
+                raise ProcessIgnore('Already fetched.')
+            get_and_submit_article(feed_name, article, context, fetch_content, scrubbers)
 
-            with context.crawler_governor.transaction(article_link, feed_name, TaskType.ARTICLE) as task:
-                try:
-                    if collected_data := context.check_get_cached_data(article_link):
-                        context.logger.info(f'[cache] Got data from cache: {article_link}')
-                    else:
-                        collected_data = fetch_process_article(article, fetch_content, scrubbers)
+            context.crawler_governor.wait_interval(1)
 
-                    context.submit_collected_data(collected_data, level_names)
-                    task.success()
-
-                except Exception as e:
-                    context.handle_process_exception(task, e)
-
-        # ---------------------------------------- Log feed statistics ----------------------------------------
-
-        # context.logger.info(f"Feed: {feed_name} finished.\n"
-        #             f"     Total: {feed_statistics['total']}\n"
-        #             f"     Success: {feed_statistics['success']}\n"
-        #             f"     Skip: {feed_statistics['skip']}\n"
-        #             f"     Fail: {feed_statistics['total'] - feed_statistics['success'] - feed_statistics['skip']}\n"
-        #             f"     Total Cached Items: {len(_uncommit_content_cache)}")
-
-        # print('-' * 80)
-        # print(crawl_statistics.dump_sub_items(level_names, statuses=[
-        #     'fetch emtpy', 'scrub emtpy', 'persists fail', 'exception']))
-        # print()
-        # print('=' * 100)
-        # print()
-
-    # ----------------------------------------- Process Cached Data -----------------------------------------
+    # ----------------------------------------- Process Cached Data ----------------------------------------
 
     context.submit_cached_data()
 
     # ---------------------------------------- Log all feeds counter ----------------------------------------
 
-    # crawl_statistics.dump_counters(['flow_name'])
-    context.logger.info(f"Finished one loop and rest for {update_interval_s} seconds ...")
+    context.crawler_governor.wait_round(flow_name, stop_event)
 
     # ------------------------------------ Delay and Wait for Next Loop ------------------------------------
 
-    # Wait for next loop and check event per 5s.
-    remaining = update_interval_s
-    while remaining > 0 and not stop_event.is_set():
-        sleep_time = min(5, remaining)
-        time.sleep(sleep_time)
-        remaining -= sleep_time
+    # # Wait for next loop and check event per 5s.
+    # remaining = update_interval_s
+    # while remaining > 0 and not stop_event.is_set():
+    #     sleep_time = min(5, remaining)
+    #     time.sleep(sleep_time)
+    #     remaining -= sleep_time

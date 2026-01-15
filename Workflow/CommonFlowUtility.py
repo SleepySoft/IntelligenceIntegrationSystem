@@ -22,7 +22,7 @@ from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_
 from Tools.CrawlStatistics import CrawlStatistics
 from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
 from Tools.RSSFetcher import FeedData
-from Tools.governance_core import GovernanceManager, CrawlSession
+from Tools.governance_core import GovernanceManager, CrawlSession, TaskType
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
 
@@ -102,8 +102,8 @@ class CrawlContext:
                                    get_tls_logger(__name__) or
                                    logging.getLogger(__name__), f'[{flow_name}]:')
 
-        self.crawl_record = CrawlRecord(['crawl_record', flow_name])
-        self.crawl_statistics = CrawlStatistics()
+        # self.crawl_record = CrawlRecord(['crawl_record', flow_name])
+        # self.crawl_statistics = CrawlStatistics()
         self.crawl_cache = CrawlCache()
 
         self._submit_collected_data = post_collected_intelligence
@@ -143,11 +143,10 @@ class CrawlContext:
 
     def submit_collected_data(self,
                               collected_data: CollectedData,
-                              levels: str | List[str] = '',
+                              task: CrawlSession,
                               cache_on_error: bool = True,
-                              persists: bool = True
+                              persists: bool = True,
                               ):
-        full_levels = self._full_levels(levels)
         collected_data.token = self.collector_token
 
         # -------------------------------- Submit Data Here --------------------------------
@@ -160,13 +159,14 @@ class CrawlContext:
                 if cache_on_error:
                     # Only cache on submission error.
                     self.crawl_cache.cache_content(collected_data.informant, collected_data)
-                raise ProcessProblem('commit_error', leveling=full_levels)
+                raise ProcessProblem('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
 
         # ------------------------------- Persists Data Here -------------------------------
 
-        # if persists and collected_data.content:
+        if persists and collected_data.content:
+            task.save_snapshot(collected_data.content, '.md')
         #     success, file_path = save_content(
         #         collected_data.informant,
         #         collected_data.content,
@@ -186,51 +186,44 @@ class CrawlContext:
 
     def submit_cached_data(self, limit: int = -1):
         count = 0
-        levels = [self.flow_name, 'cached_data']
         while (limit < 0) or (count < limit):
             url, collected_data = self.crawl_cache.pop_random_item()
             if not collected_data:
                 break
-            try:
-                self.submit_collected_data(collected_data, levels)
-            except Exception as e:
-                self.handle_process_exception(e)
-            finally:
-                count += 1
+            feed_name = collected_data.temp_data.get('feed_name', 'Cached Data')
+            with self.crawler_governor.transaction(url, feed_name, TaskType.ARTICLE) as task:
+                try:
+                    self.submit_collected_data(collected_data, task)
+                except Exception as e:
+                    self.handle_process_exception(task, e)
+                finally:
+                    count += 1
         if count:
             self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
 
     def handle_process_exception(self, task: CrawlSession, e: Exception):
-        try:
-            raise e
+        try: raise e
+
         except ProcessSkip:
-            # print('*', end='', flush=True)
-            task.ignore()
+            task.skip()
             self.logger.debug(f'Article skipped.')
 
         except ProcessIgnore as e:
-            # print('o', end='', flush=True)
+            task.ignore()
             self.logger.debug(f'Article ignored.')
-            # self.crawl_record.record_url_status(e.item, STATUS_IGNORED)
-            # self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.reason)
 
         except ProcessProblem as e:
-            if e.problem == 'db_error':
-                # DB error, not content error, just ignore and retry at next loop.
-                self.logger.error('Crawl record DB Error.')
-            elif e.problem in ['fetch_error', 'persists_error', 'commit_error']:
-                # If just commit error, just retry with cache.
-                # Persists error, actually once we're starting use CrawRecord. We don't need this anymore
-                # print('x', end='', flush=True)
-                self.logger.error(e.problem)
-                if e.problem != 'commit_error':
-                    # self.crawl_record.increment_error_count(e.item)
-                    pass
-                # self.crawl_statistics.sub_item_log(e.data.get('leveling', [self.flow_name]), e.item, e.problem)
+            if e.problem == 'fetch_error':
+                task.fail_temp(state_msg='Fetch error')
+            elif e.problem in ['commit_error']:
+                # Just ignore because there will be a retry at next loop.
+                task.ignore()
             else:
-                pass
+                task.fail_perm(state_msg=f"Task {task.group} got unexpected ProcessProblem reason: {e.problem}")
+
         except Exception as e:
-            self.logger.error(f"Crawl process got unexpected exception: {str(e)}")
+            task.fail_perm(state_msg=str(e))
+            self.logger.error(f"Task {task.group} got unexpected exception: {str(e)}")
             print(traceback.format_exc())
 
 
@@ -254,14 +247,14 @@ class CrawlContext:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _full_levels(self, levels: str | List[str] = '') -> List[str]:
-        full_levels = [self.flow_name]
-        if levels:
-            if isinstance(levels, str):
-                full_levels.append(levels)
-            elif isinstance(levels, (list, tuple, set)):
-                full_levels += list(levels)
-        return full_levels
+    # def _full_levels(self, levels: str | List[str] = '') -> List[str]:
+    #     full_levels = [self.flow_name]
+    #     if levels:
+    #         if isinstance(levels, str):
+    #             full_levels.append(levels)
+    #         elif isinstance(levels, (list, tuple, set)):
+    #             full_levels += list(levels)
+    #     return full_levels
 
 
 
