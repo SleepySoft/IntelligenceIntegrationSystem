@@ -122,6 +122,9 @@ class CrawlerGovernanceBackend:
         self.app.add_url_rule(build_url('/api/snapshot/<url_hash>'), 'get_snapshot',
                               maybe_wrap(self.get_snapshot), methods=['GET'])
 
+        self.app.add_url_rule(build_url('/api/status/recent'), 'get_recent_statuses',
+                              maybe_wrap(self.get_recent_statuses), methods=['GET'])
+
         # --- System Control Endpoints ---
         self.app.add_url_rule(build_url('/api/control/<action>'), 'system_control',
                               maybe_wrap(self.system_control), methods=['POST'])
@@ -238,6 +241,46 @@ class CrawlerGovernanceBackend:
             return jsonify({"error": "File deleted or moved"}), 404
 
         return send_file(file_path)
+
+    def get_recent_statuses(self):
+        """
+        [NEW] Fetch the latest status of unique URLs, sorted by activity time.
+        This provides the "State View" where each URL appears only once.
+        """
+        if not self.governor:
+            return jsonify({"error": "GovernanceManager not initialized"}), 500
+
+        limit = request.args.get('limit', 100, type=int)
+        spider = request.args.get('spider')
+        status = request.args.get('status', type=int)
+
+        query = "SELECT * FROM crawl_status"
+        conditions = []
+        params = []
+
+        # Filter Logic
+        if spider:
+            conditions.append("spider_name = ?")
+            params.append(spider)
+
+        if status is not None:
+            conditions.append("status = ?")
+            params.append(status)
+
+        # Optional: Hide 'PENDING' (0) records in this view if they haven't run yet?
+        # usually user cares about what JUST happened.
+        # Let's keep them but maybe filter by 'last_run_at IS NOT NULL'
+        conditions.append("last_run_at IS NOT NULL")
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        # KEY CHANGE: Sort by last_run_at DESC
+        query += " ORDER BY last_run_at DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self.governor.db.fetch_all(query, tuple(params))
+        return jsonify([dict(row) for row in rows])
 
     def system_control(self, action: str):
         """

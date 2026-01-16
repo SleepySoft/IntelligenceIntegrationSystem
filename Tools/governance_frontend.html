@@ -75,7 +75,7 @@
 
     <main class="flex-1 flex overflow-hidden">
 
-        <aside class="w-[320px] border-r border-gray-800 flex flex-col bg-gray-900/50 flex-shrink-0 select-none">
+        <aside class="w-[340px] border-r border-gray-800 flex flex-col bg-gray-900/50 flex-shrink-0 select-none">
             <div class="p-2 bg-gray-900 border-b border-gray-800 flex justify-between items-center h-[40px]">
                 <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 pl-2">Explorer</h2>
                 <div class="flex gap-1">
@@ -84,49 +84,59 @@
                 </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto py-2">
+            <div class="flex-1 overflow-y-auto py-2 custom-scrollbar">
                 <template x-for="node in visibleTreeNodes" :key="node.path">
 
-                    <div class="group flex items-center cursor-pointer hover:bg-gray-800/80 min-h-[28px] pr-2 transition-colors relative"
+                    <div class="group flex items-center justify-between cursor-pointer hover:bg-gray-800/80 min-h-[28px] pr-2 transition-colors relative"
                          :class="{
                              'bg-gray-800 border-r-2 border-emerald-500': selectedGroup === node.path,
                              'text-gray-400': !node.isRealGroup,
                              'text-gray-200': node.isRealGroup
                          }"
-                         :style="`padding-left: ${node.level * 16 + 8}px`"
                          @click="handleNodeClick(node)">
 
-                        <div class="w-4 h-4 flex items-center justify-center mr-1 text-gray-500 hover:text-white shrink-0"
-                             @click.stop="toggleNode(node.path)">
-                            <span x-show="node.hasChildren && !isCollapsed(node.path)" class="text-[8px]">▼</span>
-                            <span x-show="node.hasChildren && isCollapsed(node.path)" class="text-[8px]">▶</span>
-                            <span x-show="!node.hasChildren" class="text-[8px] opacity-30">•</span>
+                        <div class="flex items-center flex-1 min-w-0" :style="`padding-left: ${node.level * 16 + 8}px`">
+
+                            <div class="w-4 h-4 flex items-center justify-center mr-1 text-gray-500 hover:text-white shrink-0"
+                                 @click.stop="toggleNode(node.path)">
+                                <span x-show="node.hasChildren && !isCollapsed(node.path)" class="text-[8px]">▼</span>
+                                <span x-show="node.hasChildren && isCollapsed(node.path)" class="text-[8px]">▶</span>
+                                <span x-show="!node.hasChildren" class="text-[8px] opacity-20">•</span>
+                            </div>
+
+                            <div class="mr-2 shrink-0">
+                                <svg x-show="!node.isRealGroup" class="w-3.5 h-3.5 text-blue-400/40" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
+                                <svg x-show="node.isRealGroup && isGroupHealthy(node.data)" class="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <svg x-show="node.isRealGroup && !isGroupHealthy(node.data)" class="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+
+                            <span class="text-xs truncate" x-text="node.name" :title="node.name"></span>
                         </div>
 
-                        <div class="mr-2 shrink-0">
-                            <svg x-show="!node.isRealGroup" class="w-3.5 h-3.5 text-blue-400/50" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                            <svg x-show="node.isRealGroup && isGroupHealthy(node.data)" class="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <svg x-show="node.isRealGroup && !isGroupHealthy(node.data)" class="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <div x-show="node.isRealGroup" class="flex items-center ml-2 shrink-0">
+                            <div class="flex text-[9px] font-mono border border-gray-700/50 rounded overflow-hidden">
+                                <div class="px-1.5 py-0.5 text-black font-bold"
+                                     :class="getRateColor(node.data.stats)">
+                                    <span x-text="calculateRate(node.data.stats)"></span>
+                                </div>
+                                <div class="px-1.5 py-0.5 bg-gray-700 text-gray-300 min-w-[24px] text-center">
+                                    <span x-text="node.data.stats.total || 0"></span>
+                                </div>
+                            </div>
                         </div>
 
-                        <span class="text-xs truncate flex-1" x-text="node.name"></span>
-
-                        <div x-show="node.isRealGroup" class="flex gap-1.5 text-[9px] font-mono ml-2 text-gray-500">
-                            <span x-show="node.data.stats.running > 0" class="text-blue-400" x-text="'R:'+node.data.stats.running"></span>
-                            <span x-show="node.data.stats.failed > 0" class="text-red-400" x-text="'E:'+node.data.stats.failed"></span>
-                        </div>
                     </div>
                 </template>
             </div>
         </aside>
 
         <section class="flex-1 flex flex-col bg-gray-950 min-w-0">
-
             <div class="bg-gray-900 border-b border-gray-700 shadow-md shrink-0 transition-all duration-300"
                  x-show="currentGroupData"
                  x-transition:enter="ease-out duration-200"
                  x-transition:enter-start="opacity-0 -translate-y-2"
-                 x-transition:enter-end="opacity-100 translate-y-0">
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 style="display: none;">
 
                 <div class="px-4 py-2 flex justify-between items-center border-b border-gray-800 bg-gray-850">
                     <div class="flex items-center gap-2">
@@ -135,111 +145,158 @@
                             <span x-text="currentGroupData?.group_path.replace(/\//g, ' / ')"></span>
                         </div>
                     </div>
-                    <button @click="selectedGroup = null; currentGroupData = null" class="text-xs text-gray-500 hover:text-white px-2 py-1 rounded hover:bg-gray-700">✕ Close</button>
+                    <button @click="selectedGroup = null; currentGroupData = null; refreshData()" class="text-xs text-gray-500 hover:text-white px-2 py-1 rounded hover:bg-gray-700">✕ Close Group</button>
                 </div>
 
                 <div class="p-4 flex items-start gap-4">
                     <div class="flex-1 bg-gray-800/50 border border-gray-700 rounded p-3 flex gap-3">
                         <div class="shrink-0 pt-1">
-                            <div class="w-3 h-3 rounded-full animate-pulse"
-                                 :class="getAnchorColorClass(anchorStatus?.status)"></div>
+                            <div class="w-3 h-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"
+                                 :class="getAnchorColorClass(anchorStatus?.status)"
+                                 :class="anchorStatus?.status === 1 ? 'animate-pulse' : ''"></div>
                         </div>
+
                         <div class="flex-1 min-w-0">
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-xs font-bold text-gray-400 uppercase">Anchor List URL</span>
-                                <span class="text-[10px] font-mono px-1 rounded"
-                                      :class="anchorStatus?.http_code >= 400 ? 'bg-red-900 text-red-200' : 'bg-gray-700 text-gray-300'"
+                                <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Anchor List URL</span>
+                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border"
+                                      :class="anchorStatus?.http_code >= 400 ? 'bg-red-900/30 text-red-300 border-red-800' : (anchorStatus?.http_code ? 'bg-emerald-900/30 text-emerald-300 border-emerald-800' : 'bg-gray-700 text-gray-400 border-gray-600')"
                                       x-text="anchorStatus?.http_code ? 'HTTP ' + anchorStatus.http_code : 'NO DATA'"></span>
                             </div>
-                            <div class="text-sm font-mono text-white truncate"
+
+                            <div class="text-sm font-mono text-white truncate mb-2"
+                                 :title="anchorStatus?.url"
                                  x-text="anchorStatus?.url || 'No List URL Configured'"></div>
 
-                            <div class="mt-2 flex gap-4 text-xs text-gray-500">
-                                <span>Last: <span class="text-gray-300" x-text="formatTimeAgo(anchorStatus?.last_run_at)"></span></span>
-                                <span>Next: <span class="text-blue-300" x-text="formatNextRun(anchorStatus?.next_run_at)"></span></span>
+                            <div class="flex gap-6 text-xs text-gray-500 font-mono border-t border-gray-700/50 pt-2">
+                                <div class="flex gap-2">
+                                    <span>Last Check:</span>
+                                    <span class="text-gray-300" x-text="formatTimeAgo(anchorStatus?.last_run_at)"></span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <span>Next Run:</span>
+                                    <span class="text-blue-300" x-text="formatNextRun(anchorStatus?.next_run_at)"></span>
+                                </div>
                             </div>
+
+                            <div x-show="anchorStatus?.state_msg && anchorStatus.status > 2"
+                                 class="mt-2 text-xs text-red-400 bg-red-900/10 p-1 rounded border border-red-900/30"
+                                 x-text="anchorStatus?.state_msg"></div>
                         </div>
                     </div>
 
-                    <div class="w-48 shrink-0 bg-gray-800/50 border border-gray-700 rounded p-3">
-                        <div class="text-[10px] font-bold text-gray-500 uppercase mb-2">Group Activity</div>
-                        <div class="grid grid-cols-2 gap-y-2 text-xs">
+                    <div class="w-48 shrink-0 bg-gray-800/50 border border-gray-700 rounded p-3 flex flex-col justify-center">
+                        <div class="text-[10px] font-bold text-gray-500 uppercase mb-3 border-b border-gray-700 pb-1">Group Activity</div>
+                        <div class="grid grid-cols-2 gap-y-3 text-xs">
                             <div>
-                                <div class="text-gray-500 text-[10px]">Total</div>
-                                <div class="font-mono text-white" x-text="currentGroupData?.stats.total || 0"></div>
+                                <div class="text-gray-500 text-[9px] uppercase">Total</div>
+                                <div class="font-mono text-white text-sm" x-text="currentGroupData?.stats.total || 0"></div>
                             </div>
                             <div>
-                                <div class="text-gray-500 text-[10px]">Success</div>
-                                <div class="font-mono text-emerald-400" x-text="currentGroupData?.stats.success || 0"></div>
+                                <div class="text-gray-500 text-[9px] uppercase">Success</div>
+                                <div class="font-mono text-emerald-400 text-sm" x-text="currentGroupData?.stats.success || 0"></div>
                             </div>
                             <div>
-                                <div class="text-gray-500 text-[10px]">Running</div>
-                                <div class="font-mono text-blue-400" x-text="currentGroupData?.stats.running || 0"></div>
+                                <div class="text-gray-500 text-[9px] uppercase">Running</div>
+                                <div class="font-mono text-blue-400 text-sm" x-text="currentGroupData?.stats.running || 0"></div>
                             </div>
                             <div>
-                                <div class="text-gray-500 text-[10px]">Errors</div>
-                                <div class="font-mono text-red-400" x-text="currentGroupData?.stats.failed || 0"></div>
+                                <div class="text-gray-500 text-[9px] uppercase">Errors</div>
+                                <div class="font-mono text-red-400 text-sm" x-text="currentGroupData?.stats.failed || 0"></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="px-4 py-1.5 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">Logs</span>
-                    <span class="text-xxs px-1.5 py-0.5 rounded-full bg-gray-800 text-gray-400" x-text="logs.length"></span>
+            <div class="px-4 py-2 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-4">
+                    <div class="flex bg-gray-950 p-1 rounded border border-gray-700">
+                        <button @click="viewMode = 'LATEST'; refreshData()"
+                                class="px-3 py-1 text-xs rounded transition-all flex items-center gap-2 border border-transparent"
+                                :class="viewMode === 'LATEST' ? 'bg-gray-800 text-emerald-400 border-gray-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'">
+                            <span>◎ Latest State</span>
+                        </button>
+                        <button @click="viewMode = 'HISTORY'; refreshData()"
+                                class="px-3 py-1 text-xs rounded transition-all flex items-center gap-2 border border-transparent"
+                                :class="viewMode === 'HISTORY' ? 'bg-gray-800 text-blue-400 border-gray-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'">
+                            <span>≣ Log History</span>
+                        </button>
+                    </div>
+
+                    <span class="text-xxs text-gray-500 border-l border-gray-800 pl-4 uppercase tracking-wide" x-show="viewMode === 'LATEST'">
+                        Live Snapshot (De-duplicated)
+                    </span>
+                    <span class="text-xxs text-gray-500 border-l border-gray-800 pl-4 uppercase tracking-wide" x-show="viewMode === 'HISTORY'">
+                        Historical Event Stream
+                    </span>
                 </div>
-                <div class="flex bg-gray-800 rounded p-0.5">
-                    <button @click="logFilter = 'ALL'" :class="logFilter === 'ALL' ? 'bg-gray-600 text-white shadow' : 'text-gray-500 hover:text-gray-300'" class="text-xxs px-2 py-0.5 rounded transition">All</button>
-                    <button @click="logFilter = 2" :class="logFilter === 2 ? 'bg-emerald-800 text-emerald-100 shadow' : 'text-gray-500 hover:text-emerald-400'" class="text-xxs px-2 py-0.5 rounded transition">OK</button>
-                    <button @click="logFilter = 3" :class="logFilter === 3 ? 'bg-red-800 text-red-100 shadow' : 'text-gray-500 hover:text-red-400'" class="text-xxs px-2 py-0.5 rounded transition">Err</button>
+
+                <div class="flex gap-1 bg-gray-950 rounded p-1 border border-gray-700">
+                    <button @click="logFilter = 'ALL'; refreshData()" :class="logFilter === 'ALL' ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'" class="text-xxs px-2 py-0.5 rounded transition">All</button>
+                    <button @click="logFilter = 2; refreshData()" :class="logFilter === 2 ? 'bg-emerald-900/50 text-emerald-200' : 'text-gray-500 hover:text-emerald-400'" class="text-xxs px-2 py-0.5 rounded transition">OK</button>
+                    <button @click="logFilter = 3; refreshData()" :class="logFilter === 3 ? 'bg-red-900/50 text-red-200' : 'text-gray-500 hover:text-red-400'" class="text-xxs px-2 py-0.5 rounded transition">Err</button>
                 </div>
             </div>
 
-            <div class="flex-1 flex flex-col min-h-0">
+            <div class="flex-1 flex flex-col min-h-0 bg-gray-950">
                 <div class="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-900/50 border-b border-gray-800 text-xxs font-bold text-gray-500 uppercase tracking-wide shrink-0">
-                    <div class="col-span-1">Time</div>
-                    <div class="col-span-1">Stat</div>
-                    <div class="col-span-7">URL / Path</div>
+                    <div class="col-span-1 text-center">#</div>
+                    <div class="col-span-2">Time</div>
+                    <div class="col-span-1">Status</div>
+                    <div class="col-span-6">URL / Info</div>
                     <div class="col-span-1">Code</div>
-                    <div class="col-span-1 text-right">Dur.</div>
-                    <div class="col-span-1 text-right">View</div>
+                    <div class="col-span-1 text-right">Dur/Snap</div>
                 </div>
 
-                <div class="flex-1 overflow-y-auto overflow-x-hidden">
-                    <template x-for="log in logs" :key="log.id">
-                        <div class="grid grid-cols-12 gap-2 px-4 py-1 border-b border-gray-800/30 text-xs font-mono items-center hover:bg-gray-800/40 transition-colors group">
+                <div class="flex-1 overflow-y-auto overflow-x-hidden" id="mainList">
+                    <template x-for="(row, index) in listData" :key="row.id_key">
+                        <div class="grid grid-cols-12 gap-2 px-4 py-1.5 border-b border-gray-800/30 text-xs font-mono items-center hover:bg-gray-800/40 transition-colors group">
 
-                            <div class="col-span-1 text-gray-600 text-[10px]" x-text="formatTimeOnly(log.created_at)"></div>
+                            <div class="col-span-1 text-center text-gray-600 text-[10px]" x-text="index + 1"></div>
+
+                            <div class="col-span-2 text-gray-500 text-[10px] truncate"
+                                 :title="formatFullDate(row.display_time)"
+                                 x-text="formatTimeOnly(row.display_time)"></div>
 
                             <div class="col-span-1">
-                                <span class="w-1.5 h-1.5 rounded-full inline-block mr-1"
+                                <span class="px-1.5 py-0.5 rounded-[2px] text-[10px] font-bold border inline-block w-12 text-center"
                                       :class="{
-                                          'bg-blue-500': log.status === 1,
-                                          'bg-emerald-500': log.status === 2,
-                                          'bg-yellow-500': log.status === 3,
-                                          'bg-red-500': log.status === 4
-                                      }"></span>
-                                <span class="text-[10px] text-gray-400" x-text="getStatusLabel(log.status)"></span>
+                                          'bg-blue-900/20 text-blue-400 border-blue-900/50': row.status === 1,
+                                          'bg-emerald-900/20 text-emerald-400 border-emerald-900/50': row.status === 2,
+                                          'bg-yellow-900/20 text-yellow-400 border-yellow-900/50': row.status === 3,
+                                          'bg-red-900/20 text-red-400 border-red-900/50': row.status === 4,
+                                          'bg-gray-800 text-gray-500 border-gray-700': row.status === 0 || row.status === 5
+                                      }"
+                                      x-text="getStatusLabel(row.status)">
+                                </span>
                             </div>
 
-                            <div class="col-span-7 overflow-hidden">
-                                <div class="truncate text-gray-300 group-hover:text-white cursor-pointer" :title="log.url" x-text="log.url"></div>
-                                <div x-show="!selectedGroup" class="truncate text-[9px] text-gray-600" x-text="log.group_path"></div>
+                            <div class="col-span-6 overflow-hidden">
+                                <div class="flex items-center gap-2">
+                                    <div class="truncate text-gray-300 group-hover:text-white cursor-pointer flex-1" :title="row.url" x-text="row.url"></div>
+
+                                    <span x-show="viewMode === 'LATEST' && row.retry_count > 0"
+                                          class="text-[9px] bg-yellow-900/30 text-yellow-500 border border-yellow-900/50 px-1 rounded flex items-center gap-1 shrink-0">
+                                          <span>↺</span> <span x-text="row.retry_count"></span>
+                                    </span>
+                                </div>
+                                <div x-show="!selectedGroup" class="truncate text-[9px] text-gray-600" x-text="row.group_path"></div>
                             </div>
 
-                            <div class="col-span-1" :class="log.http_code >= 400 ? 'text-red-400' : 'text-emerald-600'" x-text="log.http_code || '-'"></div>
+                            <div class="col-span-1"
+                                 :class="row.http_code >= 400 ? 'text-red-400 font-bold' : (row.http_code ? 'text-emerald-600' : 'text-gray-700')"
+                                 x-text="row.http_code || '-'"></div>
 
-                            <div class="col-span-1 text-right text-gray-600 text-[10px]" x-text="log.duration ? log.duration + 's' : '-'"></div>
-
-                            <div class="col-span-1 text-right">
-                                <button @click="viewSnapshot(log)" x-show="log.status === 2" class="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-300 text-[10px]">VIEW</button>
+                            <div class="col-span-1 text-right flex justify-end items-center gap-2">
+                                <span class="text-gray-600 text-[10px]" x-text="row.duration ? row.duration + 's' : ''"></span>
+                                <button @click="viewSnapshot(row)" x-show="row.status === 2" class="opacity-0 group-hover:opacity-100 text-blue-500 hover:text-blue-300 text-[10px] hover:underline bg-gray-800 px-1 rounded border border-gray-700">SNAP</button>
                             </div>
                         </div>
                     </template>
-                    <div x-show="logs.length === 0" class="p-8 text-center text-gray-700 text-xs italic">
-                        No logs found matching filters.
+
+                    <div x-show="listData.length === 0" class="p-8 text-center text-gray-700 text-xs italic">
+                        No records found for this view.
                     </div>
                 </div>
             </div>
@@ -260,18 +317,17 @@
         function dashboard() {
             return {
                 stats: {},
-                rawGroups: [], // Data from API
-                logs: [],
+                rawGroups: [],
+                listData: [], // Unified data holder for both views
 
-                // Tree State
-                collapsedPaths: new Set(), // Set of paths that are closed
-                treeNodes: [], // Calculated flat list for rendering
+                // View State
+                viewMode: 'LATEST', // 'LATEST' (Status) or 'HISTORY' (Log)
 
-                // Selection
+                // Other state...
+                collapsedPaths: new Set(),
+                treeNodes: [],
                 selectedGroup: null,
                 currentGroupData: null,
-
-                // Filters
                 logFilter: 'ALL',
                 controlState: 'NORMAL',
                 modalOpen: false,
@@ -290,37 +346,83 @@
                         ]);
                         this.stats = await sRes.json();
                         this.rawGroups = await gRes.json();
-
-                        // Rebuild Tree Nodes Structure
                         this.rebuildTree();
 
-                        // Update Current Group Data Reference
                         if (this.selectedGroup) {
                             this.currentGroupData = this.rawGroups.find(g => g.group_path === this.selectedGroup);
                         }
 
-                        // Fetch Logs
-                        let logQuery = '/api/logs?limit=100';
+                        // --- FETCH LIST DATA BASED ON MODE ---
+                        let endpoint = '';
+                        if (this.viewMode === 'LATEST') {
+                            endpoint = '/api/status/recent'; // Call the NEW backend API
+                        } else {
+                            endpoint = '/api/logs'; // Call the OLD backend API
+                        }
+
+                        let query = `${endpoint}?limit=100`;
+
+                        // Filters
                         if (this.selectedGroup) {
-                            // Filter by spider for backend performance, then refine client side
                             const spider = this.selectedGroup.split('/')[0];
-                            logQuery += `&spider=${encodeURIComponent(spider)}`;
+                            query += `&spider=${encodeURIComponent(spider)}`;
                         }
-                        if (this.logFilter !== 'ALL') logQuery += `&status=${this.logFilter}`;
+                        if (this.logFilter !== 'ALL') {
+                            query += `&status=${this.logFilter}`;
+                        }
 
-                        const lRes = await fetch(logQuery);
-                        let rawLogs = await lRes.json();
+                        const res = await fetch(query);
+                        let rawRows = await res.json();
 
-                        // Precise filtering
+                        // Client-side precise filtering
                         if (this.selectedGroup) {
-                            rawLogs = rawLogs.filter(l => l.group_path === this.selectedGroup);
+                            rawRows = rawRows.filter(r => r.group_path === this.selectedGroup);
                         }
-                        this.logs = rawLogs;
+
+                        // --- NORMALIZE DATA ---
+                        // Logs use 'created_at', Status uses 'last_run_at'
+                        // We map them to common fields for the template
+                        this.listData = rawRows.map(r => ({
+                            ...r,
+                            id_key: this.viewMode === 'LATEST' ? r.url : r.id, // Unique key for Alpine
+                            display_time: this.viewMode === 'LATEST' ? r.last_run_at : r.created_at,
+                            // Ensure retry_count exists (Logs might not have it, default to 0)
+                            retry_count: r.retry_count || 0
+                        }));
 
                     } catch (e) { console.error(e); }
                 },
 
                 // --- Tree Logic (The Core Magic) ---
+
+                calculateRate(stats) {
+                    if (!stats || !stats.total) return '0%';
+                    const rate = Math.round((stats.success / stats.total) * 100);
+                    return rate + '%';
+                },
+
+                getRateColor(stats) {
+                    if (!stats || !stats.total) return 'bg-gray-500 text-white';
+                    const rate = (stats.success / stats.total);
+                    if (rate >= 0.9) return 'bg-emerald-500 text-black'; // High success
+                    if (rate >= 0.5) return 'bg-yellow-500 text-black'; // Med success
+                    return 'bg-red-500 text-white'; // Low success
+                },
+
+                // --- Time Formatters ---
+                formatTimeOnly(iso) {
+                    if(!iso) return '-';
+                    // Returns HH:MM:SS
+                    try {
+                        const d = new Date(iso);
+                        return d.toLocaleTimeString([], { hour12: false });
+                    } catch(e) { return iso; }
+                },
+
+                formatFullDate(iso) {
+                    if(!iso) return '';
+                    return new Date(iso).toLocaleString();
+                },
 
                 rebuildTree() {
                     // 1. Collect all unique paths (including intermediate folders)
