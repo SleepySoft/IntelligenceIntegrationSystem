@@ -3201,7 +3201,7 @@ ARCHIVED_FLAG_SENSITIVE = 'S'
 
 
 有以下几个问题：
-1. StorageHandler保存的内容似乎并没有和过程关联起来。我希望通过URL能直接索引到文件的路径，文件可以由外部指定主要名字以及便脱离此关联阅读。
+1. StorageHandler保存的内容似乎并没有和过程关联起来。我希望通过URL能直接索引到文件的路径，文件可以由外部指定主要名字以及便脱离此关联阅读（如："{custom_name}_{uuid}.{suffix}""）。
 2. interval被当作下一次运行时间使用，明显不正确。我建议直接放弃，统一改用wait_interval，时间由外部传入。同时加入动态控制时间的接口，从而在外部实现sleep，resume，start immediately。
 3. 在任务开始时即即记录log，结束时更新log，这样前端可以看到实时进行中的任务。
 4. 当前系统的分类靠“group_name”，实际上，层次可能会更多：

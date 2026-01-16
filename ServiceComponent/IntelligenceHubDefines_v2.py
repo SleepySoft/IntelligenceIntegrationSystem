@@ -13,7 +13,7 @@ class CollectedData(BaseModel):
     Data collected from raw sources (crawlers, API, RSS, etc.).
     Passed as context to the LLM.
     """
-    uuid: str = Field(
+    UUID: str = Field(
         ...,
         min_length=1,
         description="[MUST]: Unique identifier for the message/article."

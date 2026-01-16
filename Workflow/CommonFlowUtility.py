@@ -22,7 +22,7 @@ from Tools.CrawlRecord import CrawlRecord, STATUS_ERROR, STATUS_SUCCESS, STATUS_
 from Tools.CrawlStatistics import CrawlStatistics
 from Tools.ProcessCotrolException import ProcessSkip, ProcessError, ProcessTerminate, ProcessProblem, ProcessIgnore
 from Tools.RSSFetcher import FeedData
-from Tools.governance_core import GovernanceManager, CrawlSession, TaskType
+from Tools.governance_core_v3 import GovernanceManager, CrawlSession
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
 
@@ -176,8 +176,8 @@ class CrawlContext:
             url, collected_data = self.crawl_cache.pop_random_item()
             if not collected_data:
                 break
-            feed_name = collected_data.temp_data.get('feed_name', 'Cached Data')
-            with self.crawler_governor.transaction(url, feed_name, TaskType.ARTICLE) as task:
+            group_path = collected_data.temp_data.get('group_path', '')
+            with self.crawler_governor.transaction(url, group_path) as task:
                 try:
                     self.submit_collected_data(collected_data, task)
                 except Exception as e:

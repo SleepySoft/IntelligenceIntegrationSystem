@@ -16,7 +16,7 @@ from PyLoggingBackend.LogUtility import set_tls_logger, backup_and_clean_previou
     limit_logger_level
 from MyPythonUtility.plugin_manager import PluginManager, PluginWrapper
 from Tools.CrawlerGovernanceBackend import CrawlerGovernanceBackend
-from Tools.governance_core import GovernanceManager
+from Tools.governance_core_v3 import GovernanceManager
 
 logger = logging.getLogger(__name__)
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -68,7 +68,6 @@ class TaskManager:
 
         self.config = EasyConfig(DEFAULT_CONFIG_FILE)
         self.crawler_governance = GovernanceManager(
-            spider_name='CrawlerServiceEngine',
             db_path=os.path.join(DATA_PATH, 'spider_governance.db'),
             files_path=os.path.join(DATA_PATH, 'spider_governance_files')
         )

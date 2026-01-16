@@ -10,7 +10,7 @@ from flask_cors import CORS
 from flask import Flask, jsonify, request, send_file, render_template
 
 # Import the core logic from the previous step
-from Tools.governance_core import GovernanceManager, TaskType, Status
+from Tools.governance_core_v3 import GovernanceManager, Status
 
 self_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -98,6 +98,7 @@ class CrawlerGovernanceBackend:
         Args:
             wrapper: Optional wrapper function for routes
         """
+
         def maybe_wrap(fn):
             return wrapper(fn) if wrapper else fn
 
@@ -109,16 +110,25 @@ class CrawlerGovernanceBackend:
 
         self.app.add_url_rule(build_url('/api/dashboard/stats'), 'get_dashboard_stats',
                               maybe_wrap(self.get_dashboard_stats), methods=['GET'])
-        self.app.add_url_rule(build_url('/api/tasks'), 'get_tasks',
-                              maybe_wrap(self.get_tasks), methods=['GET'])
+
+        # 'get_tasks' now reflects the Group/List hierarchy
+        self.app.add_url_rule(build_url('/api/groups'), 'get_groups',
+                              maybe_wrap(self.get_groups), methods=['GET'])
+
         self.app.add_url_rule(build_url('/api/logs'), 'get_logs',
                               maybe_wrap(self.get_logs), methods=['GET'])
-        self.app.add_url_rule(build_url('/api/snapshot/<file_hash>'), 'get_snapshot',
+
+        # Lookup file by URL Hash (since we store paths now)
+        self.app.add_url_rule(build_url('/api/snapshot/<url_hash>'), 'get_snapshot',
                               maybe_wrap(self.get_snapshot), methods=['GET'])
 
-        # RPC endpoints for external spider processes
-        self.app.add_url_rule(build_url('/rpc/register_task'), 'rpc_register_task',
-                              maybe_wrap(self.rpc_register_task), methods=['POST'])
+        # --- System Control Endpoints ---
+        self.app.add_url_rule(build_url('/api/control/<action>'), 'system_control',
+                              maybe_wrap(self.system_control), methods=['POST'])
+
+        # --- RPC Endpoints (For External Scripts) ---
+        self.app.add_url_rule(build_url('/rpc/register_group'), 'rpc_register_group',
+                              maybe_wrap(self.rpc_register_group), methods=['POST'])
         self.app.add_url_rule(build_url('/rpc/should_crawl'), 'rpc_should_crawl',
                               maybe_wrap(self.rpc_should_crawl), methods=['POST'])
         self.app.add_url_rule(build_url('/rpc/report_result'), 'rpc_report_result',
@@ -131,202 +141,211 @@ class CrawlerGovernanceBackend:
         return render_template("governance_frontend.html")
 
     def get_dashboard_stats(self):
-        """Aggregates high-level statistics directly via the DB handler"""
+        """Aggregates stats using the new schema (crawl_status)."""
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
         db = self.governor.db
 
-        # Active spiders (last seen in 5 mins - theoretical implementation)
-        # Here we just count unique spiders in logs
-        spiders = db.fetch_one("SELECT count(DISTINCT spider) as cnt FROM crawl_log")
+        # 1. Active Spiders (Count distinct spiders in status table)
+        spiders = db.fetch_one("SELECT count(DISTINCT spider_name) as cnt FROM crawl_status")
 
-        # Success Rate (Last 1000 items)
+        # 2. Global Success Rate (From Log history, last 1000)
         success = db.fetch_one("""
             SELECT 
-                avg(CASE WHEN status=1 THEN 1 ELSE 0 END) as rate,
+                avg(CASE WHEN status=2 THEN 1 ELSE 0 END) as rate, -- Status.SUCCESS=2
                 count(*) as total
             FROM crawl_log ORDER BY id DESC LIMIT 1000
         """)
 
-        # Network Errors (Temp Fail) today
+        # 3. Network Errors Today (Temp Fail = 3)
         net_errors = db.fetch_one("""
             SELECT count(*) as cnt FROM crawl_log 
-            WHERE status=2 AND created_at > date('now')
+            WHERE status=3 AND created_at > date('now')
         """)
+
+        # 4. Current Queue (Pending=0)
+        pending = db.fetch_one("SELECT count(*) as cnt FROM crawl_status WHERE status=0")
 
         return jsonify({
             "active_spiders": spiders['cnt'],
             "success_rate": round((success['rate'] or 0) * 100, 1),
             "total_requests": success['total'],
-            "network_errors": net_errors['cnt']
+            "network_errors": net_errors['cnt'],
+            "pending_count": pending['cnt']
         })
 
-    def get_tasks(self):
-        """Fetch recurrent task registry"""
+    def get_groups(self):
+        """
+        UPDATED: Fetches the dashboard summary using the Governor's logic.
+        Replaces the old 'get_tasks'.
+        """
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
-        cur = self.governor.db.conn.cursor()
-        cur.execute("SELECT * FROM task_registry ORDER BY next_run ASC")
-        tasks = [dict(row) for row in cur.fetchall()]
-        return jsonify(tasks)
+        spider_filter = request.args.get('spider')
+
+        # Leverage the robust aggregation logic in the core
+        summary = self.governor.get_dashboard_summary(spider_filter)
+        return jsonify(summary)
 
     def get_logs(self):
-        """Fetch streaming logs for the 'Waterfall' view"""
+        """Fetch streaming logs"""
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
         limit = request.args.get('limit', 100, type=int)
         status = request.args.get('status', type=int)
+        spider = request.args.get('spider')
 
         query = "SELECT * FROM crawl_log"
         params = []
+        conditions = []
 
         if status is not None:
-            query += " WHERE status = ?"
+            conditions.append("status = ?")
             params.append(status)
 
-        query += " ORDER BY updated_at DESC LIMIT ?"
+        if spider:
+            conditions.append("spider_name = ?")
+            params.append(spider)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
 
-        cur = self.governor.db.conn.cursor()
-        cur.execute(query, tuple(params))
-        logs = [dict(row) for row in cur.fetchall()]
-        return jsonify(logs)
+        rows = self.governor.db.fetch_all(query, tuple(params))
+        return jsonify([dict(row) for row in rows])
 
-    def get_snapshot(self, file_hash: str):
-        """Serve the local HTML snapshot content"""
-        # Security check: verify hash format to prevent directory traversal
-        if not file_hash.isalnum():
+    def get_snapshot(self, url_hash: str):
+        """
+        UPDATED: Look up file path from DB using url_hash.
+        """
+        if not url_hash.isalnum():
             return jsonify({"error": "Invalid hash"}), 400
 
-        # In a real app, we need to find which folder it is in.
-        # For optimization, we might store relative path in DB.
-        # Here we search for demo purposes:
-        import glob
-        files = glob.glob(f"data/files/*/*/{file_hash}*")
-        if not files:
-            return jsonify({"error": "Snapshot not found"}), 404
+        # Query DB for the file path associated with this URL hash
+        row = self.governor.db.fetch_one("SELECT file_path FROM crawl_status WHERE url_hash = ?", (url_hash,))
 
-        return send_file(files[0])
+        if not row or not row['file_path']:
+            return jsonify({"error": "Snapshot not found in registry"}), 404
+
+        file_path = row['file_path']
+
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File deleted or moved"}), 404
+
+        return send_file(file_path)
+
+    def system_control(self, action: str):
+        """
+        NEW: Handle PAUSE, RESUME, IMMEDIATE signals.
+        """
+        if not self.governor:
+            return jsonify({"error": "GovernanceManager not initialized"}), 500
+
+        action = action.upper()
+
+        if action == "PAUSE":
+            self.governor.pause()
+        elif action == "RESUME":
+            self.governor.resume()
+        elif action == "IMMEDIATE":
+            self.governor.trigger_immediate()
+        else:
+            return jsonify({"error": "Unknown action"}), 400
+
+        return jsonify({"status": "ok", "action": action})
 
     # ------------------------------------------ RPC Endpoints ------------------------------------------
     # These endpoints allow external python scripts to use the governance logic
     # without touching the DB file directly.
 
-    def rpc_register_task(self):
-        """Register a new task via RPC"""
+    def rpc_register_group(self):
+        """
+        Maps to register_group_metadata.
+        Replaces rpc_register_task.
+        """
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
         data = request.get_json()
         if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
+            return jsonify({"error": "No JSON data"}), 400
 
-        # Validate required fields
-        required_fields = ['spider', 'group', 'url', 'interval']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
+        # Expects: group_path (or group), list_url (optional), name (optional)
+        group_path = data.get('group_path') or data.get('group')  # Compatibility
+        if not group_path:
+            return jsonify({"error": "Missing group_path"}), 400
 
-        self.governor.spider_name = data['spider']  # Context switch
-        self.governor.register_task(data['url'], data['group'], data['interval'])
-        return jsonify({"status": "ok"})
+        list_url = data.get('list_url') or data.get('url')  # Compatibility
+        friendly_name = data.get('name')
+
+        self.governor.register_group_metadata(group_path, list_url, friendly_name)
+        return jsonify({"status": "registered"})
 
     def rpc_should_crawl(self):
         """
-        External process asks: 'Should I crawl this?'
-        Manager checks DB logic (intervals, retries, etc.)
+        Unified check logic. No more TaskType distinction needed in arguments.
         """
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
+        if not data or 'url' not in data:
+            return jsonify({"error": "Missing url"}), 400
 
-        # Validate required fields
-        required_fields = ['url', 'spider', 'task_type']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
+        # Max retries can be passed, or default to 3
+        max_retries = data.get('max_retries', 3)
 
-        t_type = TaskType.LIST if data['task_type'] == "LIST" else TaskType.ARTICLE
-        self.governor.spider_name = data['spider']
-        result = self.governor.should_crawl(data['url'], t_type)
+        result = self.governor.should_crawl(data['url'], max_retries)
         return jsonify({"should_crawl": result})
 
     def rpc_report_result(self):
         """
-        External process reports: 'I finished this task.'
-        Manager writes to DB and handles retry logic.
+        Maps to _handle_task_finish using Fallback Mode (log_id=None).
+        Stateless reporting for external scripts.
         """
         if not self.governor:
             return jsonify({"error": "GovernanceManager not initialized"}), 500
 
         data = request.get_json()
         if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
+            return jsonify({"error": "No JSON data"}), 400
 
-        # Validate required fields
-        required_fields = ['spider', 'group', 'url', 'task_type', 'status']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Missing required field: {field}"}), 400
+        required = ['url', 'group_path', 'status']
+        for f in required:
+            if f not in data:
+                return jsonify({"error": f"Missing {f}"}), 400
 
-        t_type = TaskType.LIST if data['task_type'] == "LIST" else TaskType.ARTICLE
+        # Auto-extract spider name if not provided (Governor handles it, but we can pass explicit)
+        spider_name = data.get('spider')
+        if not spider_name:
+            # Let Governor extract from group_path
+            spider_name = self.governor._extract_spider_name(data['group_path'])
 
-        # We manually commit using the internal method for RPC support
-        # In a real RPC system, we might pass a transaction ID, but here we report atomic results
-        self.governor._commit_transaction(
-            task_type=t_type,
-            spider=data['spider'],
-            group=data['group'],
+        # Stateless call: We don't have a log_id from a previous session,
+        # so we pass None. Governor will create a new log entry + update status.
+        self.governor._handle_task_finish(
+            log_id=None,
             url=data['url'],
+            spider=spider_name,
+            group_path=data['group_path'],
             status=Status(data['status']),
             duration=data.get('duration', 0.0),
             http_code=data.get('http_code', 0),
-            error_msg=data.get('error_msg'),
-            content_path=None  # File upload not implemented in simple RPC demo
+            state_msg=data.get('error_msg') or data.get('state_msg'),
+            file_path=data.get('file_path')
         )
         return jsonify({"status": "acked"})
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Helper functions for backward compatibility
-
-def start_governance_web_service(governor: GovernanceManager, host="0.0.0.0", port=8002):
-    """
-    Start the governance web service (blocking)
-
-    Args:
-        governor: Instance of GovernanceManager
-        host: Host address
-        port: Port number
-    """
-    backend = CrawlerGovernanceBackend(governor=governor, host=host, port=port)
-    backend.start_service(blocking=True)
-
-
-def start_governance_web_service_async(governor: GovernanceManager, host="0.0.0.0", port=8002) -> threading.Thread:
-    """
-    Start the governance web service in a background thread
-
-    Args:
-        governor: Instance of GovernanceManager
-        host: Host address
-        port: Port number
-
-    Returns:
-        threading.Thread: The background thread running the service
-    """
-    backend = CrawlerGovernanceBackend(governor=governor, host=host, port=port)
-    backend.start_service(blocking=False)
-    return backend.flask_thread
-
 
 if __name__ == "__main__":
     # Example usage
-    backend = CrawlerGovernanceBackend(GovernanceManager('Demo'), host="0.0.0.0", port=8002)
+    gov = GovernanceManager()
+    backend = CrawlerGovernanceBackend(gov, host="0.0.0.0", port=8002)
     backend.start_service(blocking=True)
