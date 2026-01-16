@@ -1,3 +1,5 @@
+import threading
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -8,16 +10,18 @@ from typing import Optional, Dict, List
 import os
 
 # Import the core logic from the previous step
-from governance_core import GovernanceManager, TaskType, Status
+from Tools.governance_core import GovernanceManager, TaskType, Status
+
+self_path = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI(title="Crawler Governance System")
 
 # Initialize the Core Manager (Singleton for this process)
 # In a production environment, this manages the DB connection pool
-governer = GovernanceManager(spider_name="master_node")
+governor: Optional[GovernanceManager] = None
 
 # Mount templates and static files
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=self_path)
 
 
 # --- Pydantic Models for RPC Data ---
@@ -52,13 +56,13 @@ class CrawlReportRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("governance_frontend.html", {"request": request})
 
 
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats():
     """Aggregates high-level statistics directly via the DB handler."""
-    db = governer.db
+    db = governor.db
 
     # Active spiders (last seen in 5 mins - theoretical implementation)
     # Here we just count unique spiders in logs
@@ -89,7 +93,7 @@ async def get_dashboard_stats():
 @app.get("/api/tasks")
 async def get_tasks():
     """Fetch recurrent task registry."""
-    cur = governer.db.conn.cursor()
+    cur = governor.db.conn.cursor()
     cur.execute("SELECT * FROM task_registry ORDER BY next_run ASC")
     tasks = [dict(row) for row in cur.fetchall()]
     return tasks
@@ -108,7 +112,7 @@ async def get_logs(limit: int = 100, status: Optional[int] = None):
     query += " ORDER BY updated_at DESC LIMIT ?"
     params.append(limit)
 
-    cur = governer.db.conn.cursor()
+    cur = governor.db.conn.cursor()
     cur.execute(query, tuple(params))
     return [dict(row) for row in cur.fetchall()]
 
@@ -137,8 +141,8 @@ async def get_snapshot(file_hash: str):
 
 @app.post("/rpc/register_task")
 async def rpc_register_task(req: TaskRegisterRequest):
-    governer.spider_name = req.spider  # Context switch
-    governer.register_task(req.url, req.group, req.interval)
+    governor.spider_name = req.spider  # Context switch
+    governor.register_task(req.url, req.group, req.interval)
     return {"status": "ok"}
 
 
@@ -149,8 +153,8 @@ async def rpc_should_crawl(req: CrawlCheckRequest):
     Manager checks DB logic (intervals, retries, etc.)
     """
     t_type = TaskType.LIST if req.task_type == "LIST" else TaskType.ARTICLE
-    governer.spider_name = req.spider
-    result = governer.should_crawl(req.url, t_type)
+    governor.spider_name = req.spider
+    result = governor.should_crawl(req.url, t_type)
     return {"should_crawl": result}
 
 
@@ -164,7 +168,7 @@ async def rpc_report_result(req: CrawlReportRequest):
 
     # We manually commit using the internal method for RPC support
     # In a real RPC system, we might pass a transaction ID, but here we report atomic results
-    governer._commit_transaction(
+    governor._commit_transaction(
         task_type=t_type,
         spider=req.spider,
         group=req.group,
@@ -178,10 +182,23 @@ async def rpc_report_result(req: CrawlReportRequest):
     return {"status": "acked"}
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+def start_governance_web_service(host="0.0.0.0", port=8002):
+    print(f"Starting Governance API Server on http://{host}:{port}")
+    uvicorn.run(app, host=host, port=port)
+
+
+def start_governance_web_service_async(host="0.0.0.0", port=8002) -> threading.Thread:
+    thread = threading.Thread(target=start_governance_web_service, args=(host, port))
+    thread.start()
+    return thread
+
+
 if __name__ == "__main__":
-    # Ensure templates directory exists
-    if not os.path.exists("templates"):
-        os.makedirs("templates")
+    global governor
+    governor = GovernanceManager(spider_name="master_node")
+    
 
     print("Starting Governance API Server on http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)

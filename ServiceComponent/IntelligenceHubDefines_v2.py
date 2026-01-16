@@ -1,6 +1,7 @@
+import time
 import datetime
 from typing import List, Dict, Optional, Any, Union
-from pydantic import BaseModel, Field, AnyHttpUrl
+from pydantic import BaseModel, Field, validator, field_validator
 
 
 # ==========================================
@@ -56,7 +57,7 @@ class CollectedData(BaseModel):
         description="[MUST]: The main text body to be analyzed by LLM."
     )
 
-    pub_time: Union[datetime.datetime, str, float] | None = Field(
+    pub_time: Optional[Any] = Field(
         None,
         description="(Optional): Original publish time."
     )
@@ -81,6 +82,25 @@ class CollectedData(BaseModel):
     class Config:
         # 可选：如果传入的数据包含 extra 字段，是否允许（默认忽略，设为 forbid 会报错）
         extra = "ignore"
+
+    @classmethod
+    @field_validator('pub_time', mode='before')
+    def convert_any_time_format(cls, v):
+        """处理各种时间格式"""
+        if v is None: return None
+        if isinstance(v, datetime.datetime): return v
+        if isinstance(v, (int, float)): return datetime.datetime.fromtimestamp(v)
+        if isinstance(v, time.struct_time): return datetime.datetime.fromtimestamp(time.mktime(v))
+        if isinstance(v, str):
+            try:
+                return datetime.datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except ValueError:
+                for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d/%m/%Y %H:%M:%S']:
+                    try:
+                        return datetime.datetime.strptime(v, fmt)
+                    except ValueError:
+                        continue
+        return v
 
 
 # ==========================================

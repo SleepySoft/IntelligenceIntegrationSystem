@@ -15,7 +15,7 @@ from PyLoggingBackend import LoggerBackend
 from PyLoggingBackend.LogUtility import set_tls_logger, backup_and_clean_previous_log_file, setup_logging, \
     limit_logger_level
 from MyPythonUtility.plugin_manager import PluginManager, PluginWrapper
-from Tools.governance_backend import governer
+from Tools.CrawlerGovernanceBackend import CrawlerGovernanceBackend
 from Tools.governance_core import GovernanceManager
 
 logger = logging.getLogger(__name__)
@@ -258,6 +258,9 @@ def main():
     observer = Observer()
     observer.schedule(event_handler, path=crawl_task_path, recursive=False)
     observer.start()
+
+    governance_backend = CrawlerGovernanceBackend(task_manager.crawler_governance)
+    governance_backend.start_service(blocking=False)
 
     # --------------------------------------------------------------------------------
 

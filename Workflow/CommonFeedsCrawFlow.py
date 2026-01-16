@@ -85,7 +85,10 @@ def get_and_submit_article(feed_name: str, article: RssItem, context: CrawlConte
             else:
                 collected_data = fetch_process_article(article, fetch_content, scrubbers)
 
+            # Temporary record this name for commit cache data.
+            # Because if you don't record this name, the feed name of this article may lost.
             collected_data.temp_data['feed_name'] = feed_name
+
             context.submit_collected_data(collected_data, task)
             task.success()
 
@@ -131,10 +134,12 @@ def feeds_craw_flow(flow_name: str,
     :return: None
     """
     context.logger.info(f'starts work.')
+    context.crawler_governor.register_task('', group_name=flow_name, interval=60 * 15)
 
     for feed_name, feed_url in { **feeds, "cached": "" }.items():
-        if stop_event.is_set():
-            break
+
+        if stop_event.is_set(): break
+        if feed_name == 'cached': continue      # Placeholder for processing cached data.
 
         context.crawler_governor.register_task(feed_url, feed_name, 60 * 15)
         if not context.crawler_governor.should_crawl(feed_url, TaskType.LIST):
@@ -152,7 +157,7 @@ def feeds_craw_flow(flow_name: str,
                 task.success()
             except Exception as e:
                 context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
-                task.fail_temp(error_msg=str(e))
+                task.fail_temp(state_msg=str(e))
                 continue
 
         context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
@@ -160,13 +165,14 @@ def feeds_craw_flow(flow_name: str,
         # ----------------------------------- Process Articles in Feed ----------------------------------
 
         for article in result.entries:
-            if article_link := article.link:
-                context.logger.info(f'Processing article: {article_link}')
-            else:
+            if not article.link:
                 context.logger.info(f'Got empty article link from feed: {feed_url}')
                 raise ProcessSkip('Empty article.')
-            if not context.crawler_governor.should_crawl(article_link, TaskType.ARTICLE):
-                raise ProcessIgnore('Already fetched.')
+
+            context.logger.info(f'Processing article: {article.link}')
+
+            if not context.crawler_governor.should_crawl(article.link, TaskType.ARTICLE):
+                raise ProcessIgnore('Should not crawl.')
             get_and_submit_article(feed_name, article, context, fetch_content, scrubbers)
 
             context.crawler_governor.wait_interval(1)
@@ -175,15 +181,6 @@ def feeds_craw_flow(flow_name: str,
 
     context.submit_cached_data()
 
-    # ---------------------------------------- Log all feeds counter ----------------------------------------
-
-    context.crawler_governor.wait_round(flow_name, stop_event)
-
     # ------------------------------------ Delay and Wait for Next Loop ------------------------------------
 
-    # # Wait for next loop and check event per 5s.
-    # remaining = update_interval_s
-    # while remaining > 0 and not stop_event.is_set():
-    #     sleep_time = min(5, remaining)
-    #     time.sleep(sleep_time)
-    #     remaining -= sleep_time
+    context.crawler_governor.wait_round(flow_name, stop_event)

@@ -1,13 +1,13 @@
 import os
-import sqlite3
 import time
 import json
 import hashlib
 import logging
+import sqlite3
+import datetime
 import threading
-from datetime import datetime, timedelta
-from enum import IntEnum, Enum
 from pathlib import Path
+from enum import IntEnum, Enum
 from typing import Optional, Dict, Union
 
 # Configure logging
@@ -33,6 +33,27 @@ class TaskType(Enum):
 
 DEFAULT_DB_PATH = "data/db/spider_governance.db"
 DEFAULT_FILES_PATH = "data/files"
+
+
+def calculate_wait_time(future_time_str: str) -> float:
+    if 'Z' in future_time_str:
+        target = datetime.datetime.fromisoformat(future_time_str.replace('Z', '+00:00'))
+    else:
+        target = datetime.datetime.fromisoformat(future_time_str)
+
+    if target.tzinfo is None:
+        target = target.replace(tzinfo=datetime.timezone.utc)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    wait_seconds = (target - now).total_seconds()
+
+    # 调试信息
+    print(f"目标时间(UTC): {target}")
+    print(f"当前时间(UTC): {now}")
+    print(f"等待秒数: {wait_seconds}")
+
+    return wait_seconds
 
 
 # --- Database Handler ---
@@ -130,7 +151,7 @@ class StorageHandler:
         if not content:
             return ""
 
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d")
         content_hash = hashlib.md5(content).hexdigest()
 
         # Structure: data/files/spider_name/2025-01-01/
@@ -177,13 +198,13 @@ class CrawlSession:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # If exception occurred and finish() wasn't called manually
-        if exc_type and not self._finished:
-            self.fail_perm(http_code=500, state_msg=str(exc_val))
-
-        # Auto-commit if not finished
         if not self._finished:
-            self.fail_perm(state_msg="Session exited without explicit status")
+            if exc_type:
+                self.fail_perm(http_code=500, state_msg=str(exc_val))
+                logger.error(f"Session {self.url} exited without unhandled exception. PERMANENT.")
+            else:
+                self.ignore()
+                logger.warning(f"Session {self.url} exited without explicit status. Just mark as ignore.")
 
     def save_snapshot(self, content: Union[bytes, str], ext=".html"):
         """Save request content to disk"""
@@ -286,8 +307,8 @@ class GovernanceManager:
 
             if not row: return False  # Must register first
 
-            next_run = datetime.fromisoformat(row['next_run'])
-            if datetime.now() >= next_run:
+            next_run = datetime.datetime.fromisoformat(row['next_run'])
+            if datetime.datetime.now() >= next_run:
                 return True
             return False
 
@@ -333,7 +354,7 @@ class GovernanceManager:
         """
         Internal method called by CrawlSession to write to DB.
         """
-        timestamp = datetime.now()
+        timestamp = datetime.datetime.now()
 
         if task_type == TaskType.LIST:
             # Update Task Registry
@@ -342,7 +363,7 @@ class GovernanceManager:
                 # Note: We query the interval first to be safe, or cache it
                 row = self.db.fetch_one("SELECT interval FROM task_registry WHERE url=?", (url,))
                 interval = row['interval'] if row else 3600
-                next_run = timestamp + timedelta(seconds=interval)
+                next_run = timestamp + datetime.timedelta(seconds=interval)
 
                 self.db.execute("""
                     UPDATE task_registry 
@@ -408,8 +429,7 @@ class GovernanceManager:
         """, (self.spider_name, group_name))
 
         if row and row['earliest']:
-            target = datetime.fromisoformat(row['earliest'])
-            wait_seconds = (target - datetime.now()).total_seconds()
+            wait_seconds = calculate_wait_time(row['earliest'])
             if wait_seconds > 0:
                 logger.info(f"[{group_name}] Round finished. Waiting {wait_seconds:.1f}s for next round...")
                 # We can reuse wait_interval logic here to support interruption

@@ -167,20 +167,6 @@ class CrawlContext:
 
         if persists and collected_data.content:
             task.save_snapshot(collected_data.content, '.md')
-        #     success, file_path = save_content(
-        #         collected_data.informant,
-        #         collected_data.content,
-        #         collected_data.title,
-        #         self.flow_name,
-        #         '.md'
-        #     )
-        #     if not success:
-        #         self.logger.error(f'Save content {file_path} fail.')
-
-        # --------------------------- Record and Statistics Here ---------------------------
-
-        # self.crawl_record.record_url_status(collected_data.informant, STATUS_SUCCESS)
-        # self.crawl_statistics.sub_item_log(full_levels, collected_data.informant, 'success')
 
         self.logger.debug(f'Article finished.')
 
@@ -204,8 +190,8 @@ class CrawlContext:
     def handle_process_exception(self, task: CrawlSession, e: Exception):
         try: raise e
 
-        except ProcessSkip:
-            task.skip()
+        except ProcessSkip as e:
+            task.skip(e.reason)
             self.logger.debug(f'Article skipped.')
 
         except ProcessIgnore as e:
@@ -244,17 +230,3 @@ class CrawlContext:
             remaining -= sleep_time
 
         return remaining <= 0
-
-    # ------------------------------------------------------------------------------------------------------------------
-
-    # def _full_levels(self, levels: str | List[str] = '') -> List[str]:
-    #     full_levels = [self.flow_name]
-    #     if levels:
-    #         if isinstance(levels, str):
-    #             full_levels.append(levels)
-    #         elif isinstance(levels, (list, tuple, set)):
-    #             full_levels += list(levels)
-    #     return full_levels
-
-
-
