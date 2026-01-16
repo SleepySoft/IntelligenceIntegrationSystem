@@ -113,17 +113,19 @@
                             <span class="text-xs truncate" x-text="node.name" :title="node.name"></span>
                         </div>
 
-                        <div x-show="node.isRealGroup" class="flex items-center ml-2 shrink-0">
-                            <div class="flex text-[9px] font-mono border border-gray-700/50 rounded overflow-hidden">
-                                <div class="px-1.5 py-0.5 text-black font-bold"
-                                     :class="getRateColor(node.data.stats)">
-                                    <span x-text="calculateRate(node.data.stats)"></span>
-                                </div>
-                                <div class="px-1.5 py-0.5 bg-gray-700 text-gray-300 min-w-[24px] text-center">
-                                    <span x-text="node.data.stats.total || 0"></span>
+                        <template x-if="node.isRealGroup && node.data">
+                            <div class="flex items-center ml-2 shrink-0">
+                                <div class="flex text-[9px] font-mono border border-gray-700/50 rounded overflow-hidden">
+                                    <div class="px-1.5 py-0.5 text-black font-bold"
+                                         :class="getRateColor(node.data.stats)">
+                                        <span x-text="calculateRate(node.data.stats)"></span>
+                                    </div>
+                                    <div class="px-1.5 py-0.5 bg-gray-700 text-gray-300 min-w-[24px] text-center">
+                                        <span x-text="node.data.stats.total || 0"></span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </template>
 
                     </div>
                 </template>
@@ -212,12 +214,12 @@
             <div class="px-4 py-2 bg-gray-900 border-b border-gray-800 flex justify-between items-center shrink-0">
                 <div class="flex items-center gap-4">
                     <div class="flex bg-gray-950 p-1 rounded border border-gray-700">
-                        <button @click="viewMode = 'LATEST'; refreshData()"
+                        <button @click="viewMode = 'LATEST'; fetchLogsOnly()"
                                 class="px-3 py-1 text-xs rounded transition-all flex items-center gap-2 border border-transparent"
                                 :class="viewMode === 'LATEST' ? 'bg-gray-800 text-emerald-400 border-gray-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'">
                             <span>◎ Latest State</span>
                         </button>
-                        <button @click="viewMode = 'HISTORY'; refreshData()"
+                        <button @click="viewMode = 'HISTORY'; fetchLogsOnly()"
                                 class="px-3 py-1 text-xs rounded transition-all flex items-center gap-2 border border-transparent"
                                 :class="viewMode === 'HISTORY' ? 'bg-gray-800 text-blue-400 border-gray-600 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-300'">
                             <span>≣ Log History</span>
@@ -312,18 +314,17 @@
             <iframe :src="previewUrl" class="flex-1 bg-white border-none"></iframe>
         </div>
     </div>
-
     <script>
         function dashboard() {
             return {
                 stats: {},
                 rawGroups: [],
-                listData: [], // Unified data holder for both views
+                listData: [],
 
                 // View State
-                viewMode: 'LATEST', // 'LATEST' (Status) or 'HISTORY' (Log)
+                viewMode: 'LATEST', // 'LATEST' or 'HISTORY'
 
-                // Other state...
+                // State
                 collapsedPaths: new Set(),
                 treeNodes: [],
                 selectedGroup: null,
@@ -352,24 +353,15 @@
                             this.currentGroupData = this.rawGroups.find(g => g.group_path === this.selectedGroup);
                         }
 
-                        // --- FETCH LIST DATA BASED ON MODE ---
-                        let endpoint = '';
-                        if (this.viewMode === 'LATEST') {
-                            endpoint = '/api/status/recent'; // Call the NEW backend API
-                        } else {
-                            endpoint = '/api/logs'; // Call the OLD backend API
-                        }
-
+                        // --- FETCH LIST DATA ---
+                        let endpoint = this.viewMode === 'LATEST' ? '/api/status/recent' : '/api/logs';
                         let query = `${endpoint}?limit=100`;
 
-                        // Filters
                         if (this.selectedGroup) {
                             const spider = this.selectedGroup.split('/')[0];
                             query += `&spider=${encodeURIComponent(spider)}`;
                         }
-                        if (this.logFilter !== 'ALL') {
-                            query += `&status=${this.logFilter}`;
-                        }
+                        if (this.logFilter !== 'ALL') query += `&status=${this.logFilter}`;
 
                         const res = await fetch(query);
                         let rawRows = await res.json();
@@ -379,21 +371,137 @@
                             rawRows = rawRows.filter(r => r.group_path === this.selectedGroup);
                         }
 
-                        // --- NORMALIZE DATA ---
-                        // Logs use 'created_at', Status uses 'last_run_at'
-                        // We map them to common fields for the template
+                        // --- NORMALIZE DATA (修复点：确保字段不为 undefined) ---
                         this.listData = rawRows.map(r => ({
                             ...r,
-                            id_key: this.viewMode === 'LATEST' ? r.url : r.id, // Unique key for Alpine
-                            display_time: this.viewMode === 'LATEST' ? r.last_run_at : r.created_at,
-                            // Ensure retry_count exists (Logs might not have it, default to 0)
+                            // 如果是 LATEST 模式，用 URL 做 Key；如果是 HISTORY，用 ID 做 Key
+                            // 加上 || Math.random() 防止极个别情况 Key 重复导致渲染错误
+                            id_key: this.viewMode === 'LATEST' ? (r.url || 'u_'+Math.random()) : (r.id || 'i_'+Math.random()),
+
+                            // 核心修复：如果没有 last_run_at，给一个空字符串，防止 formatter 报错
+                            display_time: (this.viewMode === 'LATEST' ? r.last_run_at : r.created_at) || '',
+
                             retry_count: r.retry_count || 0
                         }));
 
-                    } catch (e) { console.error(e); }
+                    } catch (e) { console.error("Data Fetch Error:", e); }
                 },
 
-                // --- Tree Logic (The Core Magic) ---
+                // --- Tree Logic ---
+                rebuildTree() {
+                    const pathMap = new Map();
+                    this.rawGroups.forEach(g => {
+                        if(!g.group_path) return;
+                        const parts = g.group_path.split('/');
+                        let currentPath = '';
+                        parts.forEach((part, index) => {
+                            currentPath = currentPath ? `${currentPath}/${part}` : part;
+                            if (!pathMap.has(currentPath)) {
+                                pathMap.set(currentPath, {
+                                    path: currentPath, name: part, level: index,
+                                    isRealGroup: false, data: null, hasChildren: false
+                                });
+                            }
+                            if (index === parts.length - 1) {
+                                const node = pathMap.get(currentPath);
+                                node.isRealGroup = true;
+                                node.data = g;
+                            }
+                            if (index > 0) {
+                                const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+                                if (pathMap.has(parentPath)) pathMap.get(parentPath).hasChildren = true;
+                            }
+                        });
+                    });
+                    this.treeNodes = Array.from(pathMap.values()).sort((a, b) => a.path.localeCompare(b.path));
+                },
+
+                get visibleTreeNodes() {
+                    return this.treeNodes.filter(node => {
+                        const parts = node.path.split('/');
+                        let checkPath = '';
+                        for (let i = 0; i < parts.length - 1; i++) {
+                            checkPath = checkPath ? `${checkPath}/${parts[i]}` : parts[i];
+                            if (this.collapsedPaths.has(checkPath)) return false;
+                        }
+                        return true;
+                    });
+                },
+
+                isCollapsed(path) { return this.collapsedPaths.has(path); },
+                toggleNode(path) {
+                    if (this.collapsedPaths.has(path)) this.collapsedPaths.delete(path);
+                    else this.collapsedPaths.add(path);
+                },
+                expandAll() { this.collapsedPaths.clear(); },
+                collapseAll() {
+                    this.treeNodes.forEach(n => { if (n.hasChildren) this.collapsedPaths.add(n.path); });
+                },
+
+                // 只刷新右侧日志（轻量级）
+                async fetchLogsOnly() {
+                    let endpoint = this.viewMode === 'LATEST' ? '/api/status/recent' : '/api/logs';
+                    let query = `${endpoint}?limit=100`;
+
+                    if (this.selectedGroup) {
+                        const spider = this.selectedGroup.split('/')[0];
+                        query += `&spider=${encodeURIComponent(spider)}`;
+                    }
+                    if (this.logFilter !== 'ALL') query += `&status=${this.logFilter}`;
+
+                    try {
+                        const res = await fetch(query);
+                        let rawRows = await res.json();
+
+                        if (this.selectedGroup) {
+                            rawRows = rawRows.filter(r => r.group_path === this.selectedGroup);
+                        }
+
+                        // 复用数据清洗逻辑
+                        this.listData = rawRows.map(r => ({
+                            ...r,
+                            id_key: this.viewMode === 'LATEST' ? (r.url || 'u_'+Math.random()) : (r.id || 'i_'+Math.random()),
+                            display_time: (this.viewMode === 'LATEST' ? r.last_run_at : r.created_at) || '',
+                            retry_count: r.retry_count || 0
+                        }));
+                    } catch(e) { console.error(e); }
+                },
+
+                handleNodeClick(node) {
+                    if (node.isRealGroup) {
+                        // 1. 立即更新 UI 状态 (Instant Feedback)
+                        this.selectedGroup = node.path;
+                        this.currentGroupData = node.data;
+
+                        // 2. 清空现有列表，给用户“正在加载”的感觉，或者保留旧的直到新的回来
+                        // this.listData = [];
+
+                        // 3. 只去请求日志，不再全量刷新整个 Dashboard (Metadata)
+                        this.fetchLogsOnly();
+                    } else {
+                        this.toggleNode(node.path);
+                    }
+                },
+
+                // --- Helpers ---
+                isGroupHealthy(group) {
+                    if (!group || !group.list_url_status) return true;
+                    const s = group.list_url_status.status;
+                    return s !== 3 && s !== 4;
+                },
+                get anchorStatus() { return this.currentGroupData?.list_url_status; },
+                getAnchorColorClass(status) {
+                    if (status === 1) return 'bg-blue-500';
+                    if (status === 2) return 'bg-emerald-500';
+                    if (status === 3 || status === 4) return 'bg-red-500';
+                    return 'bg-gray-600';
+                },
+                async controlSystem(action) {
+                    await fetch(`/api/control/${action}`, {method: 'POST'});
+                    if(action !== 'IMMEDIATE') this.controlState = (action === 'RESUME' ? 'NORMAL' : 'PAUSE');
+                },
+
+                // --- Stats & Formatting Helpers ---
 
                 calculateRate(stats) {
                     if (!stats || !stats.total) return '0%';
@@ -404,18 +512,23 @@
                 getRateColor(stats) {
                     if (!stats || !stats.total) return 'bg-gray-500 text-white';
                     const rate = (stats.success / stats.total);
-                    if (rate >= 0.9) return 'bg-emerald-500 text-black'; // High success
-                    if (rate >= 0.5) return 'bg-yellow-500 text-black'; // Med success
-                    return 'bg-red-500 text-white'; // Low success
+                    if (rate >= 0.9) return 'bg-emerald-500 text-black';
+                    if (rate >= 0.5) return 'bg-yellow-500 text-black';
+                    return 'bg-red-500 text-white';
                 },
 
-                // --- Time Formatters ---
+                getStatusLabel(s) {
+                    const map = {0:'PEND',1:'RUN',2:'OK',3:'RETRY',4:'FAIL',5:'SKIP',6:'STOP'};
+                    return map[s] || s;
+                },
+
+                // 核心修复：加强版的 Time Formatter
                 formatTimeOnly(iso) {
-                    if(!iso) return '-';
-                    // Returns HH:MM:SS
+                    if (!iso || typeof iso !== 'string') return '-';
                     try {
-                        const d = new Date(iso);
-                        return d.toLocaleTimeString([], { hour12: false });
+                        // 处理 "2023-01-01T12:00:00" 或 "2023-01-01 12:00:00"
+                        const timePart = iso.includes('T') ? iso.split('T')[1] : iso.split(' ')[1];
+                        return timePart ? timePart.split('.')[0] : iso;
                     } catch(e) { return iso; }
                 },
 
@@ -424,127 +537,6 @@
                     return new Date(iso).toLocaleString();
                 },
 
-                rebuildTree() {
-                    // 1. Collect all unique paths (including intermediate folders)
-                    const pathMap = new Map();
-
-                    this.rawGroups.forEach(g => {
-                        const parts = g.group_path.split('/');
-                        let currentPath = '';
-
-                        parts.forEach((part, index) => {
-                            currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-                            if (!pathMap.has(currentPath)) {
-                                pathMap.set(currentPath, {
-                                    path: currentPath,
-                                    name: part,
-                                    level: index,
-                                    isRealGroup: false, // Default to folder
-                                    data: null,
-                                    hasChildren: false
-                                });
-                            }
-                            // If this is the full path of the group, attach data
-                            if (index === parts.length - 1) {
-                                const node = pathMap.get(currentPath);
-                                node.isRealGroup = true;
-                                node.data = g;
-                            }
-                            // Mark parent as having children
-                            if (index > 0) {
-                                const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
-                                if (pathMap.has(parentPath)) {
-                                    pathMap.get(parentPath).hasChildren = true;
-                                }
-                            }
-                        });
-                    });
-
-                    // 2. Convert to array and sort
-                    let nodes = Array.from(pathMap.values()).sort((a, b) => a.path.localeCompare(b.path));
-                    this.treeNodes = nodes;
-                },
-
-                get visibleTreeNodes() {
-                    // Filter out nodes whose parents are collapsed
-                    return this.treeNodes.filter(node => {
-                        const parts = node.path.split('/');
-                        // Check all possible parent paths
-                        // e.g. for "a/b/c", check "a" and "a/b"
-                        let checkPath = '';
-                        for (let i = 0; i < parts.length - 1; i++) {
-                            checkPath = checkPath ? `${checkPath}/${parts[i]}` : parts[i];
-                            if (this.collapsedPaths.has(checkPath)) {
-                                return false; // Hidden
-                            }
-                        }
-                        return true;
-                    });
-                },
-
-                isCollapsed(path) {
-                    return this.collapsedPaths.has(path);
-                },
-
-                toggleNode(path) {
-                    if (this.collapsedPaths.has(path)) {
-                        this.collapsedPaths.delete(path);
-                    } else {
-                        this.collapsedPaths.add(path);
-                    }
-                },
-
-                expandAll() { this.collapsedPaths.clear(); },
-                collapseAll() {
-                    this.treeNodes.forEach(n => {
-                        if (n.hasChildren) this.collapsedPaths.add(n.path);
-                    });
-                },
-
-                handleNodeClick(node) {
-                    // 1. If it has children, toggle it (Folder behavior)
-                    // if (node.hasChildren) {
-                    //     this.toggleNode(node.path);
-                    // }
-                    // User preference: Click name = Select? Or Click name = Toggle?
-                    // Let's do: Click Arrow = Toggle, Click Row = Select (if real group)
-
-                    if (node.isRealGroup) {
-                        this.selectedGroup = node.path;
-                        this.currentGroupData = node.data;
-                        this.refreshData();
-                    } else {
-                        // If it's just a folder, toggle it
-                        this.toggleNode(node.path);
-                    }
-                },
-
-                // --- Helpers ---
-
-                isGroupHealthy(group) {
-                    if (!group || !group.list_url_status) return true; // Assume ok if no anchor
-                    const s = group.list_url_status.status;
-                    return s !== 3 && s !== 4; // Not Fail
-                },
-
-                get anchorStatus() { return this.currentGroupData?.list_url_status; },
-
-                getAnchorColorClass(status) {
-                    if (status === 1) return 'bg-blue-500';
-                    if (status === 2) return 'bg-emerald-500';
-                    if (status === 3 || status === 4) return 'bg-red-500';
-                    return 'bg-gray-600';
-                },
-
-                async controlSystem(action) {
-                    await fetch(`/api/control/${action}`, {method: 'POST'});
-                    if(action !== 'IMMEDIATE') this.controlState = (action === 'RESUME' ? 'NORMAL' : 'PAUSE');
-                },
-
-                getStatusLabel(s) { return {0:'PEND',1:'RUN',2:'OK',3:'RETRY',4:'FAIL',5:'SKIP'}[s] || s; },
-                formatTimeOnly(iso) { return iso ? iso.split('T')[1].split('.')[0] : ''; },
-
                 formatTimeAgo(iso) {
                     if (!iso) return '-';
                     const s = (new Date() - new Date(iso)) / 1000;
@@ -552,12 +544,24 @@
                     if (s < 3600) return Math.floor(s/60) + 'm ago';
                     return Math.floor(s/3600) + 'h ago';
                 },
+
                 formatNextRun(iso) {
                     if (!iso) return '-';
                     const diff = (new Date(iso) - new Date()) / 1000;
                     return diff < 0 ? 'Now' : Math.floor(diff) + 's';
                 },
-                viewSnapshot(log) { alert("Hash required"); }
+
+                viewSnapshot(log) {
+                    // 这里假设 log 对象里有 file_path (从 status 表或 log 表获取)
+                    // 后端需要返回 hash 或 path。
+                    // 临时演示：
+                    if (log.url_hash) {
+                         this.previewUrl = `/api/snapshot/${log.url_hash}`;
+                         this.modalOpen = true;
+                    } else {
+                        alert("No snapshot hash available.");
+                    }
+                }
             }
         }
     </script>

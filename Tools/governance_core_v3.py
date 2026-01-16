@@ -108,6 +108,9 @@ class DatabaseHandler:
         with self.lock:
             cur = self.conn.cursor()
 
+            cur.execute("PRAGMA journal_mode=WAL;")
+            cur.execute("PRAGMA synchronous=NORMAL;")
+
             # 1. Task Groups (Metadata Registry)
             # Used for UI aggregation. linking a group to a specific entry URL (list_url).
             # 'list_url' serves as a logical foreign key to crawl_status.url
@@ -584,53 +587,75 @@ class GovernanceManager:
             remaining = end_time - time.time()
             time.sleep(min(0.1, remaining))
 
-    # --- 6. Dashboard Statistics ---
+    # --- 6. Dashboard Statistics (Optimized) ---
 
     def get_dashboard_summary(self, spider_filter: str = None) -> List[Dict]:
         """
         Aggregates data for UI.
-        Returns groups with their stats AND the specific status of their List URL.
+        OPTIMIZED: Uses 2 queries instead of N+1 queries.
         """
-        # 1. Get Metadata Groups
+        # 1. Get All Groups Metadata
         groups_sql = "SELECT group_path, list_url, name FROM task_groups"
         groups = self.db.fetch_all(groups_sql)
 
+        # 2. Get All Stats Aggregated by Group (Single Query)
+        # This prevents running a SELECT COUNT(*) inside the loop
+        stats_sql = """
+            SELECT 
+                group_path,
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as success,
+                SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as running,
+                SUM(CASE WHEN status IN (3,4) THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) as pending
+            FROM crawl_status 
+            GROUP BY group_path
+        """
+        all_stats = self.db.fetch_all(stats_sql)
+
+        # Convert stats list to a dict for O(1) lookup
+        # key: group_path, value: dict row
+        stats_map = {row['group_path']: dict(row) for row in all_stats}
+
+        # 3. Get All List URLs Status (Single Query optimization is harder here,
+        # but we can filter distinct urls first or just query crawl_status for urls IN (...))
+        # For simplicity, let's just pre-fetch distinct seed URLs status if optimization needed.
+        # But usually list_urls are few. Let's keep it simple or optimize if specific bottleneck.
+        # Micro-optimization: We can query the seed statuses individually or in batch.
+        # Given list_urls are usually few (tens), individual queries are acceptable
+        # IF stats are batched. But let's batch them for perfection.
+
+        list_urls = [g['list_url'] for g in groups if g['list_url']]
+        list_url_map = {}
+        if list_urls:
+            placeholders = ','.join(['?'] * len(list_urls))
+            url_rows = self.db.fetch_all(f"""
+                SELECT url, status, last_run_at, next_run_at, http_code, state_msg 
+                FROM crawl_status WHERE url IN ({placeholders})
+            """, tuple(list_urls))
+            list_url_map = {row['url']: dict(row) for row in url_rows}
+
+        # 4. Assemble
         result = []
         for g in groups:
             g_path = g['group_path']
 
-            # Filter by spider (prefix of group_path)
             if spider_filter and not g_path.startswith(spider_filter):
                 continue
 
-            # 2. Aggregate Stats for this group
-            stats_row = self.db.fetch_one("""
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as success,
-                    SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as running,
-                    SUM(CASE WHEN status IN (3,4) THEN 1 ELSE 0 END) as failed,
-                    SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) as pending
-                FROM crawl_status 
-                WHERE group_path = ?
-            """, (g_path,))
+            # Lookup stats from map (No DB hit)
+            s_row = stats_map.get(g_path, {})
 
-            # 3. Get Status of the specific List/Index URL (The "Anchor")
-            list_url_status = None
-            if g['list_url']:
-                row = self.db.fetch_one("""
-                    SELECT status, last_run_at, next_run_at, http_code, state_msg 
-                    FROM crawl_status WHERE url = ?
-                """, (g['list_url'],))
-                if row:
-                    list_url_status = dict(row)
-                    list_url_status['url'] = g['list_url']
+            # Lookup anchor status from map (No DB hit)
+            l_url = g['list_url']
+            l_status = list_url_map.get(l_url) if l_url else None
+            if l_status: l_status['url'] = l_url
 
             result.append({
                 'group_path': g_path,
                 'name': g['name'],
-                'stats': dict(stats_row) if stats_row else {},
-                'list_url_status': list_url_status
+                'stats': s_row or {'total': 0, 'success': 0, 'running': 0, 'failed': 0, 'pending': 0},
+                'list_url_status': l_status
             })
 
         return result

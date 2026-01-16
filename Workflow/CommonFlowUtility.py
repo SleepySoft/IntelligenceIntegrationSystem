@@ -166,7 +166,7 @@ class CrawlContext:
         # ------------------------------- Persists Data Here -------------------------------
 
         if persists and collected_data.content:
-            task.save_snapshot(collected_data.content, '.md')
+            task.save_file(collected_data.content, collected_data.title)
 
         self.logger.debug(f'Article finished.')
 
@@ -205,11 +205,11 @@ class CrawlContext:
                 # Just ignore because there will be a retry at next loop.
                 task.ignore()
             else:
-                task.fail_perm(state_msg=f"Task {task.group} got unexpected ProcessProblem reason: {e.problem}")
+                task.fail_perm(state_msg=f"Task {task.group_path} got unexpected ProcessProblem reason: {e.problem}")
 
         except Exception as e:
             task.fail_perm(state_msg=str(e))
-            self.logger.error(f"Task {task.group} got unexpected exception: {str(e)}")
+            self.logger.error(f"Task {task.group_path} got unexpected exception: {str(e)}")
             print(traceback.format_exc())
 
 

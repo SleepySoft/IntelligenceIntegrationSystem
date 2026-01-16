@@ -65,7 +65,7 @@ if __name__ == "__main__":
 # -------------------------------------------- Manual Code Start --------------------------------------------
 
 import random
-from ServiceEngine import ServiceContext
+from CrawlerServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
 from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx
@@ -83,7 +83,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_service_ctx(NAME, config)
+    crawl_context = build_crawl_ctx_by_service_ctx(NAME, crawl_context)
 
 
 def start_task(stop_event):
