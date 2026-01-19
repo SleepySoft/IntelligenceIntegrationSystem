@@ -17,7 +17,8 @@ channel_filter_list = []
 def run_pipeline(
         article_filter = lambda url: True,
         content_handler = save_article_to_disk,
-        exception_handler = lambda url, exception: None
+        exception_handler = lambda url, exception: None,
+        crawler_governor: Optional[GovernanceManager] = None
 ):
     # === 1. Initialize Components ===
     d_fetcher = RequestsFetcher(**d_fetcher_init_param)
@@ -31,7 +32,8 @@ def run_pipeline(
         discoverer=discoverer,
         e_fetcher=e_fetcher,
         extractor=extractor,
-        log_callback=log_cb
+        log_callback=log_cb,
+        crawler_governor=crawler_governor
     )
 
     # Step 1: Discover all channels
@@ -122,7 +124,8 @@ def start_task(stop_event):
     run_pipeline(
         article_filter=partial(intelligence_crawler_fileter, context=crawl_context, levels=[NAME]),
         content_handler=partial(intelligence_crawler_result_handler, context=crawl_context, levels=[NAME]),
-        exception_handler=partial(intelligence_crawler_exception_handler, context=crawl_context, levels=[NAME])
+        exception_handler=partial(intelligence_crawler_exception_handler, context=crawl_context, levels=[NAME]),
+        crawler_governor=crawl_context.crawler_governor
     )
     # Check and submit cached data.
     crawl_context.submit_cached_data(10)
