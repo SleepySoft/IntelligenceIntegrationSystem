@@ -15,7 +15,7 @@ from flask import Flask, g, request, jsonify, session, redirect, url_for, render
 from GlobalConfig import *
 from Scripts.mongodb_exporter import export_mongodb_data
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
-from ServiceComponent.IntelligenceHubDefines import APPENDIX_MAX_RATE_SCORE, APPENDIX_VECTOR_SCORE
+from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.UserManager import UserManager
 from Tools.CommonPost import common_post

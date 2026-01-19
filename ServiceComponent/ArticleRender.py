@@ -1,7 +1,7 @@
 import datetime
 
 from Tools.DateTimeUtility import any_time_to_time_str
-from ServiceComponent.IntelligenceHubDefines import APPENDIX_MANUAL_RATING
+from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_MANUAL_RATING
 
 
 RATING_SCRIPT = """

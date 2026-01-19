@@ -83,7 +83,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_service_ctx(NAME, crawl_context)
+    crawl_context = build_crawl_ctx_by_service_ctx(NAME, service_context)
 
 
 def start_task(stop_event):

@@ -4,7 +4,7 @@ from typing import List
 
 from Workflow.CommonFlowUtility import CrawlContext
 from IntelligenceCrawler.Extractor import ExtractionResult
-from ServiceComponent.IntelligenceHubDefines import CollectedData
+from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
 
 
 def intelligence_crawler_result_handler(url: str, result: ExtractionResult, context: CrawlContext, levels: List[str]):

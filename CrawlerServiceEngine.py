@@ -1,4 +1,3 @@
-import os
 import sys
 import time
 import logging
@@ -15,8 +14,8 @@ from PyLoggingBackend import LoggerBackend
 from PyLoggingBackend.LogUtility import set_tls_logger, backup_and_clean_previous_log_file, setup_logging, \
     limit_logger_level
 from MyPythonUtility.plugin_manager import PluginManager, PluginWrapper
-from Tools.CrawlerGovernanceBackend import CrawlerGovernanceBackend
-from Tools.governance_core_v3 import GovernanceManager
+from IntelligenceCrawler.CrawlerGovernanceBackend import CrawlerGovernanceBackend
+from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager
 
 logger = logging.getLogger(__name__)
 project_root = os.path.dirname(os.path.abspath(__file__))

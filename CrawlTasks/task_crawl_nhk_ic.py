@@ -112,7 +112,7 @@ def module_init(service_context: ServiceContext):
     global config
     global crawl_context
     config = service_context.config
-    crawl_context = build_crawl_ctx_by_service_ctx(NAME, crawl_context)
+    crawl_context = build_crawl_ctx_by_service_ctx(NAME, service_context)
 
     e_fetcher_kwargs['post_extra_action'] = conditional_click_nhk
 

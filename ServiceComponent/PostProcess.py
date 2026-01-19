@@ -5,7 +5,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from ServiceComponent.IntelligenceHubDefines import ArchivedData
+from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from Tools.DateTimeUtility import Clock
 from VectorDB.VectorDBClient import VectorDBClient

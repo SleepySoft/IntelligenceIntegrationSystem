@@ -1,5 +1,3 @@
-import time
-import logging
 import urllib3
 import threading
 from uuid import uuid4
@@ -12,8 +10,7 @@ from MyPythonUtility.easy_config import EasyConfig
 from IntelligenceHubWebService import DEFAULT_IHUB_PORT
 from Workflow.CommonFlowUtility import CrawlContext
 from Tools.RSSFetcher import FeedData, RssItem
-from Tools.governance_core_v3 import GovernanceManager
-from Tools.ProcessCotrolException import ProcessError, ProcessProblem, ProcessIgnore, ProcessSkip
+from Tools.ProcessCotrolException import ProcessError, ProcessProblem, ProcessSkip
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
