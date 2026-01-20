@@ -88,7 +88,9 @@ def get_and_submit_article(group_path: List[str],
             # Because if you don't record this name, the feed name of this article may lose.
             collected_data.temp_data['group_path'] = group_path
 
-            context.submit_collected_data(collected_data, task)
+            context.submit_collected_data(collected_data)
+
+            task.save_file(collected_data.content, collected_data.title)
             task.success()
 
         except Exception as e:

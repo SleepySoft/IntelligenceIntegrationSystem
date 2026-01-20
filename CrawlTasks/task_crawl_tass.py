@@ -16,7 +16,7 @@ extractor_kwargs = {}
 channel_filter_list = []
 
 def run_pipeline(
-        article_filter = lambda url: True,
+        article_filter = lambda url, group: True,
         content_handler = save_article_to_disk,
         exception_handler = lambda url, exception: None,
         crawler_governor: Optional[GovernanceManager] = None
@@ -91,9 +91,9 @@ def module_init(service_context: ServiceContext):
 def start_task(stop_event):
     # Crawl main process
     run_pipeline(
-        article_filter=partial(intelligence_crawler_fileter, context=crawl_context, levels=[NAME]),
-        content_handler=partial(intelligence_crawler_result_handler, context=crawl_context, levels=[NAME]),
-        exception_handler=partial(intelligence_crawler_exception_handler, context=crawl_context, levels=[NAME]),
+        article_filter=partial(intelligence_crawler_fileter, context=crawl_context),
+        content_handler=partial(intelligence_crawler_result_handler, context=crawl_context),
+        exception_handler=partial(intelligence_crawler_exception_handler, context=crawl_context),
         crawler_governor=crawl_context.crawler_governor
     )
     # Check and submit cached data.

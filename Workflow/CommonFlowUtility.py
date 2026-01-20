@@ -131,15 +131,12 @@ class CrawlContext:
     def check_get_cached_data(self, url: str = None)-> CollectedData:
         return self.crawl_cache.pop_content(url)
 
-    def submit_collected_data(self,
-                              collected_data: CollectedData,
-                              task: CrawlSession,
-                              cache_on_error: bool = True,
-                              persists: bool = True,
-                              ):
+    def submit_collected_data(
+            self,
+            collected_data: CollectedData,
+            cache_on_error: bool = True
+    ):
         collected_data.token = self.collector_token
-
-        # -------------------------------- Submit Data Here --------------------------------
 
         if self._submit_collected_data:
             self.logger.info(f"Submit collected data to: {self.i_hub_url}")
@@ -152,11 +149,6 @@ class CrawlContext:
                 raise ProcessProblem('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
-
-        # ------------------------------- Persists Data Here -------------------------------
-
-        if persists and collected_data.content:
-            task.save_file(collected_data.content, collected_data.title)
 
         self.logger.debug(f'Article finished.')
 
