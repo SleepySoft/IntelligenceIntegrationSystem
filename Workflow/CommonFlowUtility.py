@@ -162,6 +162,7 @@ class CrawlContext:
             with self.crawler_governor.transaction(url, group_path) as task:
                 try:
                     self.submit_collected_data(collected_data, task)
+                    task.success(state_msg='Cached data submitted.')
                 except Exception as e:
                     self.handle_process_exception(task, e)
                 finally:
@@ -185,7 +186,7 @@ class CrawlContext:
                 task.fail_temp(state_msg='Fetch error')
             elif e.problem in ['commit_error']:
                 # Just ignore because there will be a retry at next loop.
-                task.ignore()
+                task.cached()
             else:
                 task.fail_perm(state_msg=f"Task {task.group_path} got unexpected ProcessProblem reason: {e.problem}")
 
