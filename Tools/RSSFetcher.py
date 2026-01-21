@@ -134,12 +134,15 @@ def extract_media(entry) -> list:
             })
     # 处理media_content扩展
     for mc in entry.get("media_content", []):
-        media.append({
-            "url": mc["url"],
-            "type": mc.get("type", "unknown"),
-            "width": mc.get("width", 0),
-            "height": mc.get("height", 0)
-        })
+        try:
+            media.append({
+                "url": mc["url"],
+                "type": mc.get("type", "unknown"),
+                "width": mc.get("width", 0),
+                "height": mc.get("height", 0)
+            })
+        except Exception as e:
+            logger.warning(f"Extract media from rss feed fail: {str(e)}")
     return media
 
 
