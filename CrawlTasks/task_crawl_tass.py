@@ -99,6 +99,7 @@ def start_task(stop_event):
     # Check and submit cached data.
     crawl_context.submit_cached_data(10)
     # Randomly delay for next crawl.
-    CrawlContext.wait_interruptibly(random.randint(10, 15) * 60, stop_event)
+    # CrawlContext.wait_interruptibly(random.randint(10, 15) * 60, stop_event)
+    crawl_context.crawler_governor.wait_interval(60 * 15, stop_event=stop_event)
 
 # --------------------------------------------- Manual Code End ---------------------------------------------

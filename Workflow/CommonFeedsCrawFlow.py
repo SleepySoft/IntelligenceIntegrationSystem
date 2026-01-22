@@ -181,7 +181,7 @@ def feeds_craw_flow(flow_name: str,
             context.crawler_governor.wait_interval(1)
 
         # TODO: Remove next_run_delay
-        context.crawler_governor.finish_round(group_path, 60 * 15)
+        context.crawler_governor.finish_round(group_path, 0 * 15)
 
     # ----------------------------------------- Process Cached Data ----------------------------------------
 
@@ -189,4 +189,5 @@ def feeds_craw_flow(flow_name: str,
 
     # ------------------------------------ Delay and Wait for Next Loop ------------------------------------
 
-    context.crawler_governor.wait_interval(60 * 15, stop_event)
+    # It's batch wait, so it's hard to specify the delay group_path...
+    context.crawler_governor.wait_interval(60 * 15, stop_event=stop_event)
