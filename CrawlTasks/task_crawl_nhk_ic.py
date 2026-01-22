@@ -82,32 +82,52 @@ crawl_context: CrawlContext | None = None
 
 
 def conditional_click_nhk(page: Page):
-        # 整个弹窗的ID
-        modal_selector = "#erpc-half-modal"
-        # 按钮的文本
-        button_text = "確認しました / I understand"
+    # Main container for the popup - using class name
+    modal_selector = "div._1o10k1w0"
+    # Checkbox text
+    checkbox_text = "内容について確認しました"
+    # Button text
+    button_text = "次へ"
 
-        # 使用 page.locator() 结合 get_by_text，定位器更加稳定
+    try:
+        # 1. Wait for the modal to appear (timeout: 5 seconds)
         modal_locator = page.locator(modal_selector)
-        button_locator = modal_locator.get_by_text(button_text, exact=True)
-        # --------------------
+        modal_locator.wait_for(state="visible", timeout=5000)
 
-        # 1. 检查按钮是否可见（设置超时为 5 秒）
-        is_present = button_locator.is_visible(timeout=5000)
+        print(f"Popup detected ({modal_selector}), processing...")
 
-        if is_present:
-            print(f"发现弹窗（{modal_selector}），正在点击按钮: {button_text}")
-            # 2. 点击按钮
+        # 2. Locate and click the checkbox by text
+        checkbox_label = page.get_by_text(checkbox_text, exact=True)
+        checkbox_label.click()
+        print("Checkbox clicked successfully.")
+
+        # 3. Wait briefly for the button to become enabled
+        page.wait_for_timeout(1000)
+
+        # 4. Locate and click the button
+        button_locator = page.get_by_text(button_text, exact=True)
+
+        # Verify button is not disabled before clicking
+        is_disabled = button_locator.get_attribute("disabled")
+        if is_disabled is None:
             button_locator.click()
-
-            # 3. 等待整个弹窗消失 (state="hidden")，确保页面可操作
-            try:
-                page.wait_for_selector(modal_selector, state="hidden", timeout=10000)
-                print("弹窗已成功关闭。")
-            except Exception:
-                print("警告：弹窗未在指定时间内消失。")
+            print(f"Button '{button_text}' clicked successfully.")
         else:
-            print("未发现弹窗，直接继续抓取。")
+            print("Button is still disabled, cannot proceed.")
+            return False
+
+        # 5. Wait for the modal to disappear
+        try:
+            modal_locator.wait_for(state="hidden", timeout=10000)
+            print("Popup closed successfully.")
+        except Exception:
+            print("Warning: Popup did not close within the expected time.")
+
+        return True
+
+    except Exception as e:
+        print("No popup detected, proceeding with scraping.")
+        return False
 
 
 def module_init(service_context: ServiceContext):

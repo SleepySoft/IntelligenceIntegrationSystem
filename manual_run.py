@@ -1,21 +1,39 @@
 import os
+import logging
 import threading
 import traceback
 from functools import partial
 
-from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
+from CrawlerServiceEngine import ServiceContext
+from IntelligenceCrawler.CrawlerGovernanceBackend import CrawlerGovernanceBackend
 from MyPythonUtility.easy_config import EasyConfig
+from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
-from ServiceEngine import ServiceContext
 from Workflow.CommonFeedsCrawFlow import fetch_process_article
+from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager
+
+
+logger = logging.getLogger(__name__)
 
 
 def drive_module(module):
-    # set_intelligence_sink(None)
+    crawler_governance = GovernanceManager(
+        db_path='manual_run_governance.db',
+        files_path='manual_run_governance_files'
+    )
 
+    governance_backend = CrawlerGovernanceBackend(crawler_governance)
+    governance_backend.start_service(blocking=False)
+
+    service_context = ServiceContext(
+        module_logger=logger,
+        module_config=None,
+        crawler_governor=crawler_governance
+    )
+
+    # set_intelligence_sink(None)
     stop_event = threading.Event()
-    service_context = ServiceContext()
 
     module.module_init(service_context)
     while not stop_event.is_set():
@@ -82,14 +100,14 @@ def main():
     # from CrawlTasks import task_crawl_aa
     # drive_module(task_crawl_aa)
 
-    # from CrawlTasks import task_crawl_nhk_ic
-    # drive_module(task_crawl_nhk_ic)
+    from CrawlTasks import task_crawl_nhk_ic
+    drive_module(task_crawl_nhk_ic)
 
     # from CrawlTasks import task_crawl_elpais
     # drive_module(task_crawl_elpais)
 
-    from CrawlTasks import task_crawl_tass
-    drive_module(task_crawl_tass)
+    # from CrawlTasks import task_crawl_tass
+    # drive_module(task_crawl_tass)
 
     # fetch_by_request_scraper('https://www.cbc.ca/news/science/india-flood-cloudburst-glacier-1.7603074?cmp=rss')
 
