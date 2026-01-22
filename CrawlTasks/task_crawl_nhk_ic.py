@@ -81,52 +81,79 @@ config: EasyConfig | None = None
 crawl_context: CrawlContext | None = None
 
 
+# 同时兼容两种确认方式（或许是受网络影响，网页弹出的确认界面可能不一样）。
+
 def conditional_click_nhk(page: Page):
-    # Main container for the popup - using class name
-    modal_selector = "div._1o10k1w0"
-    # Checkbox text
+    """
+    Enhanced function to handle multiple popup variants on NHK website.
+    Returns True if popup was found and processed, False otherwise.
+    """
+    # Variant 1: Checkbox + Button pattern (new style)
     checkbox_text = "内容について確認しました"
-    # Button text
-    button_text = "次へ"
+    next_button_text = "次へ"
+
+    # Variant 2: Direct button pattern (old style)
+    direct_button_text = "確認しました / I understand"
 
     try:
-        # 1. Wait for the modal to appear (timeout: 5 seconds)
-        modal_locator = page.locator(modal_selector)
-        modal_locator.wait_for(state="visible", timeout=5000)
-
-        print(f"Popup detected ({modal_selector}), processing...")
-
-        # 2. Locate and click the checkbox by text
-        checkbox_label = page.get_by_text(checkbox_text, exact=True)
-        checkbox_label.click()
-        print("Checkbox clicked successfully.")
-
-        # 3. Wait briefly for the button to become enabled
-        page.wait_for_timeout(1000)
-
-        # 4. Locate and click the button
-        button_locator = page.get_by_text(button_text, exact=True)
-
-        # Verify button is not disabled before clicking
-        is_disabled = button_locator.get_attribute("disabled")
-        if is_disabled is None:
-            button_locator.click()
-            print(f"Button '{button_text}' clicked successfully.")
-        else:
-            print("Button is still disabled, cannot proceed.")
-            return False
-
-        # 5. Wait for the modal to disappear
+        # First, try to detect and handle Variant 1 (checkbox + button pattern)
         try:
-            modal_locator.wait_for(state="hidden", timeout=10000)
-            print("Popup closed successfully.")
-        except Exception:
-            print("Warning: Popup did not close within the expected time.")
+            # Wait for checkbox to appear (shorter timeout for detection)
+            checkbox_locator = page.get_by_text(checkbox_text, exact=True)
+            if checkbox_locator.is_visible(timeout=3000):
+                print("Detected Variant 1 popup (checkbox + button), processing...")
 
-        return True
+                # Click the checkbox
+                checkbox_locator.click()
+                print("Checkbox clicked successfully.")
+
+                # Wait for button to become enabled
+                page.wait_for_timeout(1000)
+
+                # Locate and click the next button
+                next_button = page.get_by_text(next_button_text, exact=True)
+
+                # Check if button is enabled
+                is_disabled = next_button.get_attribute("disabled")
+                if is_disabled is None:
+                    next_button.click()
+                    print(f"Button '{next_button_text}' clicked successfully.")
+
+                    # Wait for popup to disappear
+                    page.wait_for_timeout(2000)
+                    print("Variant 1 popup handled successfully.")
+                    return True
+                else:
+                    print("Next button is still disabled, trying alternative approach...")
+                    return False
+
+        except Exception as e:
+            print(f"Variant 1 not detected or failed: {str(e)}")
+
+        # If Variant 1 not found, try Variant 2 (direct button pattern)
+        try:
+            direct_button = page.get_by_text(direct_button_text, exact=True)
+            if direct_button.is_visible(timeout=3000):
+                print("Detected Variant 2 popup (direct button), processing...")
+
+                # Click the direct button
+                direct_button.click()
+                print(f"Button '{direct_button_text}' clicked successfully.")
+
+                # Wait for popup to disappear
+                page.wait_for_timeout(2000)
+                print("Variant 2 popup handled successfully.")
+                return True
+
+        except Exception as e:
+            print(f"Variant 2 not detected or failed: {str(e)}")
+
+        # If neither variant is detected
+        print("No known popup variant detected, continuing with scraping.")
+        return False
 
     except Exception as e:
-        print("No popup detected, proceeding with scraping.")
+        print(f"Unexpected error during popup handling: {str(e)}")
         return False
 
 
