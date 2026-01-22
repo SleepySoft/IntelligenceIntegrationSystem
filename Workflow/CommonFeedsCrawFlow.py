@@ -162,6 +162,7 @@ def feeds_craw_flow(flow_name: str,
                 task.fail_temp(state_msg=str(e))
                 continue
 
+        context.crawler_governor.start_round(group_path, len(result.entries))
         context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
 
         # ----------------------------------- Process Articles in Feed ----------------------------------
@@ -178,6 +179,9 @@ def feeds_craw_flow(flow_name: str,
             get_and_submit_article(group_path, article, context, fetch_content, scrubbers)
 
             context.crawler_governor.wait_interval(1)
+
+        # TODO: Remove next_run_delay
+        context.crawler_governor.finish_round(group_path, 60 * 15)
 
     # ----------------------------------------- Process Cached Data ----------------------------------------
 
