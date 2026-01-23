@@ -2,12 +2,15 @@
 
 # === Crawler Configuration ===
 CRAWLER_CONFIG = {
-    # === Fetcher init parameters ===
+    # === Components init parameters ===
+
     'd_fetcher_name': 'PlaywrightFetcher',
-    'd_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 30, 'stealth': True, 'pause_browser': False, 'render_page': True},
+    'd_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
+                             'pause_browser': False, 'render_page': True},
 
     'e_fetcher_name': 'PlaywrightFetcher',
-    'e_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 30, 'stealth': True, 'pause_browser': False, 'render_page': True},
+    'e_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
+                             'pause_browser': False, 'render_page': True},
 
     'discoverer_name': 'ListPageDiscoverer',
     'discoverer_init_param': {'verbose': True, 'manual_specified_signature': None, 'scope_selector': None},
@@ -15,27 +18,33 @@ CRAWLER_CONFIG = {
     'extractor_name': 'TrafilaturaExtractor',
     'extractor_init_param': {'verbose': True},
 
-    # === Crawl parameters ===
-    'entry_points': [['https://tass.com/world', 'https://tass.com/emergencies', 'https://tass.com/politics', 'https://tass.com/economy', 'https://tass.com/defense', 'https://tass.com/society']],
+    # ======== Crawl parameters ========
+
+    'entry_points': [['https://tass.com/world', 'https://tass.com/emergencies', 'https://tass.com/politics',
+                      'https://tass.com/economy', 'https://tass.com/defense', 'https://tass.com/society']],
     'period_filter': (None, None),
     'channel_filter': {'channel_list_filter': []},
-    'd_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 30, 'scroll_pages': 5},
-    'e_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 30, 'scroll_pages': 0},
+    'd_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20,
+                         'scroll_pages': 5},
+    'e_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20,
+                         'scroll_pages': 0},
     'extractor_kwargs': {},
 
     # === Handler functions (to be implemented by user) ===
+
     'article_filter': None,
     'content_handler': None,
     'exception_handler': None,
 }
 
-
 # ------ Usage example and demo. Can be deleted. ------
 
 if __name__ == "__main__":
     import traceback
+
     try:
         from IntelligenceCrawler.CrawlPipeline import run_pipeline, save_article_to_disk
+
         CRAWLER_CONFIG['content_handler'] = save_article_to_disk
         run_pipeline(CRAWLER_CONFIG)
     except Exception as e:
