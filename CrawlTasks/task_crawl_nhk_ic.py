@@ -27,10 +27,10 @@ def start_task(stop_event):
     local_config['d_fetcher_init_param']['proxy'] = 'http://127.0.0.1:10809'
     local_config['e_fetcher_init_param']['proxy'] = 'http://127.0.0.1:10809'
     local_config['e_fetcher_kwargs']['post_extra_action'] = [
+        {"text": "確認しました / I understand",   "action": "click", "timeout": 3000},
         {"text": "内容について確認しました",         "action": "click", "timeout": 3000},
         {"text": "次へ",                         "action": "click", "timeout": 3000},
         {"text": "サービスの利用を開始する",         "action": "click", "timeout": 1000},
-        {"text": "確認しました / I understand",   "action": "click", "timeout": 1000},
     ]
     local_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
     local_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)

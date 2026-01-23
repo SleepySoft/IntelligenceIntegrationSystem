@@ -5,10 +5,10 @@ CRAWLER_CONFIG = {
     # === Components init parameters ===
     
     'd_fetcher_name': 'RequestsFetcher',
-    'd_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 20},
+    'd_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 30},
 
     'e_fetcher_name': 'PlaywrightFetcher',
-    'e_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 20, 'stealth': True, 'pause_browser': False, 'render_page': True},
+    'e_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 30, 'stealth': True, 'pause_browser': True, 'render_page': True},
 
     'discoverer_name': 'RSSDiscoverer',
     'discoverer_init_param': {'verbose': True},
@@ -17,8 +17,8 @@ CRAWLER_CONFIG = {
     'extractor_init_param': {'verbose': True},
 
     # ======== Crawl parameters ========
-    
-    'entry_points': [['https://www.nhk.or.jp/rss/news/cat4.xml', 'https://www.nhk.or.jp/rss/news/cat1.xml', 'https://www.nhk.or.jp/rss/news/cat6.xml', 'https://www.nhk.or.jp/rss/news/cat5.xml']],
+
+    'entry_points': ['https://www.nhk.or.jp/rss/news/cat4.xml', 'https://www.nhk.or.jp/rss/news/cat1.xml', 'https://www.nhk.or.jp/rss/news/cat6.xml', 'https://www.nhk.or.jp/rss/news/cat5.xml'],
     'period_filter': (None, None),
     'channel_filter': {'channel_list_filter': []},
     'd_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20, 'scroll_pages': 0},

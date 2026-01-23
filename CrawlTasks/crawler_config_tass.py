@@ -6,7 +6,7 @@ CRAWLER_CONFIG = {
 
     'd_fetcher_name': 'PlaywrightFetcher',
     'd_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
-                             'pause_browser': False, 'render_page': True},
+                             'pause_browser': True, 'render_page': True},
 
     'e_fetcher_name': 'PlaywrightFetcher',
     'e_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
@@ -20,13 +20,13 @@ CRAWLER_CONFIG = {
 
     # ======== Crawl parameters ========
 
-    'entry_points': [['https://tass.com/world', 'https://tass.com/emergencies', 'https://tass.com/politics',
-                      'https://tass.com/economy', 'https://tass.com/defense', 'https://tass.com/society']],
+    'entry_points': ['https://tass.com/world', 'https://tass.com/emergencies', 'https://tass.com/politics',
+                      'https://tass.com/economy', 'https://tass.com/defense', 'https://tass.com/society'],
     'period_filter': (None, None),
     'channel_filter': {'channel_list_filter': []},
-    'd_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20,
+    'd_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 50,
                          'scroll_pages': 5},
-    'e_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 20,
+    'e_fetcher_kwargs': {'wait_until': 'networkidle', 'wait_for_selector': None, 'wait_for_timeout_s': 50,
                          'scroll_pages': 0},
     'extractor_kwargs': {},
 
