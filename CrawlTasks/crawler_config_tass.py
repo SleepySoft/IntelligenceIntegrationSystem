@@ -6,7 +6,7 @@ CRAWLER_CONFIG = {
 
     'd_fetcher_name': 'PlaywrightFetcher',
     'd_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
-                             'pause_browser': True, 'render_page': True},
+                             'pause_browser': False, 'render_page': True},
 
     'e_fetcher_name': 'PlaywrightFetcher',
     'e_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 20, 'stealth': True,
