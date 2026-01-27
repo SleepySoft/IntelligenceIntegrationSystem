@@ -2,12 +2,12 @@ from functools import partial
 from CrawlerServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
-from CrawlTasks.crawler_config_aa import CRAWLER_CONFIG
+from CrawlTasks.crawler_config_ntv import CRAWLER_CONFIG
 from IntelligenceCrawler.CrawlPipeline import run_pipeline
 from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx
 from Workflow.IntelligenceCrawlFlow import intelligence_crawler_fileter, intelligence_crawler_result_handler
 
-NAME = 'aa'
+NAME = 'ntv'
 config: EasyConfig | None = None
 crawl_context: CrawlContext | None = None
 
