@@ -147,25 +147,25 @@ interface ValuableIntelligence {
   // 时间列表，必须尝试转化为 YYYY-MM-DD 格式，仅在无法确定具体日期时保留原文（如‘上周’、‘不久前’）
   TIME: string[];
 
-  // 国家/省/市/地名列表
+  // 国家/省/市/地名列表。必须使用标准中文地名。
   LOCATION: string[];
 
   // 仅输出国家级 ISO 代码（如 CN, US）。涉及国际组织时输出英文缩写（如 NATO, EU）。不确定的地区直接输出英文名称。
   GEOGRAPHY: string;
 
-  // 文章主体中涉及的、有明确指代的姓名列表。
+  // 文章主体中涉及的、有明确指代的姓名列表。必须使用标准中文译名。
   PEOPLE: string[];
 
-  // 文章主体中涉及的国家、公司、宗教、机构、组织名称列表。
+  // 文章主体中涉及的国家、公司、宗教、机构、组织名称列表。必须使用标准中文译名。
   ORGANIZATION: string[];
 
-  // 20字内高度凝练、描述核心情报内容的标题。
+  // 20字内高度凝练、描述核心情报内容的标题。必须使用中文。
   EVENT_TITLE: string;
 
-  // 50字内精要描述事件核心事实的摘要。
+  // 50字内精要描述事件核心事实的摘要。必须使用中文。
   EVENT_BRIEF: string;
 
-  // 去除广告及无关信息后，对核心事件内容重写为2000字以及的详细情报简报，保留所有关键细节。
+  // 去除广告及无关信息后，对核心事件内容重写为2000字以及的详细情报简报，保留所有关键细节。必须使用中文。
   EVENT_TEXT: string;
 
   // 领域主分类，只能是以下之一（注意：若为无情报价值，请匹配下方 NonIntelligence 接口）
@@ -174,10 +174,10 @@ interface ValuableIntelligence {
   // 领域子分类，最多5个。必须严格匹配“领域分类”章节中列出的子分类名称，严禁自造词汇。
   SUB_CATEGORY: string[];
 
-  // 事件影响简述。50字以内。
+  // 事件影响简述。50字以内。必须使用中文。
   IMPACT: string;
 
-  // 分类与评分理由。50字以内。
+  // 分类与评分理由。50字以内。必须使用中文。
   REASON: string;
 
   // 评分维度：所有维度评分均为 1-10 的整数。无明确证据表明达到高区间标准时，优先给中低分。
@@ -196,7 +196,7 @@ interface ValuableIntelligence {
     "可行动性": number;
   };
 
-  // 备注/处理难点/置空。50字以内。
+  // 备注/处理难点/置空。50字以内。必须使用中文。
   TIPS: string;
 }
 
@@ -207,7 +207,7 @@ interface NonIntelligence {
   // 固定值
   TAXONOMY: "无情报价值";
 
-  // 必须说明理由，例如：这是一篇纯粹的手机促销广告，无战略价值。
+  // 必须说明理由，例如：这是一篇纯粹的手机促销广告，无战略价值。必须使用中文。
   REASON: string;
 }
 ```
@@ -258,23 +258,23 @@ type AnalysisResult = ValuableIntelligence | NonIntelligence;
 // Use this if content has NO strategic/tactical value based on criteria.
 interface NonIntelligence {
   TAXONOMY: "无情报价值";
-  REASON: string; // e.g. "Pure advertisement"
+  REASON: string; // 必须使用中文书写。例如"纯商业广告"
 }
 
 // Use this if content HAS value. Extract solely from text. No outside inference.
 interface ValuableIntelligence {
   TIME: string[]; // YYYY-MM-DD
-  LOCATION: string[];
+  LOCATION: string[]; // 必须是标准中文地名。
   GEOGRAPHY: string; // ISO Code (CN, US) or Eng Name.
-  PEOPLE: string[];
-  ORGANIZATION: string[];
-  EVENT_TITLE: string; // <20 chars, concise
-  EVENT_BRIEF: string; // <50 chars, core fact
-  EVENT_TEXT: string; // >2000 words detailed report, remove ads/noise.
+  PEOPLE: string[]; // 必须是标准中文译名。
+  ORGANIZATION: string[]; // 必须是标准中文译名。
+  EVENT_TITLE: string; // 必须中文。<20 chars, concise
+  EVENT_BRIEF: string; // 必须中文。<50 chars, core fact
+  EVENT_TEXT: string; // 必须中文。>2000 words detailed report, remove ads/noise.
   TAXONOMY: "政治与安全" | "经济与金融" | "科技与网络" | "社会与环境";
   SUB_CATEGORY: string[]; // Match "Domain Categories" lists exactly.
-  IMPACT: string; // <50 chars
-  REASON: string; // <50 chars, categorization reason
+  IMPACT: string; // 必须中文。<50 chars
+  REASON: string; // 必须中文。<50 chars, categorization reason
   RATE: {
     "影响广度": number;
     "影响深度": number;
@@ -283,7 +283,7 @@ interface ValuableIntelligence {
     "舆情及认知影响": number;
     "可行动性": number;
   };
-  TIPS: string; // Remarks or Empty
+  TIPS: string; // 必须中文。Remarks or Empty
 }
 """
 
@@ -340,23 +340,23 @@ type AnalysisResult = ValuableIntelligence | NonIntelligence;
 // 场景 A：无战略/战术情报价值
 interface NonIntelligence {
   TAXONOMY: "无情报价值";
-  REASON: string; // 简述理由，例如"纯商业广告"
+  REASON: string; // 简述理由，必须使用中文书写。例如"纯商业广告"
 }
 
 // 场景 B：具有情报价值（内容需完全基于原文提取，禁止外源性知识幻觉）
 interface ValuableIntelligence {
   TIME: string[]; // 标准化日期 YYYY-MM-DD
-  LOCATION: string[]; // 地点列表
+  LOCATION: string[]; // 地点列表，必须是标准中文地名
   GEOGRAPHY: string; // 国家ISO代码 (CN, US) 或英文名称
-  PEOPLE: string[]; // 关键人物
-  ORGANIZATION: string[]; // 机构/组织
-  EVENT_TITLE: string; // <20字，核心标题
-  EVENT_BRIEF: string; // <50字，事实摘要
-  EVENT_TEXT: string; // >2000字(若原文足够长)的情报简报，剔除广告噪音，保留关键细节
+  PEOPLE: string[]; // 关键人物，使用标准中文译名
+  ORGANIZATION: string[]; // 机构/组织，使用标准中文译名
+  EVENT_TITLE: string; // 必须翻译为中文。20字内核心标题
+  EVENT_BRIEF: string; // 必须翻译为中文。50字内事实摘要
+  EVENT_TEXT: string; // 必须全中文输出。基于原文提取关键细节，翻译并重写为2000字以内的情报简报。严禁出现非中文段落。
   TAXONOMY: "政治与安全" | "经济与金融" | "科技与网络" | "社会与环境";
   SUB_CATEGORY: string[]; // 必须严格匹配【有价值领域分类】列表
-  IMPACT: string; // <50字，影响简述
-  REASON: string; // <50字，分类理由
+  IMPACT: string; // 必须翻译为中文。50字内影响简述
+  REASON: string; // 必须翻译为中文。50字内分类理由
   RATE: {
     "影响广度": number;
     "影响深度": number;
@@ -365,7 +365,7 @@ interface ValuableIntelligence {
     "舆情及认知影响": number;
     "可行动性": number;
   };
-  TIPS: string; // 备注或处理难点，若无则留空
+  TIPS: string; // 备注或处理难点，若无则留空，必须中文
 }
 """
 
