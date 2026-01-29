@@ -10,7 +10,8 @@ import traceback
 from functools import wraps
 from typing import List, Tuple, Any, Dict
 from dateutil import parser as date_parser
-from flask import Flask, g, request, jsonify, session, redirect, url_for, render_template, abort, send_file
+from flask import Flask, g, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
+    make_response
 
 from GlobalConfig import *
 from Scripts.mongodb_exporter import export_mongodb_data
@@ -232,6 +233,14 @@ class IntelligenceHubWebService:
         def logout():
             session.clear()
             return redirect(url_for('login'))
+
+        @app.route('/auth_check', methods=['GET'])
+        def auth_check():
+            ok = session.get("logged_in") is True and session.get("user_id") is not None
+            status = 204 if ok else 401
+            resp = make_response(("", status))
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
 
         # ---------------------------------------------- Post and Article ----------------------------------------------
 
