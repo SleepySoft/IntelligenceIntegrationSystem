@@ -3701,12 +3701,59 @@ VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
 
 
 
+帮我写一个nginx的配置文件，实现以下反向代理：
+    将本地5000端口的http服务代理为https服务，端口25000。这是主服务。
+    将本地8002端口的http服务代理为https服务，挂在主服务的/crawl_monitor路径下。即下面的本地routing在外网我要挂到/crawl_monitor下：
+       ```
+        # Data APIs (GET)
+        self.app.add_url_rule(build_url('/api/dashboard/stats'), 'get_dashboard_stats',
+                              maybe_wrap(self.get_dashboard_stats), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/groups'), 'get_groups', maybe_wrap(self.get_groups), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/logs'), 'get_logs', maybe_wrap(self.get_logs), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/status/recent'), 'get_recent_statuses',
+                              maybe_wrap(self.get_recent_statuses), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/snapshot/<url_hash>'), 'get_snapshot', maybe_wrap(self.get_snapshot),
+                              methods=['GET'])
+        self.app.add_url_rule(build_url('/api/dashboard/chart'), 'get_trend_chart',
+                              maybe_wrap(self.get_trend_chart), methods=['GET'])
 
+        self.app.add_url_rule(build_url('/api/history/stats'), 'get_history_stats',
+                              maybe_wrap(self.get_history_stats), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/group/round_status'), 'get_group_round_status',
+                              maybe_wrap(self.get_group_round_status), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/export/<target>'), 'export_data',
+                              maybe_wrap(self.export_data), methods=['GET'])
 
+        # Control APIs (POST)
+        self.app.add_url_rule(build_url('/api/control/<action>'), 'system_control', maybe_wrap(self.system_control),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/api/control/reset_stats'), 'reset_stats', maybe_wrap(self.reset_stats),
+                              methods=['POST'])
 
+        # RPC APIs (POST)
+        self.app.add_url_rule(build_url('/rpc/register_group'), 'rpc_register_group',
+                              maybe_wrap(self.rpc_register_group), methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/should_crawl'), 'rpc_should_crawl', maybe_wrap(self.rpc_should_crawl),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/report_result'), 'rpc_report_result', maybe_wrap(self.rpc_report_result),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/round/lifecycle'), 'rpc_round_lifecycle',
+                              maybe_wrap(self.rpc_round_lifecycle), methods=['POST'])
+       ```
+    同时编写模板，今后会有其它子服务会被代理到指定的子路径下。
 
+使用以下证书：
+	ssl_certificate      C:/nginx/conf/ssl/server.crt;
+    ssl_certificate_key  C:/nginx/conf/ssl/server.key;
 
+同时：
+1. 将http重定向到https服务
+2. 对于子服务，通过主服务的 “/auth_check” 进行认证检查。
+3. 记录访问详细日志，便于工具分析（推荐一个在线阅读nginx的工具，日志格式适配它）。
 
+本服务器系统为win11，使用 “https://sleepysoft.asuscomm.com” 这个DDNS域名访问。
+真正的域名对应的主机会做反向代理，保留访问者原始信息，并转发到本服务器。
+请分析和检查我的需求，给出nginx的配置文件。
 
 
 
