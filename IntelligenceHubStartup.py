@@ -26,7 +26,6 @@ from MyPythonUtility.proc_utils import find_processes, kill_processes, start_pro
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 from VectorDB.VectorDBClient import VectorDBClient
-from _config.ai_client_config import AI_CLIENTS, AI_CLIENT_LIMIT
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -53,6 +52,22 @@ def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
 
 
 def build_ai_client_manager(config: EasyConfig):
+    try:
+        from _config.ai_client_config import AI_CLIENTS, AI_CLIENT_LIMIT
+    except Exception:
+        logger.exception(
+            "\n"
+            "==================== AI Client Configuration Load Failed ====================\n"
+            "Unable to import: _config.ai_client_config\n"
+            "Falling back to example config: _config.ai_client_config_example (placeholder)\n"
+            "\n"
+            "How to fix:\n"
+            "  - Copy _config/ai_client_config_example.py to _config/ai_client_config.py\n"
+            "  - Then review and adjust the settings for your environment.\n"
+            "=============================================================================\n"
+        )
+        from _config.ai_client_config_example import AI_CLIENTS, AI_CLIENT_LIMIT
+
     client_manager = AIClientManager()
 
     logger.info(f"AI clients count: {len(AI_CLIENTS)}).")
