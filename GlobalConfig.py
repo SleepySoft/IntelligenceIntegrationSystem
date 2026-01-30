@@ -61,11 +61,13 @@ DEFAULT_PROCESSOR_TOKEN = 'SleepySoft'
 
 
 CONFIG_FILE = 'config.json'
-DEFAULT_CONFIG_FILE = resolve_active_path(CONFIG_FILE, os.path.join(DATA_PATH, CONFIG_FILE))
+ALTER_CONFIG_FILE = 'config_example.json'
+DEFAULT_CONFIG_FILE = resolve_active_path(CONFIG_FILE, os.path.join(CONFIG_PATH, CONFIG_FILE))
+DEFAULT_ALTER_CONFIG_FILE = resolve_active_path(ALTER_CONFIG_FILE, os.path.join(CONFIG_PATH, ALTER_CONFIG_FILE))
 
 
 USER_DB_FILE = 'Authentication.db'
-DEFAULT_USER_DB_PATH = resolve_active_path(USER_DB_FILE, os.path.join(DATA_PATH, USER_DB_FILE))
+DEFAULT_USER_DB_PATH = resolve_active_path(USER_DB_FILE, os.path.join(CONFIG_PATH, USER_DB_FILE))
 
 
 USING_VPN = True
