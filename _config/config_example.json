@@ -1,12 +1,5 @@
 {
   "intelligence_hub": {
-
-    "ai_service": {
-      "url": "https://api.siliconflow.cn",
-      "token": "sk-xxxxxxxxxxxxxxxxxxxxxxxxxx",
-      "model": "deepseek-ai/DeepSeek-R1"
-    },
-
     "ai_analysis_thread": 1,
 
     "mongodb": {
@@ -37,12 +30,6 @@
     }
   },
 
-  "ai_service_rotator": {
-    "enabled": false,
-    "key_file": "siliconflow_keys.txt",
-    "threshold": 0.5
-  },
-
   "intelligence_hub_web_service": {
 
     "service": {
@@ -68,6 +55,12 @@
         "dd698933-2824-4181-8d50-af4a5f385864"
       ]
     }
+  },
+
+  "ai_client_center": {
+    "sqlite_db_file": "ai_client_state_log.db",
+    "heartbeat_interval_sec": 30,
+    "heartbeat_grace_sec": 120
   },
 
   "collector": {

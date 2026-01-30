@@ -564,5 +564,6 @@ class UserManagerConsole:
 if __name__ == "__main__":
     import os
 
-    console = UserManagerConsole(f"../{DEFAULT_USER_DB_PATH}")
+    console = UserManagerConsole(
+        f"../{DEFAULT_USER_DB_PATH}" if not os.path.isabs(DEFAULT_USER_DB_PATH) else DEFAULT_USER_DB_PATH)
     console.run()

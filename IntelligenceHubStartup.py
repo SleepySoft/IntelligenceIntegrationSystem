@@ -1,3 +1,4 @@
+import os.path
 import time
 import uuid
 import logging
@@ -14,18 +15,16 @@ from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
+from VectorDB.VectorDBClient import VectorDBClient
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
-from AIClientCenter.AIClients import OuterTokenRotatingOpenAIClient
 from AIClientCenter.AIClientManager import AIClientManager
+from AIClientCenter.ClientStateSQLiteLogger import ClientStateSQLiteLogger
 from Tools.SystemMonotorLauncher import start_system_monitor
-from AIClientCenter.OpenAICompatibleAPI import OpenAICompatibleAPI
-from AIClientCenter.AIServiceTokenRotator import SiliconFlowServiceRotator
-from MyPythonUtility.proc_utils import find_processes, kill_processes, start_program
+from MyPythonUtility.proc_utils import find_processes, kill_processes
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
-from VectorDB.VectorDBClient import VectorDBClient
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -68,7 +67,19 @@ def build_ai_client_manager(config: EasyConfig):
         )
         from _config.ai_client_config_example import AI_CLIENTS, AI_CLIENT_LIMIT
 
-    client_manager = AIClientManager()
+    sqlite_db_file = config.get('ai_client_center.sqlite_db_file', 'ai_client_state_log.db')
+    heartbeat_interval_sec = config.get('ai_client_center.heartbeat_interval_sec', 30)
+    heartbeat_grace_sec = config.get('heartbeat_grace_sec', 120)
+
+    state_logger = ClientStateSQLiteLogger(
+        sqlite_db_path=os.path.join(DATA_PATH, sqlite_db_file),
+        run_id=str(time.time()),
+        heartbeat_interval_sec=heartbeat_interval_sec,
+        heartbeat_grace_sec=heartbeat_grace_sec
+    )
+    state_logger.start()
+
+    client_manager = AIClientManager(state_logger=state_logger)
 
     logger.info(f"AI clients count: {len(AI_CLIENTS)}).")
     logger.info(f"AI group limit count: {len(AI_CLIENT_LIMIT)}).")
@@ -125,7 +136,10 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
 
 
 def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
-    config = EasyConfig(DEFAULT_CONFIG_FILE)
+    config = EasyConfig(
+        config_file=DEFAULT_CONFIG_FILE,
+        config_file_alter=DEFAULT_ALTER_CONFIG_FILE
+    )
 
     logger.info('Apply config: ')
     logger.info(config.dump_text())
