@@ -26,7 +26,7 @@ from MyPythonUtility.proc_utils import find_processes, kill_processes, start_pro
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 from VectorDB.VectorDBClient import VectorDBClient
-from _config.ai_client_config import AI_CLIENT_LIMIT
+from _config.ai_client_config import AI_CLIENTS, AI_CLIENT_LIMIT
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -54,62 +54,15 @@ def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
 
 def build_ai_client_manager(config: EasyConfig):
     client_manager = AIClientManager()
-    try:
-        from _config.ai_client_config import AI_CLIENTS
 
-        logger.info(f"Found ai_client_config, use AI_CLIENTS (count = {len(AI_CLIENTS)}).")
+    logger.info(f"AI clients count: {len(AI_CLIENTS)}).")
+    logger.info(f"AI group limit count: {len(AI_CLIENT_LIMIT)}).")
 
-        for client in AI_CLIENTS.values():
-            client_manager.register_client(client)
+    for client in AI_CLIENTS.values():
+        client_manager.register_client(client)
 
-        for group, limit in AI_CLIENT_LIMIT.items():
-            client_manager.set_group_limit(group, limit)
-
-    except Exception as e:
-        print(traceback.format_exc())
-        logger.info(f"Import {CONFIG_PATH}/ai_client_config.py fail. Use traditional config.")
-
-        ai_service_url = config.get('intelligence_hub.ai_service.url', OPEN_AI_API_BASE_URL_SELECT)
-        ai_service_token = config.get('intelligence_hub.ai_service.token', 'Sleepy')
-        ai_service_model = config.get('intelligence_hub.ai_service.model', MODEL_SELECT)
-        ai_service_proxies = config.get('intelligence_hub.ai_service.proxies', None)
-
-        ai_api = OpenAICompatibleAPI(
-            api_base_url=ai_service_url,
-            token=ai_service_token,
-            default_model=ai_service_model,
-            proxies=ai_service_proxies
-        )
-
-        ai_client = OuterTokenRotatingOpenAIClient('Default AI Client', ai_api)
-
-        # Wrap by new mechanism
-        client_manager.register_client(ai_client)
-
-        # --------------------- API Token Rotator ---------------------
-
-        key_rotator_enabled = config.get('ai_service_rotator.enabled', False)
-        key_rotator_key_file = config.get('ai_service_rotator.key_file', '')
-        key_rotator_threshold = config.get('ai_service_rotator.threshold', 0.5)
-
-        if key_rotator_enabled and key_rotator_key_file:
-            logger.info(f'AI Service Key Rotator Enabled. key file: '
-                        f'{key_rotator_key_file}, threshold: {key_rotator_threshold}')
-
-            ai_token_rotator = SiliconFlowServiceRotator(
-                ai_client=ai_client,
-                keys_file=os.path.join(CONFIG_PATH, key_rotator_key_file),
-                threshold=float(key_rotator_threshold)
-            )
-
-            quit_flag = threading.Event()
-            rotator_thread = threading.Thread(
-                target=ai_token_rotator.run_forever,
-                args=(quit_flag,),
-                name="KeyRotatorThread",
-                daemon=True
-            )
-            rotator_thread.start()
+    for group, limit in AI_CLIENT_LIMIT.items():
+        client_manager.set_group_limit(group, limit)
 
     return client_manager
 
