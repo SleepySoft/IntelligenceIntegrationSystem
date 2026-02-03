@@ -469,3 +469,118 @@ body {
     font-size: 0.75rem;
     font-weight: 500;
 }
+
+/* =========================================
+   10. Prompt Viewer (Modal + Link Button)
+   ========================================= */
+
+/* Prompt 版本链接按钮（右侧 debug 里的 vXX） */
+.prompt-link-btn {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    color: #1a73e8;
+    cursor: pointer;
+    font-size: 0.92rem;
+    text-decoration: underline;
+}
+
+.prompt-link-btn:hover {
+    color: #174ea6;
+}
+
+/* 弹窗遮罩层 */
+.prompt-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: none;              /* 默认隐藏 */
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+/* 弹窗主体 */
+.prompt-modal {
+    width: min(920px, calc(100vw - 28px));
+    max-height: min(80vh, 720px);
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.prompt-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid #eef0f3;
+    background: linear-gradient(180deg, #fafbff, #fff);
+}
+
+.prompt-modal-title {
+    font-weight: 600;
+    color: #202124;
+    font-size: 0.98rem;
+}
+
+.prompt-modal-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.prompt-modal-btn {
+    border: 1px solid #dadce0;
+    background: #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.86rem;
+    cursor: pointer;
+}
+
+.prompt-modal-btn:hover {
+    background: #f6f8fb;
+}
+
+/* Body */
+.prompt-modal-body {
+    padding: 12px 14px 14px 14px;
+    overflow: auto;
+}
+
+/* prompt 文本区域：简洁但“好看”的 code-block 风格 */
+.prompt-text {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    white-space: pre-wrap;       /* 自动换行 */
+    word-break: break-word;      /* 长 token 换行 */
+    background: #0b1020;
+    color: #e6edf3;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prompt-hint {
+    margin-top: 10px;
+    color: #5f6368;
+    font-size: 0.82rem;
+}
+
+.prompt-error {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fff5f5;
+    color: #b42318;
+    border: 1px solid #ffd0d0;
+    font-size: 0.9rem;
+}

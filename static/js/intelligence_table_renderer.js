@@ -8,6 +8,8 @@ class ArticleRenderer {
     constructor(listContainerId, paginationContainerClass = 'pagination-container') {
         this.listContainer = document.getElementById(listContainerId);
         this.paginationClass = paginationContainerClass;
+        this.promptCache = new Map();
+        this.initPromptViewer();
         this.initAutoRefresh();
     }
 
@@ -206,9 +208,19 @@ class ArticleRenderer {
                 if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
                 if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
             }
-            // 添加Prompt版本号
+
             if (is_v2 && prompt_version) {
-                right_content += `<div><span class="debug-label">Prompt:</span><span class="debug-value-truncate" title="Prompt Version ${prompt_version}">v${prompt_version}</span></div>`;
+                const pvEscaped = this.escapeHTML(prompt_version);
+                right_content += `
+                  <div>
+                    <span class="debug-label">Prompt:</span>
+                    <button
+                      type="button"
+                      class="prompt-link-btn"
+                      data-prompt-version="${pvEscaped}"
+                      title="Click to view prompt v${pvEscaped}"
+                    >v${pvEscaped}</button>
+                  </div>`;
             }
 
             // ============================================================
@@ -430,6 +442,154 @@ class ArticleRenderer {
     isValidUrl(url) {
         if (!url) return false;
         return url.match(/^(https?|ftp):\/\//) !== null;
+    }
+
+    initPromptViewer() {
+        // 1) 注入 modal DOM（只注入一次）
+        if (!document.getElementById('prompt-modal-overlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'prompt-modal-overlay';
+            overlay.className = 'prompt-modal-overlay';
+            overlay.innerHTML = `
+              <div class="prompt-modal" role="dialog" aria-modal="true" aria-label="Prompt Viewer">
+                <div class="prompt-modal-header">
+                  <div class="prompt-modal-title" id="prompt-modal-title">Prompt</div>
+                  <div class="prompt-modal-actions">
+                    <button class="prompt-modal-btn" id="prompt-copy-btn" type="button">Copy</button>
+                    <button class="prompt-modal-btn" id="prompt-close-btn" type="button">Close</button>
+                  </div>
+                </div>
+                <div class="prompt-modal-body" id="prompt-modal-body">
+                  <div class="prompt-hint">Loading...</div>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // overlay 点击空白处关闭
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) this.closePromptModal();
+            });
+
+            // close 按钮
+            overlay.querySelector('#prompt-close-btn').addEventListener('click', () => this.closePromptModal());
+
+            // ESC 关闭
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this.closePromptModal();
+            });
+
+            // copy 按钮
+            overlay.querySelector('#prompt-copy-btn').addEventListener('click', () => {
+                const text = overlay.dataset.promptText || '';
+                if (!text) return;
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        overlay.querySelector('#prompt-copy-btn').textContent = 'Copied';
+                        setTimeout(() => overlay.querySelector('#prompt-copy-btn').textContent = 'Copy', 900);
+                    }).catch(() => {
+                        this.fallbackCopyText(text);
+                    });
+                } else {
+                    this.fallbackCopyText(text);
+                }
+            });
+        }
+
+        // 2) 事件委托：点击 prompt 版本按钮 -> 拉取并展示
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.prompt-link-btn');
+            if (!btn) return;
+            const version = btn.dataset.promptVersion;
+            if (!version) return;
+
+            this.openPromptModal(version);
+        });
+    },
+
+    async openPromptModal(promptVersion) {
+        const overlay = document.getElementById('prompt-modal-overlay');
+        const titleEl = document.getElementById('prompt-modal-title');
+        const bodyEl = document.getElementById('prompt-modal-body');
+        if (!overlay || !titleEl || !bodyEl) return;
+
+        titleEl.textContent = `Prompt v${promptVersion}`;
+        bodyEl.innerHTML = `<div class="prompt-hint">Loading prompt v${this.escapeHTML(promptVersion)}...</div>`;
+        overlay.style.display = 'flex';
+        overlay.dataset.promptText = '';
+
+        try {
+            const promptText = await this.fetchPromptByVersion(promptVersion);
+            overlay.dataset.promptText = promptText;
+
+            bodyEl.innerHTML = `
+              <pre class="prompt-text">${this.escapeHTML(promptText)}</pre>
+              <div class="prompt-hint">Tip: Click “Copy” to copy the full prompt text.</div>
+            `;
+        } catch (err) {
+            const msg = (err && err.message) ? err.message : String(err);
+            bodyEl.innerHTML = `<div class="prompt-error">Failed to load prompt v${this.escapeHTML(promptVersion)}: ${this.escapeHTML(msg)}</div>`;
+        }
+    },
+
+    async fetchPromptByVersion(promptVersion) {
+        const key = String(promptVersion);
+
+        // 命中缓存
+        if (this.promptCache && this.promptCache.has(key)) {
+            return this.promptCache.get(key);
+        }
+
+        const url = `/api/prompts/${encodeURIComponent(key)}`;
+
+        const resp = await fetch(url, {
+            method: 'GET',
+            headers: { 'Accept': 'text/plain' }
+        });
+
+        if (!resp.ok) {
+            let errText = '';
+            try { errText = await resp.text(); } catch (_) {}
+            throw new Error(`HTTP ${resp.status} ${resp.statusText}${errText ? ` - ${errText}` : ''}`);
+        }
+
+        const text = await resp.text();
+
+        // 缓存
+        if (this.promptCache) this.promptCache.set(key, text);
+
+        return text;
+    },
+
+    closePromptModal() {
+        const overlay = document.getElementById('prompt-modal-overlay');
+        if (!overlay) return;
+        overlay.style.display = 'none';
+        overlay.dataset.promptText = '';
+    },
+
+    fallbackCopyText(text) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            ta.style.top = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+
+            const btn = document.getElementById('prompt-copy-btn');
+            if (btn) {
+                btn.textContent = 'Copied';
+                setTimeout(() => btn.textContent = 'Copy', 900);
+            }
+        } catch (e) {
+            console.warn('Copy failed:', e);
+        }
     }
 }
 

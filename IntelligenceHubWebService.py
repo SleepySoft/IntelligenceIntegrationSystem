@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import json
 import uuid
@@ -11,10 +12,10 @@ from functools import wraps
 from typing import List, Tuple, Any, Dict
 from dateutil import parser as date_parser
 from flask import Flask, g, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
-    make_response
+    make_response, Response
 
 from GlobalConfig import *
-from Scripts.mongodb_exporter import export_mongodb_data
+from prompts_v2x import ANALYSIS_PROMPT_TABLE as PROMPT_TABLE_V2
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
 from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
@@ -87,6 +88,21 @@ def exclude_raw_data(result: List[dict]):
 
         summary_result.append(clean_data)
     return summary_result
+
+
+def normalize_prompt_version(raw: str) -> int:
+    """
+    从 raw 中提取第一个连续数字段作为版本号（int）。
+    e.g. 'v20' -> 20, 'prompt_v20-beta' -> 20, '20' -> 20
+    """
+    if raw is None:
+        raise ValueError("prompt_version is required")
+
+    m = re.search(r'(\d+)', str(raw))
+    if not m:
+        raise ValueError(f"invalid prompt_version: {raw}")
+
+    return int(m.group(1))
 
 
 def post_collected_intelligence(url: str, data: CollectedData, timeout=10) -> dict:
@@ -300,6 +316,24 @@ class IntelligenceHubWebService:
             except Exception as e:
                 logger.error(f'collect_api() fail: {str(e)}')
                 return jsonify({'resp': 'error', 'uuid': ''})
+
+        @app.get("/api/prompts/<prompt_version>")
+        def get_prompt(prompt_version):
+            if not prompt_version:
+                abort(400, "prompt_version required")
+
+            try:
+                version_digit = normalize_prompt_version(prompt_version)
+            except ValueError as e:
+                abort(400, str(e))
+
+            prompt_text = PROMPT_TABLE_V2.get(version_digit)
+            if prompt_text is None:
+                prompt_text = f"[Prompt v{version_digit}] Not configured."
+
+            resp = Response(prompt_text, content_type="text/plain; charset=utf-8")
+            resp.headers["X-Prompt-Version-Normalized"] = str(version_digit)
+            return re
 
         @app.route('/manual_rate', methods=['POST'])
         def submit_rating():

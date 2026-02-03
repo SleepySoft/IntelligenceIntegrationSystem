@@ -3790,7 +3790,9 @@ VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
 
 
 
-
+我有一段前端代码，其中prompt的部分我想链接到真实的prompt上。请帮设计一个后端接口（placeholder，根据你的参数和设计我来填具体内容），并对前端进行修改以及适配该功能。
+注意prompt返回的是一段文本，请尽可能以简洁但好看的方式展现。给出修改的代码，如果修改了函数，给出函数完整实现。
+prompt和uuid无关，只通过prompt_version进行匹配。
 
 
 
