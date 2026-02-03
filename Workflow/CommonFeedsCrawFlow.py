@@ -144,9 +144,6 @@ def feeds_craw_flow(flow_name: str,
         group_path = [flow_name, feed_name]
         context.crawler_governor.register_group_metadata(group_path, feed_url)
 
-        if not context.crawler_governor.should_crawl(feed_url):
-            continue
-
         # ----------------------------------- Fetch and Parse feeds -----------------------------------
 
         context.logger.info(f'Processing feed: [{feed_name}] - {feed_url}')
@@ -170,9 +167,12 @@ def feeds_craw_flow(flow_name: str,
         for article in result.entries:
             if not article.link:
                 context.logger.info(f'Got empty article link from feed: {feed_url}')
+                context.crawler_governor.reduce_round_step(group_path)
                 continue
 
             if not context.crawler_governor.should_crawl(article.link):
+                task.ignore(state_msg='Already fetched - Ignore.')
+                context.crawler_governor.skip_round_step(group_path)
                 continue
 
             context.logger.info(f'Processing article: {article.link}')
@@ -180,8 +180,7 @@ def feeds_craw_flow(flow_name: str,
 
             context.crawler_governor.wait_interval(1)
 
-        # TODO: Remove next_run_delay
-        context.crawler_governor.finish_round(group_path, 0 * 15)
+        context.crawler_governor.finish_round(group_path, 60 * 15)
 
     # ----------------------------------------- Process Cached Data ----------------------------------------
 
