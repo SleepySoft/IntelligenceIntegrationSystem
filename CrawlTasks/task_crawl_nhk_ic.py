@@ -21,21 +21,24 @@ def module_init(service_context: ServiceContext):
 
 
 def start_task(stop_event):
-    local_config = CRAWLER_CONFIG.copy()
+    local_crawler_config = CRAWLER_CONFIG.copy()
 
-    # Override generated config.
-    local_config['d_fetcher_init_param']['proxy'] = 'http://127.0.0.1:10809'
-    local_config['e_fetcher_init_param']['proxy'] = 'http://127.0.0.1:10809'
-    local_config['e_fetcher_kwargs']['post_extra_action'] = [
+    # Override generated config by user config file.
+    http_proxy = config.get('collector.global_site_proxy.http', '')
+    local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
+    local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
+
+    # Manually add extra post action to click web's button.
+    local_crawler_config['e_fetcher_kwargs']['post_extra_action'] = [
         {"text": "確認しました / I understand",   "action": "click", "timeout": 3000},
         {"text": "内容について確認しました",         "action": "click", "timeout": 3000},
         {"text": "次へ",                         "action": "click", "timeout": 3000},
         {"text": "サービスの利用を開始する",         "action": "click", "timeout": 1000},
     ]
-    local_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
-    local_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)
+    local_crawler_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
+    local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)
 
-    run_pipeline(local_config, crawler_governor=crawl_context.crawler_governor)
+    run_pipeline(local_crawler_config, crawler_governor=crawl_context.crawler_governor)
 
     # Check and submit cached data.
     crawl_context.submit_cached_data(10)
