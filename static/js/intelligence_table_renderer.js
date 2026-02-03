@@ -506,7 +506,7 @@ class ArticleRenderer {
 
             this.openPromptModal(version);
         });
-    },
+    }
 
     async openPromptModal(promptVersion) {
         const overlay = document.getElementById('prompt-modal-overlay');
@@ -531,7 +531,7 @@ class ArticleRenderer {
             const msg = (err && err.message) ? err.message : String(err);
             bodyEl.innerHTML = `<div class="prompt-error">Failed to load prompt v${this.escapeHTML(promptVersion)}: ${this.escapeHTML(msg)}</div>`;
         }
-    },
+    }
 
     async fetchPromptByVersion(promptVersion) {
         const key = String(promptVersion);
@@ -560,14 +560,14 @@ class ArticleRenderer {
         if (this.promptCache) this.promptCache.set(key, text);
 
         return text;
-    },
+    }
 
     closePromptModal() {
         const overlay = document.getElementById('prompt-modal-overlay');
         if (!overlay) return;
         overlay.style.display = 'none';
         overlay.dataset.promptText = '';
-    },
+    }
 
     fallbackCopyText(text) {
         try {

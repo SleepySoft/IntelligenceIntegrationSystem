@@ -333,7 +333,7 @@ class IntelligenceHubWebService:
 
             resp = Response(prompt_text, content_type="text/plain; charset=utf-8")
             resp.headers["X-Prompt-Version-Normalized"] = str(version_digit)
-            return re
+            return resp
 
         @app.route('/manual_rate', methods=['POST'])
         def submit_rating():
