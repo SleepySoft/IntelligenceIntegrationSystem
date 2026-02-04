@@ -1,10 +1,14 @@
+import hashlib
 import sys
 import time
+import queue
 import logging
 import threading
 import traceback
 from pathlib import Path
-from typing import Optional
+from threading import Thread
+from dataclasses import dataclass
+from typing import Optional, Tuple, Dict
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -18,7 +22,16 @@ from IntelligenceCrawler.CrawlerGovernanceBackend import CrawlerGovernanceBacken
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager
 
 logger = logging.getLogger(__name__)
+logger.info(f"[BOOT] pid={os.getpid()}")
 project_root = os.path.dirname(os.path.abspath(__file__))
+
+
+def _file_sig(path: str) -> str:
+    h = hashlib.blake2b(digest_size=16)
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 class ServiceContext:
@@ -57,13 +70,20 @@ class ServiceContext:
             print(f"Project Root path：{os.path.abspath(os.curdir)}")
 
 
+@dataclass(frozen=True)
+class TaskCmd:
+    op: str          # "reload" | "remove" | "shutdown"
+    path: str        # file path (for reload/remove)
+    seq: int         # monotonically increasing sequence
+
+
 class TaskManager:
     THREAD_JOIN_TIMEOUT = 2
     THREAD_JOIN_ATTEMPTS = 10
 
     def __init__(self, watch_dir: str, security_config=None):
         self.watch_dir = watch_dir
-        self.security = security_config     # Reserved for SecurityConfig
+        self.security = security_config
 
         self.config = EasyConfig(DEFAULT_CONFIG_FILE)
         self.crawler_governance = GovernanceManager(
@@ -71,57 +91,122 @@ class TaskManager:
             files_path=os.path.join(DATA_PATH, 'spider_governance_files')
         )
 
-        # {plugin_name: (module_ref, thread, stop_event)}
-        self.tasks: dict[str, tuple[PluginWrapper, threading.Thread, threading.Event]] = {}
-        self.tasks_lock = threading.Lock()
-
         self.plugin_manager = PluginManager(['module_init', 'start_task'])
+
+        self._sig = {}  # plugin_name -> sig
+
+        # {plugin_name: (PluginWrapper, Thread, Event)}
+        self.tasks: Dict[str, Tuple[PluginWrapper, threading.Thread, threading.Event]] = {}
+
+        # command queue / manager thread
+        self._q: queue.Queue[TaskCmd] = queue.Queue()
+        self._seq = 0
+        self._stop_mgr = threading.Event()
+        self._mgr_thread = threading.Thread(target=self._manager_loop, name="TaskManagerThread", daemon=True)
+        self._mgr_thread.start()
+
         self.scan_existing_files()
 
-    def scan_existing_files(self):
+    # ---------------- public APIs: NON-BLOCKING ----------------
+
+    def submit_reload(self, file_path: str, source: str):
+        """For created/modified/moved-in events."""
+        abs_path = os.path.abspath(file_path)
+        name = PluginManager.plugin_name(abs_path)
+
         try:
-            if not os.path.exists(self.watch_dir):
-                os.makedirs(self.watch_dir, exist_ok=True)
-            plugins = self.plugin_manager.scan_path(self.watch_dir)
-            for plugin in plugins:
-                self.__add_module(plugin)
-        except OSError as e:
-            logger.error(f"Failed to create directory {self.watch_dir}: {e}")
-        except Exception as e:
-            logger.error(f"Scan directory {self.watch_dir} crashed: {e}", exc_info=True)
+            sig = _file_sig(abs_path)
+        except FileNotFoundError:
+            return
+        if self._sig.get(name) == sig:
+            logger.info(f"[CMD] skip reload (content unchanged) {abs_path}")
+            return
+        self._sig[name] = sig
 
-    def add_task(self, file_path: str):
-        plugin = None
-        try:
-            self.__remove_module(file_path)
-            plugin = self.plugin_manager.add_plugin(file_path)
-            if not plugin:
-                raise ValueError('Plugin load None')
-            return self.__add_module(plugin)
-        except Exception as e:
-            logger.error(f"Load plugin {file_path} fail: {e}", exc_info=True)
-            if plugin:
-                self.plugin_manager.remove_plugin(plugin.plugin_name)
-            return False
-    
-    def remove_task(self, file_path: str):
-        self.__remove_module(file_path)
+        self._enqueue("reload", file_path, source)
 
-    def shutdown(self):
-        with self.tasks_lock:
-            tasks = list(self.tasks.keys())
-        for plugin_name in tasks:
-            self.__remove_module(plugin_name)
+    def submit_remove(self, file_path: str, source: str):
+        """For deleted/moved-out events."""
+        self._enqueue("remove", file_path, source)
 
-    def on_model_enter(self, plugin: PluginWrapper):
-        logger.info(f'Plugin {plugin.plugin_name} loaded')
+    def shutdown(self, source: str = "fs"):
+        """Stop all tasks & manager thread."""
+        self._enqueue("shutdown", "", source)
+        self._mgr_thread.join(timeout=10)
 
-    def on_model_quit(self, plugin: PluginWrapper):
-        logger.info(f'Plugin {plugin.plugin_name} unloaded')
+    # ---------------- internal: queue & manager ----------------
 
-    # ---------------------------------------------------------------------------
+    def _enqueue(self, op: str, path: str, source: str):
+        self._seq += 1
+        logger.info(f"[CMD] seq={self._seq} op={op} source={source} path={path}")
+        self._q.put(TaskCmd(op=op, path=path, seq=self._seq))
 
-    def __add_module(self, plugin: PluginWrapper) -> bool:
+    def _manager_loop(self):
+        """
+        Single writer:
+          - Only this thread mutates self.tasks and calls plugin_manager add/remove.
+        Coalescing:
+          - Drain queue and keep the last cmd per plugin_name.
+        """
+        while not self._stop_mgr.is_set():
+            cmd = self._q.get()  # blocking
+            if cmd.op == "shutdown":
+                self._handle_shutdown()
+                self._stop_mgr.set()
+                break
+
+            # Drain more commands quickly to coalesce storms
+            batch = [cmd]
+            try:
+                while True:
+                    batch.append(self._q.get_nowait())
+            except queue.Empty:
+                pass
+
+            # Keep only the last cmd for each plugin_name
+            last_by_name: Dict[str, TaskCmd] = {}
+            for c in batch:
+                if c.op == "shutdown":
+                    # prioritize shutdown immediately
+                    self._handle_shutdown()
+                    self._stop_mgr.set()
+                    return
+                name = PluginManager.plugin_name(c.path)
+                prev = last_by_name.get(name)
+                if prev is None or c.seq > prev.seq:
+                    last_by_name[name] = c
+
+            # Apply in seq order for determinism (optional)
+            for name, c in sorted(last_by_name.items(), key=lambda it: it[1].seq):
+                try:
+                    if c.op == "remove":
+                        self._do_remove(name)
+                    elif c.op == "reload":
+                        self._do_reload(name, c.path)
+                    else:
+                        logger.warning(f"Unknown op: {c.op}")
+                except Exception as e:
+                    logger.error(f"Manager op {c.op}({c.path}) failed: {e}", exc_info=True)
+
+    # ---------------- internal: operations (serialized) ----------------
+
+    def _do_reload(self, plugin_name: str, file_path: str):
+        # stop old one if exists
+        if not self._stop_and_join_if_running(plugin_name):
+            # self._pending_reload[plugin_name] = os.path.abspath(file_path)
+            logger.info(f"Defer reload for {plugin_name}, old thread still running.")
+            return
+
+        # unload module safely AFTER join
+        self.plugin_manager.remove_plugin(plugin_name)
+
+        # load new module
+        plugin = self.plugin_manager.add_plugin(file_path)
+        if not plugin:
+            logger.error(f"Load plugin failed: {file_path}")
+            return
+
+        # start task thread
         stop_event = threading.Event()
         thread = threading.Thread(
             target=self.__drive_module,
@@ -129,38 +214,58 @@ class TaskManager:
             args=(plugin, stop_event),
             daemon=True
         )
+        self.tasks[plugin.plugin_name] = (plugin, thread, stop_event)
+        thread.start()
+        logger.info(f"Reloaded & started plugin: {plugin.plugin_name}")
 
-        try:
-            thread.start()
-        except RuntimeError as e:
-            logger.error(f"Create thread for {plugin.plugin_name} fail: {e}")
-            return False
+    def _do_remove(self, plugin_name: str):
+        self._stop_and_join_if_running(plugin_name)
+        # unload AFTER join
+        self.plugin_manager.remove_plugin(plugin_name)
+        logger.info(f"Removed plugin: {plugin_name}")
 
-        with self.tasks_lock:
-            self.tasks[plugin.plugin_name] = (plugin, thread, stop_event)
+    def _handle_shutdown(self):
+        # stop all
+        names = list(self.tasks.keys())
+        for name in names:
+            self._stop_and_join_if_running(name)
+            self.plugin_manager.remove_plugin(name)
+        logger.info("TaskManager shutdown complete.")
 
-        return True
+    def _stop_and_join_if_running(self, plugin_name: str) -> bool:
+        entry = self.tasks.get(plugin_name)
+        if not entry:
+            return True
 
-    def __remove_module(self, file_path: str):
-        with self.tasks_lock:
-            plugin_name = PluginManager.plugin_name(file_path)
+        plugin, thread, stop_event = entry
+        stop_event.set()
 
-            if plugin_name not in self.tasks:
-                return
-
-            self.plugin_manager.remove_plugin(plugin_name)
-            task_info = self.tasks.pop(plugin_name)
-            module, thread, stop_event = task_info
-            stop_event.set()
-
-        for _ in range(TaskManager.THREAD_JOIN_ATTEMPTS):
-            thread.join(timeout=TaskManager.THREAD_JOIN_TIMEOUT)
+        for _ in range(self.THREAD_JOIN_ATTEMPTS):
+            thread.join(timeout=self.THREAD_JOIN_TIMEOUT)
             if not thread.is_alive():
-                break
+                self.tasks.pop(plugin_name, None)
+                return True
 
-        if thread.is_alive():
-            logger.warning(f"Plugin {plugin_name} thread (ID: {thread.ident}) "
-                           f"still alive after {TaskManager.THREAD_JOIN_ATTEMPTS} attempts.")
+        logger.warning(f"Plugin {plugin.plugin_name} thread (ID:{thread.ident}) still alive after join attempts.")
+        return False
+
+    # ---------------- existing behaviors ----------------
+
+    def scan_existing_files(self):
+        try:
+            os.makedirs(self.watch_dir, exist_ok=True)
+            plugins = self.plugin_manager.scan_path(self.watch_dir)
+            # use submit_reload to unify behavior (serialize through manager)
+            for p in plugins:
+                self.submit_reload(p.module_path, 'scan')
+        except Exception as e:
+            logger.error(f"Scan directory {self.watch_dir} crashed: {e}", exc_info=True)
+
+    def on_model_enter(self, plugin: PluginWrapper):
+        logger.info(f">>> Plugin {plugin.plugin_name} in thread {threading.get_ident()} plugin_obj={id(plugin)} - started.")
+
+    def on_model_quit(self, plugin: PluginWrapper):
+        logger.info(f"<<< Plugin {plugin.plugin_name} in thread {threading.get_ident()} plugin_obj={id(plugin)} - terminated.")
 
     def __drive_module(self, plugin: PluginWrapper, stop_event: threading.Event):
         self.on_model_enter(plugin)
@@ -174,8 +279,11 @@ class TaskManager:
                 module_config=self.config,
                 crawler_governor=self.crawler_governance
             ))
+
+            # 约定：start_task 应该“短阻塞/一次迭代”，并检查 stop_event
             while not stop_event.is_set():
                 plugin.start_task(stop_event)
+
         except Exception as e:
             logger.error(f"Plugin {plugin.plugin_name} crashed: {e}", exc_info=True)
         finally:
@@ -185,27 +293,60 @@ class TaskManager:
 
 
 class FileHandler(FileSystemEventHandler):
-    def __init__(self, task_manager):
+    def __init__(self, task_manager, debounce_ms=300):
         self.task_manager = task_manager
-    
+        self.debounce_ms = debounce_ms
+        self._last_ts = {}
+        self._lock = threading.Lock()
+        self._sig = {}  # plugin_name -> (mtime_ns, size)
+
     def on_created(self, event):
-        if self.__file_accept(event):
-            self.task_manager.add_task(event.src_path)
-    
-    def on_deleted(self, event):
-        if self.__file_accept(event):
-            self.task_manager.remove_task(event.src_path)
+        if self.__file_accept(event) and self._debounced(event.src_path):
+            self._log_event("accepted", event)
+            self.task_manager.submit_reload(event.src_path, 'fs')
 
     def on_modified(self, event):
-        if self.__file_accept(event):
-            self.task_manager.remove_task(event.src_path)
-            self.task_manager.add_task(event.src_path)
+        if self.__file_accept(event) and self._debounced(event.src_path):
+            self._log_event("accepted", event)
+            self.task_manager.submit_reload(event.src_path, 'fs')
+
+    def on_deleted(self, event):
+        if self.__file_accept(event) and self._debounced(event.src_path):
+            self._log_event("accepted", event)
+            self.task_manager.submit_remove(event.src_path, 'fs')
+
+    def on_moved(self, event):
+        if event.is_directory:
+            return
+        if self.__file_accept(event) and self._debounced(event.src_path):
+            self._log_event("accepted", event)
+            self.task_manager.submit_remove(event.src_path, 'fs')
+        if hasattr(event, "dest_path") and event.dest_path.endswith(".py") and self._debounced(event.dest_path):
+            self._log_event("accepted", event)
+            self.task_manager.submit_reload(event.dest_path, 'fs')
+
+    def _debounced(self, path: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            last = self._last_ts.get(path, 0)
+            if (now - last) * 1000 < self.debounce_ms:
+                return False
+            self._last_ts[path] = now
+            return True
+
+    def _log_event(self, tag, event):
+        try:
+            st = os.stat(event.src_path)
+            logger.info(f"[FS] {tag} type={event.event_type} src={event.src_path} "
+                        f"mtime_ns={st.st_mtime_ns} size={st.st_size}")
+        except FileNotFoundError:
+            logger.info(f"[FS] {tag} type={event.event_type} src={event.src_path} (missing)")
 
     @staticmethod
     def __file_accept(event) -> bool:
-        return not event.is_directory and \
-            not os.path.basename(event.src_path).startswith(('~', '.')) and \
-            event.src_path.endswith('.py')
+        return (not event.is_directory and
+                not os.path.basename(event.src_path).startswith(('~', '.')) and
+                event.src_path.endswith('.py'))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -267,7 +408,11 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
-    observer.join()
+    finally:
+        observer.join()
+        task_manager.shutdown()
+        # governance_backend.stop_service()
+        # log_backend.stop_service()
 
 
 if __name__ == "__main__":
