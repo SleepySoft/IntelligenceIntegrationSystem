@@ -392,11 +392,11 @@ def main():
     crawl_task_path = 'CrawlTasks'
 
     task_manager = TaskManager(crawl_task_path)
-    event_handler = FileHandler(task_manager)
+    # event_handler = FileHandler(task_manager)
 
-    observer = Observer()
-    observer.schedule(event_handler, path=crawl_task_path, recursive=False)
-    observer.start()
+    # observer = Observer()
+    # observer.schedule(event_handler, path=crawl_task_path, recursive=False)
+    # observer.start()
 
     governance_backend = CrawlerGovernanceBackend(task_manager.crawler_governance)
     governance_backend.start_service(blocking=False)
@@ -407,9 +407,10 @@ def main():
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        observer.stop()
+        pass
+        # observer.stop()
     finally:
-        observer.join()
+        # observer.join()
         task_manager.shutdown()
         # governance_backend.stop_service()
         # log_backend.stop_service()
