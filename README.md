@@ -4,34 +4,14 @@
 
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
+## v2版本的说明
+
+从2026年2月15日开始，main分支将正式切换到v2版本。
+
+关于v2版本的设计理念，以及与v1版本的区别，请阅读 [这篇文章]((doc/iis_v2_concept.md)) 。
+
 ## 更新与通知
 
-20260110:
-
-> 服务器硬盘挂了，提交保修中，Demo无奈下线。年前应该能把新硬盘换回来，加上重装系统重搭环境，应该在春节期间能恢复。
-> 
-> 正好借这个机会切换prompt v2，新版本prompt的分析结果格式更通用，对训练更友好。
-
-20260105:
-
-> 鉴于当前的分析结果用做训练效果不好，我将调整情报分析和归档格式。这是一个大调整，因此当前版本会打标签并进行归档，这将会是一个版本的分界线。
-> 
-> 调整之后的框架通用性、定制性、标准性都会更强，从长远来看是正确的选择。
-> 而且旧的数据格式也可以通过一个简单脚本转换为新格式（兼容），所以不需要担心数据的沉没成本。
-> 
-> 新的情报分析格式设计稿在这里：[IntelligenceDesign_v2.md](doc/IntelligenceDesign_v2.md)
-> 
-> 欢迎大家提出意见。
-
-20260103: 
-
-> 原域名又被ban，改用备用域名：[impart.today](https://impart.today)
-
-20251229: 
-
-> 模型训练单独提取为一个项目：[IntelligenceIntegrationSystemModelTraining](https://github.com/SleepySoft/IntelligenceIntegrationSystemModelTraining)
-> 
-> 今后本项目中的 [ModelTraining](ModelTraining) 内容不再更新。
 
 
 ## 起因

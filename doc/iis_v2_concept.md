@@ -109,11 +109,12 @@ class ArchivedData(ProcessedData, ArchivedDataExtraFields):
   > APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
   > ```
 
-### 对于训练的考虑
+### 设计时对于训练的考虑
 
 v2版本除了提供更完善通用的情报数据结构框架外，还考虑了模型训练的需求，体现在以下设计：
 
 1. 无价值信息不直接丢弃，而是遵循同样的基本结构，作为训练时的负例。
 2. 分析结果都会包含 REASON 字段，用以阐述评分理由，体现了大模型的逻辑，对训练（可能）有帮助。
 3. 分析使用相似的多套prompt，避免训练时将prompt变成“功能开关”，这种设计（可能）让小训练后的小模型泛化性能更好。
+4. APPENDIX 中包含更多信息，可以通过 __PROMPT_VERSION__、__AI_SERVICE__、__AI_MODEL__ 等字段来均衡或加强训练集中某类分析结果的权重。
 
