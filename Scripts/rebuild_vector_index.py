@@ -160,8 +160,8 @@ def func_rebuild(
                 try:
                     # Batch check existence in both collections
                     print(f"Checking existence of {len(batch_uuids)} documents...")
-                    full_text_exists_map = engine_full_text.collection.exists_batch(batch_uuids)
-                    summary_exists_map = engine_summary.collection.exists_batch(batch_uuids)
+                    full_text_exists_map = engine_full_text.collection.exists_batch(batch_uuids, include_pending=True)
+                    summary_exists_map = engine_summary.collection.exists_batch(batch_uuids, include_pending=True)
 
                     # Count how many documents already exist
                     full_exists_count = sum(1 for exists in full_text_exists_map.values() if exists)
