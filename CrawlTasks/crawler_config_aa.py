@@ -11,10 +11,10 @@ CRAWLER_CONFIG = {
     'e_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 20, 'stealth': True, 'pause_browser': False, 'render_page': True},
 
     'discoverer_name': 'RSSDiscoverer',
-    'discoverer_init_param': {'verbose': True},
+    'discoverer_init_param': {'verbose': False},
 
     'extractor_name': 'Trafilatura',
-    'extractor_init_param': {'verbose': True},
+    'extractor_init_param': {'verbose': False},
 
     # ======== Crawl parameters ========
     

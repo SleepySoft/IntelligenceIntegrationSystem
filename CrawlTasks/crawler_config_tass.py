@@ -13,10 +13,10 @@ CRAWLER_CONFIG = {
                              'pause_browser': False, 'render_page': True},
 
     'discoverer_name': 'ListPageDiscoverer',
-    'discoverer_init_param': {'verbose': True, 'manual_specified_signature': None, 'scope_selector': None},
+    'discoverer_init_param': {'verbose': False, 'manual_specified_signature': None, 'scope_selector': None},
 
     'extractor_name': 'TrafilaturaExtractor',
-    'extractor_init_param': {'verbose': True},
+    'extractor_init_param': {'verbose': False},
 
     # ======== Crawl parameters ========
 
