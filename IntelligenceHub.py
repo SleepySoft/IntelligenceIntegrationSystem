@@ -930,7 +930,8 @@ class IntelligenceHub:
         # period = (now - datetime.timedelta(days=14), now)
         period = (now- datetime.timedelta(hours=24), now)
 
-        self.recommendations_manager.generate_recommendation(period=period, threshold=6, limit=500)
+        # TODO: Temp remove because it may causes ai client error.
+        # self.recommendations_manager.generate_recommendation(period=period, threshold=6, limit=500)
         logger.info(f'Generate recommendation finished at: {datetime.datetime.now()}')
 
     def _trigger_generate_recommendation(self):
