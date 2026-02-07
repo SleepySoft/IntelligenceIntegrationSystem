@@ -4,10 +4,13 @@
 
 [点此查看情报列表](/intelligences?offset=0&count=20&threshold=6)
 
-[AI推荐24小时内最有价值的不超过50条情报（每小时更新一次，测试）](/recommendations)
-
-> 20251129： 最近由于更换AI服务的架构，导致消息分析及更新不及时，同时随时有可能下线调试，请见谅。
-
+> 20260207: 
+> 
+> 之前由于服务器硬盘损坏导致长时间下线，现在从另一台电脑拆了块硬盘先用着。坏消息是，这块硬盘和之前坏的硬盘是同一型号，所以不排除再次发生同样的事情。。。
+> 
+> IIS已切换到v2版本的情报分析模式，v2版本的代码将于2月15日正式成为main分支。
+> 
+> 不知道是由于prompt原因或者是AI服务问题，尽管我强调输出必须为中文，但分析结果依然可能保留原始语言。在情报列表页可以查看情报对应的分析Prompt及使用的AI服务，供大家参考。
 
 ## 说明
 
@@ -27,15 +30,21 @@
 
 情报的原始来源如果不使用梯子很有可能打不开，理由大概率因为上面一条。
 
+注意：情报分类中的“本国”和“国内”并不特指中国。为了保证情报分析的通用性，所以并没有加入特定国别的判定。
+
 ## 数据下载
-
-通过MongoDB的mongoimport工具导入：
-
-```mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_archived --file=intelligence_archived.json```
 
 + [自动备份与上传](https://pan.baidu.com/s/1Fpf32ZJAVITglTAqKkH1GQ?pwd=yucs)
 
 + [不定期手工导出](https://pan.baidu.com/s/122mewzpNkd6A8UjMDpIMsg?pwd=tfx7)
+
+数据可通过MongoDB的mongoimport工具导入：
+
+```
+mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_cached --file=intelligence_cached.json
+mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_archived --file=intelligence_archived.json
+mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_low_value --file=intelligence_low_value.json
+```
 
 ## 赞助该项目
 
@@ -46,5 +55,7 @@
 或邀请码：ml9II4B7
 
 如果您愿意支持更多，可以在闲鱼搜索“硅基流动赠金”，并将上面的邀请链接提供给商家。
+
+如果您是AI服务提供商，愿意为本项目提供算力，请联系我（联系方式在github说明文本中）。
 
 谢谢。
