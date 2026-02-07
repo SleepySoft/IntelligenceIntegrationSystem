@@ -11,7 +11,7 @@ if __name__ == "__main__":
         uri="mongodb://localhost:27017",  # 根据实际情况修改连接字符串
         db="IntelligenceIntegrationSystem",
         collection="intelligence_archived",
-        output_file=f"intelligence_archived_{timestamp}.json",
+        output_file=f"_export/intelligence_archived_{timestamp}.json",
         export_format="json"  # 使用JSON格式确保兼容mongoimport
     )
 
@@ -19,7 +19,7 @@ if __name__ == "__main__":
         uri="mongodb://localhost:27017",  # 根据实际情况修改连接字符串
         db="IntelligenceIntegrationSystem",
         collection="intelligence_cached",
-        output_file=f"intelligence_cached_{timestamp}.json",
+        output_file=f"_export/intelligence_cached_{timestamp}.json",
         export_format="json"  # 使用JSON格式确保兼容mongoimport
     )
 
@@ -27,7 +27,7 @@ if __name__ == "__main__":
         uri="mongodb://localhost:27017",  # 根据实际情况修改连接字符串
         db="IntelligenceIntegrationSystem",
         collection="intelligence_low_value",
-        output_file=f"intelligence_low_value_{timestamp}.json",
+        output_file=f"_export/intelligence_low_value_{timestamp}.json",
         export_format="json"  # 使用JSON格式确保兼容mongoimport
     )
 
