@@ -13,6 +13,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 from GlobalConfig import *
+from IntelligenceCrawler.CrawlerFlowScheduler import FlowScheduler
 from MyPythonUtility.easy_config import EasyConfig
 from PyLoggingBackend import LoggerBackend
 from PyLoggingBackend.LogUtility import set_tls_logger, backup_and_clean_previous_log_file, setup_logging, \
@@ -88,7 +89,8 @@ class TaskManager:
         self.config = EasyConfig(DEFAULT_CONFIG_FILE)
         self.crawler_governance = GovernanceManager(
             db_path=os.path.join(DATA_PATH, 'spider_governance.db'),
-            files_path=os.path.join(DATA_PATH, 'spider_governance_files')
+            files_path=os.path.join(DATA_PATH, 'spider_governance_files'),
+            scheduler=FlowScheduler(max_concurrency=5, startup_stagger=10.0)
         )
 
         self.plugin_manager = PluginManager(['module_init', 'start_task'])
