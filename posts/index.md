@@ -34,6 +34,14 @@
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 
+#### Vector DB
+
++ [Vector DB Manager](/vectordb)
+
+#### Crawler Monitor
+
++ [Crawler Monitor](/crawl_monitor)
+
 -----------------------------------------------
 
 
