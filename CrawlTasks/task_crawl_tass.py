@@ -23,9 +23,9 @@ def start_task(stop_event):
     local_crawler_config = CRAWLER_CONFIG.copy()
 
     # Override generated config by user config file.
-    # http_proxy = config.get('collector.global_site_proxy.http', '')
-    # local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
-    # local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
+    http_proxy = config.get('collector.global_site_proxy.http', '')
+    local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
+    local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
     local_crawler_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
     local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)
