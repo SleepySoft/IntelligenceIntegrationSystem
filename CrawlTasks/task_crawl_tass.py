@@ -30,7 +30,7 @@ def start_task(stop_event):
     local_crawler_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
     local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)
 
-    run_pipeline(local_crawler_config, name=NAME, crawler_governor=crawl_context.crawler_governor)
+    run_pipeline(NAME, local_crawler_config, crawler_governor=crawl_context.crawler_governor)
 
     # Check and submit cached data.
     crawl_context.submit_cached_data(10)

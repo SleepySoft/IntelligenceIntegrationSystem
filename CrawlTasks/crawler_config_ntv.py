@@ -40,7 +40,7 @@ if __name__ == "__main__":
     try:
         from IntelligenceCrawler.CrawlPipeline import run_pipeline, save_article_to_disk
         CRAWLER_CONFIG['content_handler'] = save_article_to_disk
-        run_pipeline(CRAWLER_CONFIG)
+        run_pipeline('default', CRAWLER_CONFIG)
     except Exception as e:
         print(str(e))
         print(traceback.format_exc())

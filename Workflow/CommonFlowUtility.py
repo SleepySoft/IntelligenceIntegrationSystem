@@ -30,7 +30,7 @@ class CrawlCache:
         with self._lock:
             return len(self._uncommit_content_cache)
 
-    def cache_content(self, url: str, content: any):
+    def cache_content(self, group: str, url: str, content: any):
         with self._lock:
             self._uncommit_content_cache[url] = content
 
@@ -146,7 +146,7 @@ class CrawlContext:
                 if cache_on_error:
                     # Only cache on submission error.
                     self.crawl_cache.cache_content(collected_data.informant, collected_data)
-                raise ProcessProblem('commit_error')
+                raise CrawlSession.Cached('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
 
