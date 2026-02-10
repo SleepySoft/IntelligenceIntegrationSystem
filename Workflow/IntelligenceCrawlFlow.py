@@ -17,7 +17,7 @@ def intelligence_crawler_fileter(
         context.logger.info(f'[cache] Get data from cache: {url}')
         with context.crawler_governor.transaction(url, channel_group) as task:
             try:
-                context.submit_collected_data(collected_data, task)
+                context.submit_collected_data(channel_group, collected_data, task)
                 task.success('Cached content committed.')
             except Exception as e:
                 context.handle_process_exception(task, e)

@@ -21,32 +21,121 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ------------------------------------------------------------------------------------------------------------------
 
+import threading
+from typing import Dict, Any, Optional, Tuple
+import random
+from collections import defaultdict
+
+
 class CrawlCache:
+    """Thread-safe cache for crawled web content with group support."""
+
     def __init__(self):
-        self._lock = threading.Lock()
-        self._uncommit_content_cache: Dict[str, Any] = {}
+        self._lock = threading.Lock()  # Thread safety lock
+        # Two-level cache: group -> {url: content}
+        self._uncommit_content_cache: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        # Reverse mapping: url -> group for quick lookup
+        self._url_to_group: Dict[str, str] = {}
 
     def cache_len(self) -> int:
+        """Return total number of cached items across all groups."""
         with self._lock:
-            return len(self._uncommit_content_cache)
+            return sum(len(url_dict) for url_dict in self._uncommit_content_cache.values())
 
-    def cache_content(self, group: str, url: str, content: any):
+    def cache_content(self, group: str, url: str, content: Any) -> None:
+        """Cache content with group and URL as composite key."""
         with self._lock:
-            self._uncommit_content_cache[url] = content
+            # If URL already exists in another group, remove it first
+            if url in self._url_to_group:
+                old_group = self._url_to_group[url]
+                if old_group != group and url in self._uncommit_content_cache[old_group]:
+                    del self._uncommit_content_cache[old_group][url]
+                    # Clean up empty group
+                    if not self._uncommit_content_cache[old_group]:
+                        del self._uncommit_content_cache[old_group]
 
-    def pop_content(self, url: str) -> Optional[Any]:
-        with self._lock:
-            return self._uncommit_content_cache.pop(url, None)
+            # Cache the new content
+            self._uncommit_content_cache[group][url] = content
+            self._url_to_group[url] = group
 
-    def pop_random_item(self) -> Optional[Tuple[str, Any]]:
+    def pop_content(self, url: str) -> Optional[Tuple[str, str, Any]]:
+        """Remove and return content for specific URL (group is determined automatically)."""
         with self._lock:
-            if self._uncommit_content_cache:
-                return self._uncommit_content_cache.popitem()
-            return '', None
+            if url not in self._url_to_group:
+                return None
 
-    def drop_cached_content(self, url: str):
+            group = self._url_to_group[url]
+            if group in self._uncommit_content_cache and url in self._uncommit_content_cache[group]:
+                content = self._uncommit_content_cache[group].pop(url)
+                del self._url_to_group[url]
+
+                # Clean up empty group
+                if not self._uncommit_content_cache[group]:
+                    del self._uncommit_content_cache[group]
+
+                return group, url, content
+            return None
+
+    def pop_random_item(self) -> Optional[Tuple[str, str, Any]]:
+        """Remove and return a random item with its group and URL."""
         with self._lock:
-            self._uncommit_content_cache.pop(url, None)
+            if not self._uncommit_content_cache:
+                return None
+
+            # Select random group
+            group = random.choice(list(self._uncommit_content_cache.keys()))
+            if not self._uncommit_content_cache[group]:
+                # Clean up empty group
+                del self._uncommit_content_cache[group]
+                return self.pop_random_item()  # Try again
+
+            # Select random URL from group
+            url = random.choice(list(self._uncommit_content_cache[group].keys()))
+            content = self._uncommit_content_cache[group].pop(url)
+            del self._url_to_group[url]
+
+            # Clean up empty group
+            if not self._uncommit_content_cache[group]:
+                del self._uncommit_content_cache[group]
+
+            return group, url, content
+
+    def get_group_urls(self, group: str) -> list:
+        """Return all URLs cached under the specified group."""
+        with self._lock:
+            return list(self._uncommit_content_cache.get(group, {}).keys())
+
+    def drop_cached_content(self, url: str) -> None:
+        """Remove specific content from cache without returning it (group is determined automatically)."""
+        with self._lock:
+            if url not in self._url_to_group:
+                return
+
+            group = self._url_to_group[url]
+            if group in self._uncommit_content_cache and url in self._uncommit_content_cache[group]:
+                del self._uncommit_content_cache[group][url]
+                del self._url_to_group[url]
+
+                # Clean up empty group
+                if not self._uncommit_content_cache[group]:
+                    del self._uncommit_content_cache[group]
+
+    def get_group_for_url(self, url: str) -> Optional[str]:
+        """Get the group for a specific URL."""
+        with self._lock:
+            return self._url_to_group.get(url)
+
+    def clear_group(self, group: str) -> None:
+        """Clear all cached content for a specific group."""
+        with self._lock:
+            if group in self._uncommit_content_cache:
+                # Remove URLs from reverse mapping
+                for url in self._uncommit_content_cache[group]:
+                    if url in self._url_to_group:
+                        del self._url_to_group[url]
+
+                # Remove the group
+                del self._uncommit_content_cache[group]
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -133,6 +222,7 @@ class CrawlContext:
 
     def submit_collected_data(
             self,
+            group: str,
             collected_data: CollectedData,
             cache_on_error: bool = True
     ):
@@ -145,7 +235,7 @@ class CrawlContext:
             if result.get('status', 'success') == 'error':
                 if cache_on_error:
                     # Only cache on submission error.
-                    self.crawl_cache.cache_content(collected_data.informant, collected_data)
+                    self.crawl_cache.cache_content(group, collected_data.informant, collected_data)
                 raise CrawlSession.Cached('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
