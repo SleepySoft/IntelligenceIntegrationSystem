@@ -4,6 +4,7 @@ from uuid import uuid4
 from typing import Callable, TypedDict, Dict, List
 
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
+from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from IntelligenceHub import CollectedData
 from CrawlerServiceEngine import ServiceContext
 from MyPythonUtility.easy_config import EasyConfig
@@ -71,7 +72,7 @@ def fetch_process_article(article: RssItem,
     return collected_data
 
 
-def get_and_submit_article(group_path: List[str],
+def get_and_submit_article(group_path: str,
                            article: RssItem,
                            context: CrawlContext,
                            fetch_content: Callable[[str], FetchContentResult],
@@ -88,10 +89,13 @@ def get_and_submit_article(group_path: List[str],
             # Because if you don't record this name, the feed name of this article may lose.
             collected_data.temp_data['group_path'] = group_path
 
-            context.submit_collected_data(collected_data)
+            context.submit_collected_data(group_path, collected_data)
 
             task.save_file(collected_data.content, collected_data.title)
             task.success()
+
+        except CrawlSession.Flow as e:
+            raise   # Handled by context
 
         except Exception as e:
             context.handle_process_exception(task, e)
@@ -141,7 +145,7 @@ def feeds_craw_flow(flow_name: str,
         if stop_event.is_set(): break
         if feed_name == 'cached': continue      # Placeholder for processing cached data.
 
-        group_path = [flow_name, feed_name]
+        group_path = '/'.join([flow_name, feed_name])
         context.crawler_governor.register_group_metadata(group_path, feed_url)
 
         # ----------------------------------- Fetch and Parse feeds -----------------------------------

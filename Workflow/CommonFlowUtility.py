@@ -8,6 +8,7 @@ import threading
 from typing import Dict, Tuple, Optional, Any
 
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
+from IntelligenceCrawler.CrawlPipeline import format_exception_with_traceback
 from IntelligenceHub import CollectedData
 from PyLoggingBackend.LogUtility import get_tls_logger
 from IntelligenceHubWebService import post_collected_intelligence
@@ -261,17 +262,15 @@ class CrawlContext:
             self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
 
     def handle_process_exception(self, task: CrawlSession, e: Exception):
-        try: raise e
-
-        except ProcessSkip as e:
+        if isinstance(e, ProcessSkip):
             task.skip(e.reason)
-            self.logger.debug(f'Article skipped.')
+            self.logger.debug('Article skipped.')
 
-        except ProcessIgnore as e:
+        elif isinstance(e, ProcessIgnore):
             task.ignore()
-            self.logger.debug(f'Article ignored.')
+            self.logger.debug('Article ignored.')
 
-        except ProcessProblem as e:
+        elif isinstance(e, ProcessProblem):
             if e.problem == 'fetch_error':
                 task.fail_temp(state_msg='Fetch error')
             elif e.problem in ['commit_error']:
@@ -280,10 +279,10 @@ class CrawlContext:
             else:
                 task.fail_perm(state_msg=f"Task {task.group_path} got unexpected ProcessProblem reason: {e.problem}")
 
-        except Exception as e:
+        else:
             task.fail_perm(state_msg=str(e))
             self.logger.error(f"Task {task.group_path} got unexpected exception: {str(e)}")
-            print(traceback.format_exc())
+            print(format_exception_with_traceback(e))
 
 
     @staticmethod
