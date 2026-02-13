@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------- #
-#   CommonFeedsCrawFlow.py                                              #
+#   RssFeedsBasedCrawlFlow.py                                              #
 #    - Traditional crawl framework.                                     #
 #    - New implemented crawls will use IntelligenceCrawler framework.   #
 # --------------------------------------------------------------------- #
@@ -9,15 +9,18 @@ import threading
 from uuid import uuid4
 from typing import Callable, TypedDict, Dict, List
 
-from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
-from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from IntelligenceHub import CollectedData
-from CrawlerServiceEngine import ServiceContext
-from MyPythonUtility.easy_config import EasyConfig
-from IntelligenceHubWebService import DEFAULT_IHUB_PORT
-from Workflow.CommonFlowUtility import CrawlContext
 from Tools.RSSFetcher import FeedData, RssItem
+from CrawlerServiceEngine import ServiceContext
+from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
+from MyPythonUtility.easy_config import EasyConfig
+from Workflow.CommonFlowUtility import CrawlContext
+from IntelligenceHubWebService import DEFAULT_IHUB_PORT
+from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from Tools.ProcessCotrolException import ProcessError, ProcessProblem, ProcessSkip
+
+
+DEFAULT_FEEDS_CRAWL_LOOP_DURATION = 15 * 60
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -91,17 +94,13 @@ def get_and_submit_article(group_path: str,
             else:
                 collected_data = fetch_process_article(article, fetch_content, scrubbers)
 
-            # Temporary record this name for commit cache data.
-            # Because if you don't record this name, the feed name of this article may lose.
-            collected_data.temp_data['group_path'] = group_path
-
             context.submit_collected_data(group_path, collected_data)
 
             task.save_file(collected_data.content, collected_data.title)
             task.success()
 
         except CrawlSession.Flow as e:
-            raise   # Handled by context
+            raise   # Handle by context
 
         except Exception as e:
             context.handle_process_exception(task, e)
@@ -146,57 +145,56 @@ def feeds_craw_flow(flow_name: str,
     """
     context.logger.info(f'starts work.')
 
-    for feed_name, feed_url in { **feeds, "cached": "" }.items():
-
-        if stop_event.is_set(): break
-        if feed_name == 'cached': continue      # Placeholder for processing cached data.
-
-        group_path = '/'.join([flow_name, feed_name])
-        context.crawler_governor.register_group_metadata(group_path, feed_url)
-
-        # ----------------------------------- Fetch and Parse feeds -----------------------------------
-
-        context.logger.info(f'Processing feed: [{feed_name}] - {feed_url}')
-
-        with context.crawler_governor.transaction(feed_url, group_path) as task:
-            try:
-                result = fetch_feed(feed_url)
-                if result.fatal:
-                    raise ProcessError(error_text = '\n'.join(result.errors))
-                task.success()
-            except Exception as e:
-                context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
-                task.fail_temp(state_msg=str(e))
-                continue
-
-        context.crawler_governor.start_round(group_path, len(result.entries))
-        context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
-
-        # ----------------------------------- Process Articles in Feed ----------------------------------
-
-        for article in result.entries:
-            if not article.link:
-                context.logger.info(f'Got empty article link from feed: {feed_url}')
-                context.crawler_governor.reduce_round_step(group_path)
-                continue
-
-            if not context.crawler_governor.should_crawl(article.link):
-                task.ignore(state_msg='Already fetched - Ignore.')
-                context.crawler_governor.skip_round_step(group_path)
-                continue
-
-            context.logger.info(f'Processing article: {article.link}')
-            get_and_submit_article(group_path, article, context, fetch_content, scrubbers)
-
-            context.crawler_governor.wait_interval(1)
-
-        context.crawler_governor.finish_round(group_path, 60 * 15)
-
-    # ----------------------------------------- Process Cached Data ----------------------------------------
+    # ----------------------------------------- Process Cached Data -----------------------------------------
 
     context.submit_cached_data()
 
-    # ------------------------------------ Delay and Wait for Next Loop ------------------------------------
+    # ------------------------------------------- The Main Process ------------------------------------------
 
-    # It's batch wait, so it's hard to specify the delay group_path...
-    context.crawler_governor.wait_interval(60 * 15, stop_event=stop_event)
+    with context.crawler_governor.schedule_pace(flow_name, DEFAULT_FEEDS_CRAWL_LOOP_DURATION, None):
+
+        for feed_name, feed_url in { **feeds, "cached": "" }.items():
+
+            if stop_event.is_set(): break
+            if feed_name == 'cached': continue      # Placeholder for processing cached data.
+
+            group_path = '/'.join([flow_name, feed_name])
+            context.crawler_governor.register_group_metadata(group_path, feed_url)
+
+            # ----------------------------------- Fetch and Parse feeds -----------------------------------
+
+            context.logger.info(f'Processing feed: [{feed_name}] - {feed_url}')
+
+            with context.crawler_governor.transaction(feed_url, group_path) as task:
+                try:
+                    result = fetch_feed(feed_url)
+                    if result.fatal:
+                        raise ProcessError(error_text = '\n'.join(result.errors))
+                    task.success()
+                except Exception as e:
+                    context.logger.error(f"Process feed fail: {feed_url} - {str(e)}")
+                    task.fail_temp(state_msg=str(e))
+                    continue
+
+            context.crawler_governor.start_round(group_path, len(result.entries))
+            context.logger.info(f'Feed: [{feed_name}] process finished, found {len(result.entries)} articles.')
+
+            # ----------------------------------- Process Articles in Feed ----------------------------------
+
+            for article in result.entries:
+                if not article.link:
+                    context.logger.info(f'Got empty article link from feed: {feed_url}')
+                    context.crawler_governor.reduce_round_step(group_path)
+                    continue
+
+                if not context.crawler_governor.should_crawl(article.link):
+                    task.ignore(state_msg='Already fetched - Ignore.')
+                    context.crawler_governor.skip_round_step(group_path)
+                    continue
+
+                context.logger.info(f'Processing article: {article.link}')
+                get_and_submit_article(group_path, article, context, fetch_content, scrubbers)
+
+                context.crawler_governor.wait_interval(1)
+
+            context.crawler_governor.finish_round(group_path, 60 * 15)

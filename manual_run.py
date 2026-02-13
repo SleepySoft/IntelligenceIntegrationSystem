@@ -10,7 +10,7 @@ from MyPythonUtility.easy_config import EasyConfig
 from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
-from Workflow.CommonFeedsCrawFlow import fetch_process_article
+from Workflow.RssFeedsBasedCrawlFlow import fetch_process_article
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager
 
 

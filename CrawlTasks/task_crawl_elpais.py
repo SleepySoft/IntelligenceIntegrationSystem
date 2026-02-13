@@ -6,7 +6,7 @@ from GlobalConfig import APPLIED_NATIONAL_TIMEOUT_MS
 from Scrubber.HTMLConvertor import html_content_converter
 from Scrubber.UnicodeSanitizer import sanitize_unicode_string
 from Workflow.CommonFlowUtility import CrawlContext
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx, feeds_craw_flow
+from Workflow.RssFeedsBasedCrawlFlow import build_crawl_ctx_by_service_ctx, feeds_craw_flow
 
 from Scraper.PlaywrightRawScraper import fetch_content as feed_fetcher
 from Scraper.PlaywrightRenderedScraper import fetch_content as article_fetcher

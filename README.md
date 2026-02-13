@@ -41,7 +41,7 @@
 > 该服务框架会监控该目录下的文件更新并重新加载更新后的模块。
 > 
 
-当前各个抓取模块主要通过[CommonFeedsCrawFlow.py](Workflow/CommonFeedsCrawFlow.py)这个通用流程进行抓取并将抓取内容提交到IntelligenceHub。
+当前各个抓取模块主要通过[CommonFeedsCrawFlow.py](Workflow/RssFeedsBasedCrawlFlow.py)这个通用流程进行抓取并将抓取内容提交到IntelligenceHub。
 > 
 > 抓取模块通过partial构建偏函数供抓取流程调用。
 >

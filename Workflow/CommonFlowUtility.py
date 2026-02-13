@@ -126,7 +126,9 @@ class CrawlContext:
             if result.get('status', 'success') == 'error':
                 if cache_on_error:
                     # Only cache on submission error.
-                    self.crawl_cache.cache_content(collected_data.informant, (collected_data, group))
+                    self.crawl_cache.cache_content(
+                        collected_data.informant, (collected_data, group)   # <- Cached data is packed here.
+                    )
                 raise CrawlSession.Cached('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
@@ -136,14 +138,16 @@ class CrawlContext:
     def submit_cached_data(self, limit: int = -1):
         count = 0
         while (limit < 0) or (count < limit):
-            url, collected_data = self.crawl_cache.pop_random_item()
-            if not collected_data:
+            url, content = self.crawl_cache.pop_random_item()
+            if not content:
                 break
-            group_path = collected_data.temp_data.get('group_path', '')
-            with self.crawler_governor.transaction(url, group_path) as task:
+            collected_data, group = content
+            with self.crawler_governor.transaction(url, group) as task:
                 try:
-                    self.submit_collected_data(collected_data, task)
+                    self.submit_collected_data(group, collected_data)
                     task.success(state_msg='Cached data submitted.')
+                except CrawlSession.Flow:
+                    raise           # Handle by context
                 except Exception as e:
                     self.handle_process_exception(task, e)
                 finally:

@@ -7,15 +7,19 @@
 import datetime
 import threading
 from uuid import uuid4
+from typing import Optional
 from functools import partial
 
 from CrawlerServiceEngine import ServiceContext
-from IntelligenceCrawler.CrawlPipeline import run_pipeline
 from MyPythonUtility.easy_config import EasyConfig
-from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx
 from Workflow.CommonFlowUtility import CrawlContext
 from IntelligenceCrawler.Extractor import ExtractionResult
 from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
+from Workflow.RssFeedsBasedCrawlFlow import build_crawl_ctx_by_service_ctx
+from IntelligenceCrawler.CrawlPipeline import CrawlPipeline, build_pipeline, drive_pipeline_batch
+
+
+DEFAULT_CRAWL_LOOP_DURATION = 15 * 60
 
 
 def intelligence_crawler_filter(
@@ -68,8 +72,10 @@ def intelligence_crawler_exception_handler(
 class CommonIntelligenceCrawlFlow:
     def __init__(self, name: str, service_context: ServiceContext):
         self.name = name
-        self.proj_config = service_context.config
+        self.proj_config: EasyConfig = service_context.config
         self.crawl_context = build_crawl_ctx_by_service_ctx(name, service_context)
+
+        self.pipeline: Optional[CrawlPipeline] = None
 
     def run_common_flow(self, local_crawler_config: dict, stop_event: threading.Event):
         # Override generated config by user config file.
@@ -80,11 +86,17 @@ class CommonIntelligenceCrawlFlow:
         local_crawler_config['article_filter'] = partial(intelligence_crawler_filter, context=self.crawl_context)
         local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=self.crawl_context)
 
-        run_pipeline(self.name, local_crawler_config, crawler_governor=self.crawl_context.crawler_governor)
-
         # Check and submit cached data.
         self.crawl_context.submit_cached_data(10)
 
-        # TODO: Deprecated.
-        self.crawl_context.crawler_governor.wait_interval(60 * 15, stop_event=stop_event)
+        # Only create once.
+        if not self.pipeline:
+            self.pipeline = build_pipeline(name=self.name,
+                                           config=local_crawler_config,
+                                           log_callback=self.crawl_context.logger,
+                                           crawler_governor=self.crawl_context.crawler_governor)
 
+        # TODO: Split and shorted the scope of scheduler.
+        with self.crawl_context.crawler_governor.schedule_pace(
+                f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, None):
+            drive_pipeline_batch(self.pipeline , local_crawler_config)
