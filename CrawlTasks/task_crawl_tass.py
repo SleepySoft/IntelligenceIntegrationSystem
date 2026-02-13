@@ -5,7 +5,7 @@ from Workflow.CommonFlowUtility import CrawlContext
 from CrawlTasks.crawler_config_tass import CRAWLER_CONFIG
 from IntelligenceCrawler.CrawlPipeline import run_pipeline
 from Workflow.CommonFeedsCrawFlow import build_crawl_ctx_by_service_ctx
-from Workflow.IntelligenceCrawlFlow import intelligence_crawler_fileter, intelligence_crawler_result_handler
+from Workflow.IntelligenceCrawlFlow import intelligence_crawler_filter, intelligence_crawler_result_handler
 
 NAME = 'tass'
 config: EasyConfig | None = None
@@ -27,7 +27,7 @@ def start_task(stop_event):
     local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
     local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
-    local_crawler_config['article_filter'] = partial(intelligence_crawler_fileter, context=crawl_context)
+    local_crawler_config['article_filter'] = partial(intelligence_crawler_filter, context=crawl_context)
     local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=crawl_context)
 
     run_pipeline(NAME, local_crawler_config, crawler_governor=crawl_context.crawler_governor)

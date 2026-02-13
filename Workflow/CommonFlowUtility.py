@@ -1,11 +1,11 @@
-import time
-import logging
-import traceback
-from logging import Logger
+# ---------------------------------------------------------------------------------------- #
+#　 CommonFlowUtility.py                                                                    #
+#   - Common functions for both traditional crawl framework and IntelligenceCrawler         #
+# ----------------------------------------------------------------------------------------- #
 
+import logging
 import urllib3
-import threading
-from typing import Dict, Tuple, Optional, Any
+from logging import Logger
 
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceCrawler.CrawlPipeline import format_exception_with_traceback
@@ -29,114 +29,35 @@ from collections import defaultdict
 
 
 class CrawlCache:
-    """Thread-safe cache for crawled web content with group support."""
-
     def __init__(self):
-        self._lock = threading.Lock()  # Thread safety lock
-        # Two-level cache: group -> {url: content}
-        self._uncommit_content_cache: Dict[str, Dict[str, Any]] = defaultdict(dict)
-        # Reverse mapping: url -> group for quick lookup
-        self._url_to_group: Dict[str, str] = {}
+        self._lock = threading.Lock()
+        self._uncommit_content_cache: Dict[str, Any] = {}
 
     def cache_len(self) -> int:
-        """Return total number of cached items across all groups."""
         with self._lock:
-            return sum(len(url_dict) for url_dict in self._uncommit_content_cache.values())
+            return len(self._uncommit_content_cache)
 
-    def cache_content(self, group: str, url: str, content: Any) -> None:
-        """Cache content with group and URL as composite key."""
+    def is_in_cache(self, url: str):
         with self._lock:
-            # If URL already exists in another group, remove it first
-            if url in self._url_to_group:
-                old_group = self._url_to_group[url]
-                if old_group != group and url in self._uncommit_content_cache[old_group]:
-                    del self._uncommit_content_cache[old_group][url]
-                    # Clean up empty group
-                    if not self._uncommit_content_cache[old_group]:
-                        del self._uncommit_content_cache[old_group]
+            return url in self._uncommit_content_cache
 
-            # Cache the new content
-            self._uncommit_content_cache[group][url] = content
-            self._url_to_group[url] = group
-
-    def pop_content(self, url: str) -> Optional[Tuple[str, str, Any]]:
-        """Remove and return content for specific URL (group is determined automatically)."""
+    def cache_content(self, url: str, content: any):
         with self._lock:
-            if url not in self._url_to_group:
-                return None
+            self._uncommit_content_cache[url] = content
 
-            group = self._url_to_group[url]
-            if group in self._uncommit_content_cache and url in self._uncommit_content_cache[group]:
-                content = self._uncommit_content_cache[group].pop(url)
-                del self._url_to_group[url]
-
-                # Clean up empty group
-                if not self._uncommit_content_cache[group]:
-                    del self._uncommit_content_cache[group]
-
-                return group, url, content
-            return None
-
-    def pop_random_item(self) -> Optional[Tuple[str, str, Any]]:
-        """Remove and return a random item with its group and URL."""
+    def pop_content(self, url: str) -> Optional[Any]:
         with self._lock:
-            if not self._uncommit_content_cache:
-                return None
+            return self._uncommit_content_cache.pop(url, None)
 
-            # Select random group
-            group = random.choice(list(self._uncommit_content_cache.keys()))
-            if not self._uncommit_content_cache[group]:
-                # Clean up empty group
-                del self._uncommit_content_cache[group]
-                return self.pop_random_item()  # Try again
-
-            # Select random URL from group
-            url = random.choice(list(self._uncommit_content_cache[group].keys()))
-            content = self._uncommit_content_cache[group].pop(url)
-            del self._url_to_group[url]
-
-            # Clean up empty group
-            if not self._uncommit_content_cache[group]:
-                del self._uncommit_content_cache[group]
-
-            return group, url, content
-
-    def get_group_urls(self, group: str) -> list:
-        """Return all URLs cached under the specified group."""
+    def pop_random_item(self) -> Optional[Tuple[str, Any]]:
         with self._lock:
-            return list(self._uncommit_content_cache.get(group, {}).keys())
+            if self._uncommit_content_cache:
+                return self._uncommit_content_cache.popitem()
+            return '', None
 
-    def drop_cached_content(self, url: str) -> None:
-        """Remove specific content from cache without returning it (group is determined automatically)."""
+    def drop_cached_content(self, url: str):
         with self._lock:
-            if url not in self._url_to_group:
-                return
-
-            group = self._url_to_group[url]
-            if group in self._uncommit_content_cache and url in self._uncommit_content_cache[group]:
-                del self._uncommit_content_cache[group][url]
-                del self._url_to_group[url]
-
-                # Clean up empty group
-                if not self._uncommit_content_cache[group]:
-                    del self._uncommit_content_cache[group]
-
-    def get_group_for_url(self, url: str) -> Optional[str]:
-        """Get the group for a specific URL."""
-        with self._lock:
-            return self._url_to_group.get(url)
-
-    def clear_group(self, group: str) -> None:
-        """Clear all cached content for a specific group."""
-        with self._lock:
-            if group in self._uncommit_content_cache:
-                # Remove URLs from reverse mapping
-                for url in self._uncommit_content_cache[group]:
-                    if url in self._url_to_group:
-                        del self._url_to_group[url]
-
-                # Remove the group
-                del self._uncommit_content_cache[group]
+            self._uncommit_content_cache.pop(url, None)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -181,44 +102,13 @@ class CrawlContext:
         self.logger = PrefixLogger(logger or
                                    get_tls_logger(__name__) or
                                    logging.getLogger(__name__), f'[{flow_name}]:')
-
-        # self.crawl_record = CrawlRecord(['crawl_record', flow_name])
-        # self.crawl_statistics = CrawlStatistics()
         self.crawl_cache = CrawlCache()
-
         self._submit_collected_data = post_collected_intelligence
 
-    # def check_raise_url_status(self, article_link: str, crawl_record: CrawlRecord, levels: str | List[str] = ''):
-    #     """
-    #     This function returns nothing. If everything is OK, this function will pass through otherwise raise exceptions.
-    #     :param article_link: The link to be checked.
-    #     :param crawl_record: The crawl record instance.
-    #     :param levels: Levels of logging and record.
-    #     :return: None
-    #     """
-    #     full_levels = self._full_levels(levels)
-    #     url_status = crawl_record.get_url_status(article_link, from_db=False)
-    #
-    #     if url_status >= STATUS_SUCCESS:
-    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
-    #     elif url_status <= STATUS_UNKNOWN:
-    #         pass  # <- Process going on here
-    #     elif url_status == STATUS_ERROR:
-    #         url_error_count = crawl_record.get_error_count(article_link, from_db=False)
-    #         if url_error_count < 0:
-    #             raise ProcessProblem('db_error', article_link, leveling=full_levels)
-    #         if url_error_count >= self.error_threshold:
-    #             raise ProcessSkip('max retry exceed', article_link, leveling=full_levels)
-    #         else:
-    #             pass  # <- Process going on here
-    #     else:  # STATUS_DB_ERROR
-    #         raise ProcessProblem('db_error', article_link, leveling=full_levels)
-    #
-    #     # ----- Also keep old mechanism checking to make it compatible -----
-    #     if has_url(article_link):
-    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
+    def is_url_in_cache(self, url: str):
+        return self.crawl_cache.is_in_cache(url)
 
-    def check_get_cached_data(self, url: str = None)-> CollectedData:
+    def check_get_cached_data(self, url: str)-> CollectedData:
         return self.crawl_cache.pop_content(url)
 
     def submit_collected_data(
@@ -236,7 +126,7 @@ class CrawlContext:
             if result.get('status', 'success') == 'error':
                 if cache_on_error:
                     # Only cache on submission error.
-                    self.crawl_cache.cache_content(group, collected_data.informant, collected_data)
+                    self.crawl_cache.cache_content(collected_data.informant, (collected_data, group))
                 raise CrawlSession.Cached('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
@@ -284,21 +174,50 @@ class CrawlContext:
             self.logger.error(f"Task {task.group_path} got unexpected exception: {str(e)}")
             print(format_exception_with_traceback(e))
 
+    # def check_raise_url_status(self, article_link: str, crawl_record: CrawlRecord, levels: str | List[str] = ''):
+    #     """
+    #     This function returns nothing. If everything is OK, this function will pass through otherwise raise exceptions.
+    #     :param article_link: The link to be checked.
+    #     :param crawl_record: The crawl record instance.
+    #     :param levels: Levels of logging and record.
+    #     :return: None
+    #     """
+    #     full_levels = self._full_levels(levels)
+    #     url_status = crawl_record.get_url_status(article_link, from_db=False)
+    #
+    #     if url_status >= STATUS_SUCCESS:
+    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
+    #     elif url_status <= STATUS_UNKNOWN:
+    #         pass  # <- Process going on here
+    #     elif url_status == STATUS_ERROR:
+    #         url_error_count = crawl_record.get_error_count(article_link, from_db=False)
+    #         if url_error_count < 0:
+    #             raise ProcessProblem('db_error', article_link, leveling=full_levels)
+    #         if url_error_count >= self.error_threshold:
+    #             raise ProcessSkip('max retry exceed', article_link, leveling=full_levels)
+    #         else:
+    #             pass  # <- Process going on here
+    #     else:  # STATUS_DB_ERROR
+    #         raise ProcessProblem('db_error', article_link, leveling=full_levels)
+    #
+    #     # ----- Also keep old mechanism checking to make it compatible -----
+    #     if has_url(article_link):
+    #         raise ProcessSkip('already exists', article_link, leveling=full_levels)
 
-    @staticmethod
-    def wait_interruptibly(total_duration_s: int, stop_event: threading.Event) -> bool:
-        """
-        Waits for the specified duration while periodically checking for the stop_event.
-
-        Returns True if the full duration was reached, False if the event was set early.
-        """
-        remaining = total_duration_s
-
-        CHECK_INTERVAL_S = 5
-
-        while remaining > 0 and not stop_event.is_set():
-            sleep_time = min(CHECK_INTERVAL_S, remaining)
-            time.sleep(sleep_time)
-            remaining -= sleep_time
-
-        return remaining <= 0
+    # @staticmethod
+    # def wait_interruptibly(total_duration_s: int, stop_event: threading.Event) -> bool:
+    #     """
+    #     Waits for the specified duration while periodically checking for the stop_event.
+    #
+    #     Returns True if the full duration was reached, False if the event was set early.
+    #     """
+    #     remaining = total_duration_s
+    #
+    #     CHECK_INTERVAL_S = 5
+    #
+    #     while remaining > 0 and not stop_event.is_set():
+    #         sleep_time = min(CHECK_INTERVAL_S, remaining)
+    #         time.sleep(sleep_time)
+    #         remaining -= sleep_time
+    #
+    #     return remaining <= 0

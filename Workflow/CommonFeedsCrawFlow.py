@@ -1,3 +1,9 @@
+# --------------------------------------------------------------------- #
+#   CommonFeedsCrawFlow.py                                              #
+#    - Traditional crawl framework.                                     #
+#    - New implemented crawls will use IntelligenceCrawler framework.   #
+# --------------------------------------------------------------------- #
+
 import urllib3
 import threading
 from uuid import uuid4
