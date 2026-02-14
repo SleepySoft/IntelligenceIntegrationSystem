@@ -141,7 +141,7 @@ class CrawlContext:
             url, content = self.crawl_cache.pop_random_item()
             if not content:
                 break
-            collected_data, group = content
+            collected_data, group = content                                         # <- Cached data is unpacked here.
             with self.crawler_governor.transaction(url, group) as task:
                 try:
                     self.submit_collected_data(group, collected_data)

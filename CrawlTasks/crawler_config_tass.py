@@ -5,11 +5,11 @@ CRAWLER_CONFIG = {
     # === Components init parameters ===
 
     'd_fetcher_name': 'PlaywrightFetcher',
-    'd_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 60, 'stealth': True,
+    'd_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 30, 'stealth': True,
                              'pause_browser': False, 'render_page': True},
 
     'e_fetcher_name': 'PlaywrightFetcher',
-    'e_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 60, 'stealth': True,
+    'e_fetcher_init_param': {'log_callback': print, 'proxy': '', 'timeout_s': 30, 'stealth': True,
                              'show_browser': True, 'pause_browser': False, 'render_page': True},
 
     'discoverer_name': 'ListPageDiscoverer',

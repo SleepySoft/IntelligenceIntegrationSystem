@@ -11,6 +11,7 @@ from typing import Optional
 from functools import partial
 
 from CrawlerServiceEngine import ServiceContext
+from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
 from IntelligenceCrawler.Extractor import ExtractionResult
@@ -47,18 +48,25 @@ def intelligence_crawler_result_handler(
         result: ExtractionResult,
         context: CrawlContext
 ):
-    # Handle exception outside.
-    collected_data = CollectedData(
-        UUID=str(uuid4()),
-        token='-',                  # Will be filled in submit_collected_data()
+    try:
+        collected_data = CollectedData(
+            UUID=str(uuid4()),
+            token='-',                  # Will be filled in submit_collected_data()
 
-        title=result.metadata.get('title', ''),
-        authors=result.metadata.get('authors', []),
-        content=result.markdown_content,
-        pub_time=result.metadata.get('date', datetime.datetime.now()),
-        informant=url
-    )
-    context.submit_collected_data(group, collected_data)
+            title=result.metadata.get('title', ''),
+            authors=result.metadata.get('authors', []),
+            content=result.markdown_content,
+            pub_time=result.metadata.get('date', datetime.datetime.now()),
+            informant=url
+        )
+        context.submit_collected_data(group, collected_data)
+    except CrawlSession.Flow:
+        # Crawl session context will handle it.
+        raise
+    except Exception as e:
+        print(f"Build collected data fail: {e}")
+        # Handle exception outside.
+        raise
 
 
 def intelligence_crawler_exception_handler(

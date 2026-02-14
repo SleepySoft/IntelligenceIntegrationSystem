@@ -89,7 +89,8 @@ def get_and_submit_article(group_path: str,
                            ):
     with context.crawler_governor.transaction(article.link, group_path) as task:
         try:
-            if collected_data := context.check_get_cached_data(article.link):
+            if content := context.check_get_cached_data(article.link):
+                collected_data, group = content
                 context.logger.info(f'[cache] Got data from cache: {article.link}')
             else:
                 collected_data = fetch_process_article(article, fetch_content, scrubbers)
