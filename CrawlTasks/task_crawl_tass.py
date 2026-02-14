@@ -1,7 +1,7 @@
 from typing import Optional
 
 from CrawlerServiceEngine import ServiceContext
-from CrawlTasks.crawler_config_nhk import CRAWLER_CONFIG
+from CrawlTasks.crawler_config_tass import CRAWLER_CONFIG
 from Workflow.IntelligenceCrawlFlow import CommonIntelligenceCrawlFlow
 
 NAME = 'tass'
