@@ -93,7 +93,7 @@ class CommonIntelligenceCrawlFlow:
         if not self.pipeline:
             self.pipeline = build_pipeline(name=self.name,
                                            config=local_crawler_config,
-                                           log_callback=self.crawl_context.logger,
+                                           log_callback=self.crawl_context.logger.info,
                                            crawler_governor=self.crawl_context.crawler_governor)
 
         # TODO: Split and shorted the scope of scheduler.
