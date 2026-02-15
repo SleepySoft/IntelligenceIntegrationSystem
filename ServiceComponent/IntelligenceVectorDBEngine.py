@@ -11,15 +11,37 @@ from ServiceComponent.IntelligenceHubDefines import (
 
 
 class IntelligenceVectorDBEngine:
+    """
+    Business logic wrapper for ingesting and searching intelligence data in VectorDB.
+
+    This engine handles the translation between the domain-specific `ArchivedData` model
+    and the generic `RemoteCollection` interface. It manages:
+    1. Text Extraction: Choosing between summary concatenation or raw text based on `data_type`.
+    2. Metadata Normalization: Ensuring timestamps and rating scores are correctly formatted.
+    3. Batch Buffering: Accumulating documents to minimize network overhead.
+    """
+
     def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50):
+        """
+        Initializes the engine.
+
+        Args:
+            vector_db_collection (RemoteCollection): The connected remote collection client.
+            batch_size (int): The number of documents to buffer before auto-committing.
+        """
         self.collection = vector_db_collection
         self.batch_size = batch_size
         self._buffer: List[Dict] = []
 
     def _parse_timestamp_safe(self, time_val: Any) -> Optional[float]:
         """
-        Safely attempts to convert various time formats to a float timestamp.
-        Returns None if conversion fails.
+        Safely converts various time formats (int, float, datetime, ISO string) to a float timestamp.
+
+        Args:
+            time_val: The input time value.
+
+        Returns:
+            Optional[float]: The Unix timestamp, or None if conversion fails.
         """
         if time_val is None:
             return None
@@ -48,8 +70,24 @@ class IntelligenceVectorDBEngine:
 
     def _prepare_document(self, intelligence: ArchivedData, data_type: str) -> Optional[Dict]:
         """
-        Pure function: Prepares the document dictionary for VectorDB.
-        ADAPTATION: Adds 'timestamp' for DB clustering compatibility.
+        Transforms an `ArchivedData` object into a VectorDB-compatible dictionary.
+
+        Logic:
+        - **Text**:
+            - If `data_type='summary'`: Concatenates Title + Brief + Event Text.
+            - Otherwise: Uses `RAW_DATA['content']`.
+        - **Metadata**:
+            - Extracts standard fields (UUID, Informant).
+            - **Critical Adaptation**: Maps the primary business time (Pub Time) to the
+              generic `timestamp` metadata field used for temporal clustering. Falls back
+              to Archived Time if Pub Time is missing.
+
+        Args:
+            intelligence (ArchivedData): The source data object.
+            data_type (str): 'summary' or other (usually 'full').
+
+        Returns:
+            Optional[Dict]: A dictionary keys {'doc_id', 'text', 'metadata'}, or None if invalid.
         """
         # 1. Text Construction
         if data_type == 'summary':
@@ -109,7 +147,12 @@ class IntelligenceVectorDBEngine:
 
     def upsert(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
         """
-        Upserts a single document.
+        Immediately processes and uploads a single document to VectorDB.
+
+        Args:
+            intelligence (ArchivedData): The data to upload.
+            data_type (str): 'summary' or 'full'.
+            timeout (float): Request timeout in seconds.
         """
         doc = self._prepare_document(intelligence, data_type)
         if doc:
@@ -117,6 +160,16 @@ class IntelligenceVectorDBEngine:
             self.collection.upsert(**doc, timeout=timeout)
 
     def add_to_batch(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
+        """
+        Adds a document to the internal buffer. Triggers a commit if buffer size limit is reached.
+
+        This is the preferred method for bulk processing.
+
+        Args:
+            intelligence (ArchivedData): The data to upload.
+            data_type (str): 'summary' or 'full'.
+            timeout (float): Timeout for the commit operation if triggered.
+        """
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             self._buffer.append(doc)
@@ -125,6 +178,15 @@ class IntelligenceVectorDBEngine:
             self.commit(timeout)
 
     def commit(self, timeout: float = 120):
+        """
+        Flushes all buffered documents to the remote VectorDB.
+
+        **Must be called manually** at the end of a processing loop to ensure
+        remaining documents in the buffer are not lost.
+
+        Args:
+            timeout (float): Request timeout in seconds.
+        """
         if not self._buffer:
             return
 
@@ -145,7 +207,21 @@ class IntelligenceVectorDBEngine:
               rate_threshold: Optional[float] = None
               ) -> List[Dict]:
         """
-        Semantic search with metadata filtering.
+        Performs a semantic search with optional metadata filtering.
+
+        Combines filters into a MongoDB-style query using implicit AND logic.
+
+        Args:
+            text (str): The search query text.
+            top_n (int): Maximum number of results to return.
+            score_threshold (float): Minimum similarity score (0.0 to 1.0).
+            event_period (Tuple[datetime, datetime], optional): Filter by `PUB_TIME` range.
+            archive_period (Tuple[datetime, datetime], optional): Filter by `archived_timestamp` range.
+            rate_class (str, optional): Filter by exact match on `max_rate_class`.
+            rate_threshold (float, optional): Filter where `max_rate_score` >= value.
+
+        Returns:
+            List[Dict]: A list of search results containing 'doc_id', 'score', 'content', and 'metadata'.
         """
         filters = []
 

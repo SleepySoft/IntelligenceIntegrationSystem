@@ -95,6 +95,8 @@ class IntelligenceHub:
         self.processed_queue = queue.Queue()        # Processed intelligence queue
         self.unarchived_queue = queue.Queue()       # Loaded unarchived data queue, lower priority than original_queue
 
+        self.vectorize_queue = queue.Queue()        # Queue for vector DB
+
         self.archived_counter = 0
         self.drop_counter = 0
         self.error_counter = 0
@@ -111,8 +113,6 @@ class IntelligenceHub:
 
         self.vector_db_engine_summary: Optional[IntelligenceVectorDBEngine] = None
         self.vector_db_engine_full_text: Optional[IntelligenceVectorDBEngine] = None
-
-        self.vector_db_init_event = threading.Event()
 
         self.scheduler = AdvancedScheduler(logger=logging.getLogger('Scheduler'))
         # TODO: This cache seems to be ugly.
@@ -135,23 +135,23 @@ class IntelligenceHub:
         self.shutdown_flag = threading.Event()
 
         self.post_process_thread = threading.Thread(name='PostProcessThread', target=self._post_process_worker, daemon=True)
-        self.vector_db_init_thread = threading.Thread(name='VectorDBInitThread', target=self._vector_db_init_worker, daemon=True)
+        self.intelligence_vectorization_thread = threading.Thread(name='VectorizationThread', target=self._vectorization_thread, daemon=True)
 
         # ------------------ Tasks ------------------
 
         self._init_scheduler()
-        self._trigger_generate_recommendation()
+        # self._trigger_generate_recommendation()
 
         logger.info('***** IntelligenceHub init complete *****')
 
     # ----------------------------------------------------- Setups -----------------------------------------------------
 
     def _init_scheduler(self):
-        self.scheduler.add_hourly_task(
-            func=self._do_generate_recommendation,
-            task_id=f'generate_recommendation_task',
-            use_new_thread=True
-        )
+        # self.scheduler.add_hourly_task(
+        #     func=self._do_generate_recommendation,
+        #     task_id=f'generate_recommendation_task',
+        #     use_new_thread=True
+        # )
         self.scheduler.add_weekly_task(
             func=self._do_export_mongodb_weekly,
             task_id = 'export_mongodb_weekly_task',
@@ -204,7 +204,7 @@ class IntelligenceHub:
         """
         self.start_analysis_threads(ai_analysis_thread)
         self.post_process_thread.start()
-        self.vector_db_init_thread.start()
+        self.intelligence_vectorization_thread.start()
 
     def shutdown(self, timeout=10):
         logger.info("Intelligence hub shutting down...")
@@ -542,8 +542,6 @@ class IntelligenceHub:
             logger.info(f'{prefix} **** NO AI API client - Thread QUIT ****')
             return
 
-        # self.vector_db_init_event.wait(timeout=60)
-
         # ------------------------------------ Analysis Main Loop ------------------------------------
 
         while not self.shutdown_flag.is_set():
@@ -771,66 +769,131 @@ class IntelligenceHub:
             except Exception as e:
                 logger.error(f"Post process got unknown issue: {str(e)}")
 
-    def _vector_db_init_worker(self):
-        if self.vector_db_client is None:
-            logger.warning("Vector DB service is not configured, skipping init.")
-            self.vector_db_init_event.set()
-            return
+    def _vectorization_thread(self):
+        """
+        Worker thread that consumes data from the queue and upserts it to VectorDB.
+        It waits indefinitely for the DB to be ready and is resilient to runtime errors.
+        """
+        # 1. Infinite wait for initial connection (Blocking until success or shutdown)
+        if not self._wait_for_vector_db_ready():
+            return  # Shutdown signaled
 
-        logger.info('Waiting for vector DB init...')
-        clock = Clock()
+        logger.info("Vectorization thread started processing.")
 
-        try:
-            while not self.shutdown_flag.is_set():
+        while not self.shutdown_flag.is_set():
+            try:
+                # 2. Get data with a timeout to allow checking shutdown_flag periodically
                 try:
-                    # 1. 尝试等待就绪，使用短超时（例如 2秒）
-                    # 这样做的目的是为了每隔2秒就有机会检查一次 self.shutdown_flag
-                    try:
-                        self.vector_db_client.wait_until_ready(timeout=2.0, poll_interval=0.5)
-                    except TimeoutError:
-                        # 超时意味着这2秒内没准备好，但这不一定是错误，
-                        # 我们捕获它，让循环继续，从而再次检查 shutdown_flag
-                        continue
+                    data = self.vectorize_queue.get(block=True, timeout=1.0)
+                except queue.Empty:
+                    continue
 
-                    # 2. 如果代码走到这里，说明 wait_until_ready 成功返回了
-                    logger.info("Vector DB is ready. Creating collections...")
+                if not data:
+                    self.vectorize_queue.task_done()
+                    continue
 
-                    # 3. 创建 Collections
-                    # 注意：如果此时发生网络错误，外层 except 会捕获并重试
+                # 3. Process data safely
+                try:
+                    clock = Clock()
 
-                    # We have to create collection after vector initialized.
-                    # So we cannot create these 2 collections by config in IntelligenceHubStartup.py
+                    # Validation
+                    archived_data = ArchivedData.model_validate(data)
 
-                    vector_db_summary = self.vector_db_client.create_collection(
-                        name='intelligence_summary', chunk_size=256, chunk_overlap=30)
-                    vector_db_full_text = self.vector_db_client.create_collection(
-                        name='intelligence_full_text', chunk_size=512, chunk_overlap=50)
+                    # Upsert to Summary Engine
+                    if self.vector_db_engine_summary:
+                        self.vector_db_engine_summary.upsert(archived_data, data_type='summary')
 
-                    with self.lock:
-                        self.vector_db_engine_summary = IntelligenceVectorDBEngine(vector_db_summary)
-                        self.vector_db_engine_full_text = IntelligenceVectorDBEngine(vector_db_full_text)
+                    # Upsert to FullText Engine
+                    if self.vector_db_engine_full_text:
+                        self.vector_db_engine_full_text.upsert(archived_data, data_type='full')
 
-                    # 4. 成功！退出循环
-                    logger.info(f'Vector DB initialized successfully. Time elapsed: {clock.elapsed_s()}s')
-                    break
+                    logger.debug(f"Message {archived_data.UUID} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
-                except (VectorDBInitializationError, ConnectionError, Exception) as e:
-                    # 5. 处理真正的错误（非超时）
-                    # 比如服务返回 500，或者网络连接被拒绝
-                    logger.error(f"Error connecting to Vector DB: {e}. Retrying in 5 seconds...")
+                except Exception as e:
+                    # Catch logic errors or temporary network glitches during upsert
+                    # so the thread stays alive to process the next item.
+                    # Use logger.warning/error sparingly here if you want total silence,
+                    # but usually, data loss errors should be logged.
+                    logger.error(f"Error vectorizing message {data.get('UUID', 'unknown')}: {e}")
 
-                    # 简单的退避策略，防止疯狂刷日志
-                    # 分段 sleep 也是为了能响应 shutdown
-                    for _ in range(5):
-                        if self.shutdown_flag.is_set(): break
-                        time.sleep(1)
-        finally:
-            # 确保无论如何（成功、失败、被 Kill、代码崩溃）都会通知主线程
-            # 循环结束（可能是成功 break，也可能是 shutdown_flag 被设置）
-            if self.shutdown_flag.is_set():
-                logger.info("Vector DB init worker stopped due to shutdown signal.")
-            # 最终设置事件，通知主线程等待结束
-            self.vector_db_init_event.set()
+                finally:
+                    self.vectorize_queue.task_done()
+
+            except Exception as outer_e:
+                # Catch-all for unexpected queue errors to prevent thread death
+                logger.error(f"Critical error in vectorization loop: {outer_e}")
+                time.sleep(1)  # Brief pause to prevent CPU spinning if queue is broken
+
+    def _wait_for_vector_db_ready(self) -> bool:
+        """
+        Blocks indefinitely until the VectorDB service is ready and collections are created.
+
+        Features:
+        - Retries forever on connection failure.
+        - Suppresses repetitive logs (prints failure only once).
+        - Responds to shutdown_flag immediately.
+        """
+        if self.vector_db_client is None:
+            logger.warning("Vector DB client is not configured, skipping init.")
+            return False
+
+        logger.info('Initializing Vector DB connection...')
+
+        # Flag to ensure we don't spam logs during long downtimes
+        log_suppressed = False
+
+        while not self.shutdown_flag.is_set():
+            try:
+                # 1. Wait for service readiness
+                # Use a short timeout so we can cycle back and check shutdown_flag
+                try:
+                    # Note: This might raise TimeoutError if not ready in 2s
+                    self.vector_db_client.wait_until_ready(timeout=2.0, poll_interval=1.0)
+                except TimeoutError:
+                    if not log_suppressed:
+                        logger.info("Vector DB not ready yet, waiting in background...")
+                        log_suppressed = True
+                    continue  # Retry loop
+
+                # 2. Create Collections
+                # If we reach here, the service is responding (HTTP 200)
+                vector_db_summary = self.vector_db_client.create_collection(
+                    name='intelligence_summary',
+                    chunk_size=256,
+                    chunk_overlap=30
+                )
+
+                vector_db_full_text = self.vector_db_client.create_collection(
+                    name='intelligence_full_text',
+                    chunk_size=512,
+                    chunk_overlap=50
+                )
+
+                with self.lock:
+                    self.vector_db_engine_summary = IntelligenceVectorDBEngine(vector_db_summary)
+                    self.vector_db_engine_full_text = IntelligenceVectorDBEngine(vector_db_full_text)
+
+                # 3. Success
+                clock = Clock()  # Assuming Clock is instantiated at start of function if needed
+                logger.info(f'Vector DB initialized successfully.')
+                return True
+
+            except (ConnectionError, Exception) as e:
+                # 4. Handle ANY error (Network, 500, etc.) without exiting
+                if not log_suppressed:
+                    logger.warning(f"Vector DB init failed ({e}). Retrying silently...")
+                    log_suppressed = True
+
+                # Sleep in small chunks to remain responsive to shutdown
+                for _ in range(5):
+                    if self.shutdown_flag.is_set():
+                        return False
+                    time.sleep(1)
+
+                # Loop continues...
+
+        logger.info("Vector DB init worker stopped due to shutdown signal.")
+        return False
 
     # ------------------------------------------------ Scheduled Tasks -------------------------------------------------
 
@@ -921,23 +984,23 @@ class IntelligenceHub:
         except Exception as e:
             logger.error(f"Monthly mongodb export failed: {e}", exc_info=True)
 
-    def _do_generate_recommendation(self):
-        now = datetime.datetime.now()
-        logger.info(f'Generate recommendation start at: {now}')
+    # def _do_generate_recommendation(self):
+    #     now = datetime.datetime.now()
+    #     logger.info(f'Generate recommendation start at: {now}')
+    #
+    #     # TODO: Test, so using a wide datetime range.
+    #     # period = (now - datetime.timedelta(days=60), now)
+    #     # period = (now - datetime.timedelta(days=14), now)
+    #     period = (now- datetime.timedelta(hours=24), now)
+    #
+    #     # TODO: Temp remove because it may causes ai client error.
+    #     # self.recommendations_manager.generate_recommendation(period=period, threshold=6, limit=500)
+    #     logger.info(f'Generate recommendation finished at: {datetime.datetime.now()}')
 
-        # TODO: Test, so using a wide datetime range.
-        # period = (now - datetime.timedelta(days=60), now)
-        # period = (now - datetime.timedelta(days=14), now)
-        period = (now- datetime.timedelta(hours=24), now)
-
-        # TODO: Temp remove because it may causes ai client error.
-        # self.recommendations_manager.generate_recommendation(period=period, threshold=6, limit=500)
-        logger.info(f'Generate recommendation finished at: {datetime.datetime.now()}')
-
-    def _trigger_generate_recommendation(self):
-        now = datetime.datetime.now()
-        logger.info(f'Trigger recommendation generation at: {now}')
-        self.scheduler.execute_task('generate_recommendation_task', 2)
+    # def _trigger_generate_recommendation(self):
+    #     now = datetime.datetime.now()
+    #     logger.info(f'Trigger recommendation generation at: {now}')
+    #     self.scheduler.execute_task('generate_recommendation_task', 2)
 
     # ------------------------------------------------ Helpers ------------------------------------------------
 
@@ -1038,7 +1101,12 @@ class IntelligenceHub:
     # ---------------------------- Archive Related ----------------------------
 
     def _index_archived_data(self, data: dict):
-        pass
+        try:
+            self.vectorize_queue.put_nowait(data)
+        except queue.Full:
+            pass
+        except Exception as e:
+            logger.error(str(e))
 
     def _cache_original_data(self, data: dict):
         try:
