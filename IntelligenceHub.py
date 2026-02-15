@@ -1,30 +1,24 @@
-import datetime
 import os
-import random
-import time
-import traceback
 import uuid
 import queue
+import random
 import logging
-
 import pymongo
+import traceback
 import threading
 
 from attr import dataclass
-from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Dict, Union, Callable
+from typing import Tuple
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
 from GlobalConfig import EXPORT_PATH
-from Tools.ProcessCotrolException import positioning_exception_context, ProcessSkip, PositioningException
-
 from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
-from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time, time_digit_list_to_datetime
+from VectorDB.VectorDBClient import VectorDBClient
 from ServiceComponent.IntelligenceHubDefines_v2 import *
-from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.DictTools import check_sanitize_dict
+from AIClientCenter.AIClientManager import AIClientManager
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.RecommendationManager import RecommendationManager
@@ -32,7 +26,8 @@ from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
-from VectorDB.VectorDBClient import VectorDBClient, VectorDBInitializationError, RemoteCollection
+from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time, time_digit_list_to_datetime
+from Tools.ProcessCotrolException import positioning_exception_context, ProcessSkip, PositioningException
 
 
 logger = logging.getLogger(__name__)
@@ -688,8 +683,10 @@ class IntelligenceHub:
 
         while not self.shutdown_flag.is_set():
             data = None
+            got_task = False
             try:
                 data = self.processed_queue.get(block=True, timeout=1.0)
+                got_task = True
                 if data is None: break
 
                 if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
@@ -754,7 +751,8 @@ class IntelligenceHub:
                 logger.error(f"Post process got unknown issue: {str(e)}")
 
             finally:
-                self.processed_queue.task_done()
+                if got_task:
+                    self.processed_queue.task_done()
 
     def _vectorization_thread(self):
         """
@@ -784,7 +782,7 @@ class IntelligenceHub:
                     clock = Clock()
 
                     # Validation
-                    archived_data = ArchivedData.model_validate(data)
+                    archived_data = ArchivedData(**data)
 
                     # Upsert to Summary Engine
                     if self.vector_db_engine_summary:

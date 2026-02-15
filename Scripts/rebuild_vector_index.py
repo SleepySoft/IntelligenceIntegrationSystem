@@ -12,14 +12,11 @@ consistency with the main service.
 """
 
 import sys
-import time
-import argparse
-import traceback
 import copy
-from typing import Optional
+import argparse
 
 # --- New Architecture Imports ---
-from ServiceComponent.IntelligenceHubDefines import ArchivedData
+from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
 from VectorDB.VectorDBClient import VectorDBClient, RemoteCollection
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 
