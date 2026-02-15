@@ -17,6 +17,7 @@ from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
 from GlobalConfig import EXPORT_PATH
+from Tools.ProcessCotrolException import positioning_exception_context, ProcessSkip, PositioningException
 
 from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
@@ -91,11 +92,11 @@ class IntelligenceHub:
 
         # -------------- Queues Related --------------
 
-        self.original_queue = queue.Queue()         # Original intelligence queue
-        self.processed_queue = queue.Queue()        # Processed intelligence queue
-        self.unarchived_queue = queue.Queue()       # Loaded unarchived data queue, lower priority than original_queue
+        self.original_queue = queue.Queue(maxsize=2000)         # Original intelligence queue
+        self.processed_queue = queue.Queue(maxsize=2000)        # Processed intelligence queue
+        self.unarchived_queue = queue.Queue()                   # Loaded unarchived data queue, lower priority than original_queue
 
-        self.vectorize_queue = queue.Queue()        # Queue for vector DB
+        self.vectorize_queue = queue.Queue(maxsize=1000)        # Queue for vector DB
 
         self.archived_counter = 0
         self.drop_counter = 0
@@ -682,92 +683,78 @@ class IntelligenceHub:
                     current_queue.task_done()
 
     def _post_process_worker(self):
+
         # -------------------------------------- Post process loop --------------------------------------
 
         while not self.shutdown_flag.is_set():
             data = None
             try:
-                try:
-                    data = self.processed_queue.get(block=True)
-                    if not data:
-                        self.processed_queue.task_done()
-                        continue
-                except queue.Empty:
-                    continue
+                data = self.processed_queue.get(block=True, timeout=1.0)
+                if data is None: break
 
-                try:
-                    if self._is_low_value_data(data):
-                        try:
-                            # Low value data has been marked as ARCHIVED_FLAG_DROP in _ai_analysis_worker
-                            if self.mongo_db_low_value:
-                                self.mongo_db_low_value.insert(data)
-                        except Exception as e:
-                            logger.error(f'Low-value data persists fail.')
-                        continue
+                if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
+                    raise ProcessSkip('duplication', 'Found duplication. Not archive this data.')
 
-                    if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
-                        raise NameError('Found duplication. Not archive this data.')
+                if self._is_low_value_data(data):
+                    # Low value data has been marked as ARCHIVED_FLAG_DROP in _ai_analysis_worker
+                    if self.mongo_db_low_value:
+                        with positioning_exception_context('low_value', 'Low-value data persists fail.'):
+                            self.mongo_db_low_value.insert(data)
+                    raise ProcessSkip('low_value', 'Low value data. Not archive this data.')
 
-                # ----------------------- Record the max rate for easier filter -----------------------
+                data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = get_aware_time()
 
-                # if 'APPENDIX' not in data:
-                #     data['APPENDIX'] = {}
-
-                # rate_dict = data.get('RATE', {'N/A': '0'})
-                # numeric_rates = {k: int(v) for k, v in rate_dict.items() if k != APPENDIX_MAX_RATE_CLASS_EXCLUDE}
-                # if numeric_rates:
-                #     max_key, max_value = max(numeric_rates.items(), key=lambda x: x[1])
-                # else:
-                #     max_key, max_value = 'N/A', 0
-                # data['APPENDIX'][APPENDIX_MAX_RATE_CLASS] = max_key
-                # data['APPENDIX'][APPENDIX_MAX_RATE_SCORE] = max_value
-
-                # ------------------------------- Post Process: Indexing -------------------------------
-
-                # if not self.vector_db_init_failed:
-                #     clock = Clock()
-                #     self.vector_db_engine_summary.upsert(ArchivedData.model_validate(data))
-                #     self.vector_db_engine_full_text.upsert(ArchivedData.model_validate(data))
-                #     logger.debug(f"Message {data['UUID']} vectorized, time-spending: {clock.elapsed_ms()} ms")
-
-                # ------------------ Post Process: Archive, To RSS (deprecated), ... -------------------
-
-                    data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = get_aware_time()
-
+                with positioning_exception_context('archive', 'Archive fail.'):
                     self._archive_processed_data(data)
-                    with self.lock:
-                        self.archived_counter += 1
-                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ARCHIVED)
 
-                    logger.info(f"Message {data['UUID']} archived.")
+                with self.lock:
+                    self.archived_counter += 1
+                self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ARCHIVED)
 
-                    self._index_archived_data(data)
-                    # self._publish_article_to_rss(data)
+                logger.info(f"Message {data['UUID']} archived.")
 
-                    # TODO: Call post processor plugins
-                except Exception as e:
+                # TODO: Call post processor plugins
+
+                self._index_archived_data(data)
+                # self._publish_article_to_rss(data)
+
+            except queue.Empty:
+                continue
+
+            except ProcessSkip as e:
+                logger.info(str(e))
+
+                with self.lock:
+                    self.drop_counter += 1
+
+                if data is not None:
+                    if e.reason == 'duplication':
+                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DUPLICATED)
+                    elif e.reason == 'low_value':
+                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP)
+                    else:
+                        logger.error('************* Should not reach here [C7F6] *************')
+                else:
+                    logger.error('************* Should not reach here [0E57] *************\n'
+                                 'Data is None. It\'s impossible.')
+
+            except PositioningException as e:
+                if e.position == 'low_value':
+                    logger.error(f'Low-value data persists fail.')
+                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP)
+                elif e.position == 'archive':
                     with self.lock:
                         self.error_counter += 1
                     logger.error(f"Archived fail with exception: {str(e)}")
                     self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ERROR)
-                finally:
-                    self.processed_queue.task_done()
-
-                # ---------------------------------------------------------------------------------------
-            except queue.Empty:
-                continue
-
-            except NameError as e:
-                with self.lock:
-                    self.drop_counter += 1
-                logger.info(str(e))
-                if data is not None:
-                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DUPLICATED)
                 else:
-                    logger.error("Data is None. It's impossible.")
+                    logger.error('************* Should not reach here [EBEC] *************')
 
             except Exception as e:
                 logger.error(f"Post process got unknown issue: {str(e)}")
+
+            finally:
+                self.processed_queue.task_done()
 
     def _vectorization_thread(self):
         """
