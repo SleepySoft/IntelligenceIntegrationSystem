@@ -36,6 +36,10 @@ logger.setLevel(logging.INFO)
 from distutils.util import strtobool
 
 
+VECTOR_MAX_TOP_N = 50
+VECTOR_DEFAULT_SCORE_THRESHOLD = 0.6
+
+
 def to_bool(value, default=False):
     """Safely convert various types to boolean.
 
@@ -404,22 +408,23 @@ class IntelligenceHubWebService:
                 mode = params['search_mode']
 
                 # 策略 A: 向量搜索 (高级功能) -> 必须登录
-                if mode.startswith('vector'):
-                    if not is_logged_in:
-                        return jsonify({
-                            'error': 'Unauthorized',
-                            'message': '高级语义搜索和相似推荐功能需要登录后使用。'
-                        }), 401
+                # TODO: 20260215 - Temporary remove authentication.
+                # if mode.startswith('vector'):
+                #     if not is_logged_in:
+                #         return jsonify({
+                #             'error': 'Unauthorized',
+                #             'message': '高级语义搜索和相似推荐功能需要登录后使用。'
+                #         }), 401
 
                 # 策略 B: 普通列表 (基础功能) -> 允许游客访问，但可以加限制
-                elif mode == 'mongo':
-                    # [可选] 例如：游客只能看前 3 页
-                    # if not is_logged_in and params['page'] > 3:
-                    #     return jsonify({
-                    #         'error': 'Unauthorized',
-                    #         'message': '访客仅可浏览最新 3 页内容，请登录查看更多历史数据。'
-                    #     }), 401
-                    pass
+                # elif mode == 'mongo':
+                #     # [可选] 例如：游客只能看前 3 页
+                #     # if not is_logged_in and params['page'] > 3:
+                #     #     return jsonify({
+                #     #         'error': 'Unauthorized',
+                #     #         'message': '访客仅可浏览最新 3 页内容，请登录查看更多历史数据。'
+                #     #     }), 401
+                #     pass
 
                 # 4. 执行业务逻辑
                 data = _perform_search_logic(params)
@@ -507,7 +512,7 @@ class IntelligenceHubWebService:
                 # Vector 字段
                 'in_summary': to_bool(combined.get('in_summary'), default=True),
                 'in_fulltext': to_bool(combined.get('in_fulltext'), default=False),
-                'score_threshold': float(combined.get('score_threshold', 0.5)),
+                'score_threshold': float(combined.get('score_threshold', VECTOR_DEFAULT_SCORE_THRESHOLD)),
                 'reference': combined.get('reference', ''),
             }
 
@@ -568,6 +573,7 @@ class IntelligenceHubWebService:
                 return [], 0
 
             top_n = p['page'] * p['per_page']
+            top_n = min(top_n, VECTOR_MAX_TOP_N)
             raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(
                 text=text,
                 in_summary=p['in_summary'],
