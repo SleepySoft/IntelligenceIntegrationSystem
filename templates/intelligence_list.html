@@ -48,5 +48,37 @@
 
     <script src="/static/js/intelligence_table_renderer.js"></script>
     <script src="/static/js/intelligence_list.js"></script>
+
+    <!-- Article Detail Modal (Preview) -->
+    <div id="article-detail-overlay" class="article-modal-overlay" aria-hidden="true" style="display:none;">
+      <div class="article-modal" role="dialog" aria-modal="true" aria-labelledby="article-modal-title">
+        <div class="article-modal-header">
+          <div class="header-left">
+            <div class="uuid" id="article-modal-uuid"></div>
+            <h2 id="article-modal-title" class="article-modal-title">Loading...</h2>
+          </div>
+          <div class="article-modal-actions">
+            <button type="button" id="article-copy-link-btn" class="article-modal-btn" title="复制链接">
+              <i class="bi bi-link-45deg"></i>
+            </button>
+            <button type="button" id="article-open-newtab-btn" class="article-modal-btn" title="在新标签打开">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </button>
+            <button type="button" id="article-close-btn" class="article-modal-btn" title="关闭">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="article-modal-body" id="article-modal-body">
+          <div class="article-modal-loading">
+            <i class="bi bi-arrow-repeat article-spinner"></i> Loading...
+          </div>
+        </div>
+
+        <!-- Modal 内部 Toast 容器 -->
+        <div id="article-toast-container" class="article-toast-container"></div>
+      </div>
+    </div>
 </body>
 </html>

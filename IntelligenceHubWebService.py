@@ -339,6 +339,22 @@ class IntelligenceHubWebService:
             resp.headers["X-Prompt-Version-Normalized"] = str(version_digit)
             return resp
 
+        @app.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
+        def intelligence_viewer_json(intelligence_uuid: str):
+            try:
+                intelligence = self.intelligence_hub.get_intelligence(intelligence_uuid)
+                if not intelligence:
+                    return jsonify({"error": "Intelligence not found"}), 404
+
+                return jsonify({
+                    "success": True,
+                    "data": intelligence
+                }), 200
+            except Exception as e:
+                print(str(e))
+                traceback.print_exc()
+                return jsonify({"error": "Server error"}), 500
+
         @app.route('/manual_rate', methods=['POST'])
         def submit_rating():
             try:

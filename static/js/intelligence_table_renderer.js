@@ -229,9 +229,9 @@ class ArticleRenderer {
             return `
             <div class="article-card">
                 <h3>
-                    <a href="${intelUrl}" target="_blank" class="article-title">
-                        ${this.escapeHTML(article.EVENT_TITLE || article.title || "No Title")}
-                    </a>
+                  <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">
+                    ${this.escapeHTML(article.EVENT_TITLE || article.title || "No Title")}
+                  </a>
                 </h3>
                 <div class="article-meta">
                     ${archived_html}

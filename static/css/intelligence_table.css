@@ -584,3 +584,97 @@ body {
     border: 1px solid #ffd0d0;
     font-size: 0.9rem;
 }
+
+/* --- Article Detail Modal 样式 --- */
+.article-modal-overlay {
+  position: fixed; inset: 0; display: none;
+  background: rgba(0,0,0,0.45);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: 12px;
+}
+.article-modal {
+  width: min(1000px, 98vw);
+  max-height: 94vh;
+  background: #fff; border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 14px 36px rgba(0,0,0,.24);
+}
+.article-modal-header {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, #1a2980, #26d0ce);
+  color: #fff;
+}
+.article-modal-header .header-left { min-width: 0; }
+.article-modal-title {
+  font-size: 1.05rem; margin: 4px 0 0; line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.article-modal-header .uuid {
+  font-size: 12px; opacity: .85; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.article-modal-actions { display: flex; gap: 8px; }
+.article-modal-btn {
+  border: 0; background: rgba(255,255,255,.18); color: #fff;
+  border-radius: 8px; padding: 6px 10px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.article-modal-btn:hover { background: rgba(255,255,255,.28); }
+.article-modal-body {
+  padding: 14px 18px; overflow: auto; -webkit-overflow-scrolling: touch;
+}
+.article-modal-loading {
+  color: #666; display: flex; align-items: center; gap: 8px; padding: 24px 0;
+}
+.article-spinner { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* 内容作用域（无 Bootstrap 依赖） */
+.article-preview { color:#343a40; font-size: 15px; line-height: 1.7; }
+.article-preview .meta-grid {
+  display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:10px; margin:10px 0 6px;
+}
+@media (max-width: 720px) { .article-preview .meta-grid { grid-template-columns:1fr; } }
+.article-preview .meta-card {
+  background:#fff; border:1px solid #eaecef; border-radius:10px; padding:12px 12px 10px;
+}
+.article-preview .meta-card h5 { margin:0 0 8px; font-size: 14px; color:#222; }
+.article-preview .key-points { border-left: 4px solid #0d6efd; background:#f9fafb; padding: 10px 12px; border-radius: 8px; }
+.article-preview .impact-card { background: linear-gradient(to right, #f8f9fa,#eef2f5); border-left:4px solid #dc3545; border-radius: 10px; padding: 14px; }
+.article-preview .tip-card { background:#d1ecf1; border-left:4px solid #0dcaf0; border-radius:10px; padding: 14px; }
+
+/* 评分表格与星星 */
+.article-preview table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
+.article-preview th, .article-preview td { border-bottom: 1px solid #eaecef; padding: 8px 6px; vertical-align: middle; }
+.article-preview thead th { background:#f7f7f9; font-weight:600; }
+.article-preview input[type="number"] { width: 90px; padding:6px 8px; border:1px solid #eaecef; border-radius:8px; }
+.article-preview .stars i { margin-right:2px; }
+.article-preview .stars .text-warning { color: #f0ad4e !important; }
+
+/* 通用按钮 */
+.article-preview .btn {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius: 8px;
+  text-decoration:none; cursor:pointer; font-size: 14px; border:1px solid #eaecef; background:#fff; color:#111;
+}
+.article-preview .btn:hover { background:#f6f7f8; }
+.article-preview .btn-primary { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+.article-preview .btn-outline { background:#fff; color:#0d6efd; border-color:#b8d1ff; }
+.article-preview .btn-sm { padding: 5px 8px; font-size: 13px; }
+
+/* Toast（Modal 内） */
+.article-toast-container { position: fixed; right: 14px; bottom: 14px; z-index: 10; display: grid; gap: 8px; }
+.article-toast {
+  min-width: 240px; max-width: 360px;
+  color:#fff; padding:10px 12px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  display:flex; align-items:flex-start; gap:8px; animation: toast-in .18s ease-out both;
+}
+.article-toast .toast-close { margin-left:auto; background:transparent; border:0; color:inherit; cursor:pointer; }
+.article-toast.success { background:#198754; }
+.article-toast.danger { background:#dc3545; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px);} to{ opacity:1; transform: translateY(0);} }
+
+/* 锁定背景滚动 */
+.body-scroll-locked { overflow: hidden !important; }
