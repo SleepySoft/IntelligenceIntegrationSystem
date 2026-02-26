@@ -153,343 +153,146 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    window.addEventListener('popstate', loadData);
+    window.addEventListener('popstate', (e) => {
+        // 1. 如果是从 Modal 弹窗退回来的，拦截器生效，不刷新列表
+        if (window._preventListReload) {
+            window._preventListReload = false; // 消费掉这个标记
+            return;
+        }
+
+        // 2. 如果用户按了浏览器的“前进”键，去到了 /intelligence/xxx，也不刷新列表
+        if (location.pathname.startsWith('/intelligence/')) {
+            return;
+        }
+
+        // 3. 只有正常的列表翻页、筛选条件的回退，才真正刷新数据
+        loadData();
+    });
+
     loadData();
 
-    // 1) 校验：与详情页一致（0~10）
-    window.validateRating = function(input) {
-      const v = parseFloat(input.value);
-      if (Number.isNaN(v)) return;
-      if (v < 0) input.value = 0;
-      else if (v > 10) input.value = 10;
-    };
-
-    // 2) Toast（Modal 内部展示）
-    function showNotificationInModal(message, type /* 'success'|'danger' */) {
-      const container = document.getElementById('article-toast-container');
-      if (!container) return;
-      const toast = document.createElement('div');
-      toast.className = `article-toast ${type}`;
-      toast.innerHTML = `
-        <div style="flex:1;">${message}</div>
-        <button class="toast-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>`;
-      container.appendChild(toast);
-      const remove = () => { toast.remove(); };
-      toast.querySelector('.toast-close').addEventListener('click', remove);
-      setTimeout(remove, 2400);
-    }
-
-    // 3) 工具：星星渲染
-    function renderStars(score) {
-      const num = Number(score);
-      if (!Number.isFinite(num)) return '';
-      const full = Math.floor(num / 2);
-      const half = (num % 2) >= 1;
-      const empty = 5 - full - (half ? 1 : 0);
-      let html = '<span class="stars">';
-      for (let i = 0; i < full; i++) html += '<i class="bi bi-star-fill text-warning"></i> ';
-      if (half) html += '<i class="bi bi-star-half text-warning"></i> ';
-      for (let i = 0; i < empty; i++) html += '<i class="bi bi-star text-warning"></i> ';
-      html += ` <span class="ms-2 text-muted">${num}/10</span></span>`;
-      return html;
-    }
-
-    // 4) 工具：评分表渲染（保持 input id 规则）
-    function renderRatingTable(article) {
-      const rates = article?.RATE || {};
-      const manualRatings = (article?.APPENDIX && (article.APPENDIX['__MANUAL_RATING__'] || article.APPENDIX['APPENDIX_MANUAL_RATING'])) || {};
-      const keys = Object.keys(rates);
-      if (!keys.length) return '';
-
-      let rows = '';
-      keys.forEach(key => {
-        const score = rates[key];
-        if (typeof score !== 'number' || score < 0 || score > 10) return;
-        const manual = (manualRatings && manualRatings[key] != null) ? manualRatings[key] : score;
-        rows += `
-          <tr>
-            <td>${key}</td>
-            <td>${renderStars(score)}</td>
-            <td>
-              <input id="rating-${key}" type="number" class="form-control form-control-sm"
-                value="${manual}" min="0" max="10" step="0.5" style="width: 80px;"
-                oninput="validateRating(this)">
-            </td>
-          </tr>`;
-      });
-
-      return `
-        <div class="mt-4">
-          <h5><i class="bi bi-graph-up"></i> Analysis & Evaluation</h5>
-          <div class="table-responsive">
-            <table class="table table-sm">
-              <thead>
-                <tr><th>Dimension</th><th>Rating</th><th>Manual Rating</th></tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-          <div class="mt-3">
-            <button id="submit-rating" class="btn btn-primary btn-sm">
-              <i class="bi bi-check-circle"></i> Submit Manual Ratings
-            </button>
-          </div>
-        </div>`;
-    }
-
-    // 5) 工具：时间格式兜底
-    function anyTimeToTimeStr(s) {
-      try {
-        const d = new Date(s);
-        if (isNaN(d.getTime())) return s || 'N/A';
-        const y = d.getFullYear();
-        const m = String(d.getMonth()+1).padStart(2,'0');
-        const day = String(d.getDate()).padStart(2,'0');
-        const hh = String(d.getHours()).padStart(2,'0');
-        const mm = String(d.getMinutes()).padStart(2,'0');
-        const ss = String(d.getSeconds()).padStart(2,'0');
-        return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
-      } catch { return s || 'N/A'; }
-    }
-
-    // 6) 工具：详情整体渲染（从 JSON → HTML）
-    function renderArticlePreviewHTML(article) {
-      const uuid = article?.UUID || '';
-      const informant = article?.INFORMANT || '';
-      const pubTime = anyTimeToTimeStr(article?.PUB_TIME || 'N/A');
-      const title = article?.EVENT_TITLE || 'No Title';
-      const brief = article?.EVENT_BRIEF || 'No Brief';
-      const content = article?.EVENT_TEXT || 'No Content';
-      const locations = Array.isArray(article?.LOCATION) ? article.LOCATION : [];
-      const people = Array.isArray(article?.PEOPLE) ? article.PEOPLE : [];
-      const orgs = Array.isArray(article?.ORGANIZATION) ? article.ORGANIZATION : [];
-      const times = Array.isArray(article?.TIME) ? article.TIME.map(anyTimeToTimeStr) : [];
-      const impact = article?.IMPACT || 'No Impact';
-      const tips = article?.TIPS || 'No Tips';
-
-      return `
-      <div class="article-preview" id="article-root" data-uuid="${uuid}">
-        <section class="header-box key-points">
-          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">
-            <div style="min-width:0;">
-              <div style="font-size:12px; color:#555;">
-                <i class="bi bi-calendar-event"></i> ${pubTime}
-                &nbsp;|&nbsp; <i class="bi bi-upc-scan"></i> ${uuid}
-              </div>
-              <h3 style="margin:6px 0 0; font-size:20px; line-height:1.35;" data-article-title>${title}</h3>
-              <div style="margin-top:6px; color:#333;">${brief}</div>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-              ${informant ? `${informant}
-                  <i class="bi bi-link-45deg"></i> Source
-                </a>` : ''}
-              /intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6
-                <i class="bi bi-intersect"></i> Find Similar
-              </a>
-            </div>
-          </div>
-        </section>
-
-        <section class="meta-grid">
-          <div class="meta-card">
-            <h5><i class="bi bi-geo-alt"></i> Geographic Locations</h5>
-            ${locations.length ? locations.join(', ') : 'No location data'}
-          </div>
-          <div class="meta-card">
-            <h5><i class="bi bi-people"></i> Related People</h5>
-            ${people.length ? people.join(', ') : 'No associated people'}
-          </div>
-          <div class="meta-card">
-            <h5><i class="bi bi-building"></i> Related Organizations</h5>
-            ${orgs.length ? orgs.join(', ') : 'No related organizations'}
-          </div>
-        </section>
-
-        <section class="meta-card">
-          <h5><i class="bi bi-clock-history"></i> Event Time(s)</h5>
-          ${times.length ? times.join(', ') : 'No specific timing data'}
-        </section>
-
-        <section class="content-section" style="margin-top:10px;">
-          ${content}
-        </section>
-
-        <section style="margin-top:16px;">
-          ${renderRatingTable(article)}
-        </section>
-
-        <section class="impact-card" style="margin-top:16px;">
-          <h5><i class="bi bi-lightning-charge"></i> Potential Impact</h5>
-          <p>${impact}</p>
-        </section>
-
-        <section class="tip-card" style="margin-top:12px;">
-          <h5><i class="bi bi-lightbulb"></i> Analyst Notes</h5>
-          <p>${tips}</p>
-        </section>
-      </div>`;
-    }
-
-    // 7) Modal 管理器：拦截点击→拉 JSON→渲染→水合→历史同步
+    // Modal 管理器
     (function initArticleDetailModal() {
-      const overlay = document.getElementById('article-detail-overlay');
-      const bodyEl = document.getElementById('article-modal-body');
-      const titleEl = document.getElementById('article-modal-title');
-      const uuidEl = document.getElementById('article-modal-uuid');
-      const closeBtn = document.getElementById('article-close-btn');
-      const copyBtn = document.getElementById('article-copy-link-btn');
-      const openNewBtn = document.getElementById('article-open-newtab-btn');
+        const overlay = document.getElementById('article-detail-overlay');
+        const bodyEl = document.getElementById('article-modal-body');
+        const titleEl = document.getElementById('article-modal-title');
+        const uuidEl = document.getElementById('article-modal-uuid');
+        const closeBtn = document.getElementById('article-close-btn');
+        const copyBtn = document.getElementById('article-copy-link-btn');
+        const openNewBtn = document.getElementById('article-open-newtab-btn');
 
-      if (!overlay || !bodyEl || !titleEl || !uuidEl || !closeBtn || !copyBtn || !openNewBtn) return;
+        if (!overlay || !bodyEl || !titleEl || !uuidEl || !closeBtn || !copyBtn || !openNewBtn) return;
 
-      let lastFocus = null;
-      let isOpen = false;
-      let currentUrl = null;
+        let lastFocus = null;
+        let isOpen = false;
+        let pushedState = false; // [修复] 记录是否改变了 URL
 
-      async function openByUuid(uuid) {
-        const pageUrl = `/intelligence/${encodeURIComponent(uuid)}`;
-        await open(pageUrl, uuid, 'Detail');
-      }
-
-      async function open(pageUrl, uuid, titleFallback) {
-        currentUrl = pageUrl;
-        overlay.style.display = 'flex';
-        overlay.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('body-scroll-locked');
-        titleEl.textContent = 'Loading...';
-        uuidEl.textContent = uuid ? `UUID: ${uuid}` : '';
-        bodyEl.innerHTML = `<div class="article-modal-loading">
-          <i class="bi bi-arrow-repeat article-spinner"></i> Loading...
-        </div>`;
-        openNewBtn.onclick = () => window.open(pageUrl, '_blank', 'noopener');
-
-        lastFocus = document.activeElement;
-        closeBtn.focus();
-
-        if (location.pathname + location.search !== pageUrl) {
-          history.pushState({ modal: 'article', url: pageUrl }, '', pageUrl);
+        async function openByUuid(uuid) {
+            const pageUrl = `/intelligence/${encodeURIComponent(uuid)}`;
+            await open(pageUrl, uuid, 'Detail');
         }
-        isOpen = true;
 
-        try {
-          const apiUrl = `/api/intelligence/${encodeURIComponent(uuid)}`;
-          const resp = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
-          if (resp.status === 401) {
-            titleEl.textContent = 'Unauthorized';
-            bodyEl.innerHTML = `<div style="color:#c00;">You are not authorized.</div>`;
-            return;
-          }
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const payload = await resp.json();
-          const article = payload?.data || payload;
+        async function open(pageUrl, uuid, titleFallback) {
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('body-scroll-locked');
+            titleEl.textContent = 'Loading...';
+            uuidEl.textContent = uuid ? `UUID: ${uuid}` : '';
+            bodyEl.innerHTML = `<div class="article-modal-loading"><i class="bi bi-arrow-repeat article-spinner"></i> Loading...</div>`;
+            openNewBtn.onclick = () => window.open(pageUrl, '_blank', 'noopener');
 
-          const finalTitle = article?.EVENT_TITLE || titleFallback || 'Detail';
-          titleEl.textContent = finalTitle;
+            lastFocus = document.activeElement;
+            closeBtn.focus();
 
-          bodyEl.innerHTML = renderArticlePreviewHTML(article);
-
-          // 评分提交
-          const rootEl = bodyEl.querySelector('#article-root');
-          const submitBtn = rootEl?.querySelector('#submit-rating');
-          if (submitBtn) {
-            submitBtn.addEventListener('click', async () => {
-              const ratings = {};
-              rootEl.querySelectorAll('input[id^="rating-"]').forEach(input => {
-                const dim = input.id.replace('rating-', '');
-                ratings[dim] = input.value;
-              });
-              try {
-                const r = await fetch('/manual_rate', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    uuid: article?.UUID || uuid,
-                    ratings: ratings,
-                    timestamp: new Date().toISOString()
-                  })
-                });
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                showNotificationInModal('Ratings submitted successfully!', 'success');
-              } catch (e) {
-                showNotificationInModal('Error submitting ratings: ' + (e.message || e), 'danger');
-              }
-            });
-          }
-
-          // Modal 内部 “/intelligence/:uuid” 链接 → 继续在 Modal 打开
-          bodyEl.querySelectorAll('a[href^="/intelligence/"]').forEach(a => {
-            a.addEventListener('click', (e) => {
-              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-              e.preventDefault();
-              const nextUuid = (a.href.match(/\/intelligence\/([^/?#]+)/i) || [,''])[1];
-              if (nextUuid) openByUuid(nextUuid);
-            });
-          });
-
-          // 顶部工具按钮
-          copyBtn.onclick = async () => {
-            try {
-              await navigator.clipboard.writeText(pageUrl);
-              showNotificationInModal('链接已复制', 'success');
-            } catch {
-              showNotificationInModal('复制失败', 'danger');
+            // [修复] History 逻辑：只在不同路径时 Push
+            if (location.pathname !== pageUrl) {
+                history.pushState({ modal: 'article', url: pageUrl }, '', pageUrl);
+                pushedState = true;
             }
-          };
-          openNewBtn.onclick = () => window.open(pageUrl, '_blank', 'noopener');
-        } catch (err) {
-          titleEl.textContent = 'Load Failed';
-          bodyEl.innerHTML = `<div style="color:#c00;">Failed to load: ${String(err)}</div>`;
+            isOpen = true;
+
+            try {
+                const resp = await fetch(`/api/intelligence/${encodeURIComponent(uuid)}`);
+                if (resp.status === 401) {
+                    bodyEl.innerHTML = `<div style="color:#c00;">You are not authorized.</div>`;
+                    return;
+                }
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const payload = await resp.json();
+                const article = payload?.data || payload;
+
+                titleEl.textContent = article?.EVENT_TITLE || titleFallback || 'Detail';
+
+                // 调用统一渲染器
+                bodyEl.innerHTML = ArticleDetailRenderer.generateHTML(article);
+
+                // 绑定评分事件，传入 Modal 专用的 Toast 容器 ID
+                ArticleDetailRenderer.bindEvents(bodyEl, uuid, 'article-toast-container');
+
+                // Modal 内部链接跳转拦截
+                bodyEl.querySelectorAll('a[href^="/intelligence/"]').forEach(a => {
+                    a.addEventListener('click', (e) => {
+                        // 如果是类似 Find Similar 这种在新窗口打开的，不拦截
+                        if (a.target === '_blank' || e.button !== 0 || e.metaKey || e.ctrlKey) return;
+                        e.preventDefault();
+                        const nextUuid = (a.href.match(/\/intelligence\/([^/?#]+)/i) || [,''])[1];
+                        if (nextUuid) openByUuid(nextUuid);
+                    });
+                });
+
+                copyBtn.onclick = async () => {
+                    try {
+                        await navigator.clipboard.writeText(location.origin + pageUrl);
+                        ArticleDetailRenderer.showToast('article-toast-container', 'Link copied!', 'success');
+                    } catch {
+                        ArticleDetailRenderer.showToast('article-toast-container', 'Copy failed', 'danger');
+                    }
+                };
+            } catch (err) {
+                titleEl.textContent = 'Load Failed';
+                bodyEl.innerHTML = `<div style="color:#c00;">Failed to load: ${String(err)}</div>`;
+            }
         }
-      }
 
-      function close({ fromHistory } = { fromHistory: false }) {
-        if (!isOpen) return;
-        overlay.style.display = 'none';
-        overlay.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('body-scroll-locked');
-        bodyEl.innerHTML = '';
-        titleEl.textContent = 'Loading...';
-        uuidEl.textContent = '';
-        isOpen = false;
+        // 修改 1：在 close 函数里打标记
+        function close({ fromHistory } = { fromHistory: false }) {
+            if (!isOpen) return;
+            overlay.style.display = 'none';
+            overlay.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('body-scroll-locked');
+            bodyEl.innerHTML = '';
+            isOpen = false;
 
-        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+            if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
 
-        if (!fromHistory) {
-          const listUrl = sessionStorage.getItem('list-last-url') || `${location.origin}/intelligences`;
-          history.pushState({}, '', listUrl);
+            if (!fromHistory && pushedState) {
+                // [新增] 告诉外层列表：这次是我主动调用的后退，你不要刷新！
+                window._preventListReload = true;
+                history.back();
+            }
+            pushedState = false;
         }
-      }
 
-      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-      closeBtn.addEventListener('click', () => close());
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) close(); });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+        closeBtn.addEventListener('click', () => close());
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) close(); });
 
-      // 列表标题点击拦截（左键无修饰）
-      document.addEventListener('click', async (e) => {
-        const a = e.target.closest('a.article-title[data-uuid]');
-        if (!a) return;
-        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-        e.preventDefault();
-        sessionStorage.setItem('list-last-url', location.href);
-        const uuid = a.dataset.uuid;
-        if (uuid) await open(`/intelligence/${uuid}`, uuid, a.textContent?.trim() || 'Detail');
-      });
+        document.addEventListener('click', async (e) => {
+            const a = e.target.closest('a.article-title[data-uuid]');
+            if (!a) return;
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            const uuid = a.dataset.uuid;
+            if (uuid) await open(`/intelligence/${uuid}`, uuid, a.textContent?.trim() || 'Detail');
+        });
 
-      // popstate：地址栏切换与 Modal 状态同步
-      window.addEventListener('popstate', () => {
-        const m = location.pathname.match(/^\/intelligence\/([^/?#]+)/i);
-        if (m) {
-          const nextUuid = m[1];
-          if (!isOpen) openByUuid(nextUuid);
-        } else if (isOpen) {
-          close({ fromHistory: true });
-        }
-      });
-
-      // 处理用户“直达详情页”的情况（可选）
-      if (/^\/intelligence\/[^/?#]+/i.test(location.pathname)) {
-        const uuid = (location.pathname.match(/\/intelligence\/([^/?#]+)/i) || [,''])[1];
-        if (uuid) openByUuid(uuid);
-      }
+        // 修改 2：在底部的 popstate 里打标记（应对用户点击浏览器左上角的“后退”按钮）
+        window.addEventListener('popstate', () => {
+            if (isOpen) {
+                // [新增] 告诉外层列表：用户按了浏览器后退键，我来负责关弹窗，你不要刷新！
+                window._preventListReload = true;
+                close({ fromHistory: true });
+            }
+        });
     })();
 });

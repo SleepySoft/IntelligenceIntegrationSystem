@@ -665,7 +665,15 @@ body {
 .article-preview .btn-sm { padding: 5px 8px; font-size: 13px; }
 
 /* Toast（Modal 内） */
-.article-toast-container { position: fixed; right: 14px; bottom: 14px; z-index: 10; display: grid; gap: 8px; }
+/* 修改 Z-index，确保它在 Overlay 的 1000 之上 */
+.article-toast-container {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 1050; /* [修复] 之前是 10，被 modal-overlay 挡住了 */
+    display: grid;
+    gap: 8px;
+}
 .article-toast {
   min-width: 240px; max-width: 360px;
   color:#fff; padding:10px 12px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.18);

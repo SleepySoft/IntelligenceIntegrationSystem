@@ -627,17 +627,7 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):
-            try:
-                intelligence = self.intelligence_hub.get_intelligence(intelligence_uuid)
-                if intelligence:
-                    return default_article_render(intelligence)
-                else:
-                    return jsonify({"error": "Intelligence not found"}), 404
-            except Exception as e:
-                # logger.error(f'intelligence_viewer_api() error: {str(e)}', stack_info=True)
-                print(str(e))
-                traceback.print_exc()
-                return jsonify({"error": "Server error"}), 500
+            return render_template('intelligence_detail.html', uuid=intelligence_uuid)
 
         # ---------------------------------------------- Management Pages ----------------------------------------------
 
