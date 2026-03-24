@@ -86,8 +86,10 @@ class CommonIntelligenceCrawlFlow:
         self.pipeline: Optional[CrawlPipeline] = None
 
     def run_common_flow(self, local_crawler_config: dict, stop_event: threading.Event, global_site: bool = True):
+
         # Override generated config by user config file.
-        http_proxy = self.proj_config.get('collector.global_site_proxy.http', '')
+        config_part = 'global_site_proxy' if global_site else 'cn_site_proxy'
+        http_proxy = self.proj_config.get(f"collector.{config_part}.http", '')
         local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
         local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
