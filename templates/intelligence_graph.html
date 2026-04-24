@@ -232,21 +232,50 @@ function startPolling(threadId) {
 
     function renderTimeline(nodes) {
         const container = document.getElementById('timelineContainer');
-        container.innerHTML = ''; // 清空旧数据
+        container.innerHTML = '';
 
         if (!nodes || nodes.length === 0) {
             container.innerHTML = '<p class="text-muted">未能找到任何相关脉络。</p>';
             return;
         }
 
-        nodes.forEach(node => {
+        nodes.forEach((node, index) => {
             const isSeed = node.is_seed ? 'seed-node' : '';
-            const seedBadge = node.is_seed ? `<span class="badge bg-danger ms-2">种子节点 (起点)</span>` : '';
+            const seedBadge = node.is_seed ? `<span class="badge bg-danger ms-2">种子节点</span>` : '';
             const dateStr = node.incident_time || "未知时间";
+
+            // 【新增】处理相关情报的折叠 UI
+            let relatedHtml = '';
+            if (node.related_docs && node.related_docs.length > 0) {
+                const collapseId = `collapse_${index}`;
+
+                // 生成子项列表
+                const subItems = node.related_docs.map(sub => `
+                    <li class="list-group-item bg-transparent border-0 py-1 ps-3 border-start border-2 border-secondary ms-2 mb-1">
+                        <small class="text-muted me-2">${sub.time.split(' ')[0]}</small>
+                        <a href="/intelligence/${sub.uuid}" class="text-decoration-none timeline-article-link small" data-uuid="${sub.uuid}">
+                            ${sub.title}
+                        </a>
+                    </li>
+                `).join('');
+
+                relatedHtml = `
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary py-0" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+                            <i class="bi bi-chevron-expand"></i> 展开 ${node.related_docs.length} 篇相关追踪
+                        </button>
+                        <div class="collapse mt-2" id="${collapseId}">
+                            <ul class="list-group list-group-flush bg-light rounded">
+                                ${subItems}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
 
             const html = `
                 <div class="timeline-item ${isSeed}">
-                    <div class="text-muted small mb-1">${dateStr}</div>
+                    <div class="text-muted small mb-1"><i class="bi bi-clock-history"></i> ${dateStr}</div>
                     <h6 class="fw-bold text-dark mb-1">
                         <a href="/intelligence/${node.uuid}"
                            class="text-decoration-none timeline-article-link"
@@ -259,7 +288,7 @@ function startPolling(threadId) {
                     <div class="mt-1">
                         ${node.key_actors.slice(0, 3).map(a => `<span class="badge bg-light text-dark border me-1">${a}</span>`).join('')}
                     </div>
-                </div>
+                    ${relatedHtml} </div>
             `;
             container.innerHTML += html;
         });

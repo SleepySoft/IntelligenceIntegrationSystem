@@ -26,6 +26,12 @@ class GraphEdge(BaseModel):
     connection_reason: str
 
 
+class SubNode(BaseModel):
+    uuid: str
+    title: str
+    time: str
+
+
 class GraphNode(BaseModel):
     uuid: str
     incident_time: Optional[str] = None
@@ -34,6 +40,7 @@ class GraphNode(BaseModel):
     is_seed: bool = False
     key_actors: List[str] = []
     location: List[str] = []
+    related_docs: List[SubNode] = []
 
 
 class StorylineSnapshot(BaseModel):
@@ -262,33 +269,60 @@ class DynamicGraphEngine:
                     if accepted_this_round >= MAX_BRANCHES_PER_NODE:
                         break
 
-                    is_echo = False
+                    matched_node = None
                     for existing_node in nodes_dict.values():
-                        # 拦截网 1：绝对字符串相等
-                        if cand_time_str == existing_node.incident_time:
-                            is_echo = True
-                            break
-
-                        # 拦截网 2：三天高相似度跟风去重
                         exist_dt_str = existing_node.incident_time
                         if exist_dt_str:
                             try:
-                                exist_dt = datetime.datetime.strptime(exist_dt_str, "%Y-%m-%d").replace(
+                                # 确保时间格式匹配 _create_graph_node 中生成的格式 (%Y-%m-%d %H:%M)
+                                exist_dt = datetime.datetime.strptime(exist_dt_str, "%Y-%m-%d %H:%M").replace(
                                     tzinfo=datetime.timezone.utc)
-                                if abs(cand_time - exist_dt.timestamp()) <= (3 * 24 * 3600) and cand_vec_sim >= 0.75:
-                                    is_echo = True
+
+                                time_diff_sec = abs(cand_time - exist_dt.timestamp())
+                                time_diff_days = time_diff_sec / (24 * 3600)
+
+                                # 【核心修复】必须“时间近 AND 语义像”才能折叠！
+                                # 规则 A：同一天内发生，且向量相似度较高 (>= 0.65)，认为是同一事件的补充报道
+                                # 规则 B：三天内发生，且向量相似度极高 (>= 0.85)，认为是滞后/跟风报道
+                                if (time_diff_days <= 1 and cand_vec_sim >= 0.65) or \
+                                        (time_diff_days <= 3 and cand_vec_sim >= 0.85):
+                                    matched_node = existing_node
                                     break
-                            except ValueError:
+                            except ValueError as ve:
+                                # 增加日志，暴露出时间格式不匹配的问题
+                                logger.debug(f"Time parse error for {exist_dt_str}: {ve}")
                                 pass
 
-                    if is_echo:
-                        logger.info(f"  🔕 [ECHO] 绝对同日或高相似跟风，已折叠: {cand_uuid}")
-                        current_entities_pool.update(self._extract_rare_entities(cand_doc, era_stop_entities))
+                    if matched_node:
+                        # 【防御 1】填补 BFS 漏洞：即使被折叠，也要标记为已访问，防止后续轮次重复召回！
+                        visited_uuids.add(cand_uuid)
+
+                        # 【防御 2】UI 级去重保险：防范数据库里本来就存在的重复脏数据
+                        existing_uuids = {sub.uuid for sub in matched_node.related_docs}
+                        # 截取前15个字符作为标题去重依据，防止微小的末尾差异
+                        short_title = cand_doc.get("EVENT_TITLE", "")[:15]
+                        existing_titles = {sub.title[:15] for sub in matched_node.related_docs}
+
+                        if cand_uuid not in existing_uuids and short_title not in existing_titles:
+                            logger.info(
+                                f"  🔕 [ECHO] 发现相似情报，折叠至节点: {matched_node.uuid} (相似度: {cand_vec_sim:.2f})")
+
+                            matched_node.related_docs.append(SubNode(
+                                uuid=cand_uuid,
+                                title=cand_doc.get("EVENT_TITLE", "")[:20] + "...",
+                                time=datetime.datetime.fromtimestamp(cand_time, tz=datetime.timezone.utc).strftime(
+                                    '%Y-%m-%d %H:%M')
+                            ))
+                            # 依然吸收它的罕见实体以滋养图谱
+                            current_entities_pool.update(self._extract_rare_entities(cand_doc, era_stop_entities))
+                        else:
+                            logger.debug(f"[DUPLICATE] 节点 {cand_uuid} 已存在于折叠列表中或标题高度重复，跳过。")
+
                         continue
 
                     # 安检通过，真正拉入图谱！
                     title = cand_doc.get("EVENT_TITLE", "")[:15] + "..."
-                    logger.info(f"  ✅ [LINKED] [{cand_time_str}] {title} | 总分: {score:.2f} | 依据: {reason}")
+                    logger.info(f"[LINKED] [{cand_time_str}] {title} | 总分: {score:.2f} | 依据: {reason}")
 
                     visited_uuids.add(cand_uuid)
                     nodes_dict[cand_uuid] = self._create_graph_node(cand_doc)
@@ -369,30 +403,39 @@ class DynamicGraphEngine:
         return entities
 
     def _get_timestamp(self, doc: dict) -> float:
-        """安全提取文档的时间戳 (优先用提取的事件时间，其次退化为发布/归档时间)"""
-        times = doc.get("TIME") or []
-        if times and times[0]:
-            try:
-                dt = datetime.datetime.strptime(times[0], "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
-                return dt.timestamp()
-            except ValueError:
-                pass
-
-        # 退化获取
         appendix = doc.get("APPENDIX") or {}
-        arch_time = appendix.get(APPENDIX_TIME_ARCHIVED)
+        # 注意：这里直接使用你指定的字段名，或者使用你定义的 APPENDIX_TIME_ARCHIVED 变量
+        arch_time = appendix.get("__TIME_ARCHIVED__")
+
+        if arch_time is None:
+            logger.warning(f"[Time Missing] UUID {doc.get('UUID', 'Unknown')} 缺失归档时间，使用当前时间兜底！")
+            return time.time()
+
+        if isinstance(arch_time, datetime.datetime):
+            # MongoDB 默认存的是 UTC，但 PyMongo 返回的可能是 naive (无时区) 的 datetime
+            # 我们需要强制附加上 UTC 时区，再转换为时间戳，防止服务器本地时区污染
+            if arch_time.tzinfo is None:
+                arch_time = arch_time.replace(tzinfo=datetime.timezone.utc)
+            return arch_time.timestamp()
+
         if isinstance(arch_time, str):
             try:
                 return datetime.datetime.fromisoformat(arch_time.replace('Z', '+00:00')).timestamp()
             except ValueError:
+                logger.warning(f"[Time Parse Failed] UUID {doc.get('UUID')} 的归档时间格式异常: {arch_time}")
                 pass
-        return time.time()
+
+        logger.warning(f"[Time Missing] UUID {doc.get('UUID')} 缺失归档时间，使用当前系统时间兜底！")
+
+        return time.time()  # 兜底策略
 
     def _create_graph_node(self, doc: dict, is_seed: bool = False) -> GraphNode:
-        times = doc.get("TIME") or []
+        timestamp = self._get_timestamp(doc)
+        dt_str = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).strftime('%Y-%m-%d %H:%M')
+
         return GraphNode(
             uuid=doc.get("UUID", "Unknown"),
-            incident_time=times[0] if times else None,
+            incident_time=dt_str,  # 统一使用格式化后的归档时间
             title=doc.get("EVENT_TITLE") or "无标题",
             brief=doc.get("EVENT_BRIEF") or "",
             is_seed=is_seed,
