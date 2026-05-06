@@ -32,7 +32,6 @@ def drive_module(module):
         crawler_governor=crawler_governance
     )
 
-    # set_intelligence_sink(None)
     stop_event = threading.Event()
 
     module.module_init(service_context)

@@ -95,9 +95,13 @@ def get_and_submit_article(group_path: str,
             else:
                 collected_data = fetch_process_article(article, fetch_content, scrubbers)
 
+            try:
+                task.save_file(collected_data.content, collected_data.title)
+            except Exception as e:
+                context.logger.info(f'Fail to save fetched data.')
+
             context.submit_collected_data(group_path, collected_data)
 
-            task.save_file(collected_data.content, collected_data.title)
             task.success()
 
         except CrawlSession.Flow as e:
