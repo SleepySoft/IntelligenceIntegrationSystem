@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import datetime
 import traceback
 import json_repair
 from typing import Optional, Dict, Any, List
@@ -149,21 +150,44 @@ def build_analyze_user_message(structured_data: Dict[str, Any]) -> str:
 
 
 def build_analyze_message(
-        prompt: str,
-        structured_data: Dict[str, Any],
-        context: Optional[List[Dict[str, str]]] = None):
+    prompt: str,
+    structured_data: Dict[str, Any],
+    context: Optional[List[Dict[str, str]]] = None
+):
+    has_content_placeholder = '{{CONTENT}}' in prompt
+
     try:
         user_message = build_analyze_user_message(structured_data)
     except ValidationError as e:
-        logger.error(f'AI require data field missing: {str(e)}')
-        return {'error': str(e)}
+        logger.error(f'AI require data field missing: {e}')
+        raise
     except Exception as e:
-        logger.error(f'Validate AI data fail: {str(e)}')
-        return {'error': str(e)}
+        logger.error(f'Validate AI data fail: {e}')
+        raise
 
-    messages = context if context else []
-    messages.append({"role": "system", "content": prompt})
-    messages.append({"role": "user", "content": user_message})
+    date_str = datetime.date.today().strftime("%Y-%m-%d")
+    # Similar messages is a reserved feature.
+    prepared_prompt = (prompt.
+                       replace('{{CURRENT_DATE}}', date_str).
+                       replace('{{SIMILAR_MESSAGES}}', ''))
+
+    messages = list(context) if context else []
+
+    if has_content_placeholder:
+        prepared_prompt = prepared_prompt.replace('{{CONTENT}}', user_message)
+        messages.append({
+            "role": "user",
+            "content": prepared_prompt
+        })
+    else:
+        messages.append({
+            "role": "system",
+            "content": prepared_prompt
+        })
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
 
     return messages
 
