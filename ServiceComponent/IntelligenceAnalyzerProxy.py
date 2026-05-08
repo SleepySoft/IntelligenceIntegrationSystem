@@ -56,12 +56,16 @@ def record_conversation(category: str, messages: list, response: dict) -> int:
         name=category)
 
     with writer as f:
-        f.write("[system]\n\n")
-        f.write(messages[0]['content'])
+        index = 0
+
+        if len(messages) > 1:
+            f.write("[system]\n\n")
+            f.write(messages[index]['content'])
+            index += 1
 
         f.write("\n\n")
         f.write("[user]\n\n")
-        f.write(messages[1]['content'])
+        f.write(messages[index]['content'])
 
         f.write("\n\n")
         f.write("[reply]\n\n")

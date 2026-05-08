@@ -666,6 +666,7 @@ class IntelligenceHub:
                 with self.lock:
                     self.error_counter += 1
                 logger.error(f"{prefix} Analysis error: {str(e)}")
+                traceback.print_exc()
 
                 if is_sensitive_or_bad_request:
                     # 如果是敏感词或坏请求，使用特殊标记，避免丢弃但隔离
