@@ -435,6 +435,8 @@ python CrawlerServiceEngine.py
 
 如果有意见和建议，可以到这个讨论下留言：[https://zhuanlan.zhihu.com/p/1957783829684154704](https://zhuanlan.zhihu.com/p/1957783829684154704)
 
-或者可以加入wx讨论组：
+或者可以加入wx或QQ讨论组（验证消息：IIS）：
 
-![img.png](doc/wx_group_qr.png)
+![wx.png](doc/wx_group_qr.png)
+
+![qq.png](doc/qq_group_qr.png)
