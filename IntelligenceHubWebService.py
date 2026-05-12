@@ -26,7 +26,6 @@ from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
 from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE, APPENDIX_TOTAL_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
-from ServiceComponent.IntelligenceEntityFrequencyPageRender import get_entity_frequency_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from IntelligenceHub import CollectedData, IntelligenceHub, ProcessedData, APPENDIX_TIME_ARCHIVED
 
@@ -866,7 +865,7 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def entity_frequency_page():
             """实体出现频率统计页面"""
-            return get_entity_frequency_page()
+            return render_template('entity_frequency.html')
 
         @app.route('/statistics/entity_frequency', methods=['GET'])
         @WebServiceAccessManager.login_required
