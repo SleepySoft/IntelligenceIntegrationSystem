@@ -569,6 +569,7 @@ class IntelligenceHubWebService:
                 'peoples': _split(combined.get('peoples', '')),
                 'locations': _split(combined.get('locations', '')),
                 'organizations': _split(combined.get('organizations', '')),
+                'geography': _split(combined.get('geography', '')),
                 'informant_domains': _split(combined.get('informant_domains', '')),
                 'threshold_min': threshold_min,
                 'threshold_max': threshold_max,
@@ -609,7 +610,7 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
                 )
-            for field in ('locations', 'peoples', 'organizations', 'keywords', 'informant_domains'):
+            for field in ('locations', 'peoples', 'organizations', 'geography', 'keywords', 'informant_domains'):
                 if p[field]:
                     query[field] = p[field]
 

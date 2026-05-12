@@ -356,6 +356,7 @@ class IntelligenceHub:
                            threshold: Optional[int] = 4,
                            threshold_max: Optional[int] = None,
                            informant_domains: Optional[List[str]] = None,
+                           geography: Optional[Union[str, List[str]]] = None,
                            skip: Optional[int] = 0,
                            limit: int = 100,
                            ) -> Tuple[List[dict], int]:
@@ -367,7 +368,7 @@ class IntelligenceHub:
             period = period, locations = locations, peoples = peoples,
             organizations = organizations, keywords = keywords,
             threshold=threshold, threshold_max=threshold_max, informant_domains=informant_domains,
-            skip=skip, limit=limit)
+            geography=geography, skip=skip, limit=limit)
         return result, total
 
     def vector_search_intelligence(self,

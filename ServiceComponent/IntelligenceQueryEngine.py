@@ -185,6 +185,7 @@ class IntelligenceQueryEngine:
             threshold: Optional[float] = None,
             threshold_max: Optional[float] = None,
             informant_domains: Optional[Union[str, List[str]]] = None,
+            geography: Optional[Union[str, List[str]]] = None,
             skip: Optional[int] = None,
             limit: Optional[int] = None
     ) -> Tuple[List[dict], int]:
@@ -199,6 +200,7 @@ class IntelligenceQueryEngine:
             keywords: Keywords in raw article.
             threshold: Minimum score value for filtering APPENDIX_MAX_RATE_SCORE
             threshold_max: Maximum score value for filtering
+            geography: Geography region(s) to filter
             skip: Number of documents to skip (offset / page * item_per_page)
             limit: Maximum number of results to return (item_per_page)
 
@@ -221,7 +223,8 @@ class IntelligenceQueryEngine:
                 keywords=keywords,
                 threshold=threshold,
                 threshold_max=threshold_max,
-                informant_domains=informant_domains
+                informant_domains=informant_domains,
+                geography=geography
             )
 
             compass_query = self.convert_to_compass_query(query)
@@ -251,7 +254,8 @@ class IntelligenceQueryEngine:
             keywords: Optional[str] = None,
             threshold: Optional[float] = None,
             threshold_max: Optional[float] = None,
-            informant_domains: Optional[Union[str, List[str]]] = None
+            informant_domains: Optional[Union[str, List[str]]] = None,
+            geography: Optional[Union[str, List[str]]] = None
     ) -> dict:
         query_conditions = []
 
@@ -291,7 +295,11 @@ class IntelligenceQueryEngine:
         if informant_domains:
             query_conditions.append(self.build_informant_condition(informant_domains))
 
-        # 6. Score Threshold (Hybrid Strategy)
+        # 6. Geography Filter (string field, case-insensitive regex match)
+        if geography:
+            query_conditions.append(self.build_geography_condition(geography))
+
+        # 7. Score Threshold (Hybrid Strategy)
         if threshold is not None or threshold_max is not None:
             v1_score_field = f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
             v2_score_field = f"APPENDIX.{APPENDIX_TOTAL_SCORE}"
@@ -586,6 +594,16 @@ class IntelligenceQueryEngine:
         if len(domain_list) == 1:
             return {"INFORMANT": {"$regex": domain_list[0], "$options": "i"}}
         return {"$or": [{"INFORMANT": {"$regex": d, "$options": "i"}} for d in domain_list]}
+
+    def build_geography_condition(self, regions: Union[str, List[str]]) -> dict:
+        """构建地理区域查询条件。GEOGRAPHY 为字符串字段，支持精确或多值（OR 关系）。"""
+        region_list = [regions] if isinstance(regions, str) else regions
+        region_list = [r.strip() for r in region_list if r.strip()]
+        if not region_list:
+            return {}
+        if len(region_list) == 1:
+            return {"GEOGRAPHY": {"$regex": region_list[0], "$options": "i"}}
+        return {"$or": [{"GEOGRAPHY": {"$regex": r, "$options": "i"}} for r in region_list]}
 
     def get_source_domains(self, limit: int = 200) -> List[dict]:
         """

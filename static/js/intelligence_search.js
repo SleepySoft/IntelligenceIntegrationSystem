@@ -169,13 +169,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return { setValues: (l, h) => { low = l; high = h; updateUI(); } };
     }
 
-    initRangeSlider('slider-mongo', (low, high) => {
+    const sliderMongo = initRangeSlider('slider-mongo', (low, high) => {
         document.getElementById('threshold-min-mongo').value = low;
         document.getElementById('threshold-max-mongo').value = high;
         document.getElementById('score-label-mongo').textContent = `${low} - ${high}`;
     });
 
-    initRangeSlider('slider-vector', (low, high) => {
+    const sliderVector = initRangeSlider('slider-vector', (low, high) => {
         document.getElementById('score-threshold-min-vector').value = low;
         document.getElementById('score-threshold-max-vector').value = high;
         document.getElementById('score-label-vector').textContent = `${low.toFixed(2)} - ${high.toFixed(2)}`;
@@ -186,8 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = document.getElementById(inputId);
         const startHidden = document.getElementById(startHiddenId);
         const endHidden = document.getElementById(endHiddenId);
-        if (!input || typeof flatpickr === 'undefined') return;
-        flatpickr(input, {
+        if (!input || typeof flatpickr === 'undefined') return null;
+        return flatpickr(input, {
             mode: "range",
             enableTime: true,
             dateFormat: "Y-m-d H:i",
@@ -204,8 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    initFlatpickr('date-range-mongo', 'start-time-mongo', 'end-time-mongo');
-    initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
+    const fpMongo = initFlatpickr('date-range-mongo', 'start-time-mongo', 'end-time-mongo');
+    const fpVector = initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
 
     // --- 5. 核心搜索功能 ---
     async function fetchResults(payload) {
@@ -309,9 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
             payload.threshold_max = Number(thMax);
 
             const loc = document.querySelector('#mongo-pane input[name="locations"]');
+            const geo = document.querySelector('#mongo-pane input[name="geography"]');
             const peo = document.querySelector('#mongo-pane input[name="peoples"]');
             const org = document.querySelector('#mongo-pane input[name="organizations"]');
             if (loc && loc.value.trim()) payload.locations = loc.value.trim();
+            if (geo && geo.value.trim()) payload.geography = geo.value.trim();
             if (peo && peo.value.trim()) payload.peoples = peo.value.trim();
             if (org && org.value.trim()) payload.organizations = org.value.trim();
 
@@ -341,5 +343,109 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+
+    // --- 8. URL 参数自动填充与自动搜索 ---
+    function applyUrlParams() {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.size === 0) return;
+
+        const mode = urlParams.get('mode') || 'mongo';
+        const isVector = mode === 'vector';
+
+        // 切换 Tab
+        if (isVector) {
+            const vectorTabBtn = document.getElementById('vector-tab');
+            if (vectorTabBtn && typeof bootstrap !== 'undefined') {
+                const tab = new bootstrap.Tab(vectorTabBtn);
+                tab.show();
+            }
+        }
+
+        // 填充关键词
+        const kw = urlParams.get('keywords');
+        if (kw) {
+            if (isVector) {
+                const el = document.querySelector('#vector-pane textarea[name="keywords_vector"]');
+                if (el) el.value = kw;
+            } else {
+                const el = document.querySelector('#mongo-pane input[name="keywords"]');
+                if (el) el.value = kw;
+            }
+        }
+
+        // 填充实体字段
+        const entities = {
+            'locations': 'locations',
+            'peoples': 'peoples',
+            'organizations': 'organizations',
+            'geography': 'geography'
+        };
+        for (const [param, fieldName] of Object.entries(entities)) {
+            const val = urlParams.get(param);
+            if (val) {
+                const el = document.querySelector(`#${isVector ? 'vector' : 'mongo'}-pane input[name="${fieldName}"]`);
+                if (el) el.value = val;
+            }
+        }
+
+        // 填充日期
+        const startTime = urlParams.get('start_time');
+        const endTime = urlParams.get('end_time');
+        if (startTime && endTime) {
+            const parseDate = (s) => {
+                s = s.replace(' ', 'T');
+                const d = new Date(s);
+                return isNaN(d) ? null : d;
+            };
+            const startDate = parseDate(startTime);
+            const endDate = parseDate(endTime);
+            if (startDate && endDate) {
+                if (isVector && fpVector) {
+                    fpVector.setDate([startDate, endDate]);
+                } else if (!isVector && fpMongo) {
+                    fpMongo.setDate([startDate, endDate]);
+                }
+            }
+        }
+
+        // 填充分数段
+        if (!isVector) {
+            const tMin = parseFloat(urlParams.get('threshold_min'));
+            const tMax = parseFloat(urlParams.get('threshold_max'));
+            if (!isNaN(tMin) && !isNaN(tMax) && sliderMongo) {
+                sliderMongo.setValues(tMin, tMax);
+            }
+        } else {
+            const sMin = parseFloat(urlParams.get('score_threshold_min'));
+            const sMax = parseFloat(urlParams.get('score_threshold_max'));
+            if (!isNaN(sMin) && !isNaN(sMax) && sliderVector) {
+                sliderVector.setValues(sMin, sMax);
+            }
+        }
+
+        // 填充数据源标签
+        const domains = urlParams.get('informant_domains');
+        if (domains) {
+            const domainList = domains.split(',').map(d => d.trim()).filter(Boolean);
+            const selectedSet = isVector ? selectedDomainsVector : selectedDomainsMongo;
+            const containerId = isVector ? 'source-domains-container-vector' : 'source-domains-container';
+            const container = document.getElementById(containerId);
+            if (container) {
+                domainList.forEach(domain => {
+                    const tag = container.querySelector(`.source-tag[data-domain="${domain}"]`);
+                    if (tag) {
+                        tag.classList.add('selected');
+                        selectedSet.add(domain);
+                    }
+                });
+            }
+        }
+
+        // 自动搜索
+        if (urlParams.get('auto_search') === '1') {
+            searchForm.dispatchEvent(new Event('submit'));
+        }
+    }
+    applyUrlParams();
 
 });

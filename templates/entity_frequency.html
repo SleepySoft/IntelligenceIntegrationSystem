@@ -517,15 +517,18 @@ function renderEntityData(entityType, data, granularity) {
     const topEntities = data.top_entities || [];
     const bottomEntities = data.bottom_entities || [];
 
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+
     // 柱状图
-    renderTopBarChart(entityType, topEntities);
+    renderTopBarChart(entityType, topEntities, startTime, endTime);
 
     // TOP 表格 + 趋势按钮
     const topTbody = document.querySelector(`#top-table-${entityType} tbody`);
     topTbody.innerHTML = topEntities.map((e, i) =>
         `<tr>
             <td><span class="badge badge-top">${i+1}</span></td>
-            <td>${escapeHtml(e.name)}</td>
+            <td><a href="javascript:void(0)" onclick="openIntelligenceSearch('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}', '${startTime}', '${endTime}')" style="text-decoration:none;color:inherit;font-weight:500;">${escapeHtml(e.name)}</a></td>
             <td>${e.total_count}</td>
             <td><button class="btn btn-sm btn-outline-primary btn-trend" onclick="showTrend('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}')">趋势</button></td>
         </tr>`
@@ -536,7 +539,7 @@ function renderEntityData(entityType, data, granularity) {
     bottomTbody.innerHTML = bottomEntities.map((e, i) =>
         `<tr>
             <td><span class="badge badge-bottom">${i+1}</span></td>
-            <td>${escapeHtml(e.name)}</td>
+            <td><a href="javascript:void(0)" onclick="openIntelligenceSearch('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}', '${startTime}', '${endTime}')" style="text-decoration:none;color:inherit;font-weight:500;">${escapeHtml(e.name)}</a></td>
             <td>${e.total_count}</td>
             <td><button class="btn btn-sm btn-outline-secondary btn-trend" onclick="showTrend('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}')">趋势</button></td>
         </tr>`
@@ -560,7 +563,7 @@ function formatSlotLabel(slot, granularity) {
     return slot;
 }
 
-function renderTopBarChart(entityType, topEntities) {
+function renderTopBarChart(entityType, topEntities, startTime, endTime) {
     const domId = `top-bar-${entityType}`;
     let chart = charts[`bar-${entityType}`];
     if (!chart) {
@@ -609,6 +612,14 @@ function renderTopBarChart(entityType, topEntities) {
         }]
     };
     chart.setOption(option, true);
+
+    // 点击柱状图打开对应实体的情报搜索
+    chart.off('click');
+    chart.on('click', function(params) {
+        if (params && params.name) {
+            openIntelligenceSearch(entityType, params.name, startTime, endTime);
+        }
+    });
 }
 
 function resetTrendChart(entityType, granularity) {
@@ -645,7 +656,8 @@ async function showTrend(entityType, entityName) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        const labels = (data.time_slots || []).map(s => formatSlotLabel(s, granularity));
+        const rawTimeSlots = data.time_slots || [];
+        const labels = rawTimeSlots.map(s => formatSlotLabel(s, granularity));
         const counts = data.counts || [];
 
         const domId = `trend-chart-${entityType}`;
@@ -654,6 +666,12 @@ async function showTrend(entityType, entityName) {
             chart = echarts.init(document.getElementById(domId));
             charts[`trend-${entityType}`] = chart;
         }
+
+        // 保存原始 time_slots 用于点击事件
+        chart.__rawTimeSlots = rawTimeSlots;
+        chart.__granularity = granularity;
+        chart.__entityType = entityType;
+        chart.__entityName = entityName;
 
         const option = {
             tooltip: {
@@ -691,6 +709,35 @@ async function showTrend(entityType, entityName) {
             }]
         };
         chart.setOption(option, true);
+
+        // 绑定点击事件（先解绑防止重复）
+        chart.off('click');
+        chart.on('click', function(params) {
+            if (params == null || params.dataIndex == null) return;
+            const slot = chart.__rawTimeSlots[params.dataIndex];
+            if (!slot) return;
+            const g = chart.__granularity;
+            let slotStart, slotEnd;
+            if (g === 'day') {
+                slotStart = slot + 'T00:00:00';
+                slotEnd = slot + 'T23:59:59';
+            } else if (g === 'week') {
+                // slot 是周一的日期
+                slotStart = slot + 'T00:00:00';
+                const monday = new Date(slot + 'T00:00:00');
+                const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
+                slotEnd = sunday.toISOString().slice(0, 10) + 'T23:59:59';
+            } else if (g === 'month') {
+                slotStart = slot + '-01T00:00:00';
+                const y = parseInt(slot.slice(0, 4));
+                const m = parseInt(slot.slice(5, 7));
+                const lastDay = new Date(y, m, 0).getDate();
+                slotEnd = `${slot}-${String(lastDay).padStart(2, '0')}T23:59:59`;
+            } else {
+                return;
+            }
+            openIntelligenceSearch(chart.__entityType, chart.__entityName, slotStart, slotEnd);
+        });
     } catch (err) {
         console.error('Load trend failed:', err);
         alert('加载趋势失败: ' + err.message);
@@ -701,6 +748,34 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 实体类型 -> 搜索参数字段映射
+const ENTITY_SEARCH_PARAM = {
+    'LOCATION': 'locations',
+    'GEOGRAPHY': 'geography',
+    'PEOPLE': 'peoples',
+    'ORGANIZATION': 'organizations'
+};
+
+/**
+ * 打开情报搜索页面，预填充条件
+ * @param {string} entityType - LOCATION/GEOGRAPHY/PEOPLE/ORGANIZATION
+ * @param {string} entityName - 实体名称
+ * @param {string} startTime - ISO 开始时间
+ * @param {string} endTime - ISO 结束时间
+ */
+function openIntelligenceSearch(entityType, entityName, startTime, endTime) {
+    const paramKey = ENTITY_SEARCH_PARAM[entityType];
+    if (!paramKey) return;
+    const params = new URLSearchParams();
+    params.set('mode', 'mongo');
+    params.set(paramKey, entityName);
+    if (startTime) params.set('start_time', startTime);
+    if (endTime) params.set('end_time', endTime);
+    params.set('auto_search', '1');
+    const url = '/intelligences/search?' + params.toString();
+    window.open(url, '_blank');
 }
 
 window.addEventListener('resize', () => {
@@ -715,4 +790,3 @@ if (document.readyState === 'loading') {
 </script>
 </body>
 </html>
-"""
