@@ -1238,11 +1238,11 @@ function openIntelligenceSearch(entityType, entityName, startTime, endTime) {
     params.set(paramKey, entityName);
 
     if (startTime) {
-        params.set('start_time', startTime);
+        params.set('archive_start_time', startTime);
     }
 
     if (endTime) {
-        params.set('end_time', endTime);
+        params.set('archive_end_time', endTime);
     }
 
     params.set('auto_search', '1');

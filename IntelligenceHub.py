@@ -349,6 +349,7 @@ class IntelligenceHub:
                            *,
                            db: str = 'archive',
                            period:      Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+                           archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
                            locations:   Optional[List[str]] = None,
                            peoples:     Optional[List[str]] = None,
                            organizations: Optional[List[str]] = None,
@@ -365,7 +366,7 @@ class IntelligenceHub:
         else:
             query_engine = self.archive_db_query_engine
         result, total = query_engine.query_intelligence(
-            period = period, locations = locations, peoples = peoples,
+            period = period, archive_period=archive_period, locations = locations, peoples = peoples,
             organizations = organizations, keywords = keywords,
             threshold=threshold, threshold_max=threshold_max, informant_domains=informant_domains,
             geography=geography, skip=skip, limit=limit)

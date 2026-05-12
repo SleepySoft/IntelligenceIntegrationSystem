@@ -563,6 +563,8 @@ class IntelligenceHubWebService:
                 # 保持原始字符串，在具体逻辑中再转 datetime，避免在此处 crash
                 'start_time': combined.get('start_time', ''),
                 'end_time': combined.get('end_time', ''),
+                'archive_start_time': combined.get('archive_start_time', ''),
+                'archive_end_time': combined.get('archive_end_time', ''),
                 'keywords': combined.get('keywords', '').strip(),  # 去除首尾空格
 
                 # Mongo 筛选字段
@@ -610,6 +612,11 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
                 )
+            if p['archive_start_time'] and p['archive_end_time']:
+                query['archive_period'] = (
+                    datetime.datetime.fromisoformat(p['archive_start_time']),
+                    datetime.datetime.fromisoformat(p['archive_end_time'])
+                )
             for field in ('locations', 'peoples', 'organizations', 'geography', 'keywords', 'informant_domains'):
                 if p[field]:
                     query[field] = p[field]
@@ -650,6 +657,11 @@ class IntelligenceHubWebService:
                 vector_kwargs['event_period'] = (
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
+                )
+            if p['archive_start_time'] and p['archive_end_time']:
+                vector_kwargs['archive_period'] = (
+                    datetime.datetime.fromisoformat(p['archive_start_time']),
+                    datetime.datetime.fromisoformat(p['archive_end_time'])
                 )
 
             raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(**vector_kwargs)

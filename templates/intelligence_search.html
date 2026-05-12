@@ -149,13 +149,19 @@
                             </div>
 
                             <div class="row g-2">
-                                <div class="col-md-5">
-                                    <label class="compact-label">Time Range (UTC)</label>
+                                <div class="col-md-3">
+                                    <label class="compact-label">Publish Time (UTC)</label>
                                     <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-mongo" placeholder="Pick date range...">
                                     <input type="hidden" name="start_time" id="start-time-mongo">
                                     <input type="hidden" name="end_time" id="end-time-mongo">
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
+                                    <label class="compact-label">Archive Time (UTC)</label>
+                                    <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-archive-mongo" placeholder="Pick archive range...">
+                                    <input type="hidden" name="archive_start_time" id="archive-start-time-mongo">
+                                    <input type="hidden" name="archive_end_time" id="archive-end-time-mongo">
+                                </div>
+                                <div class="col-md-3">
                                     <label class="compact-label">Score Range <span class="range-value-label" id="score-label-mongo">0 - 10</span></label>
                                     <div class="range-slider" id="slider-mongo" data-min="0" data-max="10" data-step="0.5" data-decimal="1"></div>
                                     <div class="range-labels"><span>0</span><span>10</span></div>
@@ -203,13 +209,19 @@
                             </div>
 
                             <div class="row g-2">
-                                <div class="col-md-5">
-                                    <label class="compact-label">Time Range (UTC)</label>
+                                <div class="col-md-3">
+                                    <label class="compact-label">Publish Time (UTC)</label>
                                     <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-vector" placeholder="Pick date range...">
                                     <input type="hidden" name="start_time" id="start-time-vector">
                                     <input type="hidden" name="end_time" id="end-time-vector">
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-3">
+                                    <label class="compact-label">Archive Time (UTC)</label>
+                                    <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-archive-vector" placeholder="Pick archive range...">
+                                    <input type="hidden" name="archive_start_time" id="archive-start-time-vector">
+                                    <input type="hidden" name="archive_end_time" id="archive-end-time-vector">
+                                </div>
+                                <div class="col-md-3">
                                     <label class="compact-label">Similarity <span class="range-value-label" id="score-label-vector">0.0 - 1.0</span></label>
                                     <div class="range-slider" id="slider-vector" data-min="0" data-max="1" data-step="0.05" data-decimal="2"></div>
                                     <div class="range-labels"><span>0</span><span>1</span></div>

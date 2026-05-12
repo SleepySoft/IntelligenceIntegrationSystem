@@ -214,7 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const fpMongo = initFlatpickr('date-range-mongo', 'start-time-mongo', 'end-time-mongo');
+    const fpArchiveMongo = initFlatpickr('date-range-archive-mongo', 'archive-start-time-mongo', 'archive-end-time-mongo');
     const fpVector = initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
+    const fpArchiveVector = initFlatpickr('date-range-archive-vector', 'archive-start-time-vector', 'archive-end-time-vector');
 
     // --- 5. 核心搜索功能 ---
     async function fetchResults(payload) {
@@ -286,6 +288,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (st) payload.start_time = st;
             if (et) payload.end_time = et;
 
+            const ast = document.getElementById('archive-start-time-vector').value;
+            const aet = document.getElementById('archive-end-time-vector').value;
+            if (ast) payload.archive_start_time = ast;
+            if (aet) payload.archive_end_time = aet;
+
             const scoreMin = document.getElementById('score-threshold-min-vector').value;
             const scoreMax = document.getElementById('score-threshold-max-vector').value;
             payload.score_threshold_min = Number(scoreMin);
@@ -311,6 +318,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const et = document.getElementById('end-time-mongo').value;
             if (st) payload.start_time = st;
             if (et) payload.end_time = et;
+
+            const ast = document.getElementById('archive-start-time-mongo').value;
+            const aet = document.getElementById('archive-end-time-mongo').value;
+            if (ast) payload.archive_start_time = ast;
+            if (aet) payload.archive_end_time = aet;
 
             const thMin = document.getElementById('threshold-min-mongo').value;
             const thMax = document.getElementById('threshold-max-mongo').value;
@@ -400,26 +412,51 @@ document.addEventListener('DOMContentLoaded', () => {
         // 填充日期：直接设置 hidden input 用 URL 原始值，flatpickr 仅更新显示不触发 onChange
         const startTime = urlParams.get('start_time');
         const endTime = urlParams.get('end_time');
+        const archiveStartTime = urlParams.get('archive_start_time');
+        const archiveEndTime = urlParams.get('archive_end_time');
+
+        const parseDate = (s) => {
+            if (!s) return null;
+            s = s.replace(' ', 'T');
+            const d = new Date(s);
+            return isNaN(d) ? null : d;
+        };
+
         if (startTime && endTime) {
-            const parseDate = (s) => {
-                s = s.replace(' ', 'T');
-                const d = new Date(s);
-                return isNaN(d) ? null : d;
-            };
             const startDate = parseDate(startTime);
             const endDate = parseDate(endTime);
             if (!isVector) {
                 document.getElementById('start-time-mongo').value = startTime;
                 document.getElementById('end-time-mongo').value = endTime;
-                if (fpMongo && startDate && endDate) {
-                    fpMongo.setDate([startDate, endDate], false);
-                }
+                if (fpMongo && startDate && endDate) fpMongo.setDate([startDate, endDate], false);
             } else {
                 document.getElementById('start-time-vector').value = startTime;
                 document.getElementById('end-time-vector').value = endTime;
-                if (fpVector && startDate && endDate) {
-                    fpVector.setDate([startDate, endDate], false);
-                }
+                if (fpVector && startDate && endDate) fpVector.setDate([startDate, endDate], false);
+            }
+        } else if (archiveStartTime && archiveEndTime) {
+            // 跳转时只带了归档时间 → 清空默认的发布时间，避免双重过滤
+            if (!isVector) {
+                document.getElementById('start-time-mongo').value = '';
+                document.getElementById('end-time-mongo').value = '';
+                if (fpMongo) fpMongo.clear(false);
+            } else {
+                document.getElementById('start-time-vector').value = '';
+                document.getElementById('end-time-vector').value = '';
+                if (fpVector) fpVector.clear(false);
+            }
+        }
+        if (archiveStartTime && archiveEndTime) {
+            const startDate = parseDate(archiveStartTime);
+            const endDate = parseDate(archiveEndTime);
+            if (!isVector) {
+                document.getElementById('archive-start-time-mongo').value = archiveStartTime;
+                document.getElementById('archive-end-time-mongo').value = archiveEndTime;
+                if (fpArchiveMongo && startDate && endDate) fpArchiveMongo.setDate([startDate, endDate], false);
+            } else {
+                document.getElementById('archive-start-time-vector').value = archiveStartTime;
+                document.getElementById('archive-end-time-vector').value = archiveEndTime;
+                if (fpArchiveVector && startDate && endDate) fpArchiveVector.setDate([startDate, endDate], false);
             }
         }
 
