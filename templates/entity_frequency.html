@@ -744,18 +744,7 @@ async function showTrend(entityType, entityName) {
         chart.setOption(option, true);
 
         // 绑定点击事件（先解绑防止重复）
-        chart.off('click');
-        chart.on('click', function(params) {
-            if (params == null) return;
-            let dataIndex = null;
-            if (params.componentType === 'series') {
-                dataIndex = params.dataIndex;
-            } else if (params.componentType === 'xAxis') {
-                // 点击 X 轴标签，通过标签文本找索引
-                const idx = chart.__labels.indexOf(params.value);
-                if (idx >= 0) dataIndex = idx;
-            }
-            if (dataIndex == null) return;
+        function doTrendJump(dataIndex) {
             const slot = chart.__rawTimeSlots[dataIndex];
             if (!slot) return;
             const g = chart.__granularity;
@@ -764,7 +753,6 @@ async function showTrend(entityType, entityName) {
                 slotStart = slot + 'T00:00:00';
                 slotEnd = slot + 'T23:59:59';
             } else if (g === 'week') {
-                // slot 是周一的日期
                 slotStart = slot + 'T00:00:00';
                 const monday = new Date(slot + 'T00:00:00');
                 const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
@@ -779,6 +767,31 @@ async function showTrend(entityType, entityName) {
                 return;
             }
             openIntelligenceSearch(chart.__entityType, chart.__entityName, slotStart, slotEnd);
+        }
+
+        chart.off('click');
+        chart.on('click', function(params) {
+            let dataIndex = null;
+            if (params && params.componentType === 'series') {
+                dataIndex = params.dataIndex;
+            } else if (params && params.componentType === 'xAxis') {
+                const idx = chart.__labels.indexOf(params.value);
+                if (idx >= 0) dataIndex = idx;
+            } else if (params && params.event) {
+                // 点击空白区域（出现 axisPointer 垂线时）
+                const offsetX = params.event.offsetX;
+                const offsetY = params.event.offsetY;
+                if (offsetX != null && offsetY != null) {
+                    const pointInPixel = [offsetX, offsetY];
+                    if (chart.containPixel('grid', pointInPixel)) {
+                        const idx = chart.convertFromPixel({xAxisIndex: 0}, pointInPixel);
+                        if (idx != null) {
+                            dataIndex = Math.round(idx);
+                        }
+                    }
+                }
+            }
+            if (dataIndex != null) doTrendJump(dataIndex);
         });
     } catch (err) {
         console.error('Load trend failed:', err);
