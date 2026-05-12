@@ -20,6 +20,45 @@
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
+
+        /* 数据源标签样式 */
+        .source-domains-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 4px 0;
+        }
+        .source-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+            background-color: #f1f3f5;
+            color: #495057;
+            border: 1px solid #e9ecef;
+        }
+        .source-tag:hover {
+            background-color: #e9ecef;
+            border-color: #dee2e6;
+        }
+        .source-tag.selected {
+            background-color: #0d6efd;
+            color: #fff;
+            border-color: #0d6efd;
+        }
+        .source-tag .check-icon {
+            display: none;
+            font-size: 0.75rem;
+            margin-left: 2px;
+        }
+        .source-tag.selected .check-icon {
+            display: inline;
+        }
     </style>
 </head>
 <body>
@@ -65,6 +104,15 @@
                                 <div class="col-md-4">
                                     <label class="form-label">Organizations</label>
                                     <input type="text" class="form-control" name="organizations" placeholder="Comma-separated">
+                                </div>
+                            </div>
+                            <div class="row g-3 mt-1">
+                                <div class="col-12">
+                                    <label class="form-label">数据源 (新闻媒体)</label>
+                                    <div class="source-domains-wrapper" id="source-domains-container">
+                                        <span class="text-muted small">Loading sources...</span>
+                                    </div>
+                                    <div class="form-text text-muted small">点选标签过滤媒体来源，未选则搜索全部</div>
                                 </div>
                             </div>
                         </div>

@@ -354,6 +354,7 @@ class IntelligenceHub:
                            organizations: Optional[List[str]] = None,
                            keywords: Optional[str] = None,
                            threshold: Optional[int] = 4,
+                           informant_domains: Optional[List[str]] = None,
                            skip: Optional[int] = 0,
                            limit: int = 100,
                            ) -> Tuple[List[dict], int]:
@@ -364,7 +365,8 @@ class IntelligenceHub:
         result, total = query_engine.query_intelligence(
             period = period, locations = locations, peoples = peoples,
             organizations = organizations, keywords = keywords,
-            threshold=threshold, skip=skip, limit=limit)
+            threshold=threshold, informant_domains=informant_domains,
+            skip=skip, limit=limit)
         return result, total
 
     def vector_search_intelligence(self,

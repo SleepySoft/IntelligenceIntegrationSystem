@@ -3907,3 +3907,27 @@ prompt和uuid无关，只通过prompt_version进行匹配。
 
 
 
+
+
+
+
+
+我想增强搜索页面 templates/intelligence_search.html 的功能，请分析后端和前端，看我们能做到什么，做到何等方便的程度。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

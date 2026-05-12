@@ -564,6 +564,7 @@ class IntelligenceHubWebService:
                 'peoples': _split(combined.get('peoples', '')),
                 'locations': _split(combined.get('locations', '')),
                 'organizations': _split(combined.get('organizations', '')),
+                'informant_domains': _split(combined.get('informant_domains', '')),
 
                 # Vector 字段
                 'in_summary': to_bool(combined.get('in_summary'), default=True),
@@ -600,7 +601,7 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
                 )
-            for field in ('locations', 'locations', 'peoples', 'organizations', 'keywords', 'threshold'):
+            for field in ('locations', 'peoples', 'organizations', 'keywords', 'threshold', 'informant_domains'):
                 if p[field]:
                     query[field] = p[field]
 
@@ -860,6 +861,17 @@ class IntelligenceHubWebService:
             })
 
         # --------------------------- Entity Frequency Statistics ---------------------------
+
+        @app.route('/api/sources', methods=['GET'])
+        def api_sources():
+            """获取所有数据源域名列表及文章数量。"""
+            try:
+                engine = self.intelligence_hub.archive_db_query_engine
+                domains = engine.get_source_domains(limit=500)
+                return jsonify({"domains": domains})
+            except Exception as e:
+                logger.error(f"api_sources error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
 
         @app.route('/statistics/entity_frequency/page', methods=['GET'])
         def entity_frequency_page():

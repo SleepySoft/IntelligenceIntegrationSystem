@@ -182,7 +182,8 @@ class IntelligenceQueryEngine:
             peoples: Optional[Union[str, List[str]]] = None,
             organizations: Optional[Union[str, List[str]]] = None,
             keywords: Optional[str] = None,
-            threshold: Optional[float] = None,  # New threshold parameter
+            threshold: Optional[float] = None,
+            informant_domains: Optional[Union[str, List[str]]] = None,
             skip: Optional[int] = None,
             limit: Optional[int] = None
     ) -> Tuple[List[dict], int]:
@@ -216,7 +217,8 @@ class IntelligenceQueryEngine:
                 peoples=peoples,
                 organizations=organizations,
                 keywords=keywords,
-                threshold=threshold
+                threshold=threshold,
+                informant_domains=informant_domains
             )
 
             compass_query = self.convert_to_compass_query(query)
@@ -244,7 +246,8 @@ class IntelligenceQueryEngine:
             peoples: Optional[Union[str, List[str]]] = None,
             organizations: Optional[Union[str, List[str]]] = None,
             keywords: Optional[str] = None,
-            threshold: Optional[float] = None  # Filter by score
+            threshold: Optional[float] = None,
+            informant_domains: Optional[Union[str, List[str]]] = None
     ) -> dict:
         query_conditions = []
 
@@ -280,7 +283,11 @@ class IntelligenceQueryEngine:
         if keywords:
             query_conditions.append(self.build_keyword_or_condition(keywords))
 
-        # 5. Score Threshold (Hybrid Strategy)
+        # 5. Informant Domain Filter
+        if informant_domains:
+            query_conditions.append(self.build_informant_condition(informant_domains))
+
+        # 6. Score Threshold (Hybrid Strategy)
         if threshold is not None:
             v1_score_field = f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
             v2_score_field = f"APPENDIX.{APPENDIX_TOTAL_SCORE}"
@@ -542,6 +549,63 @@ class IntelligenceQueryEngine:
         """构建列表字段查询条件"""
         target_list = [values] if isinstance(values, str) else values
         return {field: {"$in": target_list}}
+
+    def build_informant_condition(self, domains: Union[str, List[str]]) -> dict:
+        """构建数据源域名查询条件。支持单域名或多域名（OR 关系）。"""
+        domain_list = [domains] if isinstance(domains, str) else domains
+        domain_list = [d.strip().lower() for d in domain_list if d.strip()]
+        if not domain_list:
+            return {}
+        if len(domain_list) == 1:
+            return {"INFORMANT": {"$regex": domain_list[0], "$options": "i"}}
+        return {"$or": [{"INFORMANT": {"$regex": d, "$options": "i"}} for d in domain_list]}
+
+    def get_source_domains(self, limit: int = 200) -> List[dict]:
+        """
+        从 MongoDB 聚合提取所有数据源域名及文章数量。
+        返回 [{"domain": "bbc.com", "count": 123}, ...]，按 count 降序排列。
+        """
+        collection = self.__mongo_db.collection
+        try:
+            pipeline = [
+                # 1. 只取有 INFORMANT 的文档
+                {"$match": {"INFORMANT": {"$type": "string", "$ne": ""}}},
+                # 2. 提取域名：去掉协议头，取主机名
+                {
+                    "$addFields": {
+                        "domain": {
+                            "$regexFind": {
+                                "input": "$INFORMANT",
+                                "regex": "^https?://(?:www\\.)?([^/]+)"
+                            }
+                        }
+                    }
+                },
+                # 3. 过滤掉解析失败的
+                {"$match": {"domain": {"$ne": None}}},
+                # 4. 按域名分组计数
+                {
+                    "$addFields": {
+                        "domain_str": {"$arrayElemAt": ["$domain.captures", 0]}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": {"$toLower": "$domain_str"},
+                        "count": {"$sum": 1}
+                    }
+                },
+                # 5. 排序并限制数量
+                {"$sort": {"count": -1}},
+                {"$limit": limit},
+                # 6. 格式化输出
+                {"$project": {"_id": 0, "domain": "$_id", "count": 1}}
+            ]
+            results = list(collection.aggregate(pipeline))
+            return results
+        except Exception as e:
+            logger.error(f"get_source_domains failed: {e}", exc_info=True)
+            return []
 
     def build_keyword_or_condition(self, keywords: str) -> dict:
         cleaned_keywords = self.sanitize_keywords(keywords)

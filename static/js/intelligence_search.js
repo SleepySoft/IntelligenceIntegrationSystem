@@ -34,6 +34,57 @@ document.addEventListener('DOMContentLoaded', () => {
         payload_cache: {} // 缓存当前的搜索条件，翻页时使用
     };
 
+    // --- 数据源域名加载 ---
+    const sourceDomainsContainer = document.getElementById('source-domains-container');
+    let selectedDomains = new Set();
+
+    // 手工维护的已接入媒体列表（如需增删，直接改此处）
+    const MEDIA_SOURCES = [
+        { domain: 'aa.com.tr',      name: '阿纳多卢通讯社',       flag: '🇹🇷' },
+        { domain: 'abc.net.au',     name: '澳大利亚广播公司',     flag: '🇦🇺' },
+        { domain: 'aljazeera.com',  name: '半岛电视台',           flag: '🇶🇦' },
+        { domain: 'bbc.com',        name: '英国广播公司',         flag: '🇬🇧' },
+        { domain: 'cbc.ca',         name: '加拿大广播公司',       flag: '🇨🇦' },
+        { domain: 'chinanews.com',  name: '中国新闻网',           flag: '🇨🇳' },
+        { domain: 'dw.com',         name: '德国之声',             flag: '🇩🇪' },
+        { domain: 'elpais.com',     name: '国家报',               flag: '🇪🇸' },
+        { domain: 'france24.com',   name: '法国24台',             flag: '🇫🇷' },
+        { domain: 'investing.com',  name: '英为财情',             flag: '🌍' },
+        { domain: 'news.cn',        name: '新华网',               flag: '🇨🇳' },
+        { domain: 'nhk.or.jp',      name: '日本广播协会',         flag: '🇯🇵' },
+        { domain: 'ntv.com.tr',     name: '土耳其NTV',            flag: '🇹🇷' },
+        { domain: 'rfi.fr',         name: '法国国际广播电台',     flag: '🇫🇷' },
+        { domain: 'tass.com',       name: '塔斯社',               flag: '🇷🇺' },
+        { domain: 'voanews.com',    name: '美国之音',             flag: '🇺🇸' },
+        { domain: 'yna.co.kr',      name: '韩联社',               flag: '🇰🇷' },
+    ];
+
+    function loadSourceDomains() {
+        if (!sourceDomainsContainer) return;
+        sourceDomainsContainer.innerHTML = '';
+        MEDIA_SOURCES.forEach(item => {
+            const tag = document.createElement('div');
+            tag.className = 'source-tag';
+            tag.dataset.domain = item.domain;
+            tag.title = item.domain;
+            tag.innerHTML = `
+                <span>${item.flag}</span>
+                <span>${item.name}</span>
+                <span class="check-icon">✓</span>
+            `;
+            tag.addEventListener('click', () => {
+                tag.classList.toggle('selected');
+                if (tag.classList.contains('selected')) {
+                    selectedDomains.add(item.domain);
+                } else {
+                    selectedDomains.delete(item.domain);
+                }
+            });
+            sourceDomainsContainer.appendChild(tag);
+        });
+    }
+    loadSourceDomains();
+
     // --- 2. 核心功能 ---
 
     async function fetchResults(payload) {
@@ -132,6 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (formData.get('locations')) payload.locations = formData.get('locations');
             if (formData.get('peoples')) payload.peoples = formData.get('peoples');
             if (formData.get('organizations')) payload.organizations = formData.get('organizations');
+
+            // 数据源域名过滤
+            if (selectedDomains.size > 0) {
+                payload.informant_domains = Array.from(selectedDomains).join(',');
+            }
 
             // 确保 Mongo 模式下清理掉 Vector 特有的参数，避免混淆（虽然后端会忽略）
         }
