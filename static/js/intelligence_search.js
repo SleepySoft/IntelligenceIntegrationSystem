@@ -397,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 填充日期
+        // 填充日期：直接设置 hidden input 用 URL 原始值，flatpickr 仅更新显示不触发 onChange
         const startTime = urlParams.get('start_time');
         const endTime = urlParams.get('end_time');
         if (startTime && endTime) {
@@ -408,11 +408,17 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const startDate = parseDate(startTime);
             const endDate = parseDate(endTime);
-            if (startDate && endDate) {
-                if (isVector && fpVector) {
-                    fpVector.setDate([startDate, endDate]);
-                } else if (!isVector && fpMongo) {
-                    fpMongo.setDate([startDate, endDate]);
+            if (!isVector) {
+                document.getElementById('start-time-mongo').value = startTime;
+                document.getElementById('end-time-mongo').value = endTime;
+                if (fpMongo && startDate && endDate) {
+                    fpMongo.setDate([startDate, endDate], false);
+                }
+            } else {
+                document.getElementById('start-time-vector').value = startTime;
+                document.getElementById('end-time-vector').value = endTime;
+                if (fpVector && startDate && endDate) {
+                    fpVector.setDate([startDate, endDate], false);
                 }
             }
         }
