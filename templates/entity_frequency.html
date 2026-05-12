@@ -192,7 +192,12 @@
                 <div class="progress">
                     <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
                 </div>
-                <div class="text-muted small mt-1" id="progressText">准备中...</div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <div class="text-muted small" id="progressText">准备中...</div>
+                    <button id="cancelBuildBtn" class="btn btn-sm btn-outline-danger" style="display:none;">
+                        <i class="fas fa-times me-1"></i>取消
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -257,6 +262,7 @@ const ENTITY_LABELS = {
 };
 let currentEntityType = 'LOCATION';
 let charts = {};
+let buildAbortController = null;
 
 function formatDateTimeLocal(date) {
     const pad = n => String(n).padStart(2, '0');
@@ -378,16 +384,34 @@ async function buildCacheWithProgress(startTime, endTime) {
     const progressRow = document.getElementById('progressRow');
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
+    const cancelBtn = document.getElementById('cancelBuildBtn');
+    const fetchBtn = document.getElementById('fetchData');
+
     progressRow.style.display = 'flex';
     progressBar.style.width = '0%';
     progressBar.textContent = '0%';
     progressText.textContent = '正在准备缓存...';
+    cancelBtn.style.display = 'inline-block';
+    fetchBtn.disabled = true;
+
+    buildAbortController = new AbortController();
+    const signal = buildAbortController.signal;
+    cancelBtn.onclick = async () => {
+        // 先通知后端取消，再中断前端请求
+        try {
+            await fetch('/statistics/entity_frequency/build_cache/cancel', {method: 'POST'});
+        } catch (e) {
+            // 忽略网络错误
+        }
+        if (buildAbortController) buildAbortController.abort();
+    };
 
     try {
         const resp = await fetch('/statistics/entity_frequency/build_cache', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({start_time: startTime, end_time: endTime})
+            body: JSON.stringify({start_time: startTime, end_time: endTime}),
+            signal: signal
         });
         if (!resp.ok) {
             const err = await resp.json();
@@ -425,11 +449,20 @@ async function buildCacheWithProgress(startTime, endTime) {
         }
         return true;
     } catch (e) {
+        if (e.name === 'AbortError') {
+            progressText.textContent = '已取消';
+            progressBar.classList.remove('progress-bar-animated');
+            console.log('Build cache cancelled by user');
+            return false;
+        }
         console.error('Build cache failed:', e);
         alert('缓存构建失败: ' + e.message);
         return false;
     } finally {
-        setTimeout(() => { progressRow.style.display = 'none'; }, 800);
+        buildAbortController = null;
+        cancelBtn.style.display = 'none';
+        fetchBtn.disabled = false;
+        setTimeout(() => { progressRow.style.display = 'none'; }, 1200);
     }
 }
 
@@ -664,7 +697,3 @@ if (document.readyState === 'loading') {
 </body>
 </html>
 """
-
-
-def get_entity_frequency_page() -> str:
-    """返回实体频率统计页面的完整 HTML 字符串。

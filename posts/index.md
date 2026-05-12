@@ -20,7 +20,7 @@
 
 + [Rate Statistics](/statistics/score_distribution.html)
 
-+ [Entity_Statistics](/statistics/entity_frequency/page)
++ [Entity Statistics](/statistics/entity_frequency/page)
 
 + [Intelligence Statistics](/statistics/intelligence_statistics.html)
 

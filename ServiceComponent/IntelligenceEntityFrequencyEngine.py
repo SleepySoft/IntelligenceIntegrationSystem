@@ -59,6 +59,7 @@ class EntityFrequencyEngine:
         self.mongo_db_archive = mongo_db_archive
         self.time_field = time_field
         self.write_lock = threading.Lock()
+        self._cancel_event = threading.Event()
         self._init_db()
 
     def _get_conn(self):
@@ -112,6 +113,15 @@ class EntityFrequencyEngine:
 
     # -------------------------------------------------- 缓存构建 --------------------------------------------------
 
+    def cancel_build(self) -> None:
+        """设置取消标志，使正在进行的 build_cache_with_progress 尽快停止。"""
+        self._cancel_event.set()
+        logger.info("EntityFrequencyEngine: build cancellation requested.")
+
+    def reset_cancel(self) -> None:
+        """重置取消标志，通常在启动新构建前调用。"""
+        self._cancel_event.clear()
+
     def build_cache_with_progress(
         self,
         start_time: datetime.datetime,
@@ -119,7 +129,9 @@ class EntityFrequencyEngine:
     ) -> Iterator[Dict[str, Any]]:
         """
         生成器：扫描 MongoDB 并按天构建缓存，每完成一天 yield 一次进度。
+        支持通过 cancel_build() 提前终止。
         """
+        self.reset_cancel()
         slot_start = self._normalize_to_day(start_time)
         slot_end = self._normalize_to_day(end_time)
 
@@ -131,6 +143,16 @@ class EntityFrequencyEngine:
         done = 0
         current = slot_start
         while current < slot_end:
+            if self._cancel_event.is_set():
+                logger.info(f"Build cache cancelled at slot {current.strftime('%Y-%m-%d')}")
+                yield {
+                    "done": done,
+                    "total": total_days,
+                    "current_slot": current.strftime("%Y-%m-%d"),
+                    "status": "cancelled",
+                }
+                return
+
             try:
                 self._build_single_day_cache(current)
             except Exception as e:

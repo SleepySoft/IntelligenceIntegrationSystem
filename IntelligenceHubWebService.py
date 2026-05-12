@@ -977,6 +977,16 @@ class IntelligenceHubWebService:
                 logger.error(f"entity_frequency_trend error: {e}", exc_info=True)
                 return jsonify({"error": str(e)}), 500
 
+        @app.route('/statistics/entity_frequency/build_cache/cancel', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def entity_frequency_build_cache_cancel():
+            """取消正在进行的缓存构建任务。"""
+            engine = self.intelligence_hub.entity_frequency_engine
+            if not engine:
+                return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
+            engine.cancel_build()
+            return jsonify({"status": "cancelled"})
+
         @app.route('/statistics/entity_frequency/build_cache', methods=['POST'])
         @WebServiceAccessManager.login_required
         def entity_frequency_build_cache():
@@ -1009,6 +1019,8 @@ class IntelligenceHubWebService:
                 try:
                     for progress in engine.build_cache_with_progress(start_time, end_time):
                         yield json.dumps(progress) + "\n"
+                        if progress.get("status") == "cancelled":
+                            return
                 except Exception as e:
                     logger.error(f"build_cache stream error: {e}", exc_info=True)
                     yield json.dumps({"status": "error", "message": str(e)}) + "\n"
