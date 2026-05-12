@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <style>
         :root {
             --primary-color: #4361ee;
@@ -161,13 +162,11 @@
         <button id="fetchData" style="display:none;"></button>
         {% else %}
         <div class="row align-items-end">
-            <div class="col-md-2">
-                <label for="startTime" class="form-label fw-bold">开始时间</label>
-                <input type="datetime-local" id="startTime" class="form-control">
-            </div>
-            <div class="col-md-2">
-                <label for="endTime" class="form-label fw-bold">结束时间</label>
-                <input type="datetime-local" id="endTime" class="form-control">
+            <div class="col-md-4">
+                <label for="dateRange" class="form-label fw-bold">时间范围</label>
+                <input type="text" id="dateRange" class="form-control flatpickr-range" placeholder="选择时间范围...">
+                <input type="hidden" id="startTime">
+                <input type="hidden" id="endTime">
             </div>
             <div class="col-md-2">
                 <label for="granularitySelect" class="form-label fw-bold">统计粒度</label>
@@ -258,6 +257,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script>
 const ENTITY_TYPES = ['LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'];
 const ENTITY_LABELS = {
@@ -269,6 +269,7 @@ const ENTITY_LABELS = {
 let currentEntityType = 'LOCATION';
 let charts = {};
 let buildAbortController = null;
+let fpDateRange = null;
 
 function formatDateTimeLocal(date) {
     const pad = n => String(n).padStart(2, '0');
@@ -279,19 +280,48 @@ function initPage() {
     const isPublic = document.getElementById('publicMode').value === '1';
     const now = new Date();
 
+    let startDate, endDate;
     if (isPublic) {
-        // Public 模式：固定最近 30 天
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        document.getElementById('endTime').value = formatDateTimeLocal(now);
-        document.getElementById('startTime').value = formatDateTimeLocal(monthAgo);
-        // Public 模式下隐藏不必要的输入控件（如果存在）
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        endDate = now;
         if (document.getElementById('granularitySelect')) {
             document.getElementById('granularitySelect').value = 'day';
         }
     } else {
-        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        document.getElementById('endTime').value = formatDateTimeLocal(now);
-        document.getElementById('startTime').value = formatDateTimeLocal(yesterday);
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        endDate = now;
+    }
+
+    // 初始化 flatpickr（非 Public 模式显示控件，Public 模式 hidden input 仍需设值）
+    const dateRangeInput = document.getElementById('dateRange');
+    if (dateRangeInput && typeof flatpickr !== 'undefined') {
+        fpDateRange = flatpickr(dateRangeInput, {
+            mode: "range",
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            defaultDate: [startDate, endDate],
+            onChange: function(selectedDates) {
+                const startHidden = document.getElementById('startTime');
+                const endHidden = document.getElementById('endTime');
+                if (selectedDates.length >= 2) {
+                    startHidden.value = flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") + ':00';
+                    endHidden.value = flatpickr.formatDate(selectedDates[1], "Y-m-d H:i") + ':00';
+                } else {
+                    startHidden.value = '';
+                    endHidden.value = '';
+                }
+            }
+        });
+        // defaultDate 不会触发 onChange，手动同步一次 hidden input
+        if (fpDateRange.selectedDates.length >= 2) {
+            document.getElementById('startTime').value = flatpickr.formatDate(fpDateRange.selectedDates[0], "Y-m-d H:i") + ':00';
+            document.getElementById('endTime').value = flatpickr.formatDate(fpDateRange.selectedDates[1], "Y-m-d H:i") + ':00';
+        }
+    } else {
+        // fallback: 直接设置 hidden input（Public 模式走这里）
+        document.getElementById('startTime').value = formatDateTimeLocal(startDate);
+        document.getElementById('endTime').value = formatDateTimeLocal(endDate);
     }
 
     document.getElementById('fetchData').addEventListener('click', onRefreshClicked);
@@ -667,8 +697,9 @@ async function showTrend(entityType, entityName) {
             charts[`trend-${entityType}`] = chart;
         }
 
-        // 保存原始 time_slots 用于点击事件
+        // 保存原始 time_slots 和 labels 用于点击事件
         chart.__rawTimeSlots = rawTimeSlots;
+        chart.__labels = labels;
         chart.__granularity = granularity;
         chart.__entityType = entityType;
         chart.__entityName = entityName;
@@ -684,6 +715,7 @@ async function showTrend(entityType, entityName) {
                 type: 'category',
                 boundaryGap: false,
                 data: labels,
+                triggerEvent: true,
                 axisLabel: { rotate: labels.length > 14 ? 45 : 0, fontSize: 11 }
             },
             yAxis: {
@@ -696,7 +728,8 @@ async function showTrend(entityType, entityName) {
                 type: 'line',
                 smooth: true,
                 symbol: 'circle',
-                symbolSize: 6,
+                symbolSize: 10,
+                cursor: 'pointer',
                 data: counts,
                 areaStyle: {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -713,8 +746,17 @@ async function showTrend(entityType, entityName) {
         // 绑定点击事件（先解绑防止重复）
         chart.off('click');
         chart.on('click', function(params) {
-            if (params == null || params.dataIndex == null) return;
-            const slot = chart.__rawTimeSlots[params.dataIndex];
+            if (params == null) return;
+            let dataIndex = null;
+            if (params.componentType === 'series') {
+                dataIndex = params.dataIndex;
+            } else if (params.componentType === 'xAxis') {
+                // 点击 X 轴标签，通过标签文本找索引
+                const idx = chart.__labels.indexOf(params.value);
+                if (idx >= 0) dataIndex = idx;
+            }
+            if (dataIndex == null) return;
+            const slot = chart.__rawTimeSlots[dataIndex];
             if (!slot) return;
             const g = chart.__granularity;
             let slotStart, slotEnd;

@@ -187,11 +187,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const startHidden = document.getElementById(startHiddenId);
         const endHidden = document.getElementById(endHiddenId);
         if (!input || typeof flatpickr === 'undefined') return null;
-        return flatpickr(input, {
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const fp = flatpickr(input, {
             mode: "range",
             enableTime: true,
             dateFormat: "Y-m-d H:i",
             time_24hr: true,
+            defaultDate: [yesterday, now],
             onChange: function(selectedDates) {
                 if (selectedDates.length >= 2) {
                     startHidden.value = flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") + ':00';
@@ -202,6 +205,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+        // 初始化时同步一次 hidden input
+        if (fp.selectedDates.length >= 2) {
+            startHidden.value = flatpickr.formatDate(fp.selectedDates[0], "Y-m-d H:i") + ':00';
+            endHidden.value = flatpickr.formatDate(fp.selectedDates[1], "Y-m-d H:i") + ':00';
+        }
+        return fp;
     }
 
     const fpMongo = initFlatpickr('date-range-mongo', 'start-time-mongo', 'end-time-mongo');
@@ -347,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- 8. URL 参数自动填充与自动搜索 ---
     function applyUrlParams() {
         const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.size === 0) return;
+        if (!urlParams.toString()) return;
 
         const mode = urlParams.get('mode') || 'mongo';
         const isVector = mode === 'vector';
