@@ -908,21 +908,21 @@ class IntelligenceHubWebService:
             return render_template('entity_frequency.html', public_mode=is_public)
 
         @app.route('/statistics/entity_frequency', methods=['GET'])
-        @WebServiceAccessManager.login_required
         def entity_frequency_api():
             """
             查询实体出现频率统计。
+            未登录时固定返回最近30天数据，不可自定义时间范围。
             参数:
                 entity_type: LOCATION | GEOGRAPHY | PEOPLE | ORGANIZATION
-                start_time: ISO 格式开始时间
-                end_time: ISO 格式结束时间
+                start_time: ISO 格式开始时间（登录后可自定义）
+                end_time: ISO 格式结束时间（登录后可自定义）
                 granularity: day | week | month（默认 day）
                 top_n: 默认 20，最大 50
                 bottom_threshold: 默认 5
             """
+            is_public = not session.get('logged_in', False)
+
             entity_type = request.args.get('entity_type', 'LOCATION')
-            start_str = request.args.get('start_time')
-            end_str = request.args.get('end_time')
             granularity = request.args.get('granularity', 'day')
             top_n = request.args.get('top_n', '20')
             bottom_threshold = request.args.get('bottom_threshold', '5')
@@ -936,15 +936,22 @@ class IntelligenceHubWebService:
                 return jsonify({"error": f"Invalid granularity. Must be one of {valid_granularities}"}), 400
 
             try:
-                if start_str:
-                    start_time = dateutil.parser.parse(start_str)
-                else:
-                    start_time = get_aware_time() - datetime.timedelta(days=1)
-
-                if end_str:
-                    end_time = dateutil.parser.parse(end_str)
-                else:
+                if is_public:
+                    # Public 模式：固定近30天
                     end_time = get_aware_time()
+                    start_time = end_time - datetime.timedelta(days=30)
+                else:
+                    start_str = request.args.get('start_time')
+                    end_str = request.args.get('end_time')
+                    if start_str:
+                        start_time = dateutil.parser.parse(start_str)
+                    else:
+                        start_time = get_aware_time() - datetime.timedelta(days=1)
+
+                    if end_str:
+                        end_time = dateutil.parser.parse(end_str)
+                    else:
+                        end_time = get_aware_time()
 
                 top_n = min(int(top_n), 50)
                 bottom_threshold = int(bottom_threshold)
@@ -974,17 +981,17 @@ class IntelligenceHubWebService:
                 return jsonify({"error": str(e)}), 500
 
         @app.route('/statistics/entity_frequency/trend', methods=['GET'])
-        @WebServiceAccessManager.login_required
         def entity_frequency_trend():
             """
             查询单个实体的趋势数据。
+            未登录时固定返回最近30天数据，不可自定义时间范围。
             参数:
                 entity_type, entity_name, start_time, end_time, granularity
             """
+            is_public = not session.get('logged_in', False)
+
             entity_type = request.args.get('entity_type', '')
             entity_name = request.args.get('entity_name', '')
-            start_str = request.args.get('start_time')
-            end_str = request.args.get('end_time')
             granularity = request.args.get('granularity', 'day')
 
             if not entity_name:
@@ -995,8 +1002,14 @@ class IntelligenceHubWebService:
                 return jsonify({"error": f"Invalid entity_type"}), 400
 
             try:
-                start_time = dateutil.parser.parse(start_str) if start_str else get_aware_time() - datetime.timedelta(days=7)
-                end_time = dateutil.parser.parse(end_str) if end_str else get_aware_time()
+                if is_public:
+                    end_time = get_aware_time()
+                    start_time = end_time - datetime.timedelta(days=30)
+                else:
+                    start_str = request.args.get('start_time')
+                    end_str = request.args.get('end_time')
+                    start_time = dateutil.parser.parse(start_str) if start_str else get_aware_time() - datetime.timedelta(days=7)
+                    end_time = dateutil.parser.parse(end_str) if end_str else get_aware_time()
             except Exception as e:
                 return jsonify({"error": f"Parameter parse error: {e}"}), 400
 

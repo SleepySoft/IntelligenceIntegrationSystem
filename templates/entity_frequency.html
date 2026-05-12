@@ -551,6 +551,7 @@ function switchTab(entityType) {
 }
 
 async function onRefreshClicked() {
+    const isPublic = getValue('publicMode') === '1';
     const startTime = getValue('startTime');
     const endTime = getValue('endTime');
 
@@ -559,8 +560,10 @@ async function onRefreshClicked() {
         return;
     }
 
-    const ok = await buildCacheWithProgress(startTime, endTime);
-    if (!ok) return;
+    if (!isPublic) {
+        const ok = await buildCacheWithProgress(startTime, endTime);
+        if (!ok) return;
+    }
 
     await fetchAllData();
 }
