@@ -1228,11 +1228,13 @@ class IntelligenceHub:
             logger.warning(f"Translation backfill failed: {e}")
 
     def _do_build_entity_frequency_cache(self):
-        """每小时任务：构建上一小时的实体频率缓存。"""
+        """每小时任务：构建上一个完整天的实体频率缓存。"""
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
-            hour_end = now.replace(minute=0, second=0, microsecond=0)
-            hour_start = hour_end - datetime.timedelta(hours=1)
-            self.entity_frequency_engine.build_hourly_cache(hour_start, hour_end)
+            day_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_start = day_end - datetime.timedelta(days=1)
+            # 消费生成器以执行构建（后台任务不需要进度）
+            for _ in self.entity_frequency_engine.build_cache_with_progress(day_start, day_end):
+                pass
         except Exception as e:
             logger.warning(f"Entity frequency cache build failed: {e}")

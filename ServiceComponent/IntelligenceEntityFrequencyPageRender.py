@@ -66,14 +66,14 @@ BASE_TEMPLATE = """<!DOCTYPE html>
             margin-bottom: 25px;
         }
         .chart-container {
-            height: 420px;
-            min-height: 420px;
+            height: 360px;
+            min-height: 360px;
             background-color: white;
             border-radius: 12px;
             padding: 15px;
         }
         .table-container {
-            max-height: 400px;
+            max-height: 420px;
             overflow-y: auto;
         }
         .nav-tabs .nav-link {
@@ -105,6 +105,11 @@ BASE_TEMPLATE = """<!DOCTYPE html>
             background-color: var(--secondary-color);
             border-color: var(--secondary-color);
         }
+        .btn-trend {
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+        }
         .form-control, .form-select {
             border-radius: 8px;
         }
@@ -116,24 +121,21 @@ BASE_TEMPLATE = """<!DOCTYPE html>
             background-color: var(--warning-color);
             color: #333;
         }
-        .loading-overlay {
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.85);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
+        .progress {
+            height: 24px;
             border-radius: 12px;
         }
-        .spinner {
-            width: 40px; height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+        .trend-placeholder {
+            height: 360px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-size: 1.1rem;
+            background: #fafafa;
+            border-radius: 12px;
+            border: 2px dashed #ddd;
         }
-        @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
         footer { text-align:center; padding:20px; color:#6c757d; font-size:0.9rem; margin-top:20px; }
     </style>
 </head>
@@ -143,7 +145,7 @@ BASE_TEMPLATE = """<!DOCTYPE html>
         <div class="row align-items-center">
             <div class="col-md-8">
                 <h1><i class="fas fa-project-diagram me-3"></i>实体出现频率统计</h1>
-                <p class="mb-0">按小时粒度统计情报中地点、地域、人物、组织的出现频次与趋势</p>
+                <p class="mb-0">按天粒度统计情报中地点、地域、人物、组织的出现频次与趋势</p>
             </div>
             <div class="col-md-4 text-end">
                 <i class="fas fa-database fa-3x opacity-75"></i>
@@ -154,26 +156,43 @@ BASE_TEMPLATE = """<!DOCTYPE html>
     <!-- 控制面板 -->
     <div class="control-panel">
         <div class="row align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="startTime" class="form-label fw-bold">开始时间</label>
                 <input type="datetime-local" id="startTime" class="form-control">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="endTime" class="form-label fw-bold">结束时间</label>
                 <input type="datetime-local" id="endTime" class="form-control">
             </div>
             <div class="col-md-2">
-                <label for="thresholdInput" class="form-label fw-bold">阈值（底部过滤）</label>
-                <input type="number" id="thresholdInput" class="form-control" value="0" min="0">
+                <label for="granularitySelect" class="form-label fw-bold">统计粒度</label>
+                <select id="granularitySelect" class="form-select">
+                    <option value="day">按日</option>
+                    <option value="week">按周</option>
+                    <option value="month">按月</option>
+                </select>
             </div>
             <div class="col-md-2">
-                <label for="topNInput" class="form-label fw-bold">TOP N</label>
-                <input type="number" id="topNInput" class="form-control" value="20" min="1" max="100">
+                <label for="thresholdInput" class="form-label fw-bold">底部阈值</label>
+                <input type="number" id="thresholdInput" class="form-control" value="5" min="0">
+            </div>
+            <div class="col-md-2">
+                <label for="topNInput" class="form-label fw-bold">TOP N (最大50)</label>
+                <input type="number" id="topNInput" class="form-control" value="20" min="1" max="50">
             </div>
             <div class="col-md-2 text-end">
                 <button id="fetchData" class="btn btn-primary w-100">
                     <i class="fas fa-sync-alt me-2"></i>刷新
                 </button>
+            </div>
+        </div>
+        <!-- 进度条 -->
+        <div class="row mt-3" id="progressRow" style="display:none;">
+            <div class="col-12">
+                <div class="progress">
+                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <div class="text-muted small mt-1" id="progressText">准备中...</div>
             </div>
         </div>
     </div>
@@ -208,7 +227,6 @@ BASE_TEMPLATE = """<!DOCTYPE html>
 
     <!-- Tab 内容 -->
     <div class="tab-content" id="entityTabContent">
-        <!-- 动态生成的 pane 结构一致，用 JS 填充 -->
         <div class="tab-pane fade show active" id="pane-location" role="tabpanel">
             <div id="content-LOCATION"></div>
         </div>
@@ -251,81 +269,79 @@ function initPage() {
     document.getElementById('endTime').value = formatDateTimeLocal(now);
     document.getElementById('startTime').value = formatDateTimeLocal(yesterday);
 
-    document.getElementById('fetchData').addEventListener('click', fetchAllData);
+    document.getElementById('fetchData').addEventListener('click', onRefreshClicked);
 
-    // 初始化每个 tab 的占位结构
     ENTITY_TYPES.forEach(type => initTabStructure(type));
-
-    fetchAllData();
+    onRefreshClicked();
 }
 
 function initTabStructure(entityType) {
     const container = document.getElementById(`content-${entityType}`);
     container.innerHTML = `
-        <div class="loading-overlay" id="loading-${entityType}">
-            <div class="spinner"></div>
-        </div>
         <div class="row mb-3">
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <div class="card stats-card">
                     <div class="stats-value" id="stat-total-${entityType}">-</div>
                     <div class="stats-label">总提及次数</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <div class="card stats-card">
                     <div class="stats-value" id="stat-unique-${entityType}">-</div>
                     <div class="stats-label">唯一实体数</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <div class="card stats-card">
-                    <div class="stats-value" id="stat-peak-${entityType}">-</div>
-                    <div class="stats-label">最活跃时段</div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stats-card">
-                    <div class="stats-value" id="stat-peakcount-${entityType}">-</div>
-                    <div class="stats-label">峰值次数</div>
+                    <div class="stats-value" id="stat-span-${entityType}">-</div>
+                    <div class="stats-label">时间跨度（天）</div>
                 </div>
             </div>
         </div>
         <div class="row mb-3">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header"><i class="fas fa-chart-bar me-2"></i>趋势曲线 — ${ENTITY_LABELS[entityType]}</div>
-                    <div class="card-body position-relative">
-                        <div id="trend-chart-${entityType}" class="chart-container"></div>
+                    <div class="card-header"><i class="fas fa-chart-bar me-2"></i>高频实体分布 — ${ENTITY_LABELS[entityType]}</div>
+                    <div class="card-body">
+                        <div id="top-bar-${entityType}" style="height:320px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header"><i class="fas fa-trophy me-2"></i>高频实体排行 — ${ENTITY_LABELS[entityType]}</div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table table-sm table-hover entity-table" id="top-table-${entityType}">
+                                <thead><tr><th>排名</th><th>实体名称</th><th>总次数</th><th>操作</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header"><i class="fas fa-arrow-down me-2"></i>长尾实体（高于阈值）— ${ENTITY_LABELS[entityType]}</div>
+                    <div class="card-body">
+                        <div class="table-container">
+                            <table class="table table-sm table-hover entity-table" id="bottom-table-${entityType}">
+                                <thead><tr><th>排名</th><th>实体名称</th><th>总次数</th><th>操作</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-12">
                 <div class="card">
-                    <div class="card-header"><i class="fas fa-trophy me-2"></i>TOP 20 — ${ENTITY_LABELS[entityType]}</div>
-                    <div class="card-body">
-                        <div id="top-bar-${entityType}" style="height:320px;"></div>
-                        <div class="table-container mt-3">
-                            <table class="table table-sm table-hover entity-table" id="top-table-${entityType}">
-                                <thead><tr><th>#</th><th>实体名称</th><th>总次数</th></tr></thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header"><i class="fas fa-arrow-down me-2"></i>高于阈值的 BOTTOM 20 — ${ENTITY_LABELS[entityType]}</div>
-                    <div class="card-body">
-                        <div class="table-container">
-                            <table class="table table-sm table-hover entity-table" id="bottom-table-${entityType}">
-                                <thead><tr><th>#</th><th>实体名称</th><th>总次数</th></tr></thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
+                    <div class="card-header"><i class="fas fa-chart-line me-2"></i>实体趋势 — <span id="trend-title-${entityType}">点击上方实体查看趋势</span></div>
+                    <div class="card-body position-relative">
+                        <div id="trend-chart-${entityType}" class="chart-container"></div>
                     </div>
                 </div>
             </div>
@@ -336,135 +352,172 @@ function initTabStructure(entityType) {
 function switchTab(entityType) {
     currentEntityType = entityType;
     setTimeout(() => {
-        if (charts[`trend-${entityType}`]) charts[`trend-${entityType}`].resize();
-        if (charts[`top-${entityType}`]) charts[`top-${entityType}`].resize();
+        Object.keys(charts).forEach(k => {
+            if (k.includes(entityType) && charts[k]) charts[k].resize();
+        });
     }, 150);
+}
+
+async function onRefreshClicked() {
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+    if (!startTime || !endTime) {
+        alert('请选择开始和结束时间');
+        return;
+    }
+
+    // 先执行缓存构建（带进度）
+    const ok = await buildCacheWithProgress(startTime, endTime);
+    if (!ok) return;
+
+    // 再并行查询四类数据
+    await fetchAllData();
+}
+
+async function buildCacheWithProgress(startTime, endTime) {
+    const progressRow = document.getElementById('progressRow');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    progressRow.style.display = 'flex';
+    progressBar.style.width = '0%';
+    progressBar.textContent = '0%';
+    progressText.textContent = '正在准备缓存...';
+
+    try {
+        const resp = await fetch('/statistics/entity_frequency/build_cache', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({start_time: startTime, end_time: endTime})
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            alert('缓存构建失败: ' + (err.error || resp.statusText));
+            return false;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, {stream: true});
+            const lines = buffer.split('\\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const data = JSON.parse(line);
+                    if (data.total > 0) {
+                        const pct = Math.round((data.done / data.total) * 100);
+                        progressBar.style.width = pct + '%';
+                        progressBar.textContent = pct + '%';
+                        progressText.textContent = `正在构建缓存: ${data.current_slot || '完成'} (${data.done}/${data.total})`;
+                    } else {
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        progressText.textContent = '缓存已是最新';
+                    }
+                } catch (e) {
+                    console.warn('Parse progress line failed:', line);
+                }
+            }
+        }
+        return true;
+    } catch (e) {
+        console.error('Build cache failed:', e);
+        alert('缓存构建失败: ' + e.message);
+        return false;
+    } finally {
+        setTimeout(() => { progressRow.style.display = 'none'; }, 800);
+    }
 }
 
 async function fetchAllData() {
     const startTime = document.getElementById('startTime').value;
     const endTime = document.getElementById('endTime').value;
     const threshold = document.getElementById('thresholdInput').value;
-    const topN = document.getElementById('topNInput').value;
-
-    if (!startTime || !endTime) {
-        alert('请选择开始和结束时间');
-        return;
-    }
-
-    ENTITY_TYPES.forEach(type => {
-        document.getElementById(`loading-${type}`).style.display = 'flex';
-    });
+    const topN = Math.min(parseInt(document.getElementById('topNInput').value || '20'), 50);
+    const granularity = document.getElementById('granularitySelect').value;
 
     for (const entityType of ENTITY_TYPES) {
         try {
-            const url = `/statistics/entity_frequency?entity_type=${entityType}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}&top_n=${topN}&bottom_threshold=${threshold}`;
+            const url = `/statistics/entity_frequency?entity_type=${entityType}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}&top_n=${topN}&bottom_threshold=${threshold}&granularity=${granularity}`;
             const resp = await fetch(url);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
-            renderEntityData(entityType, data);
+            renderEntityData(entityType, data, granularity);
         } catch (err) {
             console.error(`Failed to load ${entityType}:`, err);
-            document.getElementById(`content-${entityType}`).innerHTML += `<div class="alert alert-danger mt-3">加载失败: ${err.message}</div>`;
-        } finally {
-            document.getElementById(`loading-${entityType}`).style.display = 'none';
+            document.getElementById(`content-${entityType}`).insertAdjacentHTML('beforeend',
+                `<div class="alert alert-danger mt-3">加载失败: ${escapeHtml(err.message)}</div>`);
         }
     }
 }
 
-function renderEntityData(entityType, data) {
-    // 概览卡片
+function renderEntityData(entityType, data, granularity) {
     const summary = data.summary || {};
     document.getElementById(`stat-total-${entityType}`).textContent = summary.total_mentions ?? 0;
     document.getElementById(`stat-unique-${entityType}`).textContent = summary.unique_entities ?? 0;
-    document.getElementById(`stat-peak-${entityType}`).textContent = (summary.peak_hour || '').replace('T', ' ');
-    document.getElementById(`stat-peakcount-${entityType}`).textContent = summary.peak_hour_count ?? 0;
+    document.getElementById(`stat-span-${entityType}`).textContent = summary.time_span_days ?? 0;
 
     const timeSlots = data.time_slots || [];
     const topEntities = data.top_entities || [];
     const bottomEntities = data.bottom_entities || [];
 
-    // 趋势图
-    renderTrendChart(entityType, timeSlots, topEntities);
-
-    // TOP 柱状图
+    // 柱状图
     renderTopBarChart(entityType, topEntities);
 
-    // TOP 表格
+    // TOP 表格 + 趋势按钮
     const topTbody = document.querySelector(`#top-table-${entityType} tbody`);
     topTbody.innerHTML = topEntities.map((e, i) =>
-        `<tr><td><span class="badge badge-top">${i+1}</span></td><td>${escapeHtml(e.name)}</td><td>${e.total_count}</td></tr>`
+        `<tr>
+            <td><span class="badge badge-top">${i+1}</span></td>
+            <td>${escapeHtml(e.name)}</td>
+            <td>${e.total_count}</td>
+            <td><button class="btn btn-sm btn-outline-primary btn-trend" onclick="showTrend('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}')">趋势</button></td>
+        </tr>`
     ).join('');
 
     // BOTTOM 表格
     const bottomTbody = document.querySelector(`#bottom-table-${entityType} tbody`);
     bottomTbody.innerHTML = bottomEntities.map((e, i) =>
-        `<tr><td><span class="badge badge-bottom">${i+1}</span></td><td>${escapeHtml(e.name)}</td><td>${e.total_count}</td></tr>`
+        `<tr>
+            <td><span class="badge badge-bottom">${i+1}</span></td>
+            <td>${escapeHtml(e.name)}</td>
+            <td>${e.total_count}</td>
+            <td><button class="btn btn-sm btn-outline-secondary btn-trend" onclick="showTrend('${entityType}', '${escapeHtml(e.name).replace(/'/g, "\\'")}')">趋势</button></td>
+        </tr>`
     ).join('');
+
+    // 趋势区域默认重置为提示
+    resetTrendChart(entityType, granularity);
 }
 
-function renderTrendChart(entityType, timeSlots, topEntities) {
-    const domId = `trend-chart-${entityType}`;
-    let chart = charts[`trend-${entityType}`];
-    if (!chart) {
-        chart = echarts.init(document.getElementById(domId));
-        charts[`trend-${entityType}`] = chart;
+function formatSlotLabel(slot, granularity) {
+    if (granularity === 'day') {
+        // slot: YYYY-MM-DD -> MM-DD
+        return slot.slice(5);
+    } else if (granularity === 'week') {
+        // slot: YYYY-MM-DD (周一)
+        return slot.slice(5) + ' 周';
+    } else if (granularity === 'month') {
+        // slot: YYYY-MM
+        return slot;
     }
-
-    const labels = timeSlots.map(s => s.replace('T', '\\n'));
-    const series = topEntities.slice(0, 10).map((e, idx) => ({
-        name: e.name,
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        data: e.trend || [],
-        emphasis: { focus: 'series' },
-    }));
-
-    const option = {
-        tooltip: {
-            trigger: 'axis',
-            backgroundColor: 'rgba(255,255,255,0.95)',
-            textStyle: { color: '#333' }
-        },
-        legend: {
-            type: 'scroll',
-            top: 0,
-            data: topEntities.slice(0, 10).map(e => e.name)
-        },
-        grid: { left: '3%', right: '4%', bottom: '10%', top: '15%', containLabel: true },
-        xAxis: {
-            type: 'category',
-            boundaryGap: false,
-            data: labels,
-            axisLabel: { rotate: 30, fontSize: 11 }
-        },
-        yAxis: {
-            type: 'value',
-            name: '出现次数',
-            splitLine: { lineStyle: { type: 'dashed', color: '#eee' } }
-        },
-        series: series,
-        color: [
-            '#4361ee','#3a0ca3','#7209b7','#f72585','#4cc9f0',
-            '#06d6a0','#ffd166','#ef476f','#118ab2','#073b4c'
-        ]
-    };
-    chart.setOption(option, true);
+    return slot;
 }
 
 function renderTopBarChart(entityType, topEntities) {
     const domId = `top-bar-${entityType}`;
-    let chart = charts[`top-${entityType}`];
+    let chart = charts[`bar-${entityType}`];
     if (!chart) {
         chart = echarts.init(document.getElementById(domId));
-        charts[`top-${entityType}`] = chart;
+        charts[`bar-${entityType}`] = chart;
     }
 
-    const slice = topEntities.slice(0, 20);
-    const names = slice.map(e => e.name);
-    const counts = slice.map(e => e.total_count);
+    const names = topEntities.map(e => e.name);
+    const counts = topEntities.map(e => e.total_count);
 
     const option = {
         tooltip: {
@@ -473,19 +526,27 @@ function renderTopBarChart(entityType, topEntities) {
             backgroundColor: 'rgba(255,255,255,0.95)',
             textStyle: { color: '#333' }
         },
-        grid: { left: '3%', right: '4%', bottom: '3%', top: '3%', containLabel: true },
+        grid: { left: 140, right: '4%', bottom: '3%', top: '3%', containLabel: false },
         xAxis: {
             type: 'value',
             splitLine: { lineStyle: { type: 'dashed', color: '#eee' } }
         },
         yAxis: {
             type: 'category',
-            data: names.reverse(),
-            axisLabel: { fontSize: 11 }
+            data: names,
+            inverse: true,
+            axisLabel: {
+                fontSize: 12,
+                width: 120,
+                overflow: 'truncate',
+                ellipsis: '..',
+                align: 'right'
+            },
+            axisTick: { alignWithLabel: true }
         },
         series: [{
             type: 'bar',
-            data: counts.reverse(),
+            data: counts,
             itemStyle: {
                 borderRadius: [0, 4, 4, 0],
                 color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
@@ -496,6 +557,92 @@ function renderTopBarChart(entityType, topEntities) {
         }]
     };
     chart.setOption(option, true);
+}
+
+function resetTrendChart(entityType, granularity) {
+    const domId = `trend-chart-${entityType}`;
+    let chart = charts[`trend-${entityType}`];
+    if (!chart) {
+        chart = echarts.init(document.getElementById(domId));
+        charts[`trend-${entityType}`] = chart;
+    }
+    document.getElementById(`trend-title-${entityType}`).textContent = '点击上方实体查看趋势';
+    chart.setOption({
+        title: {
+            text: '点击实体查看趋势',
+            left: 'center',
+            top: 'center',
+            textStyle: { color: '#aaa', fontSize: 18 }
+        },
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: []
+    }, true);
+}
+
+async function showTrend(entityType, entityName) {
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+    const granularity = document.getElementById('granularitySelect').value;
+
+    document.getElementById(`trend-title-${entityType}`).textContent = `「${entityName}」趋势`;
+
+    try {
+        const url = `/statistics/entity_frequency/trend?entity_type=${entityType}&entity_name=${encodeURIComponent(entityName)}&start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}&granularity=${granularity}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        const labels = (data.time_slots || []).map(s => formatSlotLabel(s, granularity));
+        const counts = data.counts || [];
+
+        const domId = `trend-chart-${entityType}`;
+        let chart = charts[`trend-${entityType}`];
+        if (!chart) {
+            chart = echarts.init(document.getElementById(domId));
+            charts[`trend-${entityType}`] = chart;
+        }
+
+        const option = {
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                textStyle: { color: '#333' }
+            },
+            grid: { left: '3%', right: '4%', bottom: '10%', top: '10%', containLabel: true },
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: labels,
+                axisLabel: { rotate: labels.length > 14 ? 45 : 0, fontSize: 11 }
+            },
+            yAxis: {
+                type: 'value',
+                name: '出现次数',
+                splitLine: { lineStyle: { type: 'dashed', color: '#eee' } }
+            },
+            series: [{
+                name: entityName,
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 6,
+                data: counts,
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(67,97,238,0.3)' },
+                        { offset: 1, color: 'rgba(67,97,238,0.05)' }
+                    ])
+                },
+                itemStyle: { color: '#4361ee' },
+                lineStyle: { width: 3 }
+            }]
+        };
+        chart.setOption(option, true);
+    } catch (err) {
+        console.error('Load trend failed:', err);
+        alert('加载趋势失败: ' + err.message);
+    }
 }
 
 function escapeHtml(text) {

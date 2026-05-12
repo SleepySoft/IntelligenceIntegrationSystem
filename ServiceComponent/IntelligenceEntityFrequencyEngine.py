@@ -4,7 +4,7 @@ import logging
 import sqlite3
 import datetime
 import threading
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterator
 
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.DateTimeUtility import ensure_timezone_aware
@@ -26,12 +26,27 @@ ALL_ENTITY_TYPES = [
     ENTITY_TYPE_ORGANIZATION,
 ]
 
+# 支持的查询粒度
+GRANULARITY_DAY = "day"
+GRANULARITY_WEEK = "week"
+GRANULARITY_MONTH = "month"
+ALL_GRANULARITIES = [GRANULARITY_DAY, GRANULARITY_WEEK, GRANULARITY_MONTH]
+
+# 统计字段映射（MongoDB中的字段名）
+ENTITY_MONGO_FIELD = {
+    ENTITY_TYPE_LOCATION: "LOCATION",
+    ENTITY_TYPE_GEOGRAPHY: "GEOGRAPHY",
+    ENTITY_TYPE_PEOPLE: "PEOPLE",
+    ENTITY_TYPE_ORGANIZATION: "ORGANIZATION",
+}
+
+
 class EntityFrequencyEngine:
     """
     实体出现频率统计引擎。
 
-    按小时 time slot 统计 intelligence_archived 中四类实体（地点、地域、人物、组织）的出现次数，
-    缓存到 SQLite，支持按时间段查询并合并结果。
+    按天为最小粒度统计并缓存 intelligence_archived 中四类实体出现次数。
+    查询时支持按天/周/月动态聚合。
     """
 
     def __init__(
@@ -40,11 +55,6 @@ class EntityFrequencyEngine:
         mongo_db_archive: MongoDBStorage,
         time_field: str = APPENDIX_TIME_ARCHIVED,
     ):
-        """
-        :param db_path: SQLite 数据库文件路径
-        :param mongo_db_archive: MongoDB 归档存储
-        :param time_field: 用于划分 time slot 的字段名（默认 APPENDIX_TIME_ARCHIVED）
-        """
         self.db_path = db_path
         self.mongo_db_archive = mongo_db_archive
         self.time_field = time_field
@@ -65,7 +75,7 @@ class EntityFrequencyEngine:
             cursor = conn.cursor()
 
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS hourly_entity_stats (
+                CREATE TABLE IF NOT EXISTS daily_entity_stats (
                     time_slot TEXT NOT NULL,
                     entity_type TEXT NOT NULL,
                     entity_name TEXT NOT NULL,
@@ -75,17 +85,17 @@ class EntityFrequencyEngine:
             """)
 
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_stats_query
-                ON hourly_entity_stats(time_slot, entity_type, count DESC);
+                CREATE INDEX IF NOT EXISTS idx_daily_stats_query
+                ON daily_entity_stats(time_slot, entity_type, count DESC);
             """)
 
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_stats_entity
-                ON hourly_entity_stats(entity_type, entity_name, time_slot);
+                CREATE INDEX IF NOT EXISTS idx_daily_stats_entity
+                ON daily_entity_stats(entity_type, entity_name, time_slot);
             """)
 
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS hourly_placeholder (
+                CREATE TABLE IF NOT EXISTS daily_placeholder (
                     time_slot TEXT PRIMARY KEY,
                     built_at TEXT NOT NULL
                 );
@@ -102,37 +112,51 @@ class EntityFrequencyEngine:
 
     # -------------------------------------------------- 缓存构建 --------------------------------------------------
 
-    def build_hourly_cache(
+    def build_cache_with_progress(
         self,
-        hour_start: datetime.datetime,
-        hour_end: datetime.datetime,
-    ) -> None:
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+    ) -> Iterator[Dict[str, Any]]:
         """
-        扫描 MongoDB，统计 [hour_start, hour_end) 内每个小时各实体出现次数并写入 SQLite。
-        实际会按小时拆分为多个 slot 分别统计。
+        生成器：扫描 MongoDB 并按天构建缓存，每完成一天 yield 一次进度。
         """
-        hour_start = self._normalize_to_hour(hour_start)
-        hour_end = self._normalize_to_hour(hour_end)
+        slot_start = self._normalize_to_day(start_time)
+        slot_end = self._normalize_to_day(end_time)
 
-        if hour_start >= hour_end:
-            logger.warning(f"build_hourly_cache: invalid range {hour_start} ~ {hour_end}")
+        if slot_start >= slot_end:
+            yield {"done": 0, "total": 0, "current_slot": "", "status": "complete"}
             return
 
-        current = hour_start
-        while current < hour_end:
-            next_hour = current + datetime.timedelta(hours=1)
+        total_days = (slot_end - slot_start).days
+        done = 0
+        current = slot_start
+        while current < slot_end:
             try:
-                self._build_single_hour_cache(current)
+                self._build_single_day_cache(current)
             except Exception as e:
                 logger.error(
                     f"Failed to build cache for slot {current.isoformat()}: {e}",
                     exc_info=True,
                 )
-            current = next_hour
+            done += 1
+            yield {
+                "done": done,
+                "total": total_days,
+                "current_slot": current.strftime("%Y-%m-%d"),
+                "status": "running",
+            }
+            current += datetime.timedelta(days=1)
 
-    def _build_single_hour_cache(self, slot: datetime.datetime) -> None:
-        """统计并缓存单个 hour slot 的数据。"""
-        slot_str = slot.strftime("%Y-%m-%dT%H:%M:%S")
+        yield {
+            "done": total_days,
+            "total": total_days,
+            "current_slot": "",
+            "status": "complete",
+        }
+
+    def _build_single_day_cache(self, slot: datetime.datetime) -> None:
+        """统计并缓存单天的数据。"""
+        slot_str = slot.strftime("%Y-%m-%d")
 
         with self.write_lock:
             conn = self._get_conn()
@@ -141,28 +165,27 @@ class EntityFrequencyEngine:
 
                 # 检查是否已存在占位记录
                 cursor.execute(
-                    "SELECT 1 FROM hourly_placeholder WHERE time_slot = ?",
+                    "SELECT 1 FROM daily_placeholder WHERE time_slot = ?",
                     (slot_str,),
                 )
                 if cursor.fetchone() is not None:
-                    # 已缓存过，跳过
                     return
 
                 # 删除该 slot 可能存在的旧 stats 记录（幂等）
                 cursor.execute(
-                    "DELETE FROM hourly_entity_stats WHERE time_slot = ?",
+                    "DELETE FROM daily_entity_stats WHERE time_slot = ?",
                     (slot_str,),
                 )
 
                 # 从 MongoDB 聚合统计
-                counts = self._aggregate_entities_for_hour(slot)
+                counts = self._aggregate_entities_for_day(slot)
 
                 # 写入统计结果
                 for entity_type, entity_dict in counts.items():
                     for entity_name, count in entity_dict.items():
                         cursor.execute(
                             """
-                            INSERT INTO hourly_entity_stats
+                            INSERT INTO daily_entity_stats
                             (time_slot, entity_type, entity_name, count)
                             VALUES (?, ?, ?, ?)
                             """,
@@ -172,7 +195,7 @@ class EntityFrequencyEngine:
                 # 插入占位记录
                 cursor.execute(
                     """
-                    INSERT INTO hourly_placeholder (time_slot, built_at)
+                    INSERT INTO daily_placeholder (time_slot, built_at)
                     VALUES (?, ?)
                     """,
                     (slot_str, datetime.datetime.now(datetime.timezone.utc).isoformat()),
@@ -187,14 +210,12 @@ class EntityFrequencyEngine:
             finally:
                 conn.close()
 
-    def _aggregate_entities_for_hour(
+    def _aggregate_entities_for_day(
         self, slot: datetime.datetime
     ) -> Dict[str, Dict[str, int]]:
-        """
-        对单个 hour slot 执行 MongoDB 聚合，返回 {entity_type: {entity_name: count}}。
-        """
-        slot_start = slot
-        slot_end = slot + datetime.timedelta(hours=1)
+        """对单天执行 MongoDB 聚合。"""
+        day_start = slot
+        day_end = slot + datetime.timedelta(days=1)
 
         results = {
             ENTITY_TYPE_LOCATION: {},
@@ -204,15 +225,15 @@ class EntityFrequencyEngine:
         }
 
         for entity_type in ALL_ENTITY_TYPES:
-            field_name = entity_type  # MongoDB 字段名与类型名一致
+            field_name = ENTITY_MONGO_FIELD[entity_type]
 
             if entity_type == ENTITY_TYPE_GEOGRAPHY:
                 pipeline = self._build_single_field_pipeline(
-                    field_name, slot_start, slot_end
+                    field_name, day_start, day_end
                 )
             else:
                 pipeline = self._build_array_field_pipeline(
-                    field_name, slot_start, slot_end
+                    field_name, day_start, day_end
                 )
 
             try:
@@ -231,18 +252,14 @@ class EntityFrequencyEngine:
         return results
 
     def _build_array_field_pipeline(
-        self,
-        field_name: str,
-        slot_start: datetime.datetime,
-        slot_end: datetime.datetime,
+        self, field_name: str, day_start: datetime.datetime, day_end: datetime.datetime
     ) -> List[Dict[str, Any]]:
-        """为数组型字段（LOCATION, PEOPLE, ORGANIZATION）构建聚合管道。"""
         return [
             {
                 "$match": {
                     f"APPENDIX.{self.time_field}": {
-                        "$gte": ensure_timezone_aware(slot_start),
-                        "$lt": ensure_timezone_aware(slot_end),
+                        "$gte": ensure_timezone_aware(day_start),
+                        "$lt": ensure_timezone_aware(day_end),
                     }
                 }
             },
@@ -266,18 +283,14 @@ class EntityFrequencyEngine:
         ]
 
     def _build_single_field_pipeline(
-        self,
-        field_name: str,
-        slot_start: datetime.datetime,
-        slot_end: datetime.datetime,
+        self, field_name: str, day_start: datetime.datetime, day_end: datetime.datetime
     ) -> List[Dict[str, Any]]:
-        """为单字符串型字段（GEOGRAPHY）构建聚合管道。"""
         return [
             {
                 "$match": {
                     f"APPENDIX.{self.time_field}": {
-                        "$gte": ensure_timezone_aware(slot_start),
-                        "$lt": ensure_timezone_aware(slot_end),
+                        "$gte": ensure_timezone_aware(day_start),
+                        "$lt": ensure_timezone_aware(day_end),
                     }
                 }
             },
@@ -304,196 +317,196 @@ class EntityFrequencyEngine:
         self,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
-    ) -> None:
+    ) -> List[str]:
         """
-        确保 [start_time, end_time) 内所有 hour slot 都已缓存。
-        缺失的 slot 会先执行 MongoDB 统计并写入占位（包括实体数为 0 的情况）。
+        确保 [start_time, end_time) 内所有天 slot 都已缓存。
+        返回缺失并已经补全的 slot 字符串列表（YYYY-MM-DD）。
         """
-        slot_start = self._normalize_to_hour(start_time)
-        slot_end = self._normalize_to_hour(end_time)
+        slot_start = self._normalize_to_day(start_time)
+        slot_end = self._normalize_to_day(end_time)
 
         if slot_start >= slot_end:
-            return
+            return []
 
         # 查询 SQLite 中已存在的 slot
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-            start_str = slot_start.strftime("%Y-%m-%dT%H:%M:%S")
-            end_str = slot_end.strftime("%Y-%m-%dT%H:%M:%S")
+            start_str = slot_start.strftime("%Y-%m-%d")
+            end_str = slot_end.strftime("%Y-%m-%d")
             cursor.execute(
-                "SELECT time_slot FROM hourly_placeholder WHERE time_slot >= ? AND time_slot < ?",
+                "SELECT time_slot FROM daily_placeholder WHERE time_slot >= ? AND time_slot < ?",
                 (start_str, end_str),
             )
             existing_slots = {row["time_slot"] for row in cursor.fetchall()}
         finally:
             conn.close()
 
+        missing_built = []
         current = slot_start
         while current < slot_end:
-            slot_str = current.strftime("%Y-%m-%dT%H:%M:%S")
+            slot_str = current.strftime("%Y-%m-%d")
             if slot_str not in existing_slots:
                 try:
-                    self._build_single_hour_cache(current)
+                    self._build_single_day_cache(current)
+                    missing_built.append(slot_str)
                 except Exception as e:
                     logger.error(
                         f"ensure_time_slots: failed to build cache for {slot_str}: {e}",
                         exc_info=True,
                     )
-            current += datetime.timedelta(hours=1)
+            current += datetime.timedelta(days=1)
+
+        return missing_built
 
     def query_frequency(
         self,
         entity_type: str,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
+        granularity: str = GRANULARITY_DAY,
         top_n: int = 20,
-        bottom_threshold: int = 0,
+        bottom_threshold: int = 5,
     ) -> Dict[str, Any]:
         """
         查询某类实体在时间段内的聚合统计。
-
-        :return: {
-            "time_slots": ["2026-05-12T08:00:00", ...],
-            "top_entities": [{"name": "", "total_count": 0, "trend": [...]}, ...],
-            "bottom_entities": [{"name": "", "total_count": 0, "trend": [...]}, ...],
-            "summary": {
-                "total_mentions": 0,
-                "unique_entities": 0,
-                "peak_hour": "",
-                "peak_hour_count": 0,
-            }
-        }
         """
         if entity_type not in ALL_ENTITY_TYPES:
             raise ValueError(f"Unsupported entity_type: {entity_type}")
+        if granularity not in ALL_GRANULARITIES:
+            raise ValueError(f"Unsupported granularity: {granularity}")
 
-        # 确保缓存完整
+        # 先确保天级缓存完整
         self.ensure_time_slots(start_time, end_time)
 
-        start_str = start_time.strftime("%Y-%m-%dT%H:%M:%S")
-        end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
+        # 读取天级数据
+        raw_data = self._fetch_daily_data(entity_type, start_time, end_time)
+
+        # 按粒度合并
+        merged = self._merge_by_granularity(raw_data, granularity)
+
+        time_slots = sorted(merged.keys())
+        day_span = max((self._normalize_to_day(end_time) - self._normalize_to_day(start_time)).days, 1)
+        if not time_slots:
+            return {
+                "time_slots": [],
+                "top_entities": [],
+                "bottom_entities": [],
+                "summary": {
+                    "total_mentions": 0,
+                    "unique_entities": 0,
+                    "time_span_days": day_span,
+                },
+            }
+
+        # 聚合各实体总次数
+        entity_totals: Dict[str, int] = {}
+        entity_trend_map: Dict[str, Dict[str, int]] = {}
+        for slot, entities in merged.items():
+            for name, count in entities.items():
+                entity_totals[name] = entity_totals.get(name, 0) + count
+                if name not in entity_trend_map:
+                    entity_trend_map[name] = {}
+                entity_trend_map[name][slot] = count
+
+        sorted_entities = sorted(
+            [{"name": k, "total_count": v} for k, v in entity_totals.items()],
+            key=lambda x: x["total_count"],
+            reverse=True,
+        )
+
+        top_entities_list = sorted_entities[:top_n]
+        remaining = [
+            e for e in sorted_entities[top_n:] if e["total_count"] > bottom_threshold
+        ]
+        bottom_entities_list = remaining[-20:] if len(remaining) > 20 else remaining
+        bottom_entities_list = sorted(
+            bottom_entities_list, key=lambda x: x["total_count"]
+        )
+
+        # 为 TOP 实体附加趋势数据（按 time_slots 顺序填充）
+        for entity in top_entities_list:
+            trend_map = entity_trend_map.get(entity["name"], {})
+            entity["trend"] = [trend_map.get(slot, 0) for slot in time_slots]
+
+        for entity in bottom_entities_list:
+            trend_map = entity_trend_map.get(entity["name"], {})
+            entity["trend"] = [trend_map.get(slot, 0) for slot in time_slots]
+
+        total_mentions = sum(entity_totals.values())
+        unique_entities = len(entity_totals)
+
+        return {
+            "time_slots": time_slots,
+            "top_entities": top_entities_list,
+            "bottom_entities": bottom_entities_list,
+            "summary": {
+                "total_mentions": total_mentions,
+                "unique_entities": unique_entities,
+                "time_span_days": max(day_span, 1),
+            },
+        }
+
+    def _fetch_daily_data(
+        self,
+        entity_type: str,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+    ) -> Dict[str, Dict[str, int]]:
+        """从 SQLite 读取天级原始数据，返回 {time_slot: {entity_name: count}}。"""
+        start_str = start_time.strftime("%Y-%m-%d")
+        end_str = end_time.strftime("%Y-%m-%d")
 
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-
-            # 获取所有 time slot 列表（按小时）
             cursor.execute(
                 """
-                SELECT DISTINCT time_slot FROM hourly_entity_stats
+                SELECT time_slot, entity_name, count
+                FROM daily_entity_stats
                 WHERE time_slot >= ? AND time_slot < ? AND entity_type = ?
                 ORDER BY time_slot
                 """,
                 (start_str, end_str, entity_type),
             )
-            time_slots = [row["time_slot"] for row in cursor.fetchall()]
-
-            if not time_slots:
-                return {
-                    "time_slots": [],
-                    "top_entities": [],
-                    "bottom_entities": [],
-                    "summary": {
-                        "total_mentions": 0,
-                        "unique_entities": 0,
-                        "peak_hour": "",
-                        "peak_hour_count": 0,
-                    },
-                }
-
-            # 聚合各实体总次数
-            cursor.execute(
-                """
-                SELECT entity_name, SUM(count) as total_count
-                FROM hourly_entity_stats
-                WHERE time_slot >= ? AND time_slot < ? AND entity_type = ?
-                GROUP BY entity_name
-                ORDER BY total_count DESC
-                """,
-                (start_str, end_str, entity_type),
-            )
-            all_entities = [
-                {"name": row["entity_name"], "total_count": row["total_count"]}
-                for row in cursor.fetchall()
-            ]
-
-            # TOP N
-            top_entities_list = all_entities[:top_n]
-
-            # BOTTOM: 高于阈值且不在 TOP N 中的最后若干名
-            # 过滤掉 count <= threshold 的，取剩余中 count 最低的前 20 个
-            remaining = [e for e in all_entities[top_n:] if e["total_count"] > bottom_threshold]
-            bottom_entities_list = remaining[-20:] if len(remaining) > 20 else remaining
-            # 按升序排列便于展示
-            bottom_entities_list = sorted(
-                bottom_entities_list, key=lambda x: x["total_count"]
-            )
-
-            # 为 TOP 实体生成趋势数据
-            for entity in top_entities_list:
-                entity["trend"] = self._get_entity_trend_internal(
-                    cursor, entity_type, entity["name"], time_slots
-                )
-
-            for entity in bottom_entities_list:
-                entity["trend"] = self._get_entity_trend_internal(
-                    cursor, entity_type, entity["name"], time_slots
-                )
-
-            # 汇总统计
-            total_mentions = sum(e["total_count"] for e in all_entities)
-            unique_entities = len(all_entities)
-
-            # 最活跃时段
-            cursor.execute(
-                """
-                SELECT time_slot, SUM(count) as slot_total
-                FROM hourly_entity_stats
-                WHERE time_slot >= ? AND time_slot < ? AND entity_type = ?
-                GROUP BY time_slot
-                ORDER BY slot_total DESC
-                LIMIT 1
-                """,
-                (start_str, end_str, entity_type),
-            )
-            row = cursor.fetchone()
-            peak_hour = row["time_slot"] if row else ""
-            peak_hour_count = row["slot_total"] if row else 0
-
-            return {
-                "time_slots": time_slots,
-                "top_entities": top_entities_list,
-                "bottom_entities": bottom_entities_list,
-                "summary": {
-                    "total_mentions": total_mentions,
-                    "unique_entities": unique_entities,
-                    "peak_hour": peak_hour,
-                    "peak_hour_count": peak_hour_count,
-                },
-            }
+            result: Dict[str, Dict[str, int]] = {}
+            for row in cursor.fetchall():
+                slot = row["time_slot"]
+                if slot not in result:
+                    result[slot] = {}
+                result[slot][row["entity_name"]] = row["count"]
+            return result
         finally:
             conn.close()
 
-    def _get_entity_trend_internal(
+    def _merge_by_granularity(
         self,
-        cursor: sqlite3.Cursor,
-        entity_type: str,
-        entity_name: str,
-        time_slots: List[str],
-    ) -> List[int]:
-        """内部方法：获取单个实体在各 time slot 中的次数序列。"""
-        placeholders = ",".join("?" for _ in time_slots)
-        cursor.execute(
-            f"""
-            SELECT time_slot, count FROM hourly_entity_stats
-            WHERE time_slot IN ({placeholders})
-              AND entity_type = ? AND entity_name = ?
-            """,
-            (*time_slots, entity_type, entity_name),
-        )
-        count_map = {row["time_slot"]: row["count"] for row in cursor.fetchall()}
-        return [count_map.get(slot, 0) for slot in time_slots]
+        daily_data: Dict[str, Dict[str, int]],
+        granularity: str,
+    ) -> Dict[str, Dict[str, int]]:
+        """将天级数据按周或月合并。"""
+        if granularity == GRANULARITY_DAY:
+            return daily_data
+
+        merged: Dict[str, Dict[str, int]] = {}
+        for slot_str, entities in daily_data.items():
+            slot_date = datetime.datetime.strptime(slot_str, "%Y-%m-%d").date()
+
+            if granularity == GRANULARITY_WEEK:
+                # 使用 ISO 周：该周周一
+                monday = slot_date - datetime.timedelta(days=slot_date.weekday())
+                key = monday.strftime("%Y-%m-%d")
+            elif granularity == GRANULARITY_MONTH:
+                key = slot_date.strftime("%Y-%m")
+            else:
+                key = slot_str
+
+            if key not in merged:
+                merged[key] = {}
+            for name, count in entities.items():
+                merged[key][name] = merged[key].get(name, 0) + count
+
+        return merged
 
     def get_entity_trend(
         self,
@@ -501,47 +514,30 @@ class EntityFrequencyEngine:
         entity_name: str,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
+        granularity: str = GRANULARITY_DAY,
     ) -> Dict[str, Any]:
         """
         获取单个实体在时间段内的趋势数据。
-
-        :return: {
-            "time_slots": [...],
-            "counts": [...],
-        }
         """
+        if entity_type not in ALL_ENTITY_TYPES:
+            raise ValueError(f"Unsupported entity_type: {entity_type}")
+        if granularity not in ALL_GRANULARITIES:
+            raise ValueError(f"Unsupported granularity: {granularity}")
+
         self.ensure_time_slots(start_time, end_time)
 
-        start_str = start_time.strftime("%Y-%m-%dT%H:%M:%S")
-        end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
+        raw_data = self._fetch_daily_data(entity_type, start_time, end_time)
+        merged = self._merge_by_granularity(raw_data, granularity)
+        time_slots = sorted(merged.keys())
 
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT DISTINCT time_slot FROM hourly_entity_stats
-                WHERE time_slot >= ? AND time_slot < ? AND entity_type = ?
-                ORDER BY time_slot
-                """,
-                (start_str, end_str, entity_type),
-            )
-            time_slots = [row["time_slot"] for row in cursor.fetchall()]
-
-            counts = self._get_entity_trend_internal(
-                cursor, entity_type, entity_name, time_slots
-            )
-
-            return {
-                "time_slots": time_slots,
-                "counts": counts,
-            }
-        finally:
-            conn.close()
+        counts = [merged.get(slot, {}).get(entity_name, 0) for slot in time_slots]
+        return {
+            "time_slots": time_slots,
+            "counts": counts,
+        }
 
     # -------------------------------------------------- 工具方法 --------------------------------------------------
 
     @staticmethod
-    def _normalize_to_hour(dt: datetime.datetime) -> datetime.datetime:
-        """将时间截断到整点（向下取整到小时）。"""
-        return dt.replace(minute=0, second=0, microsecond=0)
+    def _normalize_to_day(dt: datetime.datetime) -> datetime.datetime:
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)

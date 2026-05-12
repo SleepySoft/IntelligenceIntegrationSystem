@@ -877,34 +877,44 @@ class IntelligenceHubWebService:
                 entity_type: LOCATION | GEOGRAPHY | PEOPLE | ORGANIZATION
                 start_time: ISO 格式开始时间
                 end_time: ISO 格式结束时间
-                top_n: 默认 20
-                bottom_threshold: 默认 0
+                granularity: day | week | month（默认 day）
+                top_n: 默认 20，最大 50
+                bottom_threshold: 默认 5
             """
             entity_type = request.args.get('entity_type', 'LOCATION')
             start_str = request.args.get('start_time')
             end_str = request.args.get('end_time')
+            granularity = request.args.get('granularity', 'day')
             top_n = request.args.get('top_n', '20')
-            bottom_threshold = request.args.get('bottom_threshold', '0')
+            bottom_threshold = request.args.get('bottom_threshold', '5')
 
             valid_types = {'LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'}
             if entity_type not in valid_types:
                 return jsonify({"error": f"Invalid entity_type. Must be one of {valid_types}"}), 400
 
+            valid_granularities = {'day', 'week', 'month'}
+            if granularity not in valid_granularities:
+                return jsonify({"error": f"Invalid granularity. Must be one of {valid_granularities}"}), 400
+
             try:
                 if start_str:
                     start_time = dateutil.parser.parse(start_str)
                 else:
-                    start_time = get_aware_time() - datetime.timedelta(hours=24)
+                    start_time = get_aware_time() - datetime.timedelta(days=1)
 
                 if end_str:
                     end_time = dateutil.parser.parse(end_str)
                 else:
                     end_time = get_aware_time()
 
-                top_n = int(top_n)
+                top_n = min(int(top_n), 50)
                 bottom_threshold = int(bottom_threshold)
             except Exception as e:
                 return jsonify({"error": f"Parameter parse error: {e}"}), 400
+
+            # 时间范围最大 12 个月
+            if (end_time - start_time).days > 366:
+                return jsonify({"error": "Time range exceeds maximum limit of 12 months (366 days)."}), 400
 
             engine = self.intelligence_hub.entity_frequency_engine
             if not engine:
@@ -915,6 +925,7 @@ class IntelligenceHubWebService:
                     entity_type=entity_type,
                     start_time=start_time,
                     end_time=end_time,
+                    granularity=granularity,
                     top_n=top_n,
                     bottom_threshold=bottom_threshold,
                 )
@@ -923,10 +934,56 @@ class IntelligenceHubWebService:
                 logger.error(f"entity_frequency_api error: {e}", exc_info=True)
                 return jsonify({"error": str(e)}), 500
 
+        @app.route('/statistics/entity_frequency/trend', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def entity_frequency_trend():
+            """
+            查询单个实体的趋势数据。
+            参数:
+                entity_type, entity_name, start_time, end_time, granularity
+            """
+            entity_type = request.args.get('entity_type', '')
+            entity_name = request.args.get('entity_name', '')
+            start_str = request.args.get('start_time')
+            end_str = request.args.get('end_time')
+            granularity = request.args.get('granularity', 'day')
+
+            if not entity_name:
+                return jsonify({"error": "entity_name is required"}), 400
+
+            valid_types = {'LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'}
+            if entity_type not in valid_types:
+                return jsonify({"error": f"Invalid entity_type"}), 400
+
+            try:
+                start_time = dateutil.parser.parse(start_str) if start_str else get_aware_time() - datetime.timedelta(days=7)
+                end_time = dateutil.parser.parse(end_str) if end_str else get_aware_time()
+            except Exception as e:
+                return jsonify({"error": f"Parameter parse error: {e}"}), 400
+
+            engine = self.intelligence_hub.entity_frequency_engine
+            if not engine:
+                return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
+
+            try:
+                result = engine.get_entity_trend(
+                    entity_type=entity_type,
+                    entity_name=entity_name,
+                    start_time=start_time,
+                    end_time=end_time,
+                    granularity=granularity,
+                )
+                return jsonify(result)
+            except Exception as e:
+                logger.error(f"entity_frequency_trend error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
+
         @app.route('/statistics/entity_frequency/build_cache', methods=['POST'])
         @WebServiceAccessManager.login_required
         def entity_frequency_build_cache():
-            """手动触发实体频率缓存构建"""
+            """
+            手动触发实体频率缓存构建，返回 NDJSON 流式进度。
+            """
             data = request.get_json() or {}
             start_str = data.get('start_time')
             end_str = data.get('end_time')
@@ -941,17 +998,23 @@ class IntelligenceHubWebService:
                     end_time = dateutil.parser.parse(end_str)
                 else:
                     now = datetime.datetime.now(datetime.timezone.utc)
-                    end_time = now.replace(minute=0, second=0, microsecond=0)
-                    start_time = end_time - datetime.timedelta(hours=1)
+                    end_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_time = end_time - datetime.timedelta(days=1)
 
-                engine.build_hourly_cache(start_time, end_time)
-                return jsonify({
-                    "status": "success",
-                    "message": f"Cache built from {start_time.isoformat()} to {end_time.isoformat()}"
-                })
+                if (end_time - start_time).days > 366:
+                    return jsonify({"error": "Time range exceeds maximum limit of 12 months (366 days)."}), 400
             except Exception as e:
-                logger.error(f"entity_frequency_build_cache error: {e}", exc_info=True)
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": f"Parameter parse error: {e}"}), 400
+
+            def generate():
+                try:
+                    for progress in engine.build_cache_with_progress(start_time, end_time):
+                        yield json.dumps(progress) + "\n"
+                except Exception as e:
+                    logger.error(f"build_cache stream error: {e}", exc_info=True)
+                    yield json.dumps({"status": "error", "message": str(e)}) + "\n"
+
+            return Response(generate(), mimetype='application/x-ndjson')
 
         @app.route('/api/debug/trigger_aggregation', methods=['POST'])
         @WebServiceAccessManager.login_required
