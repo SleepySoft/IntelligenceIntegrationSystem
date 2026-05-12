@@ -177,21 +177,30 @@ class EntityFrequencyEngine:
         }
 
     def _build_single_day_cache(self, slot: datetime.datetime) -> None:
-        """统计并缓存单天的数据。"""
+        """统计并缓存单天的数据。
+
+        注意：当天及未来的 slot 不会插入 daily_placeholder，
+        避免在一天尚未结束时提前锁定缓存，导致后续新归档的数据无法被统计。
+        """
         slot_str = slot.strftime("%Y-%m-%d")
+        today = datetime.datetime.now(datetime.timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        is_today_or_future = slot >= today
 
         with self.write_lock:
             conn = self._get_conn()
             try:
                 cursor = conn.cursor()
 
-                # 检查是否已存在占位记录
-                cursor.execute(
-                    "SELECT 1 FROM daily_placeholder WHERE time_slot = ?",
-                    (slot_str,),
-                )
-                if cursor.fetchone() is not None:
-                    return
+                if not is_today_or_future:
+                    # 已完结的天：若已占位则直接跳过
+                    cursor.execute(
+                        "SELECT 1 FROM daily_placeholder WHERE time_slot = ?",
+                        (slot_str,),
+                    )
+                    if cursor.fetchone() is not None:
+                        return
 
                 # 删除该 slot 可能存在的旧 stats 记录（幂等）
                 cursor.execute(
@@ -214,14 +223,21 @@ class EntityFrequencyEngine:
                             (slot_str, entity_type, entity_name, count),
                         )
 
-                # 插入占位记录
-                cursor.execute(
-                    """
-                    INSERT INTO daily_placeholder (time_slot, built_at)
-                    VALUES (?, ?)
-                    """,
-                    (slot_str, datetime.datetime.now(datetime.timezone.utc).isoformat()),
-                )
+                if is_today_or_future:
+                    # 当天/未来：清理已有的占位记录（兼容历史错误数据），不锁定
+                    cursor.execute(
+                        "DELETE FROM daily_placeholder WHERE time_slot = ?",
+                        (slot_str,),
+                    )
+                else:
+                    # 已完结的天：插入占位记录锁定缓存
+                    cursor.execute(
+                        """
+                        INSERT INTO daily_placeholder (time_slot, built_at)
+                        VALUES (?, ?)
+                        """,
+                        (slot_str, datetime.datetime.now(datetime.timezone.utc).isoformat()),
+                    )
 
                 conn.commit()
                 total_entities = sum(len(v) for v in counts.values())
