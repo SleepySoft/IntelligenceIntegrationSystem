@@ -26,6 +26,7 @@ from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
 from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE, APPENDIX_TOTAL_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
+from ServiceComponent.IntelligenceEntityFrequencyPageRender import get_entity_frequency_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from IntelligenceHub import CollectedData, IntelligenceHub, ProcessedData, APPENDIX_TIME_ARCHIVED
 
@@ -858,6 +859,99 @@ class IntelligenceHubWebService:
                 },
                 "top_informants": informant_stats
             })
+
+        # --------------------------- Entity Frequency Statistics ---------------------------
+
+        @app.route('/statistics/entity_frequency/page', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def entity_frequency_page():
+            """实体出现频率统计页面"""
+            return get_entity_frequency_page()
+
+        @app.route('/statistics/entity_frequency', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def entity_frequency_api():
+            """
+            查询实体出现频率统计。
+            参数:
+                entity_type: LOCATION | GEOGRAPHY | PEOPLE | ORGANIZATION
+                start_time: ISO 格式开始时间
+                end_time: ISO 格式结束时间
+                top_n: 默认 20
+                bottom_threshold: 默认 0
+            """
+            entity_type = request.args.get('entity_type', 'LOCATION')
+            start_str = request.args.get('start_time')
+            end_str = request.args.get('end_time')
+            top_n = request.args.get('top_n', '20')
+            bottom_threshold = request.args.get('bottom_threshold', '0')
+
+            valid_types = {'LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'}
+            if entity_type not in valid_types:
+                return jsonify({"error": f"Invalid entity_type. Must be one of {valid_types}"}), 400
+
+            try:
+                if start_str:
+                    start_time = dateutil.parser.parse(start_str)
+                else:
+                    start_time = get_aware_time() - datetime.timedelta(hours=24)
+
+                if end_str:
+                    end_time = dateutil.parser.parse(end_str)
+                else:
+                    end_time = get_aware_time()
+
+                top_n = int(top_n)
+                bottom_threshold = int(bottom_threshold)
+            except Exception as e:
+                return jsonify({"error": f"Parameter parse error: {e}"}), 400
+
+            engine = self.intelligence_hub.entity_frequency_engine
+            if not engine:
+                return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
+
+            try:
+                result = engine.query_frequency(
+                    entity_type=entity_type,
+                    start_time=start_time,
+                    end_time=end_time,
+                    top_n=top_n,
+                    bottom_threshold=bottom_threshold,
+                )
+                return jsonify(result)
+            except Exception as e:
+                logger.error(f"entity_frequency_api error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
+
+        @app.route('/statistics/entity_frequency/build_cache', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def entity_frequency_build_cache():
+            """手动触发实体频率缓存构建"""
+            data = request.get_json() or {}
+            start_str = data.get('start_time')
+            end_str = data.get('end_time')
+
+            engine = self.intelligence_hub.entity_frequency_engine
+            if not engine:
+                return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
+
+            try:
+                if start_str and end_str:
+                    start_time = dateutil.parser.parse(start_str)
+                    end_time = dateutil.parser.parse(end_str)
+                else:
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    end_time = now.replace(minute=0, second=0, microsecond=0)
+                    start_time = end_time - datetime.timedelta(hours=1)
+
+                engine.build_hourly_cache(start_time, end_time)
+                return jsonify({
+                    "status": "success",
+                    "message": f"Cache built from {start_time.isoformat()} to {end_time.isoformat()}"
+                })
+            except Exception as e:
+                logger.error(f"entity_frequency_build_cache error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
 
         @app.route('/api/debug/trigger_aggregation', methods=['POST'])
         @WebServiceAccessManager.login_required

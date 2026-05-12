@@ -12,7 +12,7 @@ from typing import Tuple
 from pymongo.errors import ConnectionFailure
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, retry_if_result
 
-from GlobalConfig import EXPORT_PATH
+from GlobalConfig import EXPORT_PATH, DATA_PATH
 from ServiceComponent.DynamicGraphEngine import DynamicGraphEngine
 from prompts_v2x import ANALYSIS_PROMPT_TABLE
 from Tools.MongoDBAccess import MongoDBStorage
@@ -28,6 +28,7 @@ from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngi
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.AsyncTranslationPatch import AsyncTranslationPatch, needs_translation
 from ServiceComponent.IntelligenceAggregationEngine import IntelligenceAggregationEngine, generate_aggregation_plan
+from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
 from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time, time_digit_list_to_datetime
 from Tools.ProcessCotrolException import positioning_exception_context, ProcessSkip, PositioningException
 
@@ -109,6 +110,11 @@ class IntelligenceHub:
         self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
         self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
+        self.entity_frequency_engine = EntityFrequencyEngine(
+            db_path=os.path.join(DATA_PATH, 'entity_frequency.db'),
+            mongo_db_archive=self.mongo_db_archive,
+        )
+
         self.vector_db_engine_summary: Optional[IntelligenceVectorDBEngine] = None
         self.vector_db_engine_full_text: Optional[IntelligenceVectorDBEngine] = None
         self.aggregation_engine_summary: Optional[IntelligenceAggregationEngine] = None
@@ -182,6 +188,12 @@ class IntelligenceHub:
         self.scheduler.add_hourly_task(
             func=self._do_translation_backfill,
             task_id="translation_backfill_hourly",
+            use_new_thread=True
+        )
+
+        self.scheduler.add_hourly_task(
+            func=self._do_build_entity_frequency_cache,
+            task_id="entity_frequency_hourly",
             use_new_thread=True
         )
 
@@ -1214,3 +1226,13 @@ class IntelligenceHub:
                 logger.info(f"Translation backfill: {report}")
         except Exception as e:
             logger.warning(f"Translation backfill failed: {e}")
+
+    def _do_build_entity_frequency_cache(self):
+        """每小时任务：构建上一小时的实体频率缓存。"""
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            hour_end = now.replace(minute=0, second=0, microsecond=0)
+            hour_start = hour_end - datetime.timedelta(hours=1)
+            self.entity_frequency_engine.build_hourly_cache(hour_start, hour_end)
+        except Exception as e:
+            logger.warning(f"Entity frequency cache build failed: {e}")
