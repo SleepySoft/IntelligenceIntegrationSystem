@@ -6,7 +6,7 @@
 
 [完整情报列表](/intelligences?offset=0&count=20&threshold=6)
 
-[实体统计](/statistics/entity_frequency/page)
+[实体趋势](/statistics/entity_frequency/page)
 
 > 20260215: 
 > 
