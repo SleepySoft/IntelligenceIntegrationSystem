@@ -862,10 +862,10 @@ class IntelligenceHubWebService:
         # --------------------------- Entity Frequency Statistics ---------------------------
 
         @app.route('/statistics/entity_frequency/page', methods=['GET'])
-        @WebServiceAccessManager.login_required
         def entity_frequency_page():
-            """实体出现频率统计页面"""
-            return render_template('entity_frequency.html')
+            """实体出现频率统计页面。未登录时进入 Public 模式，固定显示最近30天。"""
+            is_public = not session.get('logged_in', False)
+            return render_template('entity_frequency.html', public_mode=is_public)
 
         @app.route('/statistics/entity_frequency', methods=['GET'])
         @WebServiceAccessManager.login_required

@@ -2,9 +2,11 @@
 
 ## 链接
 
-[点此查看完整情报列表](/intelligences?offset=0&count=20&threshold=6)
+[24小时情报聚合](/intelligences/clusters)
 
-[24小时情报聚合（测试）](/intelligences/clusters)
+[完整情报列表](/intelligences?offset=0&count=20&threshold=6)
+
+[实体统计](/statistics/entity_frequency/page)
 
 > 20260215: 
 > 

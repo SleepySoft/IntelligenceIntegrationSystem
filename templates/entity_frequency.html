@@ -155,6 +155,11 @@
 
     <!-- 控制面板 -->
     <div class="control-panel">
+        <input type="hidden" id="publicMode" value="{{ '1' if public_mode else '0' }}">
+        {% if public_mode %}
+        <!-- Public 模式：无查询控件，自动加载 -->
+        <button id="fetchData" style="display:none;"></button>
+        {% else %}
         <div class="row align-items-end">
             <div class="col-md-2">
                 <label for="startTime" class="form-label fw-bold">开始时间</label>
@@ -186,6 +191,7 @@
                 </button>
             </div>
         </div>
+        {% endif %}
         <!-- 进度条 -->
         <div class="row mt-3" id="progressRow" style="display:none;">
             <div class="col-12">
@@ -270,10 +276,23 @@ function formatDateTimeLocal(date) {
 }
 
 function initPage() {
+    const isPublic = document.getElementById('publicMode').value === '1';
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    document.getElementById('endTime').value = formatDateTimeLocal(now);
-    document.getElementById('startTime').value = formatDateTimeLocal(yesterday);
+
+    if (isPublic) {
+        // Public 模式：固定最近 30 天
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        document.getElementById('endTime').value = formatDateTimeLocal(now);
+        document.getElementById('startTime').value = formatDateTimeLocal(monthAgo);
+        // Public 模式下隐藏不必要的输入控件（如果存在）
+        if (document.getElementById('granularitySelect')) {
+            document.getElementById('granularitySelect').value = 'day';
+        }
+    } else {
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        document.getElementById('endTime').value = formatDateTimeLocal(now);
+        document.getElementById('startTime').value = formatDateTimeLocal(yesterday);
+    }
 
     document.getElementById('fetchData').addEventListener('click', onRefreshClicked);
 
