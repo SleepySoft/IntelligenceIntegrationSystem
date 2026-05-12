@@ -183,6 +183,7 @@ class IntelligenceQueryEngine:
             organizations: Optional[Union[str, List[str]]] = None,
             keywords: Optional[str] = None,
             threshold: Optional[float] = None,
+            threshold_max: Optional[float] = None,
             informant_domains: Optional[Union[str, List[str]]] = None,
             skip: Optional[int] = None,
             limit: Optional[int] = None
@@ -197,6 +198,7 @@ class IntelligenceQueryEngine:
             organizations: Article mentioned organization (s) (str or str list)
             keywords: Keywords in raw article.
             threshold: Minimum score value for filtering APPENDIX_MAX_RATE_SCORE
+            threshold_max: Maximum score value for filtering
             skip: Number of documents to skip (offset / page * item_per_page)
             limit: Maximum number of results to return (item_per_page)
 
@@ -218,6 +220,7 @@ class IntelligenceQueryEngine:
                 organizations=organizations,
                 keywords=keywords,
                 threshold=threshold,
+                threshold_max=threshold_max,
                 informant_domains=informant_domains
             )
 
@@ -247,6 +250,7 @@ class IntelligenceQueryEngine:
             organizations: Optional[Union[str, List[str]]] = None,
             keywords: Optional[str] = None,
             threshold: Optional[float] = None,
+            threshold_max: Optional[float] = None,
             informant_domains: Optional[Union[str, List[str]]] = None
     ) -> dict:
         query_conditions = []
@@ -288,11 +292,34 @@ class IntelligenceQueryEngine:
             query_conditions.append(self.build_informant_condition(informant_domains))
 
         # 6. Score Threshold (Hybrid Strategy)
-        if threshold is not None:
+        if threshold is not None or threshold_max is not None:
             v1_score_field = f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
             v2_score_field = f"APPENDIX.{APPENDIX_TOTAL_SCORE}"
-            query_conditions.append({"$or": [{v1_score_field: {"$gte": threshold}},
-                                             {v2_score_field: {"$gte": threshold}}]})
+            score_conds = []
+            if threshold is not None:
+                score_conds.append({v1_score_field: {"$gte": threshold}})
+                score_conds.append({v2_score_field: {"$gte": threshold}})
+            if threshold_max is not None:
+                score_conds.append({v1_score_field: {"$lte": threshold_max}})
+                score_conds.append({v2_score_field: {"$lte": threshold_max}})
+            # v1 和 v2 的分数是互斥的，用 $or 组合低界，$and 组合高界
+            # 最终条件：((v1>=min OR v2>=min) AND (v1<=max OR v2<=max))
+            low_conds = []
+            high_conds = []
+            if threshold is not None:
+                low_conds = [{v1_score_field: {"$gte": threshold}}, {v2_score_field: {"$gte": threshold}}]
+            if threshold_max is not None:
+                high_conds = [{v1_score_field: {"$lte": threshold_max}}, {v2_score_field: {"$lte": threshold_max}}]
+            final_score_conds = []
+            if low_conds:
+                final_score_conds.append({"$or": low_conds})
+            if high_conds:
+                final_score_conds.append({"$or": high_conds})
+            if final_score_conds:
+                if len(final_score_conds) == 1:
+                    query_conditions.append(final_score_conds[0])
+                else:
+                    query_conditions.append({"$and": final_score_conds})
 
         return {"$and": query_conditions} if query_conditions else {}
 

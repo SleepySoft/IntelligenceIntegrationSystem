@@ -4,41 +4,27 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- 1. 初始化 ---
-
-    // 实例化渲染器
-    // 参数1: 内容容器ID
-    // 参数2: 分页容器的Class名 (注意HTML里要是 class="pagination-container")
+    // --- 1. 初始化渲染器 ---
     const renderer = new ArticleRenderer('article-list-content', 'pagination-container');
-
     if (window.ArticleModalManager) {
-        ArticleModalManager.init({
-            history: false
-        });
+        ArticleModalManager.init({ history: false });
     }
 
     const searchForm = document.getElementById('search-form');
     const searchButton = document.getElementById('search-button');
     const spinner = searchButton.querySelector('.spinner-border');
-
-    // 整个结果区域的包装器
     const resultsWrapper = document.getElementById('results-wrapper');
     const resultsCountEl = document.getElementById('results-count');
     const resultsTotalEl = document.getElementById('results-total');
 
-    // 存储当前查询状态
     let currentQueryState = {
         page: 1,
         per_page: 10,
         search_mode: 'mongo',
-        payload_cache: {} // 缓存当前的搜索条件，翻页时使用
+        payload_cache: {}
     };
 
-    // --- 数据源域名加载 ---
-    const sourceDomainsContainer = document.getElementById('source-domains-container');
-    let selectedDomains = new Set();
-
-    // 手工维护的已接入媒体列表（如需增删，直接改此处）
+    // --- 2. 数据源列表 ---
     const MEDIA_SOURCES = [
         { domain: 'aa.com.tr',      name: '阿纳多卢通讯社',       flag: '🇹🇷' },
         { domain: 'abc.net.au',     name: '澳大利亚广播公司',     flag: '🇦🇺' },
@@ -59,43 +45,173 @@ document.addEventListener('DOMContentLoaded', () => {
         { domain: 'yna.co.kr',      name: '韩联社',               flag: '🇰🇷' },
     ];
 
-    function loadSourceDomains() {
-        if (!sourceDomainsContainer) return;
-        sourceDomainsContainer.innerHTML = '';
+    let selectedDomainsMongo = new Set();
+    let selectedDomainsVector = new Set();
+
+    function renderSourceTags(containerId, selectedSet) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
         MEDIA_SOURCES.forEach(item => {
             const tag = document.createElement('div');
             tag.className = 'source-tag';
             tag.dataset.domain = item.domain;
             tag.title = item.domain;
-            tag.innerHTML = `
-                <span>${item.flag}</span>
-                <span>${item.name}</span>
-                <span class="check-icon">✓</span>
-            `;
+            tag.innerHTML = `<span>${item.flag}</span><span>${item.name}</span><span class="check-icon">✓</span>`;
             tag.addEventListener('click', () => {
                 tag.classList.toggle('selected');
-                if (tag.classList.contains('selected')) {
-                    selectedDomains.add(item.domain);
-                } else {
-                    selectedDomains.delete(item.domain);
-                }
+                if (tag.classList.contains('selected')) selectedSet.add(item.domain);
+                else selectedSet.delete(item.domain);
             });
-            sourceDomainsContainer.appendChild(tag);
+            container.appendChild(tag);
         });
     }
-    loadSourceDomains();
+    renderSourceTags('source-domains-container', selectedDomainsMongo);
+    renderSourceTags('source-domains-container-vector', selectedDomainsVector);
 
-    // --- 2. 核心功能 ---
+    // --- 3. 双滑块组件 ---
+    function initRangeSlider(containerId, onChange) {
+        const container = document.getElementById(containerId);
+        if (!container) return null;
+        const minVal = parseFloat(container.dataset.min);
+        const maxVal = parseFloat(container.dataset.max);
+        const step = parseFloat(container.dataset.step) || 1;
+        const decimal = parseInt(container.dataset.decimal) || 0;
 
+        let low = minVal;
+        let high = maxVal;
+
+        const fill = document.createElement('div');
+        fill.className = 'range-fill';
+        container.appendChild(fill);
+
+        const thumbLow = document.createElement('div');
+        thumbLow.className = 'range-thumb';
+        container.appendChild(thumbLow);
+
+        const thumbHigh = document.createElement('div');
+        thumbHigh.className = 'range-thumb';
+        container.appendChild(thumbHigh);
+
+        function updateUI() {
+            const lowPct = (low - minVal) / (maxVal - minVal) * 100;
+            const highPct = (high - minVal) / (maxVal - minVal) * 100;
+            thumbLow.style.left = lowPct + '%';
+            thumbHigh.style.left = highPct + '%';
+            fill.style.left = lowPct + '%';
+            fill.style.width = (highPct - lowPct) + '%';
+            if (onChange) onChange(low, high);
+        }
+
+        function getValueFromEvent(e) {
+            const rect = container.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            let pct = (clientX - rect.left) / rect.width;
+            pct = Math.max(0, Math.min(1, pct));
+            let val = minVal + pct * (maxVal - minVal);
+            val = Math.round(val / step) * step;
+            val = parseFloat(val.toFixed(decimal));
+            return Math.max(minVal, Math.min(maxVal, val));
+        }
+
+        let activeThumb = null;
+
+        function onPointerDown(e, thumb) {
+            e.preventDefault();
+            activeThumb = thumb;
+            document.addEventListener('mousemove', onPointerMove);
+            document.addEventListener('mouseup', onPointerUp);
+            document.addEventListener('touchmove', onPointerMove, { passive: false });
+            document.addEventListener('touchend', onPointerUp);
+        }
+
+        function onPointerMove(e) {
+            if (!activeThumb) return;
+            e.preventDefault();
+            let val = getValueFromEvent(e);
+            if (activeThumb === thumbLow) {
+                if (val > high - step) val = parseFloat((high - step).toFixed(decimal));
+                low = val;
+            } else {
+                if (val < low + step) val = parseFloat((low + step).toFixed(decimal));
+                high = val;
+            }
+            updateUI();
+        }
+
+        function onPointerUp() {
+            activeThumb = null;
+            document.removeEventListener('mousemove', onPointerMove);
+            document.removeEventListener('mouseup', onPointerUp);
+            document.removeEventListener('touchmove', onPointerMove);
+            document.removeEventListener('touchend', onPointerUp);
+        }
+
+        thumbLow.addEventListener('mousedown', e => onPointerDown(e, thumbLow));
+        thumbHigh.addEventListener('mousedown', e => onPointerDown(e, thumbHigh));
+        thumbLow.addEventListener('touchstart', e => onPointerDown(e, thumbLow), { passive: false });
+        thumbHigh.addEventListener('touchstart', e => onPointerDown(e, thumbHigh), { passive: false });
+
+        container.addEventListener('click', e => {
+            if (e.target.classList.contains('range-thumb')) return;
+            const val = getValueFromEvent(e);
+            const distLow = Math.abs(val - low);
+            const distHigh = Math.abs(val - high);
+            if (distLow < distHigh) {
+                low = Math.min(val, parseFloat((high - step).toFixed(decimal)));
+            } else {
+                high = Math.max(val, parseFloat((low + step).toFixed(decimal)));
+            }
+            updateUI();
+        });
+
+        updateUI();
+        return { setValues: (l, h) => { low = l; high = h; updateUI(); } };
+    }
+
+    initRangeSlider('slider-mongo', (low, high) => {
+        document.getElementById('threshold-min-mongo').value = low;
+        document.getElementById('threshold-max-mongo').value = high;
+        document.getElementById('score-label-mongo').textContent = `${low} - ${high}`;
+    });
+
+    initRangeSlider('slider-vector', (low, high) => {
+        document.getElementById('score-threshold-min-vector').value = low;
+        document.getElementById('score-threshold-max-vector').value = high;
+        document.getElementById('score-label-vector').textContent = `${low.toFixed(2)} - ${high.toFixed(2)}`;
+    });
+
+    // --- 4. 日期选择器 ---
+    function initFlatpickr(inputId, startHiddenId, endHiddenId) {
+        const input = document.getElementById(inputId);
+        const startHidden = document.getElementById(startHiddenId);
+        const endHidden = document.getElementById(endHiddenId);
+        if (!input || typeof flatpickr === 'undefined') return;
+        flatpickr(input, {
+            mode: "range",
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            onChange: function(selectedDates) {
+                if (selectedDates.length >= 2) {
+                    startHidden.value = flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") + ':00';
+                    endHidden.value = flatpickr.formatDate(selectedDates[1], "Y-m-d H:i") + ':00';
+                } else {
+                    startHidden.value = '';
+                    endHidden.value = '';
+                }
+            }
+        });
+    }
+
+    initFlatpickr('date-range-mongo', 'start-time-mongo', 'end-time-mongo');
+    initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
+
+    // --- 5. 核心搜索功能 ---
     async function fetchResults(payload) {
-        // UI Loading
         searchButton.disabled = true;
-        spinner.classList.remove('d-none'); // Bootstrap 显隐类
-
-        // 显示结果区域容器
+        spinner.classList.remove('d-none');
         resultsWrapper.style.display = 'block';
-
-        // 调用渲染器的 Loading (会显示 "Loading Intelligences...")
         renderer.showLoading();
 
         try {
@@ -111,88 +227,99 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-
-            // 渲染数据
             renderer.render(data.results, {
                 total: data.total,
                 page: payload.page,
                 per_page: payload.per_page
             });
-
-            // 更新头部统计
             resultsCountEl.textContent = data.results.length;
             resultsTotalEl.textContent = data.total;
 
-            // 自动滚动的搜索结果顶部，体验更好
-            if(payload.page > 1) {
-                 resultsWrapper.scrollIntoView({ behavior: 'smooth' });
+            if (payload.page > 1) {
+                resultsWrapper.scrollIntoView({ behavior: 'smooth' });
             }
-
         } catch (error) {
             console.error('Fetch error:', error);
             renderer.showError(error.message);
             resultsTotalEl.textContent = '0';
             resultsCountEl.textContent = '0';
         } finally {
-            // 恢复按钮状态
             searchButton.disabled = false;
             spinner.classList.add('d-none');
         }
     }
 
-    // --- 3. 事件监听 ---
-
-    // A. 表单提交
+    // --- 6. 表单提交 ---
     searchForm.addEventListener('submit', (e) => {
         e.preventDefault();
 
-        const formData = new FormData(searchForm);
-        // 注意：FormData 对于未选中的 checkbox 不会包含 key，对于选中的值为 "on"
-
-        // 1. 获取当前激活的 Tab 模式
         const activeTabBtn = document.querySelector('#search-mode-tabs .nav-link.active');
         const rawMode = activeTabBtn ? activeTabBtn.dataset.mode : 'mongo';
-
-        // 模式映射：前端 'vector' -> 后端 'vector_text'
         const searchMode = rawMode === 'vector' ? 'vector_text' : 'mongo';
 
-        // 2. 构建通用 Payload
         const payload = {
             page: 1,
-            per_page: Number(formData.get('per_page')) || 10,
+            per_page: 10,
             search_mode: searchMode,
-            // Keywords 在 Mongo 和 Vector 模式下都可能有用，统统传过去
-            keywords: formData.get('keywords') || ''
+            keywords: ''
         };
 
-        // 3. 根据模式追加特定字段
         if (searchMode === 'vector_text') {
-            payload.score_threshold = Number(formData.get('score_threshold')) || 0.5;
+            // Vector 模式
+            const kw = document.querySelector('#vector-pane textarea[name="keywords_vector"]');
+            payload.keywords = kw ? kw.value.trim() : '';
 
-            // Checkbox 显式转 Boolean
-            // formData.get('xx') 存在则为 'on' (truthy)，不存在则为 null (falsy)
-            payload.in_summary = formData.get('in_summary') !== null;
-            payload.in_fulltext = formData.get('in_fulltext') !== null;
+            const perPage = document.querySelector('#vector-pane select[name="per_page"]');
+            payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
+            const st = document.getElementById('start-time-vector').value;
+            const et = document.getElementById('end-time-vector').value;
+            if (st) payload.start_time = st;
+            if (et) payload.end_time = et;
+
+            const scoreMin = document.getElementById('score-threshold-min-vector').value;
+            const scoreMax = document.getElementById('score-threshold-max-vector').value;
+            payload.score_threshold_min = Number(scoreMin);
+            payload.score_threshold_max = Number(scoreMax);
+
+            const inSummary = document.querySelector('#vector-pane input[name="in_summary"]');
+            const inFulltext = document.querySelector('#vector-pane input[name="in_fulltext"]');
+            payload.in_summary = inSummary ? inSummary.checked : true;
+            payload.in_fulltext = inFulltext ? inFulltext.checked : false;
+
+            if (selectedDomainsVector.size > 0) {
+                payload.informant_domains = Array.from(selectedDomainsVector).join(',');
+            }
         } else {
             // Mongo 模式
-            if (formData.get('start_time')) payload.start_time = formData.get('start_time');
-            if (formData.get('end_time')) payload.end_time = formData.get('end_time');
+            const kw = document.querySelector('#mongo-pane input[name="keywords"]');
+            payload.keywords = kw ? kw.value.trim() : '';
 
-            // 字符串直接传，后端 _split 会处理逗号
-            if (formData.get('locations')) payload.locations = formData.get('locations');
-            if (formData.get('peoples')) payload.peoples = formData.get('peoples');
-            if (formData.get('organizations')) payload.organizations = formData.get('organizations');
+            const perPage = document.querySelector('#mongo-pane select[name="per_page"]');
+            payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
-            // 数据源域名过滤
-            if (selectedDomains.size > 0) {
-                payload.informant_domains = Array.from(selectedDomains).join(',');
+            const st = document.getElementById('start-time-mongo').value;
+            const et = document.getElementById('end-time-mongo').value;
+            if (st) payload.start_time = st;
+            if (et) payload.end_time = et;
+
+            const thMin = document.getElementById('threshold-min-mongo').value;
+            const thMax = document.getElementById('threshold-max-mongo').value;
+            payload.threshold_min = Number(thMin);
+            payload.threshold_max = Number(thMax);
+
+            const loc = document.querySelector('#mongo-pane input[name="locations"]');
+            const peo = document.querySelector('#mongo-pane input[name="peoples"]');
+            const org = document.querySelector('#mongo-pane input[name="organizations"]');
+            if (loc && loc.value.trim()) payload.locations = loc.value.trim();
+            if (peo && peo.value.trim()) payload.peoples = peo.value.trim();
+            if (org && org.value.trim()) payload.organizations = org.value.trim();
+
+            if (selectedDomainsMongo.size > 0) {
+                payload.informant_domains = Array.from(selectedDomainsMongo).join(',');
             }
-
-            // 确保 Mongo 模式下清理掉 Vector 特有的参数，避免混淆（虽然后端会忽略）
         }
 
-        // 更新状态缓存
         currentQueryState.payload_cache = payload;
         currentQueryState.page = 1;
         currentQueryState.search_mode = searchMode;
@@ -200,25 +327,16 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchResults(payload);
     });
 
-    // B. 分页点击 (全局委托，适配 .page-btn)
-    // 注意：这里监听的是 document.body 或者结果容器，确保能捕获到动态生成的按钮
+    // --- 7. 分页点击 ---
     document.body.addEventListener('click', (e) => {
-        // 匹配 .page-btn 而不是 .page-link
         const target = e.target.closest('.page-btn');
-
         if (target && !target.classList.contains('disabled')) {
             e.preventDefault();
-
             const clickPage = parseInt(target.dataset.page);
             if (clickPage && clickPage !== currentQueryState.page) {
-
-                // 复制之前的搜索条件，仅修改页码
                 const nextPayload = { ...currentQueryState.payload_cache };
                 nextPayload.page = clickPage;
-
-                // 更新状态
                 currentQueryState.page = clickPage;
-
                 fetchResults(nextPayload);
             }
         }

@@ -354,6 +354,7 @@ class IntelligenceHub:
                            organizations: Optional[List[str]] = None,
                            keywords: Optional[str] = None,
                            threshold: Optional[int] = 4,
+                           threshold_max: Optional[int] = None,
                            informant_domains: Optional[List[str]] = None,
                            skip: Optional[int] = 0,
                            limit: int = 100,
@@ -365,7 +366,7 @@ class IntelligenceHub:
         result, total = query_engine.query_intelligence(
             period = period, locations = locations, peoples = peoples,
             organizations = organizations, keywords = keywords,
-            threshold=threshold, informant_domains=informant_domains,
+            threshold=threshold, threshold_max=threshold_max, informant_domains=informant_domains,
             skip=skip, limit=limit)
         return result, total
 
@@ -374,7 +375,13 @@ class IntelligenceHub:
                                    in_summary: bool = True,
                                    in_fulltext: bool = False,
                                    top_n: int = 10,
-                                   score_threshold: float = 0.5) -> List[Tuple[str, float, dict]]:
+                                   score_threshold: float = 0.5,
+                                   score_threshold_max: float = 1.0,
+                                   event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+                                   archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+                                   rate_threshold: Optional[float] = None,
+                                   informant_domains: Optional[List[str]] = None,
+                                   ) -> List[Tuple[str, float, dict]]:
         """
         Perform semantic search across both summary and full-text vector databases,
         returning deduplicated results with the best matches per document.
@@ -420,13 +427,21 @@ class IntelligenceHub:
         # 2. 独立查询 (Best Effort Strategy)
         if in_summary:
             if engine_summary:
-                summary_result = engine_summary.query(text, top_n, score_threshold)
+                summary_result = engine_summary.query(
+                    text, top_n, score_threshold,
+                    event_period=event_period,
+                    archive_period=archive_period,
+                    rate_threshold=rate_threshold)
             else:
                 logger.warning("Summary search requested but engine is not ready yet.")
 
         if in_fulltext:
             if engine_full:
-                fulltext_result = engine_full.query(text, top_n, score_threshold)
+                fulltext_result = engine_full.query(
+                    text, top_n, score_threshold,
+                    event_period=event_period,
+                    archive_period=archive_period,
+                    rate_threshold=rate_threshold)
             else:
                 logger.warning("Fulltext search requested but engine is not ready yet.")
 
@@ -444,6 +459,7 @@ class IntelligenceHub:
             score = result.get("score", 0.0)
 
             if doc_id is None: continue
+            if score > score_threshold_max: continue
 
             if doc_id not in best_records or score > best_records[doc_id][0]:
                 best_records[doc_id] = (score, result)

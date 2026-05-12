@@ -550,6 +550,12 @@ class IntelligenceHubWebService:
                 return [x.strip() for x in v.split(',') if x.strip()]
 
             # 3. 参数构造
+            # 兼容旧版 threshold / score_threshold
+            threshold_min = float(combined.get('threshold_min', combined.get('threshold', 0)))
+            threshold_max = float(combined.get('threshold_max', 10))
+            score_threshold_min = float(combined.get('score_threshold_min', combined.get('score_threshold', VECTOR_DEFAULT_SCORE_THRESHOLD)))
+            score_threshold_max = float(combined.get('score_threshold_max', 1.0))
+
             params = {
                 'search_mode': combined.get('search_mode', 'mongo'),
                 'page': int(combined.get('page', 1)),
@@ -557,7 +563,6 @@ class IntelligenceHubWebService:
                 # 保持原始字符串，在具体逻辑中再转 datetime，避免在此处 crash
                 'start_time': combined.get('start_time', ''),
                 'end_time': combined.get('end_time', ''),
-                'threshold': float(combined.get('threshold', 0)),
                 'keywords': combined.get('keywords', '').strip(),  # 去除首尾空格
 
                 # Mongo 筛选字段
@@ -565,11 +570,14 @@ class IntelligenceHubWebService:
                 'locations': _split(combined.get('locations', '')),
                 'organizations': _split(combined.get('organizations', '')),
                 'informant_domains': _split(combined.get('informant_domains', '')),
+                'threshold_min': threshold_min,
+                'threshold_max': threshold_max,
 
                 # Vector 字段
                 'in_summary': to_bool(combined.get('in_summary'), default=True),
                 'in_fulltext': to_bool(combined.get('in_fulltext'), default=False),
-                'score_threshold': float(combined.get('score_threshold', VECTOR_DEFAULT_SCORE_THRESHOLD)),
+                'score_threshold_min': score_threshold_min,
+                'score_threshold_max': score_threshold_max,
                 'reference': combined.get('reference', ''),
             }
 
@@ -601,9 +609,14 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['start_time']),
                     datetime.datetime.fromisoformat(p['end_time'])
                 )
-            for field in ('locations', 'peoples', 'organizations', 'keywords', 'threshold', 'informant_domains'):
+            for field in ('locations', 'peoples', 'organizations', 'keywords', 'informant_domains'):
                 if p[field]:
                     query[field] = p[field]
+
+            if p.get('threshold_min', 0) > 0:
+                query['threshold'] = p['threshold_min']
+            if p.get('threshold_max', 10) < 10:
+                query['threshold_max'] = p['threshold_max']
 
             skip = (p['page'] - 1) * p['per_page']
             return self.intelligence_hub.query_intelligence(
@@ -623,25 +636,27 @@ class IntelligenceHubWebService:
             if not text:
                 return [], 0
 
-            top_n = p['page'] * p['per_page']
-            top_n = min(top_n, VECTOR_MAX_TOP_N)
-            raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(
-                text=text,
-                in_summary=p['in_summary'],
-                in_fulltext=p['in_fulltext'],
-                top_n=top_n,
-                score_threshold=p['score_threshold']
-            )
+            vector_kwargs = {
+                'text': text,
+                'in_summary': p['in_summary'],
+                'in_fulltext': p['in_fulltext'],
+                'top_n': min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N),
+                'score_threshold': p.get('score_threshold_min', VECTOR_DEFAULT_SCORE_THRESHOLD),
+                'score_threshold_max': p.get('score_threshold_max', 1.0),
+            }
+
+            if p['start_time'] and p['end_time']:
+                vector_kwargs['event_period'] = (
+                    datetime.datetime.fromisoformat(p['start_time']),
+                    datetime.datetime.fromisoformat(p['end_time'])
+                )
+
+            raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(**vector_kwargs)
 
             # 分页
             start = (p['page'] - 1) * p['per_page']
             end = start + p['per_page']
             page_items = raw[start:end]
-
-            # results = [
-            #     {'doc_id': doc_id, 'score': score, 'chunk': chunk}
-            #     for doc_id, score, chunk in page_items
-            # ]
 
             uuids = []
             score_map = {}
