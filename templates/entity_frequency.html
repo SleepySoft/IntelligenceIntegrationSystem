@@ -1134,23 +1134,23 @@ function bindTrendClick(chart) {
         let slotEnd;
 
         if (granularity === 'day') {
-            slotStart = slot + 'T00:00:00';
-            slotEnd = slot + 'T23:59:59';
+            slotStart = slot + 'T00:00:00+00:00';
+            slotEnd = slot + 'T23:59:59+00:00';
         } else if (granularity === 'week') {
-            slotStart = slot + 'T00:00:00';
+            slotStart = slot + 'T00:00:00+00:00';
 
-            const monday = new Date(slot + 'T00:00:00');
+            const monday = new Date(slot + 'T00:00:00+00:00');
             const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
 
-            slotEnd = formatLocalDate(sunday) + 'T23:59:59';
+            slotEnd = formatLocalDate(sunday) + 'T23:59:59+00:00';
         } else if (granularity === 'month') {
-            slotStart = slot + '-01T00:00:00';
+            slotStart = slot + '-01T00:00:00+00:00';
 
             const y = parseInt(slot.slice(0, 4), 10);
             const m = parseInt(slot.slice(5, 7), 10);
             const lastDay = new Date(y, m, 0).getDate();
 
-            slotEnd = `${slot}-${pad2(lastDay)}T23:59:59`;
+            slotEnd = `${slot}-${pad2(lastDay)}T23:59:59+00:00`;
         } else {
             return;
         }
@@ -1227,6 +1227,12 @@ function bindTrendClick(chart) {
     chart.getZr().on('click', chart.__zrTrendClickHandler);
 }
 
+function toUtcIso(s) {
+    if (!s) return s;
+    if (s.endsWith('Z') || s.includes('+')) return s;
+    return s.replace(' ', 'T') + '+00:00';
+}
+
 function openIntelligenceSearch(entityType, entityName, startTime, endTime) {
     const paramKey = ENTITY_SEARCH_PARAM[entityType];
 
@@ -1239,11 +1245,11 @@ function openIntelligenceSearch(entityType, entityName, startTime, endTime) {
     params.set(paramKey, entityName);
 
     if (startTime) {
-        params.set('archive_start_time', startTime);
+        params.set('archive_start_time', toUtcIso(startTime));
     }
 
     if (endTime) {
-        params.set('archive_end_time', endTime);
+        params.set('archive_end_time', toUtcIso(endTime));
     }
 
     params.set('auto_search', '1');
