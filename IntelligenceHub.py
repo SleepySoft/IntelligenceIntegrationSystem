@@ -157,6 +157,14 @@ class IntelligenceHub:
         )
         self.async_translation_patch.start()
 
+        # 启动实体频率缓存预更新线程（最近30天）
+        self._entity_freq_bootstrap_thread = threading.Thread(
+            target=self._bootstrap_entity_frequency_cache,
+            daemon=True,
+            name="EntityFreqBootstrap"
+        )
+        self._entity_freq_bootstrap_thread.start()
+
         logger.info('***** IntelligenceHub init complete *****')
 
     # ----------------------------------------------------- Setups -----------------------------------------------------
@@ -1246,6 +1254,22 @@ class IntelligenceHub:
                 logger.info(f"Translation backfill: {report}")
         except Exception as e:
             logger.warning(f"Translation backfill failed: {e}")
+
+    def _bootstrap_entity_frequency_cache(self):
+        """程序启动时，在后台线程中预构建最近30天的实体频率缓存。"""
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            end_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_time = end_time - datetime.timedelta(days=30)
+            logger.info(f"Entity frequency bootstrap: building cache from {start_time.date()} to {end_time.date()}")
+            for progress in self.entity_frequency_engine.build_cache_with_progress(start_time, end_time):
+                if self.shutdown_flag.is_set():
+                    self.entity_frequency_engine.cancel_build()
+                    logger.info("Entity frequency bootstrap cancelled due to shutdown.")
+                    break
+            logger.info("Entity frequency bootstrap completed.")
+        except Exception as e:
+            logger.warning(f"Entity frequency bootstrap failed: {e}")
 
     def _do_build_entity_frequency_cache(self):
         """每小时任务：构建上一个完整天的实体频率缓存。"""

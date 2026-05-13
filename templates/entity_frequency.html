@@ -388,11 +388,9 @@ function initPage() {
     let startDate;
     let endDate = now;
 
+    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     if (isPublic) {
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         setValue('granularitySelect', 'day');
-    } else {
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     }
 
     const dateRangeInput = document.getElementById('dateRange');

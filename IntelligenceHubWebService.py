@@ -946,7 +946,7 @@ class IntelligenceHubWebService:
                     if start_str:
                         start_time = dateutil.parser.parse(start_str)
                     else:
-                        start_time = get_aware_time() - datetime.timedelta(days=1)
+                        start_time = get_aware_time() - datetime.timedelta(days=30)
 
                     if end_str:
                         end_time = dateutil.parser.parse(end_str)
@@ -974,6 +974,7 @@ class IntelligenceHubWebService:
                     granularity=granularity,
                     top_n=top_n,
                     bottom_threshold=bottom_threshold,
+                    allow_build=not is_public,
                 )
                 return jsonify(result)
             except Exception as e:
@@ -1008,7 +1009,7 @@ class IntelligenceHubWebService:
                 else:
                     start_str = request.args.get('start_time')
                     end_str = request.args.get('end_time')
-                    start_time = dateutil.parser.parse(start_str) if start_str else get_aware_time() - datetime.timedelta(days=7)
+                    start_time = dateutil.parser.parse(start_str) if start_str else get_aware_time() - datetime.timedelta(days=30)
                     end_time = dateutil.parser.parse(end_str) if end_str else get_aware_time()
             except Exception as e:
                 return jsonify({"error": f"Parameter parse error: {e}"}), 400
@@ -1024,6 +1025,7 @@ class IntelligenceHubWebService:
                     start_time=start_time,
                     end_time=end_time,
                     granularity=granularity,
+                    allow_build=not is_public,
                 )
                 return jsonify(result)
             except Exception as e:

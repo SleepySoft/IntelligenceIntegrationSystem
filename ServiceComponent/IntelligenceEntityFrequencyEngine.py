@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import sqlite3
+import time
 import datetime
 import threading
 from typing import Optional, List, Dict, Any, Iterator
@@ -60,6 +61,9 @@ class EntityFrequencyEngine:
         self.time_field = time_field
         self.write_lock = threading.Lock()
         self._cancel_event = threading.Event()
+        # 后台缓存构建的状态管理（防重复触发 + 异步化）
+        self._pending_slots: set = set()
+        self._pending_slots_lock = threading.Lock()
         self._init_db()
 
     def _get_conn(self):
@@ -351,14 +355,14 @@ class EntityFrequencyEngine:
 
     # -------------------------------------------------- 查询接口 --------------------------------------------------
 
-    def ensure_time_slots(
+    def find_missing_slots(
         self,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
     ) -> List[str]:
         """
-        确保 [start_time, end_time) 内所有天 slot 都已缓存。
-        返回缺失并已经补全的 slot 字符串列表（YYYY-MM-DD）。
+        找出 [start_time, end_time) 内尚未缓存的 slot 列表。
+        返回缺失的 slot 字符串列表（YYYY-MM-DD）。
         """
         slot_start = self._normalize_to_day(start_time)
         slot_end = self._normalize_to_day(end_time)
@@ -366,7 +370,6 @@ class EntityFrequencyEngine:
         if slot_start >= slot_end:
             return []
 
-        # 查询 SQLite 中已存在的 slot
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
@@ -380,22 +383,94 @@ class EntityFrequencyEngine:
         finally:
             conn.close()
 
-        missing_built = []
+        missing = []
         current = slot_start
         while current < slot_end:
             slot_str = current.strftime("%Y-%m-%d")
             if slot_str not in existing_slots:
-                try:
-                    self._build_single_day_cache(current)
-                    missing_built.append(slot_str)
-                except Exception as e:
-                    logger.error(
-                        f"ensure_time_slots: failed to build cache for {slot_str}: {e}",
-                        exc_info=True,
-                    )
+                missing.append(slot_str)
             current += datetime.timedelta(days=1)
 
-        return missing_built
+        return missing
+
+    def ensure_time_slots(
+        self,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        allow_build: bool = True,
+        wait_timeout: float = 5.0,
+    ) -> List[str]:
+        """
+        确保 [start_time, end_time) 内所有天 slot 都已缓存。
+        支持异步后台构建，避免阻塞请求线程。
+
+        Args:
+            allow_build: 是否允许触发后台缓存构建（非登录用户应设为 False）。
+            wait_timeout: 允许等待后台线程完成的最大秒数（0 表示不等待）。
+
+        Returns:
+            缺失并已触发补全的 slot 字符串列表（YYYY-MM-DD）。
+        """
+        missing = self.find_missing_slots(start_time, end_time)
+        if not missing:
+            return []
+
+        if not allow_build:
+            return []
+
+        # 过滤掉正在后台构建中的 slot，避免重复触发
+        with self._pending_slots_lock:
+            to_build = [s for s in missing if s not in self._pending_slots]
+            for s in to_build:
+                self._pending_slots.add(s)
+
+        if to_build:
+            threading.Thread(
+                target=self._build_slots_worker,
+                args=(to_build,),
+                daemon=True,
+                name=f"EntityFreqBuild-{time.strftime('%H%M%S')}",
+            ).start()
+
+        # 尝试等待缺失 slot 构建完成（带超时，避免长时间阻塞请求）
+        if wait_timeout > 0:
+            self._wait_slots_complete(missing, timeout=wait_timeout)
+
+        return missing
+
+    def _build_slots_worker(self, slot_strs: List[str]) -> None:
+        """后台线程：构建指定 slot 的缓存。"""
+        try:
+            for slot_str in slot_strs:
+                if self._cancel_event.is_set():
+                    logger.info("EntityFrequencyEngine: background build cancelled.")
+                    break
+                slot = datetime.datetime.strptime(slot_str, "%Y-%m-%d").replace(
+                    hour=0, minute=0, second=0, microsecond=0,
+                    tzinfo=datetime.timezone.utc,
+                )
+                try:
+                    self._build_single_day_cache(slot)
+                except Exception as e:
+                    logger.error(
+                        f"Background build failed for slot {slot_str}: {e}",
+                        exc_info=True,
+                    )
+        finally:
+            with self._pending_slots_lock:
+                for s in slot_strs:
+                    self._pending_slots.discard(s)
+
+    def _wait_slots_complete(self, slot_strs: List[str], timeout: float = 5.0) -> None:
+        """等待指定 slot 的后台构建完成（带超时）。"""
+        if not slot_strs:
+            return
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            with self._pending_slots_lock:
+                if not any(s in self._pending_slots for s in slot_strs):
+                    return
+            time.sleep(0.2)
 
     def query_frequency(
         self,
@@ -405,6 +480,7 @@ class EntityFrequencyEngine:
         granularity: str = GRANULARITY_DAY,
         top_n: int = 20,
         bottom_threshold: int = 5,
+        allow_build: bool = True,
     ) -> Dict[str, Any]:
         """
         查询某类实体在时间段内的聚合统计。
@@ -414,8 +490,8 @@ class EntityFrequencyEngine:
         if granularity not in ALL_GRANULARITIES:
             raise ValueError(f"Unsupported granularity: {granularity}")
 
-        # 先确保天级缓存完整
-        self.ensure_time_slots(start_time, end_time)
+        # 先确保天级缓存完整（登录用户允许后台构建，非登录用户只读已有缓存）
+        self.ensure_time_slots(start_time, end_time, allow_build=allow_build)
 
         # 读取天级数据
         raw_data = self._fetch_daily_data(entity_type, start_time, end_time)
@@ -553,6 +629,7 @@ class EntityFrequencyEngine:
         start_time: datetime.datetime,
         end_time: datetime.datetime,
         granularity: str = GRANULARITY_DAY,
+        allow_build: bool = True,
     ) -> Dict[str, Any]:
         """
         获取单个实体在时间段内的趋势数据。
@@ -562,7 +639,7 @@ class EntityFrequencyEngine:
         if granularity not in ALL_GRANULARITIES:
             raise ValueError(f"Unsupported granularity: {granularity}")
 
-        self.ensure_time_slots(start_time, end_time)
+        self.ensure_time_slots(start_time, end_time, allow_build=allow_build)
 
         raw_data = self._fetch_daily_data(entity_type, start_time, end_time)
         merged = self._merge_by_granularity(raw_data, granularity)
@@ -578,4 +655,7 @@ class EntityFrequencyEngine:
 
     @staticmethod
     def _normalize_to_day(dt: datetime.datetime) -> datetime.datetime:
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        normalized = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        if normalized.tzinfo is None:
+            normalized = normalized.replace(tzinfo=datetime.timezone.utc)
+        return normalized
