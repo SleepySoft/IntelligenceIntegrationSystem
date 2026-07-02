@@ -136,14 +136,7 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
     return vector_db_client
 
 
-def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
-    config = EasyConfig(
-        config_file=DEFAULT_CONFIG_FILE,
-        config_file_alter=DEFAULT_ALTER_CONFIG_FILE
-    )
-
-    logger.info('Apply config: ')
-    logger.info(config.dump_text())
+def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
 
     # ------------------------------- AI Service -------------------------------
 
@@ -289,9 +282,19 @@ def run():
     build_dirs()
     config_log()
 
+    # --------------------------------- Config --------------------------------
+
+    config = EasyConfig(
+        config_file=DEFAULT_CONFIG_FILE,
+        config_file_alter=DEFAULT_ALTER_CONFIG_FILE
+    )
+
+    logger.info('Apply config: ')
+    logger.info(config.dump_text())
+
     # -------------------------------- Service ---------------------------------
 
-    ihub, ihub_service, client_manager = start_intelligence_hub_service()
+    ihub, ihub_service, client_manager = start_intelligence_hub_service(config)
 
     log_backend = LoggerBackend(monitoring_file_path=IIS_LOG_FILE, cache_limit_count=100000,
                                 link_file_roots={
