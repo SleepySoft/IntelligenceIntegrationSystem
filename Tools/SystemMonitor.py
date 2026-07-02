@@ -122,11 +122,13 @@ class SystemMonitor:
         """
         return {
             'timestamp': datetime.now().isoformat(),
+            'timestamp_formatted': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'cpu': {
                 'percent': psutil.cpu_percent(interval=0.1),
                 'cores': psutil.cpu_count(logical=False),
                 'logical_cores': psutil.cpu_count(logical=True),
-                'times': psutil.cpu_times()._asdict()
+                'times': psutil.cpu_times()._asdict(),
+                'temperatures': self._get_cpu_temperatures()
             },
             'memory': {
                 'total': psutil.virtual_memory().total,
@@ -217,6 +219,25 @@ class SystemMonitor:
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             self.remove_process(pid)
+            return None
+
+    def _get_cpu_temperatures(self) -> Optional[Dict[str, Any]]:
+        """
+        获取 CPU 温度（Linux 通常可用，Windows 可能为空）。
+        返回 {sensor_label: current_temp, ...} 或 None。
+        """
+        try:
+            temps = psutil.sensors_temperatures()
+            if not temps:
+                return None
+            result = {}
+            for name, entries in temps.items():
+                for entry in entries:
+                    label = entry.label or name
+                    if entry.current is not None:
+                        result[label] = round(entry.current, 1)
+            return result if result else None
+        except Exception:
             return None
 
     def _get_handle_count(self, process: psutil.Process) -> Optional[int]:

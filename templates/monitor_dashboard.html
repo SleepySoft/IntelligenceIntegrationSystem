@@ -7,15 +7,16 @@
     <title>IIS 系统监控面板</title>
     <style>
         :root {
-            --bg: #f5f7fa;
-            --card-bg: #ffffff;
-            --primary: #2196f3;
-            --success: #4caf50;
-            --warning: #ff9800;
-            --danger: #f44336;
-            --text: #333333;
-            --muted: #666666;
-            --border: #e0e0e0;
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: #334155;
+            --primary: #38bdf8;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --hover: #27354f;
         }
         * { box-sizing: border-box; }
         body {
@@ -24,6 +25,7 @@
             padding: 0;
             background: var(--bg);
             color: var(--text);
+            line-height: 1.5;
         }
         .container {
             max-width: 1600px;
@@ -34,98 +36,183 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--card-border);
         }
-        h1 { margin: 0; font-size: 28px; }
-        .timestamp { color: var(--muted); font-size: 14px; }
+        h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+        .subtitle { color: var(--muted); font-size: 14px; }
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 16px;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
         }
         .metric {
             background: var(--card-bg);
-            border-radius: 10px;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-            text-align: center;
+            position: relative;
+            overflow: hidden;
         }
+        .metric::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary);
+        }
+        .metric.warning::before { background: var(--warning); }
+        .metric.danger::before { background: var(--danger); }
         .metric-value {
             font-size: 32px;
             font-weight: 700;
-            color: var(--primary);
-            margin: 8px 0;
+            margin: 8px 0 4px;
         }
-        .metric-label { color: var(--muted); font-size: 14px; }
+        .metric-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .metric-detail { color: var(--muted); font-size: 13px; margin-top: 8px; }
         .card {
             background: var(--card-bg);
-            border-radius: 10px;
-            padding: 20px;
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
             margin-bottom: 24px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            overflow: hidden;
         }
-        .card h2 {
-            margin: 0 0 16px 0;
-            font-size: 20px;
-            border-left: 4px solid var(--primary);
-            padding-left: 10px;
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+        .card-header h2 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-body { padding: 0; }
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 13px;
         }
         th, td {
-            padding: 10px 12px;
+            padding: 12px 16px;
             text-align: left;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid var(--card-border);
         }
         th {
-            background: #fafafa;
+            background: rgba(255,255,255,0.03);
             font-weight: 600;
-            position: sticky;
-            top: 0;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        tr:hover { background: #f8f9fa; }
+        tr:hover { background: var(--hover); }
+        tr:last-child td { border-bottom: none; }
         .right { text-align: right; }
+        .center { text-align: center; }
         .badge {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
+            padding: 3px 10px;
+            border-radius: 20px;
             font-size: 12px;
             font-weight: 600;
         }
-        .badge-info { background: #e3f2fd; color: var(--primary); }
-        .badge-warn { background: #fff3e0; color: var(--warning); }
-        .badge-danger { background: #ffebee; color: var(--danger); }
-        .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+        .badge-info { background: rgba(56,189,248,0.15); color: var(--primary); }
+        .badge-warn { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .badge-danger { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .badge-success { background: rgba(74,222,128,0.15); color: var(--success); }
+        details {
+            background: rgba(15,23,42,0.5);
+            border-bottom: 1px solid var(--card-border);
+        }
+        details:last-child { border-bottom: none; }
+        summary {
+            cursor: pointer;
+            padding: 10px 16px;
+            color: var(--primary);
+            font-weight: 500;
+            font-size: 13px;
+            user-select: none;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        summary::-webkit-details-marker { display: none; }
+        summary::before {
+            content: '▶';
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+        details[open] > summary::before { transform: rotate(90deg); }
+        .thread-table-wrap { padding: 0 16px 16px 16px; }
+        .empty { color: var(--muted); font-style: italic; padding: 20px; text-align: center; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 16px 20px; }
         .btn {
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 8px;
             text-decoration: none;
             color: #fff;
-            font-size: 14px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: opacity 0.15s;
         }
-        .btn-primary { background: var(--primary); }
-        .btn-warning { background: var(--warning); }
-        .btn-success { background: var(--success); }
-        .thread-section { margin-top: 12px; }
-        .thread-section summary {
-            cursor: pointer;
-            color: var(--primary);
-            font-weight: 600;
-            padding: 8px 0;
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: var(--primary); color: #0f172a; }
+        .btn-warning { background: var(--warning); color: #0f172a; }
+        .btn-success { background: var(--success); color: #0f172a; }
+        .progress-bg {
+            height: 6px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            margin-top: 6px;
+            overflow: hidden;
         }
-        .empty { color: var(--muted); font-style: italic; }
+        .progress-bar {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--primary);
+            transition: width 0.5s ease;
+        }
+        .temperature-list {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 16px 20px;
+        }
+        .temp-chip {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 13px;
+        }
+        .temp-chip .value { font-weight: 700; font-size: 15px; }
+        .temp-chip .label { color: var(--muted); margin-left: 4px; }
     </style>
 </head>
 <body>
 <div class="container">
     <header>
-        <h1>🖥️ IIS 系统监控面板</h1>
-        <div class="timestamp">更新时间：{{ stats.get('timestamp', 'Unknown') }}</div>
+        <div>
+            <h1>🖥️ IIS 系统监控面板</h1>
+            <div class="subtitle">System Monitor Dashboard</div>
+        </div>
+        <div class="subtitle">
+            更新时间：{{ stats.get('timestamp_formatted', stats.get('timestamp', 'Unknown')) }}
+        </div>
     </header>
 
     {% set system = stats.get('system', {}) %}
@@ -133,35 +220,65 @@
     {% set memory = system.get('memory', {}) %}
     {% set disk = system.get('disk', {}) %}
     {% set disk_usage = disk.get('usage', {}) %}
+    {% set cpu_pct = cpu.get('percent', 0) %}
+    {% set mem_pct = memory.get('percent', 0) %}
+    {% set disk_pct = disk_usage.get('percent', 0) %}
 
     <div class="grid">
-        <div class="metric">
+        <div class="metric {% if cpu_pct > 80 %}danger{% elif cpu_pct > 60 %}warning{% endif %}">
             <div class="metric-label">CPU 占用</div>
-            <div class="metric-value">{{ cpu.get('percent', 0) | round(1) }}%</div>
-            <div class="metric-label">{{ cpu.get('logical_cores', 0) }} 逻辑核</div>
+            <div class="metric-value">{{ cpu_pct | round(1) }}%</div>
+            <div class="progress-bg"><div class="progress-bar" style="width: min({{ cpu_pct }}%, 100%);"></div></div>
+            <div class="metric-detail">{{ cpu.get('logical_cores', 0) }} 逻辑核 / {{ cpu.get('cores', 0) }} 物理核</div>
         </div>
-        <div class="metric">
+        <div class="metric {% if mem_pct > 85 %}danger{% elif mem_pct > 70 %}warning{% endif %}">
             <div class="metric-label">内存占用</div>
-            <div class="metric-value">{{ memory.get('percent', 0) | round(1) }}%</div>
-            <div class="metric-label">可用 {{ (memory.get('available', 0) / 1024 / 1024 / 1024) | round(1) }} GB</div>
+            <div class="metric-value">{{ mem_pct | round(1) }}%</div>
+            <div class="progress-bg"><div class="progress-bar" style="width: min({{ mem_pct }}%, 100%);"></div></div>
+            <div class="metric-detail">可用 {{ (memory.get('available', 0) / 1024 / 1024 / 1024) | round(1) }} GB</div>
         </div>
-        <div class="metric">
+        <div class="metric {% if disk_pct > 90 %}danger{% elif disk_pct > 80 %}warning{% endif %}">
             <div class="metric-label">磁盘占用</div>
-            <div class="metric-value">{{ disk_usage.get('percent', 0) | round(1) }}%</div>
-            <div class="metric-label">剩余 {{ (disk_usage.get('free', 0) / 1024 / 1024 / 1024) | round(1) }} GB</div>
+            <div class="metric-value">{{ disk_pct | round(1) }}%</div>
+            <div class="progress-bg"><div class="progress-bar" style="width: min({{ disk_pct }}%, 100%);"></div></div>
+            <div class="metric-detail">剩余 {{ (disk_usage.get('free', 0) / 1024 / 1024 / 1024) | round(1) }} GB</div>
         </div>
         <div class="metric">
             <div class="metric-label">监控进程数</div>
             <div class="metric-value">{{ stats.get('processes', {}) | length }}</div>
-            <div class="metric-label">监控线程组数</div>
+            <div class="metric-detail">{{ stats.get('threads', {}) | length }} 个线程组</div>
         </div>
     </div>
 
+    {% set temps = cpu.get('temperatures') %}
+    {% if temps %}
     <div class="card">
-        <h2>🔄 进程与线程详情</h2>
-        {% set processes = stats.get('processes', {}) %}
-        {% set threads = stats.get('threads', {}) %}
-        {% if processes %}
+        <div class="card-header">
+            <h2>🌡️ CPU 温度</h2>
+        </div>
+        <div class="temperature-list">
+            {% for label, temp in temps.items() %}
+            {% if temp > 85 %}{% set temp_color = 'var(--danger)' %}{% elif temp > 70 %}{% set temp_color = 'var(--warning)' %}{% else %}{% set temp_color = 'var(--success)' %}{% endif %}
+            <div class="temp-chip">
+                <span class="value" style="color: {{ temp_color }}; font-weight: 700; font-size: 15px;">
+                    {{ temp }}°C
+                </span>
+                <span class="label">{{ label }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header">
+            <h2>🔄 进程与线程</h2>
+            <span class="badge badge-info">{{ stats.get('processes', {}) | length }} 进程</span>
+        </div>
+        <div class="card-body">
+            {% set processes = stats.get('processes', {}) %}
+            {% set threads = stats.get('threads', {}) %}
+            {% if processes %}
             <table>
                 <thead>
                     <tr>
@@ -177,7 +294,7 @@
                 <tbody>
                     {% for pid, p in processes.items() %}
                     <tr>
-                        <td>{{ p.get('name', 'N/A') }}</td>
+                        <td><strong>{{ p.get('name', 'N/A') }}</strong></td>
                         <td>{{ pid }}</td>
                         <td class="right">{{ p.get('cpu_percent', 0) | round(1) }}%</td>
                         <td class="right">{{ p.get('memory_percent', 0) | round(1) }}%</td>
@@ -188,30 +305,32 @@
                     {% if threads.get(pid) %}
                     <tr>
                         <td colspan="7" style="padding: 0; border: none;">
-                            <details class="thread-section">
-                                <summary>展开线程 ({{ threads[pid] | length }})</summary>
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>线程名</th>
-                                            <th>TID</th>
-                                            <th class="right">CPU %</th>
-                                            <th class="right">用户时间</th>
-                                            <th class="right">系统时间</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for t in threads[pid][:20] %}
-                                        <tr>
-                                            <td>{{ t.get('name', 'unknown') }}</td>
-                                            <td>{{ t.get('tid', 'N/A') }}</td>
-                                            <td class="right">{{ t.get('cpu_percent', 0) | round(2) }}%</td>
-                                            <td class="right">{{ t.get('user_time', 0) | round(2) }} s</td>
-                                            <td class="right">{{ t.get('system_time', 0) | round(2) }} s</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+                            <details class="thread-details" data-pid="{{ pid }}">
+                                <summary>线程详情 ({{ threads[pid] | length }})</summary>
+                                <div class="thread-table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>线程名</th>
+                                                <th>TID</th>
+                                                <th class="right">CPU %</th>
+                                                <th class="right">用户时间</th>
+                                                <th class="right">系统时间</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for t in threads[pid][:30] %}
+                                            <tr>
+                                                <td><code>{{ t.get('name', 'unknown') }}</code></td>
+                                                <td>{{ t.get('tid', 'N/A') }}</td>
+                                                <td class="right">{{ t.get('cpu_percent', 0) | round(2) }}%</td>
+                                                <td class="right">{{ t.get('user_time', 0) | round(2) }} s</td>
+                                                <td class="right">{{ t.get('system_time', 0) | round(2) }} s</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </details>
                         </td>
                     </tr>
@@ -219,20 +338,53 @@
                     {% endfor %}
                 </tbody>
             </table>
-        {% else %}
-            <p class="empty">暂无监控进程。</p>
-        {% endif %}
+            {% else %}
+            <div class="empty">暂无监控进程。</div>
+            {% endif %}
+        </div>
     </div>
 
     <div class="card">
-        <h2>⚙️ 快捷操作</h2>
+        <div class="card-header">
+            <h2>⚙️ 快捷操作</h2>
+        </div>
         <div class="actions">
-            <a class="btn btn-primary" href="{{ prefix }}/api/stats" target="_blank">原始 JSON</a>
-            <a class="btn btn-warning" href="{{ prefix }}/api/system" target="_blank">系统统计</a>
-            <a class="btn btn-success" href="{{ prefix }}/api/processes" target="_blank">进程列表</a>
-            <a class="btn btn-primary" href="{{ prefix }}/api/threads" target="_blank">线程 JSON</a>
+            <a class="btn btn-primary" href="{{ prefix }}/api/stats" target="_blank">📄 原始 JSON</a>
+            <a class="btn btn-warning" href="{{ prefix }}/api/system" target="_blank">💻 系统统计</a>
+            <a class="btn btn-success" href="{{ prefix }}/api/processes" target="_blank">📋 进程列表</a>
+            <a class="btn btn-primary" href="{{ prefix }}/api/threads" target="_blank">🧵 线程 JSON</a>
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    const KEY = 'iis_monitor_open_threads';
+
+    // 页面刷新前保存展开的线程详情
+    window.addEventListener('beforeunload', function() {
+        const open = [];
+        document.querySelectorAll('.thread-details[open]').forEach(function(el) {
+            open.push(el.getAttribute('data-pid'));
+        });
+        try {
+            localStorage.setItem(KEY, JSON.stringify(open));
+        } catch (e) {}
+    });
+
+    // 页面加载后恢复展开状态
+    window.addEventListener('DOMContentLoaded', function() {
+        let open = [];
+        try {
+            open = JSON.parse(localStorage.getItem(KEY) || '[]');
+        } catch (e) {}
+        document.querySelectorAll('.thread-details').forEach(function(el) {
+            if (open.indexOf(el.getAttribute('data-pid')) !== -1) {
+                el.setAttribute('open', '');
+            }
+        });
+    });
+})();
+</script>
 </body>
 </html>
