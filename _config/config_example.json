@@ -9,6 +9,11 @@
       "password": ""
     },
 
+    "systemd_watchdog": {
+      "enabled": true,
+      "interval_sec": 10
+    },
+
     "vectordb": {
       "enabled": true,
       "vector_db_path": "vectordb",
