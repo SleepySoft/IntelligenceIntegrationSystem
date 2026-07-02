@@ -2,25 +2,39 @@
 System resource monitoring module for tracking system and process metrics.
 Provides thread-safe resource monitoring and management capabilities.
 """
+import os
 import psutil
 import threading
 import time
-from typing import Dict, List, Optional, Set, Any
-import json
 from datetime import datetime
+from typing import Dict, List, Optional, Set, Any, Callable
 
 
 class SystemMonitor:
     """Main system monitoring class with thread-safe operations."""
 
-    def __init__(self):
-        """Initialize the system monitor with empty process list and locks."""
+    def __init__(self, thread_name_resolver: Optional[Callable[[int], str]] = None):
+        """
+        Initialize the system monitor.
+
+        Args:
+            thread_name_resolver: Optional callable that maps a native thread id (TID)
+                to a human-readable name. Used to enrich per-thread stats for the
+                current Python process.
+        """
         self.monitored_pids: Set[int] = set()
         self.process_data: Dict[int, Dict[str, Any]] = {}
         self.system_data: Dict[str, Any] = {}
         self.lock = threading.RLock()
         self.running = False
         self.monitor_thread: Optional[threading.Thread] = None
+
+        # 用于 Python 线程名解析（仅对本进程有效）
+        self._thread_name_resolver = thread_name_resolver
+
+        # 缓存上一次线程 CPU 时间，用于计算线程级 CPU 百分比
+        self._thread_cpu_cache: Dict[int, Dict[str, Any]] = {}
+        self._thread_cpu_cache_lock = threading.Lock()
 
     def add_process(self, pid: int) -> bool:
         """
@@ -139,6 +153,72 @@ class SystemMonitor:
             'users': [user._asdict() for user in psutil.users()]
         }
 
+    def get_thread_stats(self, pid: int) -> Optional[List[Dict[str, Any]]]:
+        """
+        获取指定进程内每个线程的 CPU 时间、CPU 占用率等信息。
+
+        Args:
+            pid: 进程 ID
+
+        Returns:
+            list: 线程统计列表，按 CPU 占用率降序排列；进程不存在或无权访问时返回 None。
+        """
+        if pid not in self.monitored_pids:
+            return None
+
+        try:
+            process = psutil.Process(pid)
+            sample_time = time.time()
+            current = []
+
+            with self._thread_cpu_cache_lock:
+                cache = self._thread_cpu_cache.get(pid, {})
+                new_cache = {}
+
+                for t in process.threads():
+                    tid = t.id
+                    user = t.user_time
+                    system = t.system_time
+                    total = user + system
+
+                    prev = cache.get(tid)
+                    cpu_percent = 0.0
+                    if prev:
+                        dt = total - prev.get('total_time', 0)
+                        dsample = sample_time - prev.get('sample_time', sample_time)
+                        if dsample > 0:
+                            # psutil 返回的是系统时钟滴答数，换算成百分比
+                            cpu_percent = (dt / dsample) * 100.0
+
+                    new_cache[tid] = {
+                        'sample_time': sample_time,
+                        'user_time': user,
+                        'system_time': system,
+                        'total_time': total,
+                    }
+
+                    name = None
+                    if self._thread_name_resolver and pid == os.getpid():
+                        name = self._thread_name_resolver(tid)
+
+                    current.append({
+                        'tid': tid,
+                        'name': name or f'thread-{tid}',
+                        'user_time': user,
+                        'system_time': system,
+                        'cpu_percent': round(cpu_percent, 2),
+                        'status': getattr(t, 'status', 'unknown'),
+                    })
+
+                self._thread_cpu_cache[pid] = new_cache
+
+            current.sort(key=lambda x: x['cpu_percent'], reverse=True)
+            return current
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            self.remove_process(pid)
+            return None
+
     def _get_handle_count(self, process: psutil.Process) -> Optional[int]:
         """
         Get handle count for process (Windows specific).
@@ -161,16 +241,18 @@ class SystemMonitor:
                 # Update system stats
                 self.system_data = self.get_system_stats()
 
-                # Update process stats
+                # Update process stats and thread stats
                 with self.lock:
                     current_pids = list(self.monitored_pids)
 
                 for pid in current_pids:
                     stats = self.get_process_stats(pid)
+                    thread_stats = self.get_thread_stats(pid)
                     if stats:
                         with self.lock:
                             if pid in self.process_data:
                                 self.process_data[pid]['last_stats'] = stats
+                                self.process_data[pid]['last_threads'] = thread_stats
                                 self.process_data[pid]['last_update'] = datetime.now()
 
                 time.sleep(2)  # Update interval
@@ -200,13 +282,17 @@ class SystemMonitor:
         """
         with self.lock:
             process_stats = {}
+            thread_stats = {}
             for pid, data in self.process_data.items():
                 if 'last_stats' in data:
                     process_stats[pid] = data['last_stats']
+                if 'last_threads' in data:
+                    thread_stats[pid] = data['last_threads']
 
             return {
                 'system': self.system_data,
                 'processes': process_stats,
+                'threads': thread_stats,
                 'monitored_pids': list(self.monitored_pids),
                 'timestamp': datetime.now().isoformat()
             }
