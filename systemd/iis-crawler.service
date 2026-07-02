@@ -1,0 +1,23 @@
+[Unit]
+Description=Intelligence Integration System - Crawler Engine Service
+After=network.target iis-web.service
+Wants=iis-web.service
+
+[Service]
+Type=simple
+User=sleepy
+Group=sleepy
+WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
+EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python CrawlerServiceEngine.py
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

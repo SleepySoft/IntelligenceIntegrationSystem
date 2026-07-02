@@ -1,0 +1,27 @@
+[Unit]
+Description=Intelligence Integration System - Web Hub Service
+After=network.target iis-vectordb.service
+Wants=iis-vectordb.service
+
+[Service]
+Type=simple
+User=sleepy
+Group=sleepy
+WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
+EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python IntelligenceHubLauncher.py
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+# 启用 systemd watchdog：若主进程 30s 内未发送 WATCHDOG=1，则自动重启
+NotifyAccess=main
+WatchdogSec=30
+
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

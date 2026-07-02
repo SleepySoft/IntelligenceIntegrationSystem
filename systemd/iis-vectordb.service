@@ -1,0 +1,24 @@
+[Unit]
+Description=Intelligence Integration System - Vector DB Service
+After=network.target
+
+[Service]
+Type=simple
+User=sleepy
+Group=sleepy
+WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
+EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python -m VectorDB.VectorDBBService \
+    --db-path /home/sleepy/Documents/IntelligenceIntegrationSystem/_data/VectorDB \
+    --model /home/sleepy/Documents/bge-m3
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

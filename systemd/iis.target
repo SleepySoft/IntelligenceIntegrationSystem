@@ -1,0 +1,7 @@
+[Unit]
+Description=Intelligence Integration System Services
+After=network.target
+Wants=iis-vectordb.service iis-web.service iis-crawler.service
+
+[Install]
+WantedBy=multi-user.target

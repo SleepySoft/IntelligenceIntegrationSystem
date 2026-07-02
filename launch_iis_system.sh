@@ -1,6 +1,11 @@
 #!/bin/bash
 set -u   # 遇到未定义变量就退出，提前暴露错误
 
+# [DEPRECATED] 本脚本仅用于本地手工调试。
+# 生产环境请使用 systemd/ 目录下的独立服务单元：
+#   iis-vectordb.service, iis-web.service, iis-crawler.service, iis.target
+# 参见 systemd/README.md。
+
 # ========= 基本配置 =========
 PROJECT_DIR="/home/sleepy/Documents/IntelligenceIntegrationSystem"
 LOG_DIR="$PROJECT_DIR/_log"
