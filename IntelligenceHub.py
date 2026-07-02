@@ -577,8 +577,10 @@ class IntelligenceHub:
         retries = 0
         while True:
             if ai_client := self.ai_client_manager.get_available_client(client_user):
-                result = analyze_with_ai(ai_client, selected_prompt, original_data)
-                self.ai_client_manager.release_client(ai_client)        # Release client so other task will have chance to get it.
+                try:
+                    result = analyze_with_ai(ai_client, selected_prompt, original_data)
+                finally:
+                    self.ai_client_manager.release_client(ai_client)
 
                 result['APPENDIX'] = {
                     APPENDIX_PROMPT_VERSION: selected_prompt_index,
