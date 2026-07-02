@@ -15,13 +15,13 @@ from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
+from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from AIClientCenter.AIClientManager import AIClientManager
 from AIClientCenter.ClientStateSQLiteLogger import ClientStateSQLiteLogger
-from Tools.SystemMonotorLauncher import start_system_monitor
 from MyPythonUtility.proc_utils import find_processes, kill_processes
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
@@ -308,14 +308,49 @@ def run():
         url_prefix='/monitor/ai-client-dashboard')
 
     # Monitor in the same process and the same service
-    monitor_api = MonitorAPI(app=wsgi_app, wrapper=ihub_service.access_manager.login_required, prefix='/monitor')
+    def _resolve_thread_name(tid: int):
+        """将原生线程 ID 解析为 Python 线程名（仅对本进程有效）。"""
+        for t in threading.enumerate():
+            if t.ident == tid:
+                return t.name
+        return None
+
+    monitor_api = MonitorAPI(
+        app=wsgi_app,
+        wrapper=ihub_service.access_manager.login_required,
+        prefix='/monitor',
+        thread_name_resolver=_resolve_thread_name
+    )
     self_pid = os.getpid()
     logger.info(f'Service PID: {self_pid}')
     monitor_api.monitor.add_process(self_pid)
     monitor_api.start()
 
-    # Monitor in standalone process
-    start_system_monitor()
+    # --------------------------- systemd watchdog ---------------------------
+    watchdog_enabled = config.get('intelligence_hub.systemd_watchdog.enabled', True)
+    watchdog_interval = config.get('intelligence_hub.systemd_watchdog.interval_sec', 10)
+    watchdog_stop_event = None
+
+    def _watchdog_worker():
+        """后台线程：定时向 systemd 发送 WATCHDOG=1。"""
+        if not is_watchdog_enabled():
+            logger.info("systemd watchdog not enabled (NOTIFY_SOCKET/WATCHDOG_USEC not set). Skipping.")
+            return
+
+        notify_ready()
+        logger.info(f"systemd watchdog started, interval={watchdog_interval}s")
+        while not watchdog_stop_event.is_set():
+            notify_alive()
+            watchdog_stop_event.wait(watchdog_interval)
+        notify_stopping()
+
+    if watchdog_enabled:
+        watchdog_stop_event = threading.Event()
+        threading.Thread(name='SystemdWatchdog', target=_watchdog_worker, daemon=True).start()
+    else:
+        logger.info("systemd watchdog is disabled by config.")
+
+    # ------------------------------------------------------------------------
 
     threading.Thread(name='ShowStatistics', target=partial(show_intelligence_hub_statistics_forever, ihub)).start()
 
@@ -325,4 +360,9 @@ except Exception as e:
     print(str(e))
     print(traceback.format_exc())
 finally:
-    pass
+    # 在进程退出前通知 systemd（如果启用 watchdog），这是 no-op on Windows/non-systemd。
+    try:
+        from Tools.SystemdWatchdog import notify_stopping
+        notify_stopping()
+    except Exception:
+        pass
