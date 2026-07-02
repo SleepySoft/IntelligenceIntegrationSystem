@@ -318,11 +318,15 @@ def run():
                 return t.name
         return None
 
+    monitor_update_interval = config.get('monitor.update_interval_sec', 5.0)
+    monitor_thread_interval = config.get('monitor.thread_stats_interval_sec', 10.0)
     monitor_api = MonitorAPI(
         app=wsgi_app,
         wrapper=ihub_service.access_manager.login_required,
         prefix='/monitor',
-        thread_name_resolver=_resolve_thread_name
+        thread_name_resolver=_resolve_thread_name,
+        update_interval_sec=monitor_update_interval,
+        thread_stats_interval_sec=monitor_thread_interval,
     )
     self_pid = os.getpid()
     logger.info(f'Service PID: {self_pid}')

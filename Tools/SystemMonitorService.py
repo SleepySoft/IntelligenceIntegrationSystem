@@ -39,7 +39,9 @@ class MonitorAPI:
                  host: str = '0.0.0.0',
                  port: int = DEFAULT_PORT,
                  prefix: str = '',
-                 thread_name_resolver=None):
+                 thread_name_resolver=None,
+                 update_interval_sec: float = 5.0,
+                 thread_stats_interval_sec: float = 10.0):
         """
         Initialize the monitoring API.
 
@@ -49,11 +51,17 @@ class MonitorAPI:
             port: Port number to listen on (used only in standalone mode)
             prefix: URL prefix for all routes (e.g., '/monitor')
             thread_name_resolver: Optional callable(tid)->name for resolving Python thread names.
+            update_interval_sec: 监控循环采样间隔（秒）。默认 5s，可降低 CPU 占用。
+            thread_stats_interval_sec: 线程级统计采样间隔（秒）。默认 10s。
         """
         self.host = host
         self.port = port
         self.prefix = prefix.rstrip('/')
-        self.monitor = SystemMonitor(thread_name_resolver=thread_name_resolver)
+        self.monitor = SystemMonitor(
+            thread_name_resolver=thread_name_resolver,
+            update_interval_sec=update_interval_sec,
+            thread_stats_interval_sec=thread_stats_interval_sec,
+        )
         self.wrapper = wrapper or (lambda fn: fn)
 
         # Create a blueprint for all monitoring routes

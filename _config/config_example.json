@@ -77,6 +77,11 @@
     }
   },
 
+  "monitor": {
+    "update_interval_sec": 5.0,
+    "thread_stats_interval_sec": 10.0
+  },
+
   "ai_client_center": {
     "sqlite_db_file": "ai_client_state_log.db",
     "heartbeat_interval_sec": 30,

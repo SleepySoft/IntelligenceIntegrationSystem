@@ -13,7 +13,10 @@ from typing import Dict, List, Optional, Set, Any, Callable
 class SystemMonitor:
     """Main system monitoring class with thread-safe operations."""
 
-    def __init__(self, thread_name_resolver: Optional[Callable[[int], str]] = None):
+    def __init__(self,
+                 thread_name_resolver: Optional[Callable[[int], str]] = None,
+                 update_interval_sec: float = 5.0,
+                 thread_stats_interval_sec: float = 10.0):
         """
         Initialize the system monitor.
 
@@ -21,6 +24,9 @@ class SystemMonitor:
             thread_name_resolver: Optional callable that maps a native thread id (TID)
                 to a human-readable name. Used to enrich per-thread stats for the
                 current Python process.
+            update_interval_sec: 主监控循环采样间隔（秒）。默认 5s，降低可减少 CPU 占用。
+            thread_stats_interval_sec: 线程级统计采样间隔（秒）。
+                线程统计比进程统计更耗 CPU，建议低于或等于 update_interval_sec 的整数倍。
         """
         self.monitored_pids: Set[int] = set()
         self.process_data: Dict[int, Dict[str, Any]] = {}
@@ -28,6 +34,10 @@ class SystemMonitor:
         self.lock = threading.RLock()
         self.running = False
         self.monitor_thread: Optional[threading.Thread] = None
+
+        self.update_interval_sec = max(1.0, float(update_interval_sec))
+        self.thread_stats_interval_sec = max(1.0, float(thread_stats_interval_sec))
+        self._last_thread_stats_time: float = 0.0
 
         # 用于 Python 线程名解析（仅对本进程有效）
         self._thread_name_resolver = thread_name_resolver
@@ -98,7 +108,7 @@ class SystemMonitor:
                 return {
                     'pid': pid,
                     'name': process.name(),
-                    'cpu_percent': process.cpu_percent(),
+                    'cpu_percent': process.cpu_percent(interval=None),
                     'memory_info': process.memory_info()._asdict(),
                     'memory_percent': process.memory_percent(),
                     'num_handles': self._get_handle_count(process),
@@ -124,7 +134,9 @@ class SystemMonitor:
             'timestamp': datetime.now().isoformat(),
             'timestamp_formatted': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'cpu': {
-                'percent': psutil.cpu_percent(interval=0.1),
+                # 使用 interval=None 非阻塞采样，避免 0.1s 主动 sleep 带来的 CPU 占用。
+                # 首次调用会返回 0.0，之后按调用间隔计算平均占用率。
+                'percent': psutil.cpu_percent(interval=None),
                 'cores': psutil.cpu_count(logical=False),
                 'logical_cores': psutil.cpu_count(logical=True),
                 'times': psutil.cpu_times()._asdict(),
@@ -257,10 +269,28 @@ class SystemMonitor:
 
     def _monitoring_loop(self):
         """Main monitoring loop that runs in separate thread."""
+        # 第一次循环先初始化 process.cpu_percent 的基线读数
+        with self.lock:
+            current_pids = list(self.monitored_pids)
+        for pid in current_pids:
+            try:
+                p = psutil.Process(pid)
+                p.cpu_percent(interval=None)
+            except Exception:
+                pass
+
         while self.running:
             try:
+                loop_start = time.time()
+
                 # Update system stats
                 self.system_data = self.get_system_stats()
+
+                # 线程统计比进程统计开销大，按独立间隔采样
+                now = time.time()
+                collect_threads = (now - self._last_thread_stats_time) >= self.thread_stats_interval_sec
+                if collect_threads:
+                    self._last_thread_stats_time = now
 
                 # Update process stats and thread stats
                 with self.lock:
@@ -268,15 +298,19 @@ class SystemMonitor:
 
                 for pid in current_pids:
                     stats = self.get_process_stats(pid)
-                    thread_stats = self.get_thread_stats(pid)
+                    thread_stats = self.get_thread_stats(pid) if collect_threads else None
                     if stats:
                         with self.lock:
                             if pid in self.process_data:
                                 self.process_data[pid]['last_stats'] = stats
-                                self.process_data[pid]['last_threads'] = thread_stats
+                                if thread_stats is not None:
+                                    self.process_data[pid]['last_threads'] = thread_stats
                                 self.process_data[pid]['last_update'] = datetime.now()
 
-                time.sleep(2)  # Update interval
+                # 动态睡眠，保证固定间隔
+                elapsed = time.time() - loop_start
+                sleep_time = max(0.5, self.update_interval_sec - elapsed)
+                time.sleep(sleep_time)
             except Exception as e:
                 print(f"Monitoring error: {e}")
                 time.sleep(5)
@@ -310,12 +344,14 @@ class SystemMonitor:
                 if 'last_threads' in data:
                     thread_stats[pid] = data['last_threads']
 
+            now = datetime.now()
             return {
                 'system': self.system_data,
                 'processes': process_stats,
                 'threads': thread_stats,
                 'monitored_pids': list(self.monitored_pids),
-                'timestamp': datetime.now().isoformat()
+                'timestamp': now.isoformat(),
+                'timestamp_formatted': now.strftime('%Y-%m-%d %H:%M:%S')
             }
 
     def get_monitored_processes(self) -> List[Dict[str, Any]]:
