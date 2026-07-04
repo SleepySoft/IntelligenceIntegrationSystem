@@ -332,6 +332,7 @@ def run():
     logger.info(f'Service PID: {self_pid}')
     monitor_api.monitor.add_process(self_pid)
     monitor_api.start()
+    ihub_service.set_monitor_api(monitor_api)
 
     # --------------------------- systemd watchdog ---------------------------
     watchdog_enabled = config.get('intelligence_hub.systemd_watchdog.enabled', True)

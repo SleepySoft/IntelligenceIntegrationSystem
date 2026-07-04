@@ -1,5 +1,6 @@
 # IntelligenceHubWebService.py
 
+import os
 import re
 import json
 import logging
@@ -226,7 +227,8 @@ class IntelligenceHubWebService:
                  intelligence_hub: IntelligenceHub,
                  access_manager: WebServiceAccessManager,
                  rss_publisher: RSSPublisher,
-                 public_search_limits: Optional[Dict[str, Any]] = None):
+                 public_search_limits: Optional[Dict[str, Any]] = None,
+                 monitor_api=None):
 
         # ---------------- Parameters ----------------
 
@@ -237,6 +239,7 @@ class IntelligenceHubWebService:
         self.access_manager = access_manager
         self.rss_publisher = rss_publisher
         self.wsgi_app = None
+        self.monitor_api = monitor_api
 
         # ---------------- Public Search Limits ----------------
 
@@ -265,6 +268,24 @@ class IntelligenceHubWebService:
 
         self.request_tracer = None
         threading.Timer(30.0, self.dump_request_connection_periodically).start()
+
+    def set_monitor_api(self, monitor_api):
+        """Set the MonitorAPI instance so dashboard can reuse system/process/thread stats."""
+        self.monitor_api = monitor_api
+
+    @staticmethod
+    def _serialize_for_json(obj):
+        """Recursively convert Enum (and other non-JSON-serializable) values to JSON-safe types."""
+        from enum import Enum
+        if isinstance(obj, Enum):
+            return obj.value
+        if isinstance(obj, dict):
+            return {k: IntelligenceHubWebService._serialize_for_json(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [IntelligenceHubWebService._serialize_for_json(v) for v in obj]
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        return obj
 
     # ---------------------------------------------------- Routers -----------------------------------------------------
 
@@ -987,7 +1008,7 @@ class IntelligenceHubWebService:
 
         @app.route('/statistics/intelligence_statistics.html', methods=['GET'])
         @WebServiceAccessManager.login_required
-        def intelligence_distribution_page():
+        def intelligence_dashboard_page():
             return get_intelligence_statistics_page()
 
         @app.route('/maintenance/export_mongodb.html', methods=['GET'])
@@ -1109,6 +1130,72 @@ class IntelligenceHubWebService:
                 },
                 "top_informants": informant_stats
             })
+
+        @app.route('/statistics/intelligence_dashboard_data', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def get_intelligence_dashboard_data():
+            """
+            Return aggregated data for the IIS system dashboard.
+            Includes hub state, AI client health, submission flow stats and system metrics.
+            """
+            try:
+                now = get_aware_time()
+                start_time = now - datetime.timedelta(hours=24)
+
+                stat_engine = self.intelligence_hub.get_statistics_engine()
+                hourly_distribution = stat_engine.get_hourly_stats(start_time, now)
+                total_count, informant_stats = stat_engine.get_stats_summary(start_time, now)
+
+                hub_stats = self.intelligence_hub.statistics
+                ai_client_stats = {}
+                if self.intelligence_hub.ai_client_manager:
+                    ai_client_stats = self._serialize_for_json(
+                        self.intelligence_hub.ai_client_manager.get_client_stats()
+                    )
+                    # get_client_stats() summary counts use Enum comparisons that may not match
+                    # strings; recalculate from serialized client details for accurate dashboard.
+                    clients = ai_client_stats.get('clients', [])
+                    summary = ai_client_stats.setdefault('summary', {})
+                    summary['available'] = sum(
+                        1 for c in clients
+                        if c.get('state', {}).get('status', '').lower() == 'available' and not c.get('state', {}).get('is_busy')
+                    )
+                    summary['busy'] = sum(1 for c in clients if c.get('state', {}).get('is_busy'))
+
+                system_stats = {}
+                process_stats = {}
+                thread_stats = {}
+                self_pid = os.getpid()
+                if self.monitor_api and self.monitor_api.monitor:
+                    try:
+                        system_stats = self.monitor_api.monitor.get_system_stats()
+                        process_stats = self.monitor_api.monitor.get_process_stats(self_pid) or {}
+                        thread_stats = self.monitor_api.monitor.get_thread_stats(self_pid) or {}
+                    except Exception as e:
+                        logger.warning(f"Dashboard failed to read monitor stats: {e}")
+
+                # Count active Python threads in this process for quick diagnostics
+                active_python_threads = threading.active_count()
+
+                return jsonify({
+                    "timestamp": now.isoformat(),
+                    "timestamp_formatted": now.strftime('%Y-%m-%d %H:%M:%S'),
+                    "hub": hub_stats,
+                    "ai_clients": ai_client_stats,
+                    "hourly_distribution": hourly_distribution,
+                    "summary": {
+                        "total_count": total_count,
+                        "time_range": {"start": start_time.isoformat(), "end": now.isoformat()},
+                        "top_informants": informant_stats
+                    },
+                    "system": system_stats,
+                    "process": process_stats,
+                    "threads": thread_stats,
+                    "active_python_threads": active_python_threads,
+                })
+            except Exception as e:
+                logger.error(f"Error generating dashboard data: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
 
         # --------------------------- Entity Frequency Statistics ---------------------------
 

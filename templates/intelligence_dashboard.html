@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIS 系统仪表盘</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: #334155;
+            --primary: #38bdf8;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --hover: #27354f;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--card-border);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+        .subtitle { color: var(--muted); font-size: 14px; }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .controls label { color: var(--muted); font-size: 13px; }
+        select, button {
+            background: var(--card-bg);
+            color: var(--text);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        button:hover { background: var(--hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.paused { background: var(--warning); animation: none; }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .metric {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+        .metric::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary);
+        }
+        .metric.warning::before { background: var(--warning); }
+        .metric.danger::before { background: var(--danger); }
+        .metric.success::before { background: var(--success); }
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 8px 0 4px;
+            word-break: break-all;
+        }
+        .metric-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-detail {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 6px;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .card-header h2 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-header .toggle::before {
+            content: '▲';
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .card.collapsed .card-body { display: none; }
+        .card.collapsed .toggle::before { content: '▼'; }
+        .card-body { padding: 0; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--card-border);
+        }
+        th {
+            background: rgba(255,255,255,0.03);
+            font-weight: 600;
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:hover { background: var(--hover); }
+        tr:last-child td { border-bottom: none; }
+        .right { text-align: right; }
+        .center { text-align: center; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-info { background: rgba(56,189,248,0.15); color: var(--primary); }
+        .badge-warn { background: rgba(251,191,36,0.15); color: var(--warning); }
+        .badge-danger { background: rgba(248,113,113,0.15); color: var(--danger); }
+        .badge-success { background: rgba(74,222,128,0.15); color: var(--success); }
+        .badge-busy { background: rgba(167,139,250,0.15); color: #a78bfa; }
+        .progress-bg {
+            height: 5px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--primary);
+            transition: width 0.5s ease;
+        }
+        .chart-container {
+            height: 320px;
+            padding: 16px;
+        }
+        .section-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 24px;
+        }
+        .last-update {
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .error-banner {
+            background: rgba(248,113,113,0.15);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .footer-links {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .footer-links a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .footer-links a:hover { text-decoration: underline; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .small { font-size: 12px; }
+        @media (max-width: 768px) {
+            .section-grid { grid-template-columns: 1fr; }
+            header { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>📊 IIS 系统仪表盘</h1>
+            <div class="subtitle">Intelligence Integration System Dashboard</div>
+        </div>
+        <div class="controls">
+            <span class="last-update">更新: <span id="lastUpdate">--</span></span>
+            <span id="refreshStatus"><span class="status-dot"></span>自动刷新</span>
+            <label for="refreshInterval">间隔</label>
+            <select id="refreshInterval">
+                <option value="3000">3s</option>
+                <option value="5000" selected>5s</option>
+                <option value="10000">10s</option>
+                <option value="30000">30s</option>
+                <option value="60000">60s</option>
+                <option value="0">暂停</option>
+            </select>
+            <button id="pauseBtn">暂停</button>
+            <button id="refreshNow">立即刷新</button>
+        </div>
+    </header>
+
+    <div id="errorBanner" class="error-banner"></div>
+
+    <!-- 系统资源 -->
+    <div class="card" data-card-id="system">
+        <div class="card-header">
+            <h2>🖥️ 系统 / 进程资源</h2>
+            <span class="toggle"></span>
+        </div>
+        <div class="card-body">
+            <div class="grid" id="systemMetrics">
+                <div class="metric"><div class="metric-label">CPU</div><div class="metric-value">--</div></div>
+                <div class="metric"><div class="metric-label">内存</div><div class="metric-value">--</div></div>
+                <div class="metric"><div class="metric-label">磁盘</div><div class="metric-value">--</div></div>
+                <div class="metric"><div class="metric-label">进程 CPU</div><div class="metric-value">--</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- IIS 内部状态 -->
+    <div class="card" data-card-id="hub">
+        <div class="card-header">
+            <h2>⚙️ IIS 内部状态</h2>
+            <span class="toggle"></span>
+        </div>
+        <div class="card-body">
+            <div class="grid" id="hubMetrics">
+                <div class="metric"><div class="metric-label">待分析队列</div><div class="metric-value" id="waitingProcess">--</div></div>
+                <div class="metric"><div class="metric-label">后处理队列</div><div class="metric-value" id="postProcess">--</div></div>
+                <div class="metric"><div class="metric-label">未归档队列</div><div class="metric-value" id="unarchivedQueue">--</div></div>
+                <div class="metric"><div class="metric-label">向量化队列</div><div class="metric-value" id="vectorizeQueue">--</div></div>
+                <div class="metric success"><div class="metric-label">已归档</div><div class="metric-value" id="archivedCount">--</div></div>
+                <div class="metric warning"><div class="metric-label">已丢弃</div><div class="metric-value" id="droppedCount">--</div></div>
+                <div class="metric danger"><div class="metric-label">错误数</div><div class="metric-value" id="errorCount">--</div></div>
+                <div class="metric"><div class="metric-label">AI 对话 / 警告 / 错误</div><div class="metric-value" id="conversationStats">--</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提交流量图表 -->
+    <div class="card" data-card-id="flow">
+        <div class="card-header">
+            <h2>📈 情报提交流量（最近 24 小时）</h2>
+            <span class="toggle"></span>
+        </div>
+        <div class="card-body">
+            <div id="flowChart" class="chart-container"></div>
+        </div>
+    </div>
+
+    <!-- AI 客户端 -->
+    <div class="card" data-card-id="ai">
+        <div class="card-header">
+            <h2>🤖 AI 客户端健康</h2>
+            <span class="toggle"></span>
+        </div>
+        <div class="card-body">
+            <div class="grid" id="aiSummary">
+                <div class="metric"><div class="metric-label">总客户端</div><div class="metric-value">--</div></div>
+                <div class="metric success"><div class="metric-label">可用</div><div class="metric-value">--</div></div>
+                <div class="metric badge-busy"><div class="metric-label">忙碌</div><div class="metric-value">--</div></div>
+                <div class="metric danger"><div class="metric-label">含错误</div><div class="metric-value">--</div></div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>名称</th>
+                        <th>状态</th>
+                        <th>忙碌</th>
+                        <th>健康分</th>
+                        <th>错误率</th>
+                        <th>持有用户</th>
+                        <th class="right">请求数</th>
+                        <th class="right">错误数</th>
+                    </tr>
+                </thead>
+                <tbody id="aiClientTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="section-grid">
+        <!-- 线程排行 -->
+        <div class="card" data-card-id="threads">
+            <div class="card-header">
+                <h2>🧵 线程 CPU 占用排行</h2>
+                <span class="toggle"></span>
+            </div>
+            <div class="card-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>线程</th>
+                            <th class="right">CPU%</th>
+                            <th class="right">用户态</th>
+                            <th class="right">系统态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="threadTable"></tbody>
+                </table>
+                <div class="metric-detail" style="padding: 12px 14px;">
+                    Python 活动线程数: <span id="activePythonThreads" class="mono">--</span> &nbsp;|&nbsp;
+                    本进程 PID: <span id="selfPid" class="mono">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 情报来源 TOP -->
+        <div class="card" data-card-id="informants">
+            <div class="card-header">
+                <h2>📰 情报来源 TOP</h2>
+                <span class="toggle"></span>
+            </div>
+            <div class="card-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th class="right">数量</th>
+                        </tr>
+                    </thead>
+                    <tbody id="informantTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer-links">
+        <a href="/monitor/api/dashboard" target="_blank">系统监控详情页 →</a>
+        <a href="/statistics/entity_frequency/page">实体频率统计 →</a>
+    </div>
+</div>
+
+<script>
+    const LS_KEY = 'iis_dashboard_state';
+    const DEFAULT_INTERVAL = 5000;
+    let refreshTimer = null;
+    let currentInterval = DEFAULT_INTERVAL;
+    let isPaused = false;
+    let flowChart = null;
+
+    function loadState() {
+        try {
+            const raw = localStorage.getItem(LS_KEY);
+            if (!raw) return {};
+            return JSON.parse(raw);
+        } catch { return {}; }
+    }
+
+    function saveState(state) {
+        try {
+            localStorage.setItem(LS_KEY, JSON.stringify(state));
+        } catch {}
+    }
+
+    function mergeState(patch) {
+        const state = loadState();
+        Object.assign(state, patch);
+        saveState(state);
+    }
+
+    function formatNumber(n) {
+        if (n === undefined || n === null) return '--';
+        return Number(n).toLocaleString();
+    }
+
+    function formatDuration(sec) {
+        if (!sec || sec <= 0) return '-';
+        if (sec < 60) return `${sec.toFixed(0)}s`;
+        if (sec < 3600) return `${(sec / 60).toFixed(1)}m`;
+        return `${(sec / 3600).toFixed(1)}h`;
+    }
+
+    function formatTs(ts) {
+        if (!ts) return '--';
+        if (typeof ts === 'number') {
+            return new Date(ts * 1000).toLocaleString();
+        }
+        return new Date(ts).toLocaleString();
+    }
+
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    function setHtml(id, html) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
+
+    function applyClass(el, cls, condition) {
+        if (condition) el.classList.add(cls);
+        else el.classList.remove(cls);
+    }
+
+    function renderSystemMetrics(system, process) {
+        const cpu = system.cpu || {};
+        const mem = system.memory || {};
+        const disk = system.disk || {};
+        const diskUsage = disk.usage || {};
+        const cpuPct = Number(cpu.percent || 0);
+        const memPct = Number(mem.percent || 0);
+        const diskPct = Number(diskUsage.percent || 0);
+        const procCpu = Number(process.cpu_percent || 0);
+        const procMem = Number(process.memory_percent || 0);
+
+        const html = `
+            <div class="metric ${cpuPct > 80 ? 'danger' : cpuPct > 60 ? 'warning' : ''}">
+                <div class="metric-label">CPU</div>
+                <div class="metric-value">${cpuPct.toFixed(1)}%</div>
+                <div class="progress-bg"><div class="progress-bar" style="width: ${Math.min(cpuPct, 100)}%"></div></div>
+                <div class="metric-detail">${cpu.logical_cores || 0} 逻辑核 / ${cpu.cores || 0} 物理核</div>
+            </div>
+            <div class="metric ${memPct > 85 ? 'danger' : memPct > 70 ? 'warning' : ''}">
+                <div class="metric-label">内存</div>
+                <div class="metric-value">${memPct.toFixed(1)}%</div>
+                <div class="progress-bg"><div class="progress-bar" style="width: ${Math.min(memPct, 100)}%"></div></div>
+                <div class="metric-detail">可用 ${((mem.available || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</div>
+            </div>
+            <div class="metric ${diskPct > 90 ? 'danger' : diskPct > 80 ? 'warning' : ''}">
+                <div class="metric-label">磁盘</div>
+                <div class="metric-value">${diskPct.toFixed(1)}%</div>
+                <div class="progress-bg"><div class="progress-bar" style="width: ${Math.min(diskPct, 100)}%"></div></div>
+                <div class="metric-detail">剩余 ${((diskUsage.free || 0) / 1024 / 1024 / 1024).toFixed(1)} GB</div>
+            </div>
+            <div class="metric ${procCpu > 50 ? 'danger' : procCpu > 20 ? 'warning' : ''}">
+                <div class="metric-label">IIS 进程 CPU</div>
+                <div class="metric-value">${procCpu.toFixed(1)}%</div>
+                <div class="metric-detail">内存 ${procMem.toFixed(1)}% &nbsp;|&nbsp; 线程 ${process.num_threads || 0}</div>
+            </div>
+        `;
+        setHtml('systemMetrics', html);
+    }
+
+    function renderHubMetrics(hub) {
+        setText('waitingProcess', formatNumber(hub.waiting_process));
+        setText('postProcess', formatNumber(hub.post_process));
+        setText('unarchivedQueue', formatNumber(hub.unarchived_queue));
+        setText('vectorizeQueue', formatNumber(hub.vectorize_queue));
+        setText('archivedCount', formatNumber(hub.archived));
+        setText('droppedCount', formatNumber(hub.dropped));
+        setText('errorCount', formatNumber(hub.error));
+        setText('conversationStats', `${formatNumber(hub.conversation_total)} / ${formatNumber(hub.conversation_warning)} / ${formatNumber(hub.conversation_error)}`);
+
+        // Queue backlog warnings
+        const waitingEl = document.getElementById('waitingProcess').parentElement;
+        const vectorEl = document.getElementById('vectorizeQueue').parentElement;
+        applyClass(waitingEl, 'warning', (hub.waiting_process || 0) > 500);
+        applyClass(waitingEl, 'danger', (hub.waiting_process || 0) > 1500);
+        applyClass(vectorEl, 'warning', (hub.vectorize_queue || 0) > 300);
+        applyClass(vectorEl, 'danger', (hub.vectorize_queue || 0) > 800);
+    }
+
+    function renderFlowChart(data) {
+        if (!flowChart) {
+            flowChart = echarts.init(document.getElementById('flowChart'));
+            window.addEventListener('resize', () => flowChart.resize());
+        }
+        const labels = [];
+        const counts = [];
+        (data || []).forEach(item => {
+            const id = item._id || {};
+            labels.push(`${id.year || ''}-${String(id.month || '').padStart(2, '0')}-${String(id.day || '').padStart(2, '0')} ${String(id.hour || '').padStart(2, '0')}:00`);
+            counts.push(item.count || 0);
+        });
+        flowChart.setOption({
+            backgroundColor: 'transparent',
+            tooltip: { trigger: 'axis', formatter: p => `${p[0].axisValue}<br/>数量: ${p[0].data}` },
+            grid: { left: '3%', right: '4%', bottom: '10%', top: '12%', containLabel: true },
+            xAxis: {
+                type: 'category',
+                data: labels,
+                axisLine: { lineStyle: { color: '#64748b' } },
+                axisLabel: { color: '#94a3b8', rotate: 30, fontSize: 11 }
+            },
+            yAxis: {
+                type: 'value',
+                axisLine: { lineStyle: { color: '#64748b' } },
+                splitLine: { lineStyle: { color: '#334155', type: 'dashed' } },
+                axisLabel: { color: '#94a3b8' }
+            },
+            series: [{
+                data: counts,
+                type: 'bar',
+                smooth: true,
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#38bdf8' },
+                        { offset: 1, color: '#0284c7' }
+                    ])
+                },
+                areaStyle: { opacity: 0.2 }
+            }]
+        }, { notMerge: true });
+    }
+
+    function renderAiClients(ai) {
+        const summary = ai.summary || {};
+        const clients = ai.clients || [];
+        const html = `
+            <div class="metric"><div class="metric-label">总客户端</div><div class="metric-value">${summary.total_clients || 0}</div></div>
+            <div class="metric success"><div class="metric-label">可用</div><div class="metric-value">${summary.available || 0}</div></div>
+            <div class="metric badge-busy"><div class="metric-label">忙碌</div><div class="metric-value">${summary.busy || 0}</div></div>
+            <div class="metric danger"><div class="metric-label">含错误</div><div class="metric-value">${summary.clients_with_errors || 0}</div></div>
+        `;
+        setHtml('aiSummary', html);
+
+        const rows = clients.map(c => {
+            const meta = c.meta || {};
+            const state = c.state || {};
+            const runtime = c.runtime_stats || {};
+            const alloc = c.allocation || {};
+            let statusClass = 'badge-info';
+            let statusText = (state.status || 'unknown').toString();
+            if (state.is_busy) { statusClass = 'badge-busy'; statusText += ' (忙碌)'; }
+            else if (statusText.toLowerCase() === 'available') statusClass = 'badge-success';
+            else if (['error', 'unavailable'].includes(statusText.toLowerCase())) statusClass = 'badge-danger';
+            else if (statusText.toLowerCase() === 'rate_limited') statusClass = 'badge-warn';
+
+            return `<tr>
+                <td><strong>${meta.name}</strong><div class="small muted">${meta.type} · G${meta.group_id} · P${meta.priority}</div></td>
+                <td><span class="badge ${statusClass}">${statusText}</span></td>
+                <td class="center">${state.is_busy ? '✅' : '—'}</td>
+                <td class="right">${(state.health_score || 0).toFixed(0)}</td>
+                <td class="right ${runtime.error_rate_percent > 10 ? 'danger' : ''}">${runtime.error_rate_percent || 0}%</td>
+                <td>${alloc.held_by || '-'}${alloc.duration_seconds ? ` <span class="small">(${formatDuration(alloc.duration_seconds)})</span>` : ''}</td>
+                <td class="right">${formatNumber(runtime.chat_count)}</td>
+                <td class="right">${formatNumber(runtime.error_count)}</td>
+            </tr>`;
+        }).join('');
+        setHtml('aiClientTable', rows || '<tr><td colspan="8" class="center">无 AI 客户端数据</td></tr>');
+    }
+
+    function renderThreads(threads, activePythonThreads, selfPid) {
+        const list = Array.isArray(threads) ? threads : Object.entries(threads).map(([tid, t]) => ({ tid, ...t }));
+        list.sort((a, b) => (b.cpu_percent || 0) - (a.cpu_percent || 0));
+        const rows = list.slice(0, 15).map(t => {
+            const tid = t.tid || t.id || '?';
+            return `<tr>
+                <td><div class="mono">${t.name || tid}</div>${t.name ? `<div class="small">TID ${tid}</div>` : ''}</td>
+                <td class="right ${(t.cpu_percent || 0) > 20 ? 'danger' : ''}">${(t.cpu_percent || 0).toFixed(1)}%</td>
+                <td class="right">${(t.user_time || 0).toFixed(2)}s</td>
+                <td class="right">${(t.system_time || 0).toFixed(2)}s</td>
+            </tr>`;
+        }).join('');
+        setHtml('threadTable', rows || '<tr><td colspan="4" class="center">无线程数据</td></tr>');
+        setText('activePythonThreads', formatNumber(activePythonThreads));
+        setText('selfPid', selfPid || '--');
+    }
+
+    function renderInformants(top) {
+        const rows = (top || []).slice(0, 10).map(item => {
+            return `<tr>
+                <td>${item._id || item.informant || 'Unknown'}</td>
+                <td class="right">${formatNumber(item.count)}</td>
+            </tr>`;
+        }).join('');
+        setHtml('informantTable', rows || '<tr><td colspan="2" class="center">无数据</td></tr>');
+    }
+
+    function showError(msg) {
+        const banner = document.getElementById('errorBanner');
+        banner.textContent = msg;
+        banner.style.display = 'block';
+    }
+
+    function hideError() {
+        const banner = document.getElementById('errorBanner');
+        banner.style.display = 'none';
+    }
+
+    async function refreshData() {
+        try {
+            const resp = await fetch('/statistics/intelligence_dashboard_data');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            hideError();
+
+            setText('lastUpdate', data.timestamp_formatted || new Date().toLocaleString());
+            if (data.system && Object.keys(data.system).length) {
+                renderSystemMetrics(data.system, data.process || {});
+            }
+            if (data.hub) renderHubMetrics(data.hub);
+            renderFlowChart(data.hourly_distribution);
+            if (data.ai_clients) renderAiClients(data.ai_clients);
+            renderThreads(data.threads || {}, data.active_python_threads || 0, data.process && data.process.pid);
+            if (data.summary) renderInformants(data.summary.top_informants);
+        } catch (e) {
+            console.error('Dashboard refresh failed:', e);
+            showError(`刷新失败: ${e.message}`);
+        }
+    }
+
+    function scheduleNext() {
+        clearTimeout(refreshTimer);
+        if (isPaused || currentInterval <= 0) return;
+        refreshTimer = setTimeout(async () => {
+            await refreshData();
+            scheduleNext();
+        }, currentInterval);
+    }
+
+    function updateRefreshUI() {
+        const status = document.getElementById('refreshStatus');
+        const dot = status.querySelector('.status-dot');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const intervalSelect = document.getElementById('refreshInterval');
+        intervalSelect.value = String(currentInterval);
+        if (isPaused || currentInterval <= 0) {
+            dot.classList.add('paused');
+            status.innerHTML = '<span class="status-dot paused"></span>已暂停';
+            pauseBtn.textContent = '继续';
+        } else {
+            dot.classList.remove('paused');
+            status.innerHTML = '<span class="status-dot"></span>自动刷新';
+            pauseBtn.textContent = '暂停';
+        }
+    }
+
+    function initCardState() {
+        const state = loadState();
+        document.querySelectorAll('.card').forEach(card => {
+            const id = card.dataset.cardId;
+            if (!id) return;
+            const header = card.querySelector('.card-header');
+            header.addEventListener('click', () => {
+                card.classList.toggle('collapsed');
+                const collapsed = card.classList.contains('collapsed');
+                const key = `collapsed_${id}`;
+                mergeState({ [key]: collapsed });
+            });
+            if (state[`collapsed_${id}`]) {
+                card.classList.add('collapsed');
+            }
+        });
+    }
+
+    function init() {
+        const state = loadState();
+        currentInterval = Number(state.refresh_interval) || DEFAULT_INTERVAL;
+        isPaused = !!state.paused;
+
+        const intervalSelect = document.getElementById('refreshInterval');
+        intervalSelect.value = String(currentInterval);
+        intervalSelect.addEventListener('change', (e) => {
+            currentInterval = Number(e.target.value);
+            isPaused = currentInterval <= 0;
+            mergeState({ refresh_interval: currentInterval, paused: isPaused });
+            updateRefreshUI();
+            scheduleNext();
+        });
+
+        const pauseBtn = document.getElementById('pauseBtn');
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            mergeState({ paused: isPaused });
+            updateRefreshUI();
+            scheduleNext();
+        });
+
+        document.getElementById('refreshNow').addEventListener('click', () => {
+            refreshData();
+        });
+
+        initCardState();
+        updateRefreshUI();
+        refreshData();
+        scheduleNext();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+</script>
+</body>
+</html>

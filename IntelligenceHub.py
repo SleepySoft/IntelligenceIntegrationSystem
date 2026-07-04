@@ -298,12 +298,13 @@ class IntelligenceHub:
             'waiting_process': self.original_queue.qsize(),
             'unarchived_queue': self.unarchived_queue.qsize(),
             'post_process': self.processed_queue.qsize(),
+            'vectorize_queue': self.vectorize_queue.qsize(),
             'archived': self.archived_counter,
             'dropped': self.drop_counter,
             'error': self.error_counter,
             'conversation_warning': self.conversation_warning,
-            'conversation_error': self.conversation_error ,
-            'conversation_total': self.conversation_total ,
+            'conversation_error': self.conversation_error,
+            'conversation_total': self.conversation_total,
         }
 
     # ------------------------------------------------ Public Functions ------------------------------------------------

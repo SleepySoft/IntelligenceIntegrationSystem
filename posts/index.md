@@ -18,11 +18,11 @@
 
 #### Statistics
 
++ [Dashboard](/statistics/intelligence_statistics.html)
+
 + [Rate Statistics](/statistics/score_distribution.html)
 
 + [Entity Statistics](/statistics/entity_frequency/page)
-
-+ [Intelligence Statistics](/statistics/intelligence_statistics.html)
 
 -----------------------------------------------
 
