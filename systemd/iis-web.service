@@ -16,12 +16,12 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# 启用 systemd watchdog：若主进程 30s 内未发送 WATCHDOG=1，则自动重启
-NotifyAccess=main
-WatchdogSec=30
+# 启用 systemd watchdog：若主进程 60s 内未发送 WATCHDOG=1，则自动重启
+# NotifyAccess=main
+# WatchdogSec=60
 
-KillSignal=SIGTERM
-TimeoutStopSec=30
+# KillSignal=SIGTERM
+# TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
