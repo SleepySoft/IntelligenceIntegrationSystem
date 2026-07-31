@@ -84,7 +84,7 @@ class ArticleRenderer {
 
         // 1.2 ID 获取
         const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
-        const intelUrl = `/intelligence/${uuid}`;
+        const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
 
         // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
         const informant_val = article.INFORMANT || article.informant || article.source || "";
@@ -523,7 +523,7 @@ class ArticleRenderer {
             return this.promptCache.get(key);
         }
 
-        const url = `/api/prompts/${encodeURIComponent(key)}`;
+        const url = `${window.IIS_BASE_PATH || ''}/prompt?version=${encodeURIComponent(key)}`;
 
         const resp = await fetch(url, {
             method: 'GET',

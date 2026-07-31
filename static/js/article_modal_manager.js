@@ -4,8 +4,8 @@
     if (window.ArticleModalManager) return;
 
     const DEFAULT_OPTIONS = {
-        apiBase: '/api/intelligence',
-        pageBase: '/intelligence',
+        apiBase: (window.IIS_BASE_PATH || '') + '/api/intelligence',
+        pageBase: (window.IIS_BASE_PATH || '') + '/intelligence',
         titleSelector: 'a.article-title[data-uuid]',
         toastContainerId: 'article-toast-container',
         history: false,              // true: pushState + back close

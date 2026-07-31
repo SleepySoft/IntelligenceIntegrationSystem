@@ -1,0 +1,61 @@
+server {
+    server_name impart.today www.impart.today;
+
+    location / {
+        # 1. 核心转发（这是刚才唯一的）
+        proxy_pass https://sleepysoft.asuscomm.com:25000/;
+
+        # 2. 传递域名信息 (Host)
+        # 告诉后端：用户访问的是 impart.today，而不是 sleepysoft.asuscomm.com
+        # 如果不加这行，后端生成的重定向链接可能会变成内部域名，导致用户打不开。
+        proxy_set_header Host $host;
+
+        # 3. 传递真实 IP (关键！)
+        # 如果不加这几行，你的家庭服务器看到的 IP 全是 VPS 的 IP (107.xxx...)
+        # 加了这些，后端日志才能看到用户的真实 IP，做限流或审计才有用。
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # 4. 传递协议信息
+        # 告诉后端用户是用 HTTPS 进来的，防止后端以为是 HTTP 而疯狂 301 重定向。
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 5. 支持 WebSocket (如果你跑 Python AI/聊天应用，这几行必加)
+        # 很多现代应用（如 Jupyter, Chat 界面）需要 WebSocket 长连接。
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 6. 超时设置 (可选，针对 AI 或大文件上传)
+        # 默认只有 60秒。如果你的后端处理一个 AI 请求需要 2 分钟，不改这个 Nginx 会直接断开报错。
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/impart.today/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/impart.today/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+
+}
+server {
+    if ($host = www.impart.today) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = impart.today) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name impart.today www.impart.today;
+    return 404; # managed by Certbot
+
+
+
+
+}

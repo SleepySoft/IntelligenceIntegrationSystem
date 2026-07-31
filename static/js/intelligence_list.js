@@ -1,6 +1,6 @@
 /* static/js/intelligence_list.js */
 document.addEventListener('DOMContentLoaded', () => {
-    const API_URL = '/intelligences/query';
+    const API_URL = (window.IIS_BASE_PATH || '') + '/intelligences/query';
 
     const thresholdSelect = document.getElementById('threshold-select');
     const countSelect = document.getElementById('count-select');

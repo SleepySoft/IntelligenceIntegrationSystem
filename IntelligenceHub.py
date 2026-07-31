@@ -24,6 +24,7 @@ from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
+from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from Tools.PerformanceLogger import get_performance_logger
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
@@ -66,6 +67,7 @@ class IntelligenceHub:
                  db_low_value: Optional[MongoDBStorage] = None,
                  db_recommendation: Optional[MongoDBStorage] = None,
                  ai_client_manager: AIClientManager = None,
+                 subsystem_registry: Optional[SubsystemRegistry] = None,
                  **kwargs):
         """
         Init IntelligenceHub.
@@ -76,6 +78,7 @@ class IntelligenceHub:
         :param db_low_value: The mongodb for saving low-value data.
         :param db_recommendation: The mongodb for storing recommendation data.
         :param ai_client_manager: The openai-like client for data processing.
+        :param subsystem_registry: Multi-subsystem registry. None -> single legacy default subsystem.
         :param kwargs: Extra but not key parameters.
         """
 
@@ -84,11 +87,34 @@ class IntelligenceHub:
         self.reference_url = ref_url
         self.perf_logger = get_performance_logger()
         self.vector_db_client = vector_db_client
-        self.mongo_db_cache = db_cache
-        self.mongo_db_archive = db_archive
-        self.mongo_db_low_value = db_low_value
-        self.mongo_db_recommendation = db_recommendation
         self.ai_client_manager = ai_client_manager
+
+        # ---------------- Subsystems ----------------
+
+        if subsystem_registry is not None:
+            self.subsystem_registry = subsystem_registry
+        else:
+            # 兼容旧入口：由直接传入的四个 MongoDBStorage 构造单一默认子系统
+            self.subsystem_registry = SubsystemRegistry.build_from_storages(
+                default_name='news',
+                db_cache=db_cache,
+                db_archive=db_archive,
+                db_low_value=db_low_value,
+                db_recommendation=db_recommendation,
+                prompt_table=ANALYSIS_PROMPT_TABLE,
+            )
+
+        self.default_subsystem = self.subsystem_registry.default()
+        self.default_subsystem_name = self.default_subsystem.name if self.default_subsystem else 'news'
+
+        # 向后兼容属性：外部代码（导出、统计等）仍可直接引用 hub.mongo_db_* / *_query_engine
+        self.mongo_db_cache = self.default_subsystem.mongo_db_cache if self.default_subsystem else db_cache
+        self.mongo_db_archive = self.default_subsystem.mongo_db_archive if self.default_subsystem else db_archive
+        self.mongo_db_low_value = self.default_subsystem.mongo_db_low_value if self.default_subsystem else db_low_value
+        self.mongo_db_recommendation = self.default_subsystem.mongo_db_recommendation if self.default_subsystem else db_recommendation
+        self.cache_db_query_engine = self.default_subsystem.cache_query_engine if self.default_subsystem else IntelligenceQueryEngine(db_cache)
+        self.archive_db_query_engine = self.default_subsystem.archive_query_engine if self.default_subsystem else IntelligenceQueryEngine(db_archive)
+        self.archive_db_statistics_engine = self.default_subsystem.statistics_engine if self.default_subsystem else IntelligenceStatisticsEngine(db_archive)
 
         # -------------- Queues Related --------------
 
@@ -107,10 +133,6 @@ class IntelligenceHub:
         self.conversation_total = 0
 
         # --------------- Components ----------------
-
-        self.cache_db_query_engine = IntelligenceQueryEngine(self.mongo_db_cache)
-        self.archive_db_query_engine = IntelligenceQueryEngine(self.mongo_db_archive)
-        self.archive_db_statistics_engine = IntelligenceStatisticsEngine(self.mongo_db_archive)
 
         self.entity_frequency_engine = EntityFrequencyEngine(
             db_path=os.path.join(DATA_PATH, 'entity_frequency.db'),
@@ -211,9 +233,19 @@ class IntelligenceHub:
 
     def _load_unarchived_data(self):
         """Load unarchived data into a queue, compatible with both old and new archival markers."""
-        if not self.mongo_db_cache:
-            return
+        total = 0
+        for ctx in self.subsystem_registry.enabled_subsystems():
+            total += self._load_unarchived_data_for(ctx)
+        if total:
+            logger.info(f'Unarchived data loaded, item count: {total}')
 
+    def _load_unarchived_data_for(self, ctx) -> int:
+        """从指定子系统的 cache collection 加载未归档数据。"""
+        mongo_db_cache = ctx.mongo_db_cache
+        if not mongo_db_cache:
+            return 0
+
+        count = 0
         try:
             # 兼容查询条件：同时支持旧版（顶层__ARCHIVED__）和新版（APPENDIX.__ARCHIVED__）
             query = {
@@ -225,19 +257,23 @@ class IntelligenceHub:
                 ]
             }
 
-            cursor = self.mongo_db_cache.collection.find(query)
+            cursor = mongo_db_cache.collection.find(query)
             for doc in cursor:
                 doc['_id'] = str(doc['_id'])  # 转换ObjectId
+                doc['subsystem'] = ctx.name
                 try:
                     self.unarchived_queue.put(doc, block=True, timeout=5)
+                    count += 1
                 except queue.Full:
                     logger.error("Queue full, failed to add document")
                     break
 
-            logger.info(f'Unarchived data loaded, item count: {self.unarchived_queue.qsize()}')
+            if count:
+                logger.info(f"Subsystem '{ctx.name}': unarchived data loaded, item count: {count}")
 
         except pymongo.errors.PyMongoError as e:
-            logger.error(f"Database operation failed: {str(e)}")
+            logger.error(f"Subsystem '{ctx.name}' unarchived load failed: {str(e)}")
+        return count
 
     # ----------------------------------------------- Startup / Shutdown -----------------------------------------------
 
@@ -284,17 +320,20 @@ class IntelligenceHub:
         # self._save_to_file(unprocessed, 'pending_tasks.json')
 
     def _cleanup_resources(self):
-        if self.mongo_db_cache:
-            self.mongo_db_cache.close()
-
-        if self.mongo_db_archive:
-            self.mongo_db_archive.close()
+        for ctx in self.subsystem_registry.enabled_subsystems():
+            for storage in (ctx.mongo_db_cache, ctx.mongo_db_archive,
+                            ctx.mongo_db_low_value, ctx.mongo_db_recommendation):
+                try:
+                    if storage:
+                        storage.close()
+                except Exception as e:
+                    logger.error(f"Close storage fail: {e}")
 
     # ---------------------------------------------- Statistics and Debug ----------------------------------------------
 
     @property
     def statistics(self):
-        return {
+        stats = {
             'waiting_process': self.original_queue.qsize(),
             'unarchived_queue': self.unarchived_queue.qsize(),
             'post_process': self.processed_queue.qsize(),
@@ -306,6 +345,14 @@ class IntelligenceHub:
             'conversation_error': self.conversation_error,
             'conversation_total': self.conversation_total,
         }
+        stats['subsystems'] = {
+            ctx.name: {
+                'archived': ctx.stats.get('archived', 0),
+                'dropped': ctx.stats.get('dropped', 0),
+                'error': ctx.stats.get('error', 0),
+            } for ctx in self.subsystem_registry.enabled_subsystems()
+        }
+        return stats
 
     # ------------------------------------------------ Public Functions ------------------------------------------------
 
@@ -313,7 +360,12 @@ class IntelligenceHub:
 
     def submit_collected_data(self, data: dict) -> True or Error:
         try:
-            if self._check_duplication_in_unprocess_data(data):
+            subsystem_name = str(data.get('subsystem') or '').strip()
+            ctx = self.subsystem_registry.resolve(subsystem_name)
+            if ctx is None:
+                return IntelligenceHub.Error(error_list=[f"Unknown subsystem: '{subsystem_name}'."])
+
+            if self._check_duplication_in_unprocess_data(data, query_engine=ctx.cache_query_engine):
                 return IntelligenceHub.Error(error_list=[f"Collected message duplicated {data.get('UUID', '')}."])
 
             validated_data, error_text = check_sanitize_dict(dict(data), CollectedData)
@@ -323,7 +375,7 @@ class IntelligenceHub:
             validated_data[APPENDIX_TIME_POST] = get_aware_time()
 
             return IntelligenceHub.Error(error_list=[error_text]) \
-                if error_text else self._enqueue_collected_data(validated_data)
+                if error_text else self._enqueue_collected_data(validated_data, subsystem=ctx.name)
 
         except Exception as e:
             logger.error(f"Submit collected data API exception: {str(e)}")
@@ -331,13 +383,21 @@ class IntelligenceHub:
 
     def submit_archived_data(self, data: dict) -> True or Error:
         try:
-            if self._check_duplication_in_processed_data(data):
+            subsystem_name = str(
+                (data.get('APPENDIX') or {}).get(APPENDIX_SUBSYSTEM) or data.get('subsystem') or '').strip()
+            ctx = self.subsystem_registry.resolve(subsystem_name)
+            if ctx is None:
+                return IntelligenceHub.Error(error_list=[f"Unknown subsystem: '{subsystem_name}'."])
+
+            if self._check_duplication_in_processed_data(data, query_engine=ctx.archive_query_engine):
                 return IntelligenceHub.Error(error_list=[f"Archived message duplicated {data.get('UUID', '')}."])
 
             validated_data, error_text = check_sanitize_dict(dict(data), ArchivedData)
+            if error_text:
+                return IntelligenceHub.Error(error_list=[error_text])
+            validated_data.setdefault('APPENDIX', {})[APPENDIX_SUBSYSTEM] = ctx.name
 
-            return IntelligenceHub.Error(error_list=[error_text]) \
-                if error_text else self._enqueue_processed_data(validated_data)
+            return self._enqueue_processed_data(validated_data)
 
         except Exception as e:
             logger.error(f"Submit archived data API exception: {str(e)}")
@@ -348,12 +408,11 @@ class IntelligenceHub:
     def get_intelligence(self,
                          _uuid: Union[str, List[str]],
                          db: str = 'archive',
-                         light_weight: bool = False
+                         light_weight: bool = False,
+                         subsystem: Optional[str] = None,
                          ) -> Union[dict, List[dict]]:
-        if db == 'cache':
-            query_engine = self.cache_db_query_engine
-        else:
-            query_engine = self.archive_db_query_engine
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        query_engine = ctx.cache_query_engine if db == 'cache' else ctx.archive_query_engine
         return query_engine.get_intelligence(_uuid, light_weight=light_weight)
 
     def query_intelligence(self,
@@ -371,11 +430,10 @@ class IntelligenceHub:
                            geography: Optional[Union[str, List[str]]] = None,
                            skip: Optional[int] = 0,
                            limit: int = 100,
+                           subsystem: Optional[str] = None,
                            ) -> Tuple[List[dict], int]:
-        if db == 'cache':
-            query_engine = self.cache_db_query_engine
-        else:
-            query_engine = self.archive_db_query_engine
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        query_engine = ctx.cache_query_engine if db == 'cache' else ctx.archive_query_engine
         result, total = query_engine.query_intelligence(
             period = period, archive_period=archive_period, locations = locations, peoples = peoples,
             organizations = organizations, keywords = keywords,
@@ -498,18 +556,21 @@ class IntelligenceHub:
 
             return result_list[:top_n]
 
-    def get_intelligence_summary(self) -> Tuple[int, str]:
-        query_engine = self.archive_db_query_engine
+    def get_intelligence_summary(self, subsystem: Optional[str] = None) -> Tuple[int, str]:
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        query_engine = ctx.archive_query_engine
         summary = query_engine.get_intelligence_summary()
         return summary["total_count"], summary["base_uuid"]
 
-    def aggregate(self, pipeline: list) -> list:
-        query_engine = self.archive_db_query_engine
+    def aggregate(self, pipeline: list, subsystem: Optional[str] = None) -> list:
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        query_engine = ctx.archive_query_engine
         result = query_engine.aggregate(pipeline)
         return result
 
-    def count_documents(self, _filter) -> int:
-        query_engine = self.archive_db_query_engine
+    def count_documents(self, _filter, subsystem: Optional[str] = None) -> int:
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        query_engine = ctx.archive_query_engine
         result = query_engine.count_documents(_filter)
         return result
 
@@ -518,19 +579,72 @@ class IntelligenceHub:
 
     # ------------------------------------------------ Directly Access ------------------------------------------------
 
-    def get_query_engine(self) -> IntelligenceQueryEngine:
-        return self.archive_db_query_engine
+    def get_query_engine(self, subsystem: Optional[str] = None) -> IntelligenceQueryEngine:
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        return ctx.archive_query_engine
 
-    def get_statistics_engine(self) -> IntelligenceStatisticsEngine:
-        return IntelligenceStatisticsEngine(self.mongo_db_archive)
+    def get_statistics_engine(self, subsystem: Optional[str] = None) -> IntelligenceStatisticsEngine:
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        return ctx.statistics_engine
+
+    def get_subsystems(self) -> List[Dict]:
+        """子系统注册表描述，供前端导航/API 使用。"""
+        return self.subsystem_registry.describe()
+
+    def get_prompt(self, subsystem: Optional[str] = None, version: Optional[int] = None) -> str:
+        """获取指定子系统当前生效的 prompt 文本。"""
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        self.subsystem_registry.refresh_prompts(ctx)
+        if not ctx.prompt_table:
+            return "[Prompt] Not configured."
+        if version is not None:
+            prompt_text = ctx.prompt_table.get(int(version))
+            if prompt_text is None:
+                return f"[Prompt v{version}] Not configured."
+            return prompt_text
+        version = max(ctx.prompt_table.keys())
+        return ctx.prompt_table[version]
+
+    def dry_run_analyze(self,
+                        subsystem: Optional[str] = None,
+                        prompt: Optional[str] = None,
+                        data: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        动态注入 prompt + 样例数据做一次真实 AI 分析，不入队、不入库。
+        返回原始结果、统一 schema 校验结果与所用 prompt。
+        """
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        if data is None:
+            return {'error': 'data is required.'}
+        if not isinstance(data, dict):
+            return {'error': 'data must be a dict.'}
+
+        self.subsystem_registry.refresh_prompts(ctx)
+        if not prompt:
+            prompt = self.get_prompt(ctx.name)
+
+        result = self.__robust_analyze_with_ai(data, worker_index=-1, subsystem_name=ctx.name,
+                                               prompt_override=prompt)
+        if result is None or 'error' in result:
+            return {'error': result.get('error', 'AI analysis failed.') if isinstance(result, dict) else 'AI analysis failed.'}
+
+        validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
+        return {
+            'subsystem': ctx.name,
+            'prompt_used': prompt,
+            'result': result,
+            'validated': validated_data,
+            'validation_error': error_text or None,
+        }
 
     # ---------------------------------------------------- Updates -----------------------------------------------------
 
-    def submit_intelligence_manual_rating(self, _uuid: str, rating: dict):
+    def submit_intelligence_manual_rating(self, _uuid: str, rating: dict, subsystem: Optional[str] = None):
         if not isinstance(rating, dict):
             return IntelligenceHub.Error(error_list=['Invalid rating'])
 
-        self.mongo_db_archive.update(
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        ctx.mongo_db_archive.update(
             { 'UUID': _uuid },
             {f"APPENDIX.{APPENDIX_MANUAL_RATING}": rating})
 
@@ -561,7 +675,11 @@ class IntelligenceHub:
         # The retry condition: retry if an exception occurs OR the result is an error
         retry = (retry_if_exception_type(Exception) | retry_if_result(__is_retryable_error))
     )
-    def __robust_analyze_with_ai(self, original_data: dict, worker_index: int):
+    def __robust_analyze_with_ai(self,
+                                 original_data: dict,
+                                 worker_index: int,
+                                 subsystem_name: str = '',
+                                 prompt_override: Optional[str] = None):
         """
         A robust wrapper for the AI analysis function that will be automatically retried.
         """
@@ -572,8 +690,14 @@ class IntelligenceHub:
 
         # --------------------------- Wait until one AI client available ---------------------------
 
-        selected_prompt_index = random.choice(list(ANALYSIS_PROMPT_TABLE.keys()))
-        selected_prompt = ANALYSIS_PROMPT_TABLE[selected_prompt_index]
+        ctx = self.subsystem_registry.resolve(subsystem_name) or self.default_subsystem
+        self.subsystem_registry.refresh_prompts(ctx)
+        if prompt_override:
+            selected_prompt = prompt_override
+            selected_prompt_index = -1
+        else:
+            selected_prompt_index = random.choice(list(ctx.prompt_table.keys()))
+            selected_prompt = ctx.prompt_table[selected_prompt_index]
 
         retries = 0
         while True:
@@ -583,10 +707,14 @@ class IntelligenceHub:
                 finally:
                     self.ai_client_manager.release_client(ai_client)
 
+                # 合并保留 AI 返回的领域扩展字段（如 TICKER/MARKET），再写入系统元数据
+                ai_appendix = result.get('APPENDIX') if isinstance(result.get('APPENDIX'), dict) else {}
                 result['APPENDIX'] = {
+                    **ai_appendix,
                     APPENDIX_PROMPT_VERSION: selected_prompt_index,
                     APPENDIX_AI_SERVICE: ai_client.get_api_base_url(),
                     APPENDIX_AI_MODEL: ai_client.get_current_model(),
+                    APPENDIX_SUBSYSTEM: ctx.name,
                 }
 
                 self._process_appendix_time(original_data, result)
@@ -625,6 +753,8 @@ class IntelligenceHub:
             original_data = None
             current_queue = None  # 用于记录当前数据来自哪个队列，以便正确 task_done
             is_sensitive_or_bad_request = False
+            subsystem_name = self.default_subsystem_name
+            ctx = None
 
             try:
                 try:
@@ -647,14 +777,19 @@ class IntelligenceHub:
                 if not (original_uuid := str(original_data.get('UUID', '')).strip()):
                     original_data['UUID'] = original_uuid = str(uuid.uuid4())
 
+                # ---------------------- Resolve Subsystem ----------------------
+
+                subsystem_name = str(original_data.get('subsystem') or '').strip() or self.default_subsystem_name
+                ctx = self.subsystem_registry.get(subsystem_name) or self.default_subsystem
+
                 # ---------------------- Check Duplication First Avoiding Wasting Token ----------------------
 
-                if self._check_duplication_in_processed_data(original_data):
+                if self._check_duplication_in_processed_data(original_data, query_engine=ctx.archive_query_engine):
                     raise IntelligenceHub.Exception('drop', 'Article duplicated')
 
                 # ---------------------------------- AI Analysis with Retry ----------------------------------
 
-                result = self.__robust_analyze_with_ai(original_data, worker_index)
+                result = self.__robust_analyze_with_ai(original_data, worker_index, subsystem_name=ctx.name)
 
                 is_error = not result or 'error' in result
 
@@ -694,13 +829,15 @@ class IntelligenceHub:
                 # if 'EVENT_TEXT' not in result:
                 #     raise IntelligenceHub.Exception('drop', 'Article has no value')
 
-                scoring_engine = IntelligenceScoringEngine()
+                scoring_engine = IntelligenceScoringEngine(config=ctx.scoring_config) \
+                    if ctx.scoring_config else IntelligenceScoringEngine()
                 total_score = scoring_engine.calculate_single(result)
                 result['APPENDIX'][APPENDIX_TOTAL_SCORE] = total_score
 
                 validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
                 if error_text:
                     raise ValueError(error_text)
+                validated_data.setdefault('APPENDIX', {})[APPENDIX_SUBSYSTEM] = ctx.name
 
                 # -------------------------------- Fill Extra Data and Enqueue --------------------------------
 
@@ -715,21 +852,25 @@ class IntelligenceHub:
                 if e.name == 'drop':
                     with self.lock:
                         self.drop_counter += 1
-                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_DROP)
+                        if ctx is not None:
+                            ctx.stats['dropped'] += 1
+                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_DROP, subsystem=subsystem_name)
             except Exception as e:
                 with self.lock:
                     self.error_counter += 1
+                    if ctx is not None:
+                        ctx.stats['error'] += 1
                 logger.error(f"{prefix} Analysis error: {str(e)}")
                 traceback.print_exc()
 
                 if is_sensitive_or_bad_request:
                     # 如果是敏感词或坏请求，使用特殊标记，避免丢弃但隔离
-                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_SENSITIVE)
+                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_SENSITIVE, subsystem=subsystem_name)
                     logger.warning(
                         f"{prefix} Permanently Blocked: {original_uuid} marked BLOCKED due to HTTP 400 error.")
                 else:
                     # 其他错误（网络、系统等）使用 ARCHIVED_FLAG_ERROR 标记
-                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR)
+                    self._mark_cache_data_archived_flag(original_uuid, ARCHIVED_FLAG_ERROR, subsystem=subsystem_name)
             finally:
                 if current_queue:
                     current_queue.task_done()
@@ -741,44 +882,57 @@ class IntelligenceHub:
         while not self.shutdown_flag.is_set():
             data = None
             got_task = False
+            subsystem_name = self.default_subsystem_name
             try:
                 data = self.processed_queue.get(block=True, timeout=1.0)
                 got_task = True
                 if data is None: break
 
-                if self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine):
+                # ---------------------- Resolve Subsystem ----------------------
+
+                subsystem_name = str(
+                    (data.get('APPENDIX') or {}).get(APPENDIX_SUBSYSTEM)
+                    or data.get('subsystem') or '').strip() or self.default_subsystem_name
+                ctx = self.subsystem_registry.get(subsystem_name) or self.default_subsystem
+
+                if self._check_duplication_in_db(data, 'INFORMANT', ctx.archive_query_engine):
                     raise ProcessSkip('duplication', 'Found duplication. Not archive this data.')
 
                 if self._is_low_value_data(data):
                     # Low value data has been marked as ARCHIVED_FLAG_DROP in _ai_analysis_worker
-                    if self.mongo_db_low_value:
+                    if ctx.mongo_db_low_value:
                         with positioning_exception_context('low_value', 'Low-value data persists fail.'):
-                            self.mongo_db_low_value.insert(data)
+                            ctx.mongo_db_low_value.insert(data)
                     raise ProcessSkip('low_value', 'Low value data. Not archive this data.')
 
                 data['APPENDIX'][APPENDIX_TIME_ARCHIVED] = get_aware_time()
 
                 with positioning_exception_context('archive', 'Archive fail.'):
-                    self._archive_processed_data(data)
+                    self._archive_processed_data(data, ctx)
 
                 with self.lock:
                     self.archived_counter += 1
-                self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ARCHIVED)
+                    ctx.stats['archived'] += 1
+                self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ARCHIVED, subsystem=ctx.name)
 
                 logger.info(f"Message {data['UUID']} archived.")
 
                 # TODO: Call post processor plugins
 
-                try:
-                    if self.async_translation_patch and needs_translation(data):
-                        # 新数据：高优先级异步翻译；先不向量化（等待翻译线程完成后 on_patched 再向量化）
-                        self.async_translation_patch.enqueue_new(data["UUID"], reason="new_archived")
-                    else:
-                        # 原生中文：直接向量化
+                if ctx.is_default:
+                    # 向量化、翻译等重资源功能当前仅默认子系统启用
+                    try:
+                        if self.async_translation_patch and needs_translation(data):
+                            # 新数据：高优先级异步翻译；先不向量化（等待翻译线程完成后 on_patched 再向量化）
+                            self.async_translation_patch.enqueue_new(data["UUID"], reason="new_archived")
+                        else:
+                            # 原生中文：直接向量化
+                            self._index_archived_data(data)
+                    except Exception as e:
+                        logger.warning("AsyncTranslationPatch enqueue fail, fallback vectorize: %s", e)
                         self._index_archived_data(data)
-                except Exception as e:
-                    logger.warning("AsyncTranslationPatch enqueue fail, fallback vectorize: %s", e)
-                    self._index_archived_data(data)
+                else:
+                    logger.debug(f"Subsystem '{ctx.name}': vectorization skipped (default-only for now).")
 
             except queue.Empty:
                 continue
@@ -788,12 +942,15 @@ class IntelligenceHub:
 
                 with self.lock:
                     self.drop_counter += 1
+                    if data is not None:
+                        ctx = self.subsystem_registry.get(subsystem_name) or self.default_subsystem
+                        ctx.stats['dropped'] += 1
 
                 if data is not None:
                     if e.reason == 'duplication':
-                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DUPLICATED)
+                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DUPLICATED, subsystem=subsystem_name)
                     elif e.reason == 'low_value':
-                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP)
+                        self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP, subsystem=subsystem_name)
                     else:
                         logger.error('************* Should not reach here [C7F6] *************')
                 else:
@@ -803,12 +960,14 @@ class IntelligenceHub:
             except PositioningException as e:
                 if e.position == 'low_value':
                     logger.error(f'Low-value data persists fail.')
-                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP)
+                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_DROP, subsystem=subsystem_name)
                 elif e.position == 'archive':
                     with self.lock:
                         self.error_counter += 1
+                        ctx = self.subsystem_registry.get(subsystem_name) or self.default_subsystem
+                        ctx.stats['error'] += 1
                     logger.error(f"Archived fail with exception: {str(e)}")
-                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ERROR)
+                    self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ERROR, subsystem=subsystem_name)
                 else:
                     logger.error('************* Should not reach here [EBEC] *************')
 
@@ -1167,19 +1326,23 @@ class IntelligenceHub:
         duplicated =  bool(query_engine.common_query(conditions=conditions, operator=operator))
         return duplicated
 
-    def _check_duplication_in_unprocess_data(self, data: dict):
+    def _check_duplication_in_unprocess_data(self, data: dict, query_engine: IntelligenceQueryEngine = None):
+        query_engine = query_engine or self.cache_db_query_engine
         return (self._check_duplication_in_queue(data, 'informant', self.original_queue) or
                 self._check_duplication_in_queue(data, 'informant', self.unarchived_queue) or
-                self._check_duplication_in_db(data, 'informant', self.cache_db_query_engine))
+                self._check_duplication_in_db(data, 'informant', query_engine))
 
-    def _check_duplication_in_processed_data(self, data: dict):
-        return (self._check_duplication_in_db(data, 'INFORMANT', self.archive_db_query_engine) or
+    def _check_duplication_in_processed_data(self, data: dict, query_engine: IntelligenceQueryEngine = None):
+        query_engine = query_engine or self.archive_db_query_engine
+        return (self._check_duplication_in_db(data, 'INFORMANT', query_engine) or
                 self._check_duplication_in_queue(data, 'INFORMANT', self.processed_queue))
 
     # ---------------------------- Before Process ----------------------------
 
-    def _enqueue_collected_data(self, data: dict) -> True or Error:
-        self._cache_original_data(data)
+    def _enqueue_collected_data(self, data: dict, subsystem: str = None) -> True or Error:
+        subsystem = subsystem or self.default_subsystem_name
+        data['subsystem'] = subsystem
+        self._cache_original_data(data, subsystem=subsystem)
         self.original_queue.put(data)
         return True
 
@@ -1214,7 +1377,9 @@ class IntelligenceHub:
             return True
 
         except Exception as e:
-            self._mark_cache_data_archived_flag(data['UUID'], ARCHIVED_FLAG_ERROR)
+            subsystem_name = str((data.get('APPENDIX') or {}).get(APPENDIX_SUBSYSTEM) or '').strip()
+            self._mark_cache_data_archived_flag(
+                data['UUID'], ARCHIVED_FLAG_ERROR, subsystem=subsystem_name or None)
             logger.error(f"Enqueue archived data error: {str(e)}")
             print(traceback.format_exc())
             return IntelligenceHub.Error(e, [str(e)])
@@ -1222,6 +1387,13 @@ class IntelligenceHub:
     # ---------------------------- Archive Related ----------------------------
 
     def _index_archived_data(self, data: dict):
+        # 向量化等重资源功能当前仅默认子系统启用
+        subsystem_name = str(
+            (data.get('APPENDIX') or {}).get(APPENDIX_SUBSYSTEM)
+            or data.get('subsystem') or '').strip() or self.default_subsystem_name
+        if subsystem_name != self.default_subsystem_name:
+            logger.debug(f"Subsystem '{subsystem_name}': vectorization skipped (default-only for now).")
+            return
         try:
             self.vectorize_queue.put_nowait(data)
         except queue.Full:
@@ -1229,25 +1401,30 @@ class IntelligenceHub:
         except Exception as e:
             logger.error(str(e))
 
-    def _cache_original_data(self, data: dict):
+    def _cache_original_data(self, data: dict, subsystem: str = None):
+        subsystem = subsystem or self.default_subsystem_name
+        ctx = self.subsystem_registry.get(subsystem) or self.default_subsystem
         try:
-            if self.mongo_db_cache:
-                if self._check_duplication_in_db(data, 'informant', self.cache_db_query_engine):
+            if ctx.mongo_db_cache:
+                if self._check_duplication_in_db(data, 'informant', ctx.cache_query_engine):
                     logger.info(f"Found duplicated data in cache db. Drop.")
                 else:
-                    self.mongo_db_cache.insert(data)
+                    ctx.mongo_db_cache.insert(data)
         except Exception as e:
             logger.error(f'Cache original data fail: {str(e)}')
 
-    def _archive_processed_data(self, data: dict):
+    def _archive_processed_data(self, data: dict, ctx=None):
+        ctx = ctx or (self.subsystem_registry.resolve(
+            (data.get('APPENDIX') or {}).get(APPENDIX_SUBSYSTEM) or data.get('subsystem'))
+            or self.default_subsystem)
         try:
-            if self.mongo_db_archive:
-                self.mongo_db_archive.insert(data)
+            if ctx.mongo_db_archive:
+                ctx.mongo_db_archive.insert(data)
                 # self.intelligence_cache.encache(data)
         except Exception as e:
             logger.error(f'Archive processed data fail: {str(e)}')
 
-    def _mark_cache_data_archived_flag(self, _uuid: str, archived: bool or str):
+    def _mark_cache_data_archived_flag(self, _uuid: str, archived: bool or str, subsystem: str = None):
         """
         20250530: Extend the archived parameter as str. It can be the following values:
             'T' - True. Archived
@@ -1260,8 +1437,9 @@ class IntelligenceHub:
         try:
             if isinstance(archived, bool):
                 archived = ARCHIVED_FLAG_ARCHIVED if archived else ARCHIVED_FLAG_DROP
-            if self.mongo_db_cache:
-                self.mongo_db_cache.update({
+            ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+            if ctx.mongo_db_cache:
+                ctx.mongo_db_cache.update({
                     'UUID': _uuid},
                     {f'APPENDIX.{APPENDIX_ARCHIVED_FLAG}': archived})
         except Exception as e:

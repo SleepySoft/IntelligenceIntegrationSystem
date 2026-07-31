@@ -12,7 +12,7 @@ import traceback
 from functools import wraps
 from typing import List, Tuple, Any, Dict, Optional
 from dateutil import parser as date_parser
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
+from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
     make_response, Response
 
 from GlobalConfig import *
@@ -228,7 +228,8 @@ class IntelligenceHubWebService:
                  access_manager: WebServiceAccessManager,
                  rss_publisher: RSSPublisher,
                  public_search_limits: Optional[Dict[str, Any]] = None,
-                 monitor_api=None):
+                 monitor_api=None,
+                 subsystem_registry=None):
 
         # ---------------- Parameters ----------------
 
@@ -240,6 +241,7 @@ class IntelligenceHubWebService:
         self.rss_publisher = rss_publisher
         self.wsgi_app = None
         self.monitor_api = monitor_api
+        self.subsystem_registry = subsystem_registry
 
         # ---------------- Public Search Limits ----------------
 
@@ -286,6 +288,394 @@ class IntelligenceHubWebService:
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
         return obj
+
+    # ============================================ Subsystem Query Helpers ============================================
+    # 说明：根路径（默认子系统）的查询逻辑保留在 register_routers 内（历史实现，行为不变）；
+    # 以下方法供具名子系统 Blueprint 复用，二者保持逻辑一致。
+
+    def _get_client_ip(self) -> str:
+        """从请求头中提取真实客户端 IP。"""
+        return (
+            request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+            or request.headers.get('X-Real-IP', '').strip()
+            or request.remote_addr
+            or 'unknown'
+        )
+
+    def _get_combined_params(self) -> Dict[str, Any]:
+        """统一参数解析与清洗器。优先级：URL Query (GET) > JSON Body > Form Data。"""
+        combined = {}
+
+        if request.method == 'POST':
+            json_data = request.get_json(silent=True)
+            if json_data:
+                combined.update(json_data)
+            else:
+                combined.update(request.form)
+
+        combined.update(request.args.to_dict())
+
+        def _split(v: Any) -> List[str]:
+            if not v: return []
+            if isinstance(v, list): return v
+            return [x.strip() for x in v.split(',') if x.strip()]
+
+        threshold_min = float(combined.get('threshold_min', combined.get('threshold', 0)))
+        threshold_max = float(combined.get('threshold_max', 10))
+        score_threshold_min = float(combined.get(
+            'score_threshold_min', combined.get('score_threshold', VECTOR_DEFAULT_SCORE_THRESHOLD)))
+        score_threshold_max = float(combined.get('score_threshold_max', 1.0))
+
+        params = {
+            'search_mode': combined.get('search_mode', 'mongo'),
+            'page': int(combined.get('page', 1)),
+            'per_page': int(combined.get('per_page', 10)),
+            'start_time': combined.get('start_time', ''),
+            'end_time': combined.get('end_time', ''),
+            'archive_start_time': combined.get('archive_start_time', ''),
+            'archive_end_time': combined.get('archive_end_time', ''),
+            'keywords': combined.get('keywords', '').strip(),
+            'peoples': _split(combined.get('peoples', '')),
+            'locations': _split(combined.get('locations', '')),
+            'organizations': _split(combined.get('organizations', '')),
+            'geography': _split(combined.get('geography', '')),
+            'informant_domains': _split(combined.get('informant_domains', '')),
+            'threshold_min': threshold_min,
+            'threshold_max': threshold_max,
+            'in_summary': to_bool(combined.get('in_summary'), default=True),
+            'in_fulltext': to_bool(combined.get('in_fulltext'), default=False),
+            'score_threshold_min': score_threshold_min,
+            'score_threshold_max': score_threshold_max,
+            'reference': combined.get('reference', ''),
+        }
+
+        if params['per_page'] > 100:
+            params['per_page'] = 100
+        return params
+
+    def _apply_public_search_limits(self, p: Dict[str, Any], client_ip: str) -> Optional[str]:
+        """对未登录用户应用搜索限制。返回错误信息或 None。游客模式统一仅允许按 Archive Time 搜索。"""
+        limits = self.public_search_limits
+        mode = p.get('search_mode', 'mongo')
+
+        if mode.startswith('vector'):
+            if not self._vector_search_rate_limiter.is_allowed(client_ip):
+                return (
+                    f"\u672a\u767b\u5f55\u7528\u6237\u5411\u91cf\u641c\u7d22\u8fc7\u4e8e\u9891\u7e41\uff0c"
+                    f"\u6bcf\u5206\u949f\u6700\u591a {limits.get('requests_per_minute', 10)} "
+                    f"\u6b21\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+                )
+
+        # 游客模式禁止使用 Publish Time，统一使用 Archive Time
+        p['start_time'] = ''
+        p['end_time'] = ''
+
+        if mode == 'mongo':
+            max_per_page = limits.get('mongo_max_per_page', 20)
+            if p.get('per_page', 10) > max_per_page:
+                p['per_page'] = max_per_page
+
+            max_page = limits.get('mongo_max_page', 5)
+            if p.get('page', 1) > max_page:
+                return (f"\u672a\u767b\u5f55\u7528\u6237\u666e\u901a\u641c\u7d22\u4ec5\u652f\u6301\u524d "
+                        f"{max_page} \u9875\uff0c\u8bf7\u767b\u5f55\u540e\u67e5\u770b\u66f4\u591a\u3002")
+
+            if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                window_days = limits.get('mongo_default_window_days', 30)
+                now = get_aware_time()
+                start = now - datetime.timedelta(days=window_days)
+                p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+
+        if mode.startswith('vector'):
+            if mode == 'vector_similar' and not limits.get('vector_allow_similar', False):
+                return "\u672a\u767b\u5f55\u7528\u6237\u6682\u4e0d\u652f\u6301\u76f8\u4f3c\u63a8\u8350\uff0c\u8bf7\u767b\u5f55\u540e\u4f7f\u7528\u3002"
+
+            if p.get('in_fulltext') and not limits.get('vector_allow_fulltext', False):
+                p['in_fulltext'] = False
+                p['in_summary'] = True
+
+            max_per_page = limits.get('vector_max_per_page', 10)
+            max_top_n = limits.get('vector_max_top_n', 20)
+            max_page = limits.get('vector_max_page', 2)
+
+            if p.get('per_page', 10) > max_per_page:
+                p['per_page'] = max_per_page
+            if p.get('page', 1) > max_page:
+                return (f"\u672a\u767b\u5f55\u7528\u6237\u5411\u91cf\u641c\u7d22\u4ec5\u652f\u6301\u524d "
+                        f"{max_page} \u9875\uff0c\u8bf7\u767b\u5f55\u540e\u67e5\u770b\u66f4\u591a\u3002")
+
+            min_threshold = limits.get('vector_min_score_threshold', 0.6)
+            if p.get('score_threshold_min', 0) < min_threshold:
+                p['score_threshold_min'] = min_threshold
+
+            requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
+            p['_effective_top_n'] = min(requested_top_n, max_top_n)
+
+            if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                window_days = limits.get('vector_default_window_days', 30)
+                now = get_aware_time()
+                start = now - datetime.timedelta(days=window_days)
+                p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+
+        return None
+
+    def _do_mongo_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
+        """走 Mongo 过滤"""
+        query = {}
+        if p['start_time'] and p['end_time']:
+            query['period'] = (
+                datetime.datetime.fromisoformat(p['start_time']),
+                datetime.datetime.fromisoformat(p['end_time'])
+            )
+        if p['archive_start_time'] and p['archive_end_time']:
+            query['archive_period'] = (
+                datetime.datetime.fromisoformat(p['archive_start_time']),
+                datetime.datetime.fromisoformat(p['archive_end_time'])
+            )
+        for field in ('locations', 'peoples', 'organizations', 'geography', 'keywords', 'informant_domains'):
+            if p[field]:
+                query[field] = p[field]
+
+        if p.get('threshold_min', 0) > 0:
+            query['threshold'] = p['threshold_min']
+        if p.get('threshold_max', 10) < 10:
+            query['threshold_max'] = p['threshold_max']
+
+        skip = (p['page'] - 1) * p['per_page']
+        return self.intelligence_hub.query_intelligence(
+            skip=skip, limit=p['per_page'], subsystem=subsystem_name, **query)
+
+    def _do_vector_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
+        """走向量召回 + 内存分页（向量检索当前仅默认子系统启用）"""
+        default_name = self.intelligence_hub.default_subsystem_name
+        if subsystem_name and subsystem_name != default_name:
+            raise ValueError("\u5411\u91cf\u68c0\u7d22\u6682\u4ec5\u652f\u6301\u9ed8\u8ba4\u5b50\u7cfb\u7edf\u3002")
+
+        text = ''
+        if p['search_mode'] == 'vector_text':
+            text = p.get('keywords', '')
+        elif p['search_mode'] == 'vector_similar':
+            if ref_uuids := p.get('reference', ''):
+                intelligence = self.intelligence_hub.get_intelligence(ref_uuids, subsystem=subsystem_name)
+                if intelligence:
+                    text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
+        if not text:
+            return [], 0
+
+        top_n = p.get('_effective_top_n') or min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
+        vector_kwargs = {
+            'text': text,
+            'in_summary': p['in_summary'],
+            'in_fulltext': p['in_fulltext'],
+            'top_n': top_n,
+            'score_threshold': p.get('score_threshold_min', VECTOR_DEFAULT_SCORE_THRESHOLD),
+            'score_threshold_max': p.get('score_threshold_max', 1.0),
+        }
+
+        if p['start_time'] and p['end_time']:
+            vector_kwargs['event_period'] = (
+                datetime.datetime.fromisoformat(p['start_time']),
+                datetime.datetime.fromisoformat(p['end_time'])
+            )
+        if p['archive_start_time'] and p['archive_end_time']:
+            vector_kwargs['archive_period'] = (
+                datetime.datetime.fromisoformat(p['archive_start_time']),
+                datetime.datetime.fromisoformat(p['archive_end_time'])
+            )
+
+        raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(**vector_kwargs)
+
+        start = (p['page'] - 1) * p['per_page']
+        end = start + p['per_page']
+        page_items = raw[start:end]
+
+        uuids = []
+        score_map = {}
+        for doc_id, score, _ in page_items:
+            uuids.append(doc_id)
+            score_map[doc_id] = score
+        articles = self.intelligence_hub.get_intelligence(uuids, subsystem=subsystem_name)
+
+        for article in articles:
+            doc_id = article.get('UUID')
+            article['APPENDIX'][APPENDIX_VECTOR_SCORE] = score_map.get(doc_id, 0.0)
+
+        articles.sort(key=lambda x: x['APPENDIX'][APPENDIX_VECTOR_SCORE], reverse=True)
+
+        return articles, len(raw)
+
+    def _perform_search_logic(self, params: Dict[str, Any], subsystem_name: Optional[str] = None) -> Dict[str, Any]:
+        mode = params['search_mode']
+        if mode.startswith('vector'):
+            results, total = self._do_vector_search(params, subsystem_name)
+        else:
+            results, total = self._do_mongo_search(params, subsystem_name)
+
+        if not results:
+            return {'results': [], 'total': 0}
+        summary_result = exclude_raw_data(results)
+        return {'results': summary_result, 'total': total}
+
+    def _query_api(self, subsystem_name: Optional[str] = None) -> Any:
+        """子系统情报查询接口（具名子系统与默认子系统共用）。"""
+        client_ip = self._get_client_ip()
+        is_logged_in = bool(session.get('logged_in', False))
+        is_public = not is_logged_in
+        path = f'/{subsystem_name}/intelligences/query' if subsystem_name else '/intelligences/query'
+        perf_extra = {
+            'client_ip': client_ip,
+            'is_public': is_public,
+            'path': path,
+        }
+
+        try:
+            params = self._get_combined_params()
+            perf_extra['search_mode'] = params.get('search_mode', 'mongo')
+            perf_extra['page'] = params.get('page', 1)
+            perf_extra['per_page'] = params.get('per_page', 10)
+
+            # 向量检索仅默认子系统可用
+            default_name = self.intelligence_hub.default_subsystem_name
+            if params.get('search_mode', 'mongo').startswith('vector') \
+                    and subsystem_name and subsystem_name != default_name:
+                return jsonify({
+                    'error': '\u5411\u91cf\u68c0\u7d22\u6682\u4ec5\u652f\u6301\u9ed8\u8ba4\u5b50\u7cfb\u7edf\uff0c'
+                             '\u8bf7\u4f7f\u7528\u666e\u901a\u641c\u7d22\u3002'
+                }), 400
+
+            if is_public:
+                limit_err = self._apply_public_search_limits(params, client_ip)
+                if limit_err:
+                    self._perf_logger.record(
+                        'search_query_rejected',
+                        status='rejected',
+                        error=limit_err,
+                        extra=perf_extra,
+                    )
+                    return jsonify({'error': limit_err}), 429
+
+            sem_acquired = False
+            if is_public and params['search_mode'].startswith('vector'):
+                if not self._vector_search_concurrency.acquire(timeout=0):
+                    self._perf_logger.record(
+                        'search_query_rejected',
+                        status='rejected',
+                        error='Too many concurrent vector searches, please retry later.',
+                        extra=perf_extra,
+                    )
+                    return jsonify({
+                        'error': '\u670d\u52a1\u5668\u5f53\u524d\u5411\u91cf\u641c\u7d22\u538b\u529b\u8fc7\u5927\uff0c'
+                                 '\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002',
+                        'retry_after': 5,
+                    }), 503
+                sem_acquired = True
+
+            try:
+                with self._perf_logger.timed('search_query', **perf_extra):
+                    data = self._perform_search_logic(params, subsystem_name)
+
+                perf_extra['result_count'] = len(data.get('results', []))
+                perf_extra['total'] = data.get('total', 0)
+                return jsonify(data)
+
+            finally:
+                if sem_acquired:
+                    self._vector_search_concurrency.release()
+
+        except Exception as e:
+            logger.exception("intelligences_query_api error")
+            self._perf_logger.record(
+                'search_query',
+                status='error',
+                error=str(e),
+                extra=perf_extra,
+            )
+            return jsonify({'error': str(e)}), 500
+
+    def _build_subsystem_blueprint(self, ctx, url_prefix: str = '') -> Blueprint:
+        """为单个子系统注册带 URL 前缀的页面/接口路由。"""
+        bp = Blueprint(f'sub_{ctx.name}', __name__)
+        subsystem_name = ctx.name
+        base_path = url_prefix or ''
+        is_default = ctx.is_default
+
+        @bp.route('/intelligences', methods=['GET'])
+        def intelligences_view():
+            return render_template(
+                'intelligence_list.html',
+                base_path=base_path,
+                subsystem_name=subsystem_name,
+                vector_enabled=is_default,
+            )
+
+        @bp.route('/intelligences/search', methods=['GET'])
+        def intelligences_search_page():
+            is_public = not session.get('logged_in', False)
+            return render_template(
+                'intelligence_search.html',
+                public_mode=is_public,
+                public_limits=self.public_search_limits if is_public else {},
+                base_path=base_path,
+                subsystem_name=subsystem_name,
+                vector_enabled=is_default,
+            )
+
+        @bp.route('/intelligences/query', methods=['GET', 'POST'])
+        def intelligences_query_api():
+            return self._query_api(subsystem_name)
+
+        @bp.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
+        def intelligence_viewer_api(intelligence_uuid: str):
+            return render_template(
+                'intelligence_detail.html',
+                uuid=intelligence_uuid,
+                base_path=base_path,
+                subsystem_name=subsystem_name,
+                vector_enabled=is_default,
+            )
+
+        @bp.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
+        def intelligence_viewer_json(intelligence_uuid: str):
+            try:
+                intelligence = self.intelligence_hub.get_intelligence(
+                    intelligence_uuid, subsystem=subsystem_name)
+                if not intelligence:
+                    return jsonify({"error": "Intelligence not found"}), 404
+                return jsonify({"success": True, "data": intelligence}), 200
+            except Exception as e:
+                print(str(e))
+                traceback.print_exc()
+                return jsonify({"error": "Server error"}), 500
+
+        @bp.route('/prompt', methods=['GET'])
+        def subsystem_prompt():
+            version = request.args.get('version')
+            try:
+                prompt_text = self.intelligence_hub.get_prompt(
+                    subsystem_name, int(version) if version else None)
+            except Exception:
+                prompt_text = "[Prompt] Not configured."
+            resp = Response(prompt_text, content_type="text/plain; charset=utf-8")
+            return resp
+
+        @bp.route('/dry_run', methods=['POST'])
+        def subsystem_dry_run():
+            """动态注入 prompt + 样例数据做一次真实分析，不入队、不入库。"""
+            try:
+                body = request.get_json(silent=True) or {}
+                data = body.get('data')
+                if not isinstance(data, dict):
+                    return jsonify({'error': 'data (dict) is required in JSON body.'}), 400
+                result = self.intelligence_hub.dry_run_analyze(
+                    subsystem_name, prompt=body.get('prompt'), data=data)
+                return jsonify(result)
+            except Exception as e:
+                logger.exception("dry_run error")
+                return jsonify({'error': str(e)}), 500
+
+        return bp
 
     # ---------------------------------------------------- Routers -----------------------------------------------------
 
@@ -426,6 +816,16 @@ class IntelligenceHubWebService:
             resp.headers["X-Prompt-Version-Normalized"] = str(version_digit)
             return resp
 
+        @app.get('/api/subsystems')
+        def api_subsystems():
+            """返回子系统注册表，供前端导航/切换使用。"""
+            if self.subsystem_registry is None:
+                return jsonify({"subsystems": [], "default": None})
+            return jsonify({
+                "subsystems": self.subsystem_registry.describe(),
+                "default": self.subsystem_registry.default_name,
+            })
+
         @app.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_json(intelligence_uuid: str):
             try:
@@ -448,8 +848,10 @@ class IntelligenceHubWebService:
                 data = request.get_json()
                 _uuid = data.get('uuid')
                 ratings = data.get('ratings')
+                subsystem = data.get('subsystem')
 
-                self.intelligence_hub.submit_intelligence_manual_rating(_uuid, ratings)
+                self.intelligence_hub.submit_intelligence_manual_rating(
+                    _uuid, ratings, subsystem=subsystem)
 
                 return jsonify({'status': 'success', 'message': 'Ratings saved'})
             except Exception as e:
@@ -1640,6 +2042,24 @@ class IntelligenceHubWebService:
                     'message': 'File not found'
                 }), 404
 
+        # ---------------------------------------------------- Subsystem Blueprints ----------------------------------------------------
+
+        # 具名子系统注册到各自 URL 前缀；默认子系统额外挂载具名前缀（如 /news），
+        # 根路径仍由上方原有路由提供，保证向前兼容。
+        if self.subsystem_registry is not None:
+            registered_prefixes = set()
+            for ctx in self.subsystem_registry.enabled_subsystems():
+                prefix = ctx.url_prefix or f'/{ctx.name}'
+                if ctx.is_default:
+                    prefix = f'/{ctx.name}'
+                if not prefix or prefix in registered_prefixes:
+                    logger.warning(f"Subsystem '{ctx.name}': url_prefix '{prefix}' conflicts, skip.")
+                    continue
+                registered_prefixes.add(prefix)
+                bp = self._build_subsystem_blueprint(ctx, url_prefix=prefix)
+                app.register_blueprint(bp, url_prefix=prefix, name=f'sub_{ctx.name}')
+                logger.info(f"Subsystem '{ctx.name}' web routes registered at prefix '{prefix}'.")
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def handle_error(self, error: str):
@@ -1718,4 +2138,3 @@ class IntelligenceHubWebService:
     def dump_request_connection_periodically(self):
         self.request_tracer.dump_long_running_requests()
         threading.Timer(30.0, self.dump_request_connection_periodically).start()
-

@@ -110,9 +110,9 @@ window.ArticleDetailRenderer = {
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
                         ${informant ? `<a href="${informant}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-link-45deg"></i> Source</a>` : ''}
-                        <a href="/intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6" class="btn btn-outline-primary btn-sm">
+                        ${window.IIS_VECTOR_ENABLED === false ? '' : `<a href="${window.IIS_BASE_PATH || ''}/intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-intersect"></i> Find Similar
-                        </a>
+                        </a>`}
                     </div>
                 </div>
             </section>
@@ -170,12 +170,13 @@ window.ArticleDetailRenderer = {
             });
 
             try {
-                const r = await fetch('/manual_rate', {
+                const r = await fetch((window.IIS_BASE_PATH || '') + '/manual_rate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         uuid: uuid,
                         ratings: ratings,
+                        subsystem: window.IIS_SUBSYSTEM || '',
                         timestamp: new Date().toISOString()
                     })
                 });

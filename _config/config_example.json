@@ -2,6 +2,29 @@
   "intelligence_hub": {
     "ai_analysis_thread": 1,
 
+    "subsystems": {
+      "default": "news",
+      "list": [
+        {
+          "name": "news",
+          "display_name": "国际新闻",
+          "enabled": true
+        },
+        {
+          "name": "finance",
+          "display_name": "财经情报",
+          "enabled": true,
+          "config_file": "_config/subsystems/finance.json"
+        },
+        {
+          "name": "industry",
+          "display_name": "行业情报",
+          "enabled": false,
+          "config_file": "_config/subsystems/industry.json"
+        }
+      ]
+    },
+
     "mongodb": {
       "host": "localhost",
       "port": 27017,
@@ -90,6 +113,8 @@
 
   "collector": {
     "submit_ihub_url": "http://127.0.0.1:5000",
+
+    "subsystem": "",
 
     "cn_site_proxy": {
     },

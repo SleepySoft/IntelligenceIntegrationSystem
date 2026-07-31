@@ -37,7 +37,8 @@ def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> Cra
     submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
     collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
     token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
-    crawl_context = CrawlContext(name, submit_ihub_url, token, governor)
+    subsystem = config.get('collector.subsystem')
+    crawl_context = CrawlContext(name, submit_ihub_url, token, governor, subsystem=subsystem)
     return crawl_context
 
 
