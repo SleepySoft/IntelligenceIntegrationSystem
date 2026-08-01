@@ -1605,7 +1605,7 @@ class IntelligenceHubWebService:
         def api_sources():
             """获取所有数据源域名列表及文章数量。"""
             try:
-                engine = self.intelligence_hub.archive_db_query_engine
+                engine = self.intelligence_hub.default_subsystem.archive_query_engine
                 domains = engine.get_source_domains(limit=500)
                 return jsonify({"domains": domains})
             except Exception as e:
@@ -1984,7 +1984,7 @@ class IntelligenceHubWebService:
                 if target in ['archive', 'all']:
                     time_field = f"APPENDIX.{APPENDIX_TIME_ARCHIVED}"
                     run_export(
-                        db_instance=self.intelligence_hub.mongo_db_archive,
+                        db_instance=self.intelligence_hub.default_subsystem.mongo_db_archive,
                         sub_dir='mongo_db_archive',
                         time_field=time_field,
                         prefix='intelligence_archived'
@@ -1994,7 +1994,7 @@ class IntelligenceHubWebService:
                 if target in ['cache', 'all']:
                     cache_time_field = '__TIME_GOT__'
                     run_export(
-                        db_instance=self.intelligence_hub.mongo_db_cache,
+                        db_instance=self.intelligence_hub.default_subsystem.mongo_db_cache,
                         sub_dir='mongo_db_cache',
                         time_field=cache_time_field,
                         prefix='intelligence_cache'

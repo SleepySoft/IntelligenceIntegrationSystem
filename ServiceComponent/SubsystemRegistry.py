@@ -187,39 +187,6 @@ class SubsystemRegistry:
     # ------------------------------------------------------------- Build
 
     @classmethod
-    def build_from_storages(
-            cls,
-            *,
-            default_name: str = 'news',
-            db_cache: Optional[MongoDBStorage] = None,
-            db_archive: Optional[MongoDBStorage] = None,
-            db_low_value: Optional[MongoDBStorage] = None,
-            db_recommendation: Optional[MongoDBStorage] = None,
-            prompt_table: Optional[Dict[int, str]] = None,
-    ) -> 'SubsystemRegistry':
-        """
-        兼容旧入口：由 IntelligenceHub 直接传入的四个 MongoDBStorage 构造单一默认子系统，
-        保持重构前行为完全不变。
-        """
-        registry = cls(default_name=default_name)
-        ctx = SubsystemContext(
-            name=default_name,
-            display_name=default_name,
-            is_default=True,
-            collection_prefix=LEGACY_COLLECTION_PREFIX,
-            mongo_db_cache=db_cache,
-            mongo_db_archive=db_archive,
-            mongo_db_low_value=db_low_value,
-            mongo_db_recommendation=db_recommendation,
-            prompt_table=dict(prompt_table) if prompt_table else dict(ANALYSIS_PROMPT_TABLE),
-        )
-        ctx.cache_query_engine = IntelligenceQueryEngine(db_cache)
-        ctx.archive_query_engine = IntelligenceQueryEngine(db_archive)
-        ctx.statistics_engine = IntelligenceStatisticsEngine(db_archive)
-        registry.add(ctx)
-        return registry
-
-    @classmethod
     def build_from_config(
             cls,
             config,
@@ -241,9 +208,14 @@ class SubsystemRegistry:
         if not entries:
             entries = [{'name': default_name, 'display_name': default_name}]
 
-        # 保证默认子系统一定在列表中
-        if not any(str(e.get('name') or '').strip() == default_name for e in entries):
+        # 保证默认子系统一定在列表中且启用（根路径/未具名数据必须有一个归属）
+        default_entry = next(
+            (e for e in entries if str(e.get('name') or '').strip() == default_name), None)
+        if default_entry is None:
             entries.insert(0, {'name': default_name, 'display_name': default_name})
+        elif not default_entry.get('enabled', True):
+            logger.warning(f"Default subsystem '{default_name}' disabled by config, force enabled.")
+            default_entry['enabled'] = True
 
         registry = cls(default_name=default_name)
 
@@ -331,9 +303,6 @@ class SubsystemRegistry:
                 f"Subsystem '{name}' ready: collections={ctx.collection_prefix}*, "
                 f"url_prefix='{url_prefix}', prompts={sorted(ctx.prompt_table)}")
 
-        if registry.default() is None:
-            logger.warning(f"Default subsystem '{default_name}' not built, fallback to legacy single subsystem.")
-            return cls.build_from_storages(default_name=default_name)
         return registry
 
     @staticmethod

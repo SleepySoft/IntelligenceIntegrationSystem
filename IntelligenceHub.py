@@ -14,8 +14,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from GlobalConfig import EXPORT_PATH, DATA_PATH
 from ServiceComponent.DynamicGraphEngine import DynamicGraphEngine
-from prompts_v2x import ANALYSIS_PROMPT_TABLE
-from Tools.MongoDBAccess import MongoDBStorage
 from VectorDB.VectorDBClient import VectorDBClient
 from ServiceComponent.IntelligenceHubDefines_v2 import *
 from MyPythonUtility.DictTools import check_sanitize_dict, DictPrinter
@@ -62,23 +60,16 @@ class IntelligenceHub:
     def __init__(self, *,
                  ref_url: str = 'http://locohost:8080',
                  vector_db_client: Optional[VectorDBClient] = None,
-                 db_cache: Optional[MongoDBStorage] = None,
-                 db_archive: Optional[MongoDBStorage] = None,
-                 db_low_value: Optional[MongoDBStorage] = None,
-                 db_recommendation: Optional[MongoDBStorage] = None,
                  ai_client_manager: AIClientManager = None,
-                 subsystem_registry: Optional[SubsystemRegistry] = None,
+                 subsystem_registry: SubsystemRegistry,
                  **kwargs):
         """
         Init IntelligenceHub.
         :param ref_url: The reference url for sub-resource url generation.
         :param vector_db_client: Vector DB for text RAG indexing.
-        :param db_cache: The mongodb for caching collected data.
-        :param db_archive: The mongodb for archiving processed data.
-        :param db_low_value: The mongodb for saving low-value data.
-        :param db_recommendation: The mongodb for storing recommendation data.
         :param ai_client_manager: The openai-like client for data processing.
-        :param subsystem_registry: Multi-subsystem registry. None -> single legacy default subsystem.
+        :param subsystem_registry: Multi-subsystem registry (required). 旧配置兼容由
+            IntelligenceHubStartup 负责将其转换为 SubsystemRegistry 后再传入。
         :param kwargs: Extra but not key parameters.
         """
 
@@ -91,30 +82,9 @@ class IntelligenceHub:
 
         # ---------------- Subsystems ----------------
 
-        if subsystem_registry is not None:
-            self.subsystem_registry = subsystem_registry
-        else:
-            # 兼容旧入口：由直接传入的四个 MongoDBStorage 构造单一默认子系统
-            self.subsystem_registry = SubsystemRegistry.build_from_storages(
-                default_name='news',
-                db_cache=db_cache,
-                db_archive=db_archive,
-                db_low_value=db_low_value,
-                db_recommendation=db_recommendation,
-                prompt_table=ANALYSIS_PROMPT_TABLE,
-            )
-
+        self.subsystem_registry = subsystem_registry
         self.default_subsystem = self.subsystem_registry.default()
         self.default_subsystem_name = self.default_subsystem.name if self.default_subsystem else 'news'
-
-        # 向后兼容属性：外部代码（导出、统计等）仍可直接引用 hub.mongo_db_* / *_query_engine
-        self.mongo_db_cache = self.default_subsystem.mongo_db_cache if self.default_subsystem else db_cache
-        self.mongo_db_archive = self.default_subsystem.mongo_db_archive if self.default_subsystem else db_archive
-        self.mongo_db_low_value = self.default_subsystem.mongo_db_low_value if self.default_subsystem else db_low_value
-        self.mongo_db_recommendation = self.default_subsystem.mongo_db_recommendation if self.default_subsystem else db_recommendation
-        self.cache_db_query_engine = self.default_subsystem.cache_query_engine if self.default_subsystem else IntelligenceQueryEngine(db_cache)
-        self.archive_db_query_engine = self.default_subsystem.archive_query_engine if self.default_subsystem else IntelligenceQueryEngine(db_archive)
-        self.archive_db_statistics_engine = self.default_subsystem.statistics_engine if self.default_subsystem else IntelligenceStatisticsEngine(db_archive)
 
         # -------------- Queues Related --------------
 
@@ -136,7 +106,7 @@ class IntelligenceHub:
 
         self.entity_frequency_engine = EntityFrequencyEngine(
             db_path=os.path.join(DATA_PATH, 'entity_frequency.db'),
-            mongo_db_archive=self.mongo_db_archive,
+            mongo_db_archive=self.default_subsystem.mongo_db_archive,
         )
 
         self.vector_db_engine_summary: Optional[IntelligenceVectorDBEngine] = None
@@ -169,8 +139,8 @@ class IntelligenceHub:
         # ------------ Translation Patch ------------
 
         self.async_translation_patch = AsyncTranslationPatch(
-            mongo_db_archive=self.mongo_db_archive,
-            query_engine=self.archive_db_query_engine,
+            mongo_db_archive=self.default_subsystem.mongo_db_archive,
+            query_engine=self.default_subsystem.archive_query_engine,
             ai_client_manager=ai_client_manager,
             shutdown_flag=self.shutdown_flag,
             on_patched=self._index_archived_data,  # 翻译后再触发 vectorize
@@ -1121,8 +1091,8 @@ class IntelligenceHub:
 
     def _init_graph_engine(self):
         self.dynamic_graph_engine = DynamicGraphEngine(
-            mongo_db = self.mongo_db_archive,
-            query_engine = self.archive_db_query_engine,
+            mongo_db = self.default_subsystem.mongo_db_archive,
+            query_engine = self.default_subsystem.archive_query_engine,
             vector_engine = self.vector_db_engine_summary,
             # ai_client = self.ai_client_manager,
             ai_client = None,
@@ -1145,9 +1115,10 @@ class IntelligenceHub:
 
             # 1. 导出 Archive 数据库 (按周)
             # 路径: {EXPORT_PATH}/mongo_db_archive/weekly_2023_W42_timestamp.json
-            if self.mongo_db_archive:
+            default_archive = self.default_subsystem.mongo_db_archive
+            if default_archive:
                 archive_dir = os.path.join(EXPORT_PATH, 'mongo_db_archive')
-                self.mongo_db_archive.export_by_week(
+                default_archive.export_by_week(
                     year=iso_year,
                     week=iso_week,
                     directory=archive_dir,
@@ -1157,10 +1128,11 @@ class IntelligenceHub:
 
             # 2. 导出 Cache 数据库 (按周)
             # 路径: {EXPORT_PATH}/mongo_db_cache/weekly_2023_W42_timestamp.json
-            if self.mongo_db_cache:
+            default_cache = self.default_subsystem.mongo_db_cache
+            if default_cache:
                 cache_dir = os.path.join(EXPORT_PATH, 'mongo_db_cache')
                 # Cache 通常使用 created_at 或 timestamp
-                self.mongo_db_cache.export_by_week(
+                default_cache.export_by_week(
                     year=iso_year,
                     week=iso_week,
                     directory=cache_dir,
@@ -1191,9 +1163,10 @@ class IntelligenceHub:
             logger.info(f"Targeting export for Year: {target_year}, Month: {target_month}")
 
             # 1. 导出 Archive 数据库 (按月)
-            if self.mongo_db_archive:
+            default_archive = self.default_subsystem.mongo_db_archive
+            if default_archive:
                 archive_dir = os.path.join(EXPORT_PATH, 'mongo_db_archive')
-                self.mongo_db_archive.export_by_month(
+                default_archive.export_by_month(
                     year=target_year,
                     month=target_month,
                     directory=archive_dir,
@@ -1202,9 +1175,10 @@ class IntelligenceHub:
                 )
 
             # 2. 导出 Cache 数据库 (按月)
-            if self.mongo_db_cache:
+            default_cache = self.default_subsystem.mongo_db_cache
+            if default_cache:
                 cache_dir = os.path.join(EXPORT_PATH, 'mongo_db_cache')
-                self.mongo_db_cache.export_by_month(
+                default_cache.export_by_month(
                     year=target_year,
                     month=target_month,
                     directory=cache_dir,
@@ -1231,7 +1205,7 @@ class IntelligenceHub:
             window_sec = 24 * 3600
 
             # 1. 委托 QueryEngine 发现最新时间
-            latest_ts = self.archive_db_query_engine.get_latest_archive_timestamp()
+            latest_ts = self.default_subsystem.archive_query_engine.get_latest_archive_timestamp()
 
             # 2. 判断是否需要回退时间窗口 (兼容老旧测试数据)
             if latest_ts:
@@ -1327,13 +1301,13 @@ class IntelligenceHub:
         return duplicated
 
     def _check_duplication_in_unprocess_data(self, data: dict, query_engine: IntelligenceQueryEngine = None):
-        query_engine = query_engine or self.cache_db_query_engine
+        query_engine = query_engine or self.default_subsystem.cache_query_engine
         return (self._check_duplication_in_queue(data, 'informant', self.original_queue) or
                 self._check_duplication_in_queue(data, 'informant', self.unarchived_queue) or
                 self._check_duplication_in_db(data, 'informant', query_engine))
 
     def _check_duplication_in_processed_data(self, data: dict, query_engine: IntelligenceQueryEngine = None):
-        query_engine = query_engine or self.archive_db_query_engine
+        query_engine = query_engine or self.default_subsystem.archive_query_engine
         return (self._check_duplication_in_db(data, 'INFORMANT', query_engine) or
                 self._check_duplication_in_queue(data, 'INFORMANT', self.processed_queue))
 

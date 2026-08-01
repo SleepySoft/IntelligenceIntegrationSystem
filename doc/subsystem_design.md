@@ -14,7 +14,7 @@
 | 4 | 配置分离 | 入口与公共配置在 `config.json`，子系统详细配置（prompt、集合前缀、URL）独立文件 |
 | 5 | Blueprint 前缀 | Web 层用 Flask Blueprint 按子系统注册不同前缀路径 |
 | 6 | Hub 拆资源、流程不变 | 子系统资源收敛到 `SubsystemContext`，队列/线程框架不变 |
-| 7 | 向前兼容 | 无 `subsystems` 配置时退化为单一默认子系统，行为与重构前一致 |
+| 7 | 向前兼容 | 旧配置兼容只在 `IntelligenceHubStartup` 完成（旧配置 → `SubsystemRegistry`）；`IntelligenceHub` 及以下组件全部只使用新机制 |
 | 8 | 采集简单兼容 | `CollectedData.subsystem` 透传；子项目（submodule）不动 |
 
 补充决策：
