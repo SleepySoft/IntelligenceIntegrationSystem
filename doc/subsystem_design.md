@@ -94,9 +94,53 @@
 ### 3.3 采集侧
 
 `CollectedData` 新增 `subsystem` 字段（默认空 = 走默认子系统）。
-`CrawlContext` 支持 `subsystem` 参数；可通过全局配置 `collector.subsystem`
-或任务内 `crawl_context.subsystem = 'finance'` 指定送达目标。
+`CrawlContext` 支持 `subsystem` 参数；归属由采集器配置解析，任务代码无需改动。
 未知子系统名会被 `/collect` 拒绝。
+
+## 3.4 采集器独立配置（_config/collector.json）
+
+config.json 只属于 IIS 服务；采集器使用自己的配置：
+
+```jsonc
+{
+  "collector": {
+    "name": "main",
+    "submit_ihub_url": "http://127.0.0.1:5000",
+    "default_token": "<IIS collector.tokens 中的某一个>",
+    "default_subsystem": "news",
+    "global_site_proxy": { "http": "...", "https": "..." },
+    "cn_site_proxy": {},
+    "task_dirs": {
+      "news": "CrawlTasks/news",
+      "finance": "CrawlTasks/finance"
+    }
+  }
+}
+```
+
+- 键名沿用旧的 `collector.*` 命名（`submit_ihub_url`、`global_site_proxy` 等），
+  现有任务里 `config.get('collector.global_site_proxy')` 的写法无需改动；
+- token 从 `intelligence_hub_web_service.collector.tokens[0]` 改为 `collector.default_token`；
+- `task_dirs` 是"子系统 -> 目录"映射，即"某个目录下的 collector 属于哪个子系统"；
+  目录支持绝对路径或相对项目根/`_config` 的路径，便于采集器拆分为独立仓库后按需 clone；
+- 加载优先级：`--config` 参数 / `IIS_COLLECTOR_CONFIG` 环境变量 /
+  `_config/collector.json` / `_config/collector_example.json` /
+  （迁移期）旧 config.json 的 collector 段（打警告）。
+
+### 3.5 CrawlTasks 按目录管理
+
+```
+CrawlTasks/
+  news/        # 国际新闻采集任务（task_crawl_*.py + crawler_config_*.py）
+  finance/     # 财经采集任务（未来独立仓库，只 clone 这里）
+  industry/
+```
+
+- `TaskManager` 递归扫描 `task_dirs` 中的每个目录，并按"文件所在目录 -> 子系统"归属；
+- 显式映射优先于目录约定：`task_dirs` 未覆盖的任务回退到 `default_subsystem`；
+- 插件加载时把任务文件所在目录加入 `sys.path`，`crawler_config_*` 同目录导入可直接工作；
+- 启动时拉取 IIS `GET /api/subsystems` 做对齐校验：配置的子系统名不在 IIS 名单中会告警
+  （`/collect` 会拒绝未知子系统作为兜底）。
 
 ## 4. Web 路由
 

@@ -111,22 +111,6 @@
     "heartbeat_grace_sec": 120
   },
 
-  "collector": {
-    "submit_ihub_url": "http://127.0.0.1:5000",
-
-    "subsystem": "",
-
-    "cn_site_proxy": {
-    },
-
-    "global_site_proxy": {
-      "http": "http://127.0.0.1:10809",
-      "https": "http://127.0.0.1:10809"
-    },
-
-    "default_token": "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
-  },
-
   "processor": {
     "default_token": "dd698933-2824-4181-8d50-af4a5f385864"
   }
