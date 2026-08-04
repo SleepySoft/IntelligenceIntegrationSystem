@@ -660,21 +660,6 @@ class IntelligenceHubWebService:
             resp = Response(prompt_text, content_type="text/plain; charset=utf-8")
             return resp
 
-        @bp.route('/dry_run', methods=['POST'])
-        def subsystem_dry_run():
-            """动态注入 prompt + 样例数据做一次真实分析，不入队、不入库。"""
-            try:
-                body = request.get_json(silent=True) or {}
-                data = body.get('data')
-                if not isinstance(data, dict):
-                    return jsonify({'error': 'data (dict) is required in JSON body.'}), 400
-                result = self.intelligence_hub.dry_run_analyze(
-                    subsystem_name, prompt=body.get('prompt'), data=data)
-                return jsonify(result)
-            except Exception as e:
-                logger.exception("dry_run error")
-                return jsonify({'error': str(e)}), 500
-
         return bp
 
     # ---------------------------------------------------- Routers -----------------------------------------------------

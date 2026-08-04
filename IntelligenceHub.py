@@ -575,38 +575,6 @@ class IntelligenceHub:
         version = max(ctx.prompt_table.keys())
         return ctx.prompt_table[version]
 
-    def dry_run_analyze(self,
-                        subsystem: Optional[str] = None,
-                        prompt: Optional[str] = None,
-                        data: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        动态注入 prompt + 样例数据做一次真实 AI 分析，不入队、不入库。
-        返回原始结果、统一 schema 校验结果与所用 prompt。
-        """
-        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
-        if data is None:
-            return {'error': 'data is required.'}
-        if not isinstance(data, dict):
-            return {'error': 'data must be a dict.'}
-
-        self.subsystem_registry.refresh_prompts(ctx)
-        if not prompt:
-            prompt = self.get_prompt(ctx.name)
-
-        result = self.__robust_analyze_with_ai(data, worker_index=-1, subsystem_name=ctx.name,
-                                               prompt_override=prompt)
-        if result is None or 'error' in result:
-            return {'error': result.get('error', 'AI analysis failed.') if isinstance(result, dict) else 'AI analysis failed.'}
-
-        validated_data, error_text = check_sanitize_dict(dict(result), ArchivedData)
-        return {
-            'subsystem': ctx.name,
-            'prompt_used': prompt,
-            'result': result,
-            'validated': validated_data,
-            'validation_error': error_text or None,
-        }
-
     # ---------------------------------------------------- Updates -----------------------------------------------------
 
     def submit_intelligence_manual_rating(self, _uuid: str, rating: dict, subsystem: Optional[str] = None):

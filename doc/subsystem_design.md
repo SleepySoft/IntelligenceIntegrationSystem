@@ -88,8 +88,9 @@
 
 - prompt 文件版本号：优先取文件名中的 `_vNN`，否则按列表顺序 1..N；
   修改文件后 5 秒内自动热重载（mtime 检测）。
-- 默认子系统未配置 prompt 文件时沿用 `prompts_v2x.py` 的版本表；
-  新子系统未配置时临时沿用默认表并打警告。
+- 未配置 `prompt_files` 时按约定目录自动发现 `_config/subsystems/{name}/prompt_v*.md`；
+  默认子系统仍未找到时沿用 `prompts_v2x.py` 的版本表，
+  新子系统仍未找到时临时沿用默认表并打警告。
 
 ### 3.3 采集侧
 
@@ -142,6 +143,20 @@ CrawlTasks/
 - 启动时拉取 IIS `GET /api/subsystems` 做对齐校验：配置的子系统名不在 IIS 名单中会告警
   （`/collect` 会拒绝未知子系统作为兜底）。
 
+### 3.6 内置 dry_run 测试子系统
+
+`dry_run` 子系统始终自动登记（除非在 `subsystems.list` 中显式配置禁用），用于测试
+prompt 与采集/分析链路：
+
+- 测试数据走**统一的 `/collect` 提交流程**（沿用 collector token 鉴权，无法被匿名滥用），
+  提交时指定 `subsystem='dry_run'` 即可，与正式数据完全同构（同一套队列/分析线程）；
+- 结果归档到独立的 `dry_run_intelligence_*` 集合，通过 `/dry_run/intelligences` 等
+  具名页面查看；不污染正式数据；
+- prompt 文件：`_config/subsystems/dry_run/prompt_v*.md`（初始为 `prompts_v2x.py`
+  最新版的拷贝），支持 mtime 热重载，改文件即可迭代 prompt；
+- 不向量化、不翻译（非默认子系统统一行为）；复位测试环境直接清空
+  `dry_run_intelligence_*` 集合即可。
+
 ## 4. Web 路由
 
 | 路径 | 说明 |
@@ -149,8 +164,7 @@ CrawlTasks/
 | `/intelligences`、`/intelligences/search`、`/intelligences/query`、`/intelligence/<uuid>`、`/api/intelligence/<uuid>` | 默认子系统（根路径，历史兼容） |
 | `/news/...` | 默认子系统的具名路径（内容与根路径一致） |
 | `/finance/...` | finance 子系统的同构页面/接口 |
-| `/{name}/prompt?version=` | 查看子系统当前 prompt |
-| `/{name}/dry_run` | POST `{"prompt": "...", "data": {...}}`，真实 AI 分析 + 统一 schema 校验，不入队不入库 |
+| `/{name}/prompt?version=` | 查看子系统当前 prompt（开放，无需鉴权） |
 | `/api/subsystems` | 子系统注册表（名称、显示名、前缀、是否默认） |
 | `/collect`、`/login`、`/api`（RPC）、统计/导出/图谱等管理页 | 全局路由，保持原路径 |
 

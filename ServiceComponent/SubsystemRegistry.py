@@ -45,6 +45,11 @@ COLLECTION_SUFFIXES = ('cached', 'archived', 'low_value', 'recommendation')
 # 默认（news）子系统沿用历史 collection 前缀，保证向前兼容
 LEGACY_COLLECTION_PREFIX = 'intelligence_'
 
+# 内置测试子系统名：未显式配置时自动登记。测试数据经统一 /collect 流程进入
+# （沿用 collector token 鉴权），归档到独立集合（dry_run_intelligence_*），
+# 与正式数据完全隔离，可直接清空集合复位。
+DRY_RUN_SUBSYSTEM_NAME = 'dry_run'
+
 _PROMPT_VERSION_RE = re.compile(r'_v(\d+)', re.IGNORECASE)
 
 
@@ -62,6 +67,20 @@ def _resolve_path(path: str, config_root: Optional[str] = None) -> str:
         if os.path.exists(candidate):
             return candidate
     return candidates[0]
+
+
+def _discover_prompt_files(name: str) -> List[str]:
+    """约定目录自动发现 prompt 文件：_config/subsystems/{name}/prompt_v*.md（按版本号排序）。"""
+    prompt_dir = os.path.join(CONFIG_PATH, 'subsystems', name)
+    if not os.path.isdir(prompt_dir):
+        return []
+    found = []
+    for fname in os.listdir(prompt_dir):
+        match = _PROMPT_VERSION_RE.search(fname)
+        if match and fname.lower().endswith('.md'):
+            found.append((int(match.group(1)), os.path.join(prompt_dir, fname)))
+    found.sort(key=lambda item: item[0])
+    return [path for _, path in found]
 
 
 def _load_prompt_table(prompt_files: List[str]) -> Dict[int, str]:
@@ -217,6 +236,10 @@ class SubsystemRegistry:
             logger.warning(f"Default subsystem '{default_name}' disabled by config, force enabled.")
             default_entry['enabled'] = True
 
+        # 内置 dry_run 测试子系统：未显式配置时自动登记（显式配置可覆盖/禁用）
+        if not any(str(e.get('name') or '').strip() == DRY_RUN_SUBSYSTEM_NAME for e in entries):
+            entries.append({'name': DRY_RUN_SUBSYSTEM_NAME, 'display_name': '干跑测试'})
+
         registry = cls(default_name=default_name)
 
         for entry in entries:
@@ -235,9 +258,12 @@ class SubsystemRegistry:
                 or (LEGACY_COLLECTION_PREFIX if is_default else f"{name}_intelligence_"))
             url_prefix = str(detail.get('url_prefix') or ('' if is_default else f"/{name}")).strip()
 
-            prompt_files = []
-            for prompt_file in (detail.get('prompt_files') or []):
-                prompt_files.append(_resolve_path(str(prompt_file), config_root))
+            configured_prompt_files = detail.get('prompt_files') or []
+            if configured_prompt_files:
+                prompt_files = [_resolve_path(str(pf), config_root) for pf in configured_prompt_files]
+            else:
+                # 未配置时按约定目录自动发现 _config/subsystems/{name}/prompt_v*.md
+                prompt_files = _discover_prompt_files(name)
 
             ctx = SubsystemContext(
                 name=name,
