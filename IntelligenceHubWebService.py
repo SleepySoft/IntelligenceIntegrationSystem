@@ -622,6 +622,8 @@ class IntelligenceHubWebService:
                 base_path=base_path,
                 subsystem_name=subsystem_name,
                 vector_enabled=is_default,
+                ui_plugin_enabled=ctx.ui_plugin_enabled,
+                plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
 
         @bp.route('/intelligences/query', methods=['GET', 'POST'])
