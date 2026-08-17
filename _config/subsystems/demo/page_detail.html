@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Demo ??</title>
+</head>
+<body>
+<h1>Demo Subsystem Detail (?????)</h1>
+<div id="detail-root">Loading...</div>
+<script>
+(function () {
+  const path = window.location.pathname;
+  function getUuid() {
+    const m = path.match(/\/intelligence\/([^/?#]+)/);
+    return m ? m[1] : '';
+  }
+  const uuid = getUuid();
+  if (!uuid) { document.getElementById('detail-root').textContent = 'No uuid'; return; }
+  const apiBase = (window.IIS_BASE_PATH || '') + '/api/intelligence/' + uuid;
+  fetch(apiBase).then(r => r.json()).then(payload => {
+    const doc = payload && payload.data ? payload.data : payload;
+    const el = document.getElementById('detail-root');
+    const DEMO_TAG = (doc.APPENDIX && (doc.APPENDIX.DEMO_TAG || [])) || [];
+    el.innerHTML = '<h2>' + (doc.EVENT_TITLE || 'No Title') + '</h2>'
+      + '<p>' + (doc.EVENT_BRIEF || '') + '</p>'
+      + (DEMO_TAG.length ? '<p><b>Demo Tags:</b> ' + DEMO_TAG.join(', ') + '</p>' : '')
+      + '<hr><div>' + (doc.EVENT_TEXT || '') + '</div>';
+  }).catch(e => {
+    document.getElementById('detail-root').textContent = 'Load failed: ' + e.message;
+  });
+})();
+</script>
+</body>
+</html>

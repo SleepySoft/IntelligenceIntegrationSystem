@@ -13,7 +13,7 @@ from functools import wraps
 from typing import List, Tuple, Any, Dict, Optional
 from dateutil import parser as date_parser
 from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
-    make_response, Response
+    make_response, Response, send_from_directory
 
 from GlobalConfig import *
 from MyPythonUtility.DictTools import DictPrinter
@@ -608,6 +608,8 @@ class IntelligenceHubWebService:
                 base_path=base_path,
                 subsystem_name=subsystem_name,
                 vector_enabled=is_default,
+                ui_plugin_enabled=ctx.ui_plugin_enabled,
+                plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
 
         @bp.route('/intelligences/search', methods=['GET'])
@@ -634,6 +636,8 @@ class IntelligenceHubWebService:
                 base_path=base_path,
                 subsystem_name=subsystem_name,
                 vector_enabled=is_default,
+                ui_plugin_enabled=ctx.ui_plugin_enabled,
+                plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
 
         @bp.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
@@ -648,6 +652,26 @@ class IntelligenceHubWebService:
                 print(str(e))
                 traceback.print_exc()
                 return jsonify({"error": "Server error"}), 500
+
+        @bp.route('/assets/<path:filename>', methods=['GET'])
+        def subsystem_assets(filename: str):
+            """??????????????ui_plugin.js?assets/*?????????"""
+            if not ctx.config_dir or not os.path.isdir(ctx.config_dir):
+                return abort(404)
+            try:
+                return send_from_directory(ctx.config_dir, filename)
+            except (FileNotFoundError, PermissionError):
+                return abort(404)
+
+        @bp.route('/page_detail', methods=['GET'])
+        def subsystem_detail_page():
+            """???????????? HTML?????? 404?"""
+            if not ctx.config_dir:
+                return abort(404)
+            page = os.path.join(ctx.config_dir, 'page_detail.html')
+            if not os.path.isfile(page):
+                return abort(404)
+            return send_file(page)
 
         @bp.route('/prompt', methods=['GET'])
         def subsystem_prompt():

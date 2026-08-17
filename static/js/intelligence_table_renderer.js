@@ -79,6 +79,18 @@ class ArticleRenderer {
     generateArticleCardHtml(article) {
         if (!article) return '';
 
+        // 先问插件：有整卡/块覆盖则由协议处理，否则回退后面的默认实现
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers ? window.SubsystemUI.makeHelpers(this, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '') : {
+                base: window.IIS_BASE_PATH || '',
+                subsystem: window.IIS_SUBSYSTEM || '',
+            };
+            const built = window.SubsystemUI.buildCard(plugin, article, this, helpers);
+            if (built && built.html) return built.html;
+        }
+
+
         // 1. 获取 Appendix (防止 undefined)
         const appendix = article.APPENDIX || {};
 

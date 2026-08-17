@@ -79,6 +79,16 @@ window.ArticleDetailRenderer = {
 
     // 统一生成 HTML 结构
     generateHTML: function(article) {
+        // 先问插件：有整详情则由协议处理，否则回退默认实现
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers
+                ? window.SubsystemUI.makeHelpers(this, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
+                : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
+            const built = window.SubsystemUI.buildDetail(plugin, article, this, helpers);
+            if (built && built.html) return built.html;
+        }
+
         const uuid = this.escapeHTML(article?.UUID || '');
         const informant = article?.INFORMANT ? this.escapeHTML(article.INFORMANT) : '';
         const pubTime = this.anyTimeToTimeStr(article?.PUB_TIME || 'N/A');

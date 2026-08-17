@@ -83,7 +83,44 @@ def _discover_prompt_files(name: str) -> List[str]:
     return [path for _, path in found]
 
 
+
+def _resolve_subsystem_dir(name: str) -> Optional[str]:
+    """??????????_config/subsystems/{name}???????????? None?"""
+    for base in (CONFIG_PATH, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '_config')):
+        candidate = os.path.join(base, 'subsystems', name)
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def _discover_plugin_files(config_dir) -> List[str]:
+    """在子系统配置目录中发现 UI 插件主入口：ui_plugin.js。
+    其他资源（assets/*.css 等）应由 ui_plugin.js 随需引入，不作为页面自动加载的主入口。"""
+    if not config_dir or not os.path.isdir(config_dir):
+        return []
+    entry = os.path.join(config_dir, 'ui_plugin.js')
+    if os.path.isfile(entry):
+        return [entry]
+    return []
+
+def _load_schema_meta(config_dir: Optional[str]) -> Dict[str, Any]:
+    """????? schema.json??????????? {}?"""
+    if not config_dir:
+        return {}
+    sp = os.path.join(config_dir, 'schema.json')
+    if not os.path.isfile(sp):
+        return {}
+    try:
+        with open(sp, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"Load subsystem schema failed: {sp} ({e})")
+        return {}
+
+
 def _load_prompt_table(prompt_files: List[str]) -> Dict[int, str]:
+
     """从 prompt 文件中加载版本表。版本号优先取文件名中的 _vNN，否则按列表顺序 1..N。"""
     table: Dict[int, str] = {}
     for index, prompt_file in enumerate(prompt_files, start=1):
@@ -128,6 +165,13 @@ class SubsystemContext:
 
     ai_client_group: Optional[str] = None
     scoring_config: Optional[Dict[str, Any]] = None
+
+    # ---------- UI 插件 / schema 元数据（本版仅用于插件加载与验证） ----------
+    config_dir: Optional[str] = None              # 子系统配置目录（已解析的绝对路径）
+    plugin_files: List[str] = field(default_factory=list)   # 插件 JS/CSS 文件（ui_plugin.js 等）
+    ui_plugin_enabled: bool = False              # 是否启用 UI 插件（默认子系统不加载）
+    detail_page: Optional[str] = None           # 自定义详情页 url 模板
+    schema_meta: Dict[str, Any] = field(default_factory=dict)  # schema 元数据（本版不做强制）
 
     # 该子系统的独立计数器（与 Hub 全局计数器并存，互不影响）
     stats: Dict[str, int] = field(
@@ -265,6 +309,13 @@ class SubsystemRegistry:
                 # 未配置时按约定目录自动发现 _config/subsystems/{name}/prompt_v*.md
                 prompt_files = _discover_prompt_files(name)
 
+            # ?????????? UI ?? / schema ???????????????
+            config_dir = _resolve_subsystem_dir(name)
+            plugin_files = _discover_plugin_files(config_dir)
+            ui_plugin_enabled = bool(detail.get('ui_plugin', True)) and bool(plugin_files) and not is_default
+            detail_page = detail.get('detail_page')
+            schema_meta = _load_schema_meta(config_dir)
+
             ctx = SubsystemContext(
                 name=name,
                 display_name=str(detail.get('display_name') or name),
@@ -275,6 +326,11 @@ class SubsystemRegistry:
                 prompt_files=prompt_files,
                 ai_client_group=detail.get('ai_client_group'),
                 scoring_config=detail.get('scoring'),
+                config_dir=config_dir,
+                plugin_files=plugin_files,
+                ui_plugin_enabled=ui_plugin_enabled,
+                detail_page=detail_page,
+                schema_meta=schema_meta,
             )
 
             # -------- 数据库访问实例（每个子系统一套，互不干扰） --------
