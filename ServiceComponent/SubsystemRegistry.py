@@ -312,7 +312,7 @@ class SubsystemRegistry:
             # ?????????? UI ?? / schema ???????????????
             config_dir = _resolve_subsystem_dir(name)
             plugin_files = _discover_plugin_files(config_dir)
-            ui_plugin_enabled = bool(detail.get('ui_plugin', True)) and bool(plugin_files) and not is_default
+            ui_plugin_enabled = bool(detail.get('ui_plugin', True)) and bool(plugin_files)
             detail_page = detail.get('detail_page')
             schema_meta = _load_schema_meta(config_dir)
 

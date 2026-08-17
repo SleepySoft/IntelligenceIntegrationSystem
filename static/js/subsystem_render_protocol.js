@@ -24,6 +24,16 @@
             return;
         }
         plugins[plugin.name] = plugin;
+        // 配色类插件：提供 style 字符串即注入 <style> 标签，不改变卡片结构与行为
+        if (plugin.style && typeof plugin.style === 'string') {
+            let styleTag = document && document.getElementById('subsystem-ui-style-' + plugin.name);
+            if (!styleTag) {
+                styleTag = document.createElement('style');
+                styleTag.id = 'subsystem-ui-style-' + plugin.name;
+                (document.head || document.body).appendChild(styleTag);
+            }
+            styleTag.textContent = plugin.style;
+        }
     }
 
     function getPlugin(name) {

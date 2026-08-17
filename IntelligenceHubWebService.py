@@ -594,6 +594,20 @@ class IntelligenceHubWebService:
             )
             return jsonify({'error': str(e)}), 500
 
+    def _default_subsystem_plugin_params(self) -> Dict[str, Any]:
+        """????????news?? UI ????????????????"""
+        try:
+            ctx = self.intelligence_hub.default_subsystem
+        except Exception:
+            ctx = None
+        if ctx is None or not ctx.ui_plugin_enabled:
+            return {'ui_plugin_enabled': False, 'plugin_asset_prefix': ''}
+        base = ctx.url_prefix or ''
+        return {
+            'ui_plugin_enabled': True,
+            'plugin_asset_prefix': f"{base}/assets" if base else '/assets',
+        }
+
     def _build_subsystem_blueprint(self, ctx, url_prefix: str = '') -> Blueprint:
         """为单个子系统注册带 URL 前缀的页面/接口路由。"""
         bp = Blueprint(f'sub_{ctx.name}', __name__)
@@ -894,9 +908,24 @@ class IntelligenceHubWebService:
         #         logger.error(f'rssfeed_api() error: {str(e)}', stack_info=True)
         #         return 'Error'
 
+        @app.route('/assets/<path:filename>', methods=['GET'])
+        def default_subsystem_assets(filename: str):
+            """????????news?? UI ???????"""
+            try:
+                ctx = self.intelligence_hub.default_subsystem
+            except Exception:
+                ctx = None
+            if ctx is None or not ctx.config_dir or not os.path.isdir(ctx.config_dir):
+                return abort(404)
+            try:
+                return send_from_directory(ctx.config_dir, filename)
+            except (FileNotFoundError, PermissionError):
+                return abort(404)
+
         @app.route('/intelligences', methods=['GET'])
         def intelligences_view():
-            return render_template('intelligence_list.html')
+            return render_template('intelligence_list.html',
+                                   **self._default_subsystem_plugin_params())
 
         @app.route('/recommendations', methods=['GET'])
         def intelligences_recommendations_page():
@@ -915,7 +944,8 @@ class IntelligenceHubWebService:
             return render_template(
                 'intelligence_search.html',
                 public_mode=is_public,
-                public_limits=self.public_search_limits if is_public else {}
+                public_limits=self.public_search_limits if is_public else {},
+                **self._default_subsystem_plugin_params()
             )
 
         @app.route('/intelligence/graph/view', methods=['GET'])
@@ -1410,7 +1440,8 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):
-            return render_template('intelligence_detail.html', uuid=intelligence_uuid)
+            return render_template('intelligence_detail.html', uuid=intelligence_uuid,
+                                   **self._default_subsystem_plugin_params())
 
         # ---------------------------------------------- Management Pages ----------------------------------------------
 
