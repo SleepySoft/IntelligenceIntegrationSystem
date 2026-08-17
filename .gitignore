@@ -187,9 +187,19 @@ ai_client_config.py
 # Not-project folders
 _log
 _data
-_config
 _export
 _products
+
+# Real config files are ignored; example configs are tracked in git.
+# 真实配置不入库（config.json / collector.json / ai_client_config.py / Authentication.db / 密钥文件），
+# 示例文件（*_example.* / readme.txt / subsystems/ 模板）正常提交。
+_config/*
+!_config/readme.txt
+!_config/config_example.json
+!_config/collector_example.json
+!_config/ai_client_config_example.py
+!_config/subsystems/
+!_config/subsystems/**
 
 # Generated files
 templates/generated

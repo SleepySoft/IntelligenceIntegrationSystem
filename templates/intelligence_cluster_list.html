@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        window.IIS_BASE_PATH = {{ base_path|default('')|tojson }};
+        window.IIS_SUBSYSTEM = {{ subsystem_name|default('')|tojson }};
+        window.IIS_VECTOR_ENABLED = {{ vector_enabled|default(true)|tojson }};
+    </script>
     <title>Aggregated Intelligences - IIS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/intelligence_table.css">

@@ -4,8 +4,8 @@
     if (window.ArticleModalManager) return;
 
     const DEFAULT_OPTIONS = {
-        apiBase: '/api/intelligence',
-        pageBase: '/intelligence',
+        apiBase: (window.IIS_BASE_PATH || '') + '/api/intelligence',
+        pageBase: (window.IIS_BASE_PATH || '') + '/intelligence',
         titleSelector: 'a.article-title[data-uuid]',
         toastContainerId: 'article-toast-container',
         history: false,              // true: pushState + back close
@@ -264,6 +264,30 @@
 
         const uuid = a.dataset.uuid;
         if (!uuid) return;
+
+        // 插件导航委洺：先看插件是否声明 detailURL / onCardClick
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        let nav = null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers
+                ? window.SubsystemUI.makeHelpers(null, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
+                : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
+            nav = window.SubsystemUI.navFromPlugin(plugin, { UUID: uuid }, helpers);
+        }
+
+        if (nav) {
+            if (nav.mode === 'navigate' && nav.url) {
+                window.open(nav.url, '_self');           // 跳转自定义页
+                return;
+            }
+            if (nav.mode === 'custom' && typeof plugin.onCardClick === 'function') {
+                plugin.onCardClick({ UUID: uuid }, helpers, {
+                    openModal: (doc, url) => open(url || `${state.options.pageBase}/${encodeURIComponent(doc?.UUID || uuid)}`, doc?.UUID || uuid, 'Detail', { updateHistory: state.options.history }),
+                    navigate: (url, opts) => { if (opts && opts.newTab) window.open(url, '_blank', 'noopener'); else window.open(url, '_self'); },
+                });
+                return;
+            }
+        }
 
         open(`${state.options.pageBase}/${encodeURIComponent(uuid)}`, uuid, a.textContent?.trim() || 'Detail', {
             updateHistory: state.options.history
