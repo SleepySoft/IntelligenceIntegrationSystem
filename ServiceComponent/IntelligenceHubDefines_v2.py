@@ -74,6 +74,12 @@ class CollectedData(BaseModel):
         description="[MUST]: The specific source URL or informant ID."
     )
 
+    subsystem: str = Field(
+        '',
+        description="(Optional): Target subsystem name. Empty means the default subsystem. "
+                    "Examples: 'news', 'finance', 'industry'."
+    )
+
     temp_data: dict = Field(
         default_factory=dict,
         description="(Optional): Temporary data for data management."
@@ -243,6 +249,8 @@ APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from 
 APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
 APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
 APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+
+APPENDIX_SUBSYSTEM          = '__SUBSYSTEM__'           # Which subsystem this intelligence belongs to
 
 APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
 

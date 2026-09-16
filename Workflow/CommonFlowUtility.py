@@ -92,12 +92,14 @@ class CrawlContext:
                  collector_token: str,
                  crawler_governor: GovernanceManager,
                  error_threshold: int = DEFAULT_CRAWL_ERROR_THRESHOLD,
+                 subsystem: Optional[str] = None,
                  logger: Logger = None
                  ):
         self.flow_name = flow_name
         self.i_hub_url = i_hub_url
         self.crawler_governor = crawler_governor
         self.collector_token = collector_token or DEFAULT_COLLECTOR_TOKEN
+        self.subsystem = subsystem
         self.error_threshold = error_threshold
         self.logger = PrefixLogger(logger or
                                    get_tls_logger(__name__) or
@@ -118,6 +120,8 @@ class CrawlContext:
             cache_on_error: bool = True
     ):
         collected_data.token = self.collector_token
+        if self.subsystem and not getattr(collected_data, 'subsystem', ''):
+            collected_data.subsystem = self.subsystem
 
         if self._submit_collected_data:
             self.logger.info(f"Submit collected data to: {self.i_hub_url}")

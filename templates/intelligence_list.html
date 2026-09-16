@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        window.IIS_BASE_PATH = {{ base_path|default('')|tojson }};
+        window.IIS_SUBSYSTEM = {{ subsystem_name|default('')|tojson }};
+        window.IIS_VECTOR_ENABLED = {{ vector_enabled|default(true)|tojson }};
+        window.IIS_UI_PLUGIN_ENABLED = {{ ui_plugin_enabled|default(false)|tojson }};
+        window.IIS_PLUGIN_ASSET_PREFIX = {{ plugin_asset_prefix|default('')|tojson }};
+    </script>
     <title>Intelligence Integration System (IIS)</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/intelligence_table.css">
@@ -45,6 +52,10 @@
 
         <div id="pagination-bottom" class="pagination-container"></div>
     </div>
+    <script src="/static/js/subsystem_render_protocol.js"></script>
+    {% if ui_plugin_enabled and plugin_asset_prefix %}
+    <script src="{{ plugin_asset_prefix }}/ui_plugin.js"></script>
+    {% endif %}
     <script src="/static/js/article_detail_renderer.js"></script>
     <script src="/static/js/intelligence_table_renderer.js"></script>
     <script src="/static/js/article_modal_manager.js"></script>

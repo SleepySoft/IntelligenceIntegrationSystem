@@ -28,6 +28,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const publicMode = JSON.parse(document.body.dataset.publicMode || 'false');
     const publicLimits = JSON.parse(document.body.dataset.publicLimits || '{}');
 
+    // 非默认子系统暂不支持向量检索：隐藏 Vector 标签页
+    if (window.IIS_VECTOR_ENABLED === false) {
+        const vectorTab = document.getElementById('vector-tab');
+        if (vectorTab && vectorTab.closest('li')) {
+            vectorTab.closest('li').remove();
+        }
+        const vectorPane = document.getElementById('vector-pane');
+        if (vectorPane) {
+            vectorPane.remove();
+        }
+    }
+
     function clampPerPageOptions(selectId, maxPerPage) {
         const select = document.querySelector(selectId);
         if (!select || !maxPerPage) return;
@@ -340,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.showLoading();
 
         try {
-            const response = await fetch('/intelligences/query', {
+            const response = await fetch((window.IIS_BASE_PATH || '') + '/intelligences/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
