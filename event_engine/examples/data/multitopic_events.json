@@ -1,0 +1,2338 @@
+{
+  "schema_version": "event-file/1.0",
+  "dataset_id": "iis-event-engine-multitopic-demo-v1",
+  "description": "40余个跨领域事件，用于演示 Event Core Engine 的单文件接入、查询和统计。",
+  "entities": [
+    {
+      "id": "voters_a",
+      "name": "A国选民",
+      "type": "organization",
+      "country_code": "US"
+    },
+    {
+      "id": "president_a",
+      "name": "阿列克斯·摩根",
+      "type": "person",
+      "country_code": "US"
+    },
+    {
+      "id": "presidency_a",
+      "name": "A国总统",
+      "type": "position",
+      "country_code": "US"
+    },
+    {
+      "id": "country_b",
+      "name": "B国政府",
+      "type": "geopolitical_entity",
+      "country_code": "GB"
+    },
+    {
+      "id": "bank_x",
+      "name": "远洋银行",
+      "type": "organization",
+      "country_code": "RU"
+    },
+    {
+      "id": "country_c",
+      "name": "C国",
+      "type": "geopolitical_entity",
+      "country_code": "IN"
+    },
+    {
+      "id": "country_d",
+      "name": "D国",
+      "type": "geopolitical_entity",
+      "country_code": "PK"
+    },
+    {
+      "id": "border_ceasefire",
+      "name": "北部边境停火协议",
+      "type": "agreement"
+    },
+    {
+      "id": "civic_group",
+      "name": "公民行动联盟",
+      "type": "organization"
+    },
+    {
+      "id": "cabinet_c",
+      "name": "C国内阁",
+      "type": "organization",
+      "country_code": "IN"
+    },
+    {
+      "id": "capital_c",
+      "name": "C国首都",
+      "type": "location",
+      "country_code": "IN"
+    },
+    {
+      "id": "audit_office",
+      "name": "国家审计署",
+      "type": "organization"
+    },
+    {
+      "id": "rail_contract",
+      "name": "高速铁路采购案",
+      "type": "case"
+    },
+    {
+      "id": "federal_police",
+      "name": "联邦警察局",
+      "type": "organization"
+    },
+    {
+      "id": "suspect_k",
+      "name": "K某",
+      "type": "person"
+    },
+    {
+      "id": "country_e",
+      "name": "E国",
+      "type": "geopolitical_entity",
+      "country_code": "ID"
+    },
+    {
+      "id": "country_f",
+      "name": "F国",
+      "type": "geopolitical_entity",
+      "country_code": "MY"
+    },
+    {
+      "id": "sea_boundary",
+      "name": "南部海域划界",
+      "type": "topic"
+    },
+    {
+      "id": "supreme_court",
+      "name": "最高法院",
+      "type": "organization"
+    },
+    {
+      "id": "platform_case",
+      "name": "平台反垄断案",
+      "type": "case"
+    },
+    {
+      "id": "platform_q",
+      "name": "Q平台公司",
+      "type": "organization"
+    },
+    {
+      "id": "armed_group",
+      "name": "北境武装组织",
+      "type": "organization"
+    },
+    {
+      "id": "border_post",
+      "name": "第七码边境哨所",
+      "type": "facility"
+    },
+    {
+      "id": "artillery",
+      "name": "火炮",
+      "type": "equipment"
+    },
+    {
+      "id": "north_border",
+      "name": "北部边境",
+      "type": "location"
+    },
+    {
+      "id": "air_defense",
+      "name": "东部防空部队",
+      "type": "organization"
+    },
+    {
+      "id": "incoming_missile",
+      "name": "来袭巡航导弹",
+      "type": "equipment"
+    },
+    {
+      "id": "sam_system",
+      "name": "远程防空系统",
+      "type": "equipment"
+    },
+    {
+      "id": "east_city",
+      "name": "东部工业城",
+      "type": "location"
+    },
+    {
+      "id": "navy_g",
+      "name": "G国海军",
+      "type": "organization",
+      "country_code": "JP"
+    },
+    {
+      "id": "destroyer_group",
+      "name": "驱逐舰编队",
+      "type": "equipment"
+    },
+    {
+      "id": "north_sea",
+      "name": "北方海域",
+      "type": "location"
+    },
+    {
+      "id": "army_h",
+      "name": "H国陆军",
+      "type": "organization",
+      "country_code": "DE"
+    },
+    {
+      "id": "army_i",
+      "name": "I国陆军",
+      "type": "organization",
+      "country_code": "FR"
+    },
+    {
+      "id": "joint_drill",
+      "name": "山地联合演训",
+      "type": "topic"
+    },
+    {
+      "id": "highland_range",
+      "name": "高原训练场",
+      "type": "facility"
+    },
+    {
+      "id": "central_bank",
+      "name": "中央银行",
+      "type": "organization"
+    },
+    {
+      "id": "policy_rate",
+      "name": "基准政策利率",
+      "type": "policy"
+    },
+    {
+      "id": "auto_group",
+      "name": "新航汽车集团",
+      "type": "organization"
+    },
+    {
+      "id": "battery_company",
+      "name": "极光电池公司",
+      "type": "organization"
+    },
+    {
+      "id": "holding_m",
+      "name": "M控股",
+      "type": "organization"
+    },
+    {
+      "id": "chip_fund",
+      "name": "先进制造基金",
+      "type": "organization"
+    },
+    {
+      "id": "fab_company",
+      "name": "晶圆制造公司",
+      "type": "organization"
+    },
+    {
+      "id": "fab_capital",
+      "name": "建厂资金",
+      "type": "asset"
+    },
+    {
+      "id": "development_bank",
+      "name": "区域开发银行",
+      "type": "organization"
+    },
+    {
+      "id": "port_authority",
+      "name": "蓝湾港务局",
+      "type": "organization"
+    },
+    {
+      "id": "lng_exporter",
+      "name": "北极能源公司",
+      "type": "organization"
+    },
+    {
+      "id": "utility_j",
+      "name": "J国燃气公司",
+      "type": "organization",
+      "country_code": "KR"
+    },
+    {
+      "id": "lng",
+      "name": "液化天然气",
+      "type": "resource"
+    },
+    {
+      "id": "container_terminal",
+      "name": "蓝湾集装箱码头",
+      "type": "facility"
+    },
+    {
+      "id": "blue_port",
+      "name": "蓝湾港",
+      "type": "location"
+    },
+    {
+      "id": "rail_consortium",
+      "name": "跨境铁路联合体",
+      "type": "organization"
+    },
+    {
+      "id": "cross_border_rail",
+      "name": "东西跨境铁路",
+      "type": "facility"
+    },
+    {
+      "id": "wheat_output",
+      "name": "本年度小麦产量",
+      "type": "resource"
+    },
+    {
+      "id": "micro_lab",
+      "name": "微电子联合实验室",
+      "type": "organization"
+    },
+    {
+      "id": "two_nm_chip",
+      "name": "2纳米试验芯片",
+      "type": "product"
+    },
+    {
+      "id": "ai_lab",
+      "name": "星河人工智能实验室",
+      "type": "organization"
+    },
+    {
+      "id": "open_model",
+      "name": "星河基础模型4",
+      "type": "product"
+    },
+    {
+      "id": "quantum_institute",
+      "name": "国家量子研究院",
+      "type": "organization"
+    },
+    {
+      "id": "quantum_network",
+      "name": "城际量子通信网络",
+      "type": "capability"
+    },
+    {
+      "id": "ransomware_group",
+      "name": "黑潮勒索组织",
+      "type": "organization"
+    },
+    {
+      "id": "hospital_system",
+      "name": "城市医院信息系统",
+      "type": "facility"
+    },
+    {
+      "id": "ransomware",
+      "name": "黑潮勒索软件",
+      "type": "equipment"
+    },
+    {
+      "id": "cloud_company",
+      "name": "云桥科技",
+      "type": "organization"
+    },
+    {
+      "id": "breach_notice",
+      "name": "用户数据泄露通报",
+      "type": "information"
+    },
+    {
+      "id": "space_agency",
+      "name": "国家航天局",
+      "type": "organization"
+    },
+    {
+      "id": "remote_sat",
+      "name": "海洋遥感卫星",
+      "type": "equipment"
+    },
+    {
+      "id": "low_orbit",
+      "name": "近地轨道",
+      "type": "location"
+    },
+    {
+      "id": "cargo_spacecraft",
+      "name": "远航货运飞船",
+      "type": "equipment"
+    },
+    {
+      "id": "coastal_quake",
+      "name": "沿海7.1级地震",
+      "type": "phenomenon"
+    },
+    {
+      "id": "coastal_province",
+      "name": "东部沿海省",
+      "type": "location"
+    },
+    {
+      "id": "river_flood",
+      "name": "大河流域洪水",
+      "type": "phenomenon"
+    },
+    {
+      "id": "river_basin",
+      "name": "大河中下游",
+      "type": "location"
+    },
+    {
+      "id": "dengue",
+      "name": "登革热",
+      "type": "phenomenon"
+    },
+    {
+      "id": "south_city",
+      "name": "南部都会区",
+      "type": "location"
+    },
+    {
+      "id": "health_ministry",
+      "name": "卫生部",
+      "type": "organization"
+    },
+    {
+      "id": "south_hospitals",
+      "name": "南部医院联盟",
+      "type": "organization"
+    },
+    {
+      "id": "dengue_vaccine",
+      "name": "登革热疫苗",
+      "type": "product"
+    },
+    {
+      "id": "icu_beds",
+      "name": "重症监护床位",
+      "type": "resource"
+    },
+    {
+      "id": "forest_fire",
+      "name": "西部山林野火",
+      "type": "phenomenon"
+    },
+    {
+      "id": "west_forest",
+      "name": "西部国家森林",
+      "type": "location"
+    },
+    {
+      "id": "environment_agency",
+      "name": "环境监管署",
+      "type": "organization"
+    },
+    {
+      "id": "steel_mills",
+      "name": "沿江钢铁企业",
+      "type": "organization"
+    },
+    {
+      "id": "emission_quota",
+      "name": "氮氧化物排放额度",
+      "type": "policy"
+    },
+    {
+      "id": "drought",
+      "name": "北部农业区干旱",
+      "type": "phenomenon"
+    },
+    {
+      "id": "north_farms",
+      "name": "北部农业区",
+      "type": "location"
+    },
+    {
+      "id": "nuclear_plant",
+      "name": "海岸核电站",
+      "type": "facility"
+    },
+    {
+      "id": "grid_operator",
+      "name": "国家电网运营商",
+      "type": "organization"
+    },
+    {
+      "id": "financial_unit",
+      "name": "金融情报局",
+      "type": "organization"
+    },
+    {
+      "id": "crypto_assets",
+      "name": "涉案加密资产",
+      "type": "asset"
+    },
+    {
+      "id": "trade_ministry",
+      "name": "贸易部",
+      "type": "organization"
+    },
+    {
+      "id": "foreign_buyers",
+      "name": "境外关键矿产买方",
+      "type": "organization"
+    },
+    {
+      "id": "rare_minerals",
+      "name": "关键稀有矿产",
+      "type": "resource"
+    },
+    {
+      "id": "refugees",
+      "name": "边境难民群体",
+      "type": "organization"
+    },
+    {
+      "id": "conflict_zone",
+      "name": "冲突地区",
+      "type": "location"
+    },
+    {
+      "id": "safe_region",
+      "name": "邻国安全区",
+      "type": "location"
+    },
+    {
+      "id": "cable_consortium",
+      "name": "国际海缆维护联盟",
+      "type": "organization"
+    },
+    {
+      "id": "subsea_cable",
+      "name": "北洋三号海底电缆",
+      "type": "facility"
+    },
+    {
+      "id": "trade_agreement",
+      "name": "区域数字贸易协定",
+      "type": "agreement"
+    }
+  ],
+  "events": [
+    {
+      "id": "EV01",
+      "intelligence_id": "INTEL01",
+      "topic": "总统选举",
+      "frame": {
+        "dynamics": "change",
+        "topology": "relational",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "elect",
+        "surface": "当选"
+      },
+      "roles": {
+        "electorate": [
+          "voters_a"
+        ],
+        "person": [
+          "president_a"
+        ],
+        "position": [
+          "presidency_a"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-01-10",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-01-10"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-01-10T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV02",
+      "intelligence_id": "INTEL02",
+      "topic": "金融制裁",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "sanction",
+        "surface": "实施制裁"
+      },
+      "roles": {
+        "authority": [
+          "country_b"
+        ],
+        "target": [
+          "bank_x"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-01-14",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-01-14"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-01-14T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV03",
+      "intelligence_id": "INTEL03",
+      "topic": "边境停火协议",
+      "frame": {
+        "dynamics": "change",
+        "topology": "relational",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "agree",
+        "surface": "签署停火协议"
+      },
+      "roles": {
+        "party": [
+          "country_c",
+          "country_d"
+        ],
+        "agreement": [
+          "border_ceasefire"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-01-22",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-01-22"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-01-22T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV04",
+      "intelligence_id": "INTEL04",
+      "topic": "首都反腐抗议",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "protest",
+        "surface": "举行抗议"
+      },
+      "roles": {
+        "participant": [
+          "civic_group"
+        ],
+        "target": [
+          "cabinet_c"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-02-03",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-02-03"
+        }
+      },
+      "locations": [
+        "capital_c"
+      ],
+      "observed_at": "2026-02-03T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV05",
+      "intelligence_id": "INTEL05",
+      "topic": "公共采购调查",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "investigate",
+        "surface": "启动调查"
+      },
+      "roles": {
+        "investigator": [
+          "audit_office"
+        ],
+        "object": [
+          "rail_contract"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-02-08",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-02-08"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-02-08T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV06",
+      "intelligence_id": "INTEL06",
+      "topic": "跨境嫌犯拘捕",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "detain",
+        "surface": "拘捕"
+      },
+      "roles": {
+        "authority": [
+          "federal_police"
+        ],
+        "person": [
+          "suspect_k"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-02-12",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-02-12"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-02-12T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV07",
+      "intelligence_id": "INTEL07",
+      "topic": "海洋划界谈判",
+      "frame": {
+        "dynamics": "process",
+        "topology": "relational",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "negotiate",
+        "surface": "举行谈判"
+      },
+      "roles": {
+        "party": [
+          "country_e",
+          "country_f"
+        ],
+        "topic": [
+          "sea_boundary"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-02-19",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-02-19"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-02-19T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV08",
+      "intelligence_id": "INTEL08",
+      "topic": "最高法院反垄断裁决",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "adjudicate",
+        "surface": "作出裁决"
+      },
+      "roles": {
+        "authority": [
+          "supreme_court"
+        ],
+        "case": [
+          "platform_case"
+        ],
+        "party": [
+          "platform_q"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-02-25",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-02-25"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-02-25T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV09",
+      "intelligence_id": "INTEL09",
+      "topic": "边境哨所袭击",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "attack",
+        "surface": "炮击"
+      },
+      "roles": {
+        "actor": [
+          "armed_group"
+        ],
+        "target": [
+          "border_post"
+        ],
+        "instrument": [
+          "artillery"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-03-02",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-03-02"
+        }
+      },
+      "locations": [
+        "north_border"
+      ],
+      "observed_at": "2026-03-02T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV10",
+      "intelligence_id": "INTEL10",
+      "topic": "防空导弹拦截",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "intercept",
+        "surface": "拦截"
+      },
+      "roles": {
+        "actor": [
+          "air_defense"
+        ],
+        "target": [
+          "incoming_missile"
+        ],
+        "instrument": [
+          "sam_system"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-03-05",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-03-05"
+        }
+      },
+      "locations": [
+        "east_city"
+      ],
+      "observed_at": "2026-03-05T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV11",
+      "intelligence_id": "INTEL11",
+      "topic": "北方舰队部署",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "deploy",
+        "surface": "部署"
+      },
+      "roles": {
+        "deployer": [
+          "navy_g"
+        ],
+        "object": [
+          "destroyer_group"
+        ],
+        "location": [
+          "north_sea"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-03-11",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-03-11"
+        }
+      },
+      "locations": [
+        "north_sea"
+      ],
+      "observed_at": "2026-03-11T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV12",
+      "intelligence_id": "INTEL12",
+      "topic": "多国联合演训",
+      "frame": {
+        "dynamics": "process",
+        "topology": "relational",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "cooperate",
+        "surface": "开展联合演训"
+      },
+      "roles": {
+        "party": [
+          "army_h",
+          "army_i"
+        ],
+        "topic": [
+          "joint_drill"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-03-18",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-03-18"
+        }
+      },
+      "locations": [
+        "highland_range"
+      ],
+      "observed_at": "2026-03-18T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV13",
+      "intelligence_id": "INTEL13",
+      "topic": "央行加息",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "regulate",
+        "surface": "上调政策利率"
+      },
+      "roles": {
+        "authority": [
+          "central_bank"
+        ],
+        "target": [
+          "policy_rate"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-01",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-01"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-04-01T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "delta": {
+          "type": "number",
+          "value": 0.25,
+          "unit": "百分点"
+        }
+      }
+    },
+    {
+      "id": "EV14",
+      "intelligence_id": "INTEL14",
+      "topic": "电动车企业收购",
+      "frame": {
+        "dynamics": "change",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "acquire",
+        "surface": "完成收购"
+      },
+      "roles": {
+        "acquirer": [
+          "auto_group"
+        ],
+        "asset": [
+          "battery_company"
+        ],
+        "seller": [
+          "holding_m"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-06",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-06"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-04-06T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "amount": {
+          "type": "money",
+          "value": 4.2,
+          "currency": "USD",
+          "unit": "billion"
+        }
+      }
+    },
+    {
+      "id": "EV15",
+      "intelligence_id": "INTEL15",
+      "topic": "半导体工厂投资",
+      "frame": {
+        "dynamics": "process",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "invest",
+        "surface": "投资建设"
+      },
+      "roles": {
+        "investor": [
+          "chip_fund"
+        ],
+        "recipient": [
+          "fab_company"
+        ],
+        "resource": [
+          "fab_capital"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-12",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-12"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-04-12T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "not_started",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "amount": {
+          "type": "money",
+          "value": 8.0,
+          "currency": "USD",
+          "unit": "billion"
+        }
+      }
+    },
+    {
+      "id": "EV16",
+      "intelligence_id": "INTEL16",
+      "topic": "港口扩建融资",
+      "frame": {
+        "dynamics": "change",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "lend",
+        "surface": "提供贷款"
+      },
+      "roles": {
+        "lender": [
+          "development_bank"
+        ],
+        "borrower": [
+          "port_authority"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-16",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-16"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-04-16T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "amount": {
+          "type": "money",
+          "value": 950,
+          "currency": "USD",
+          "unit": "million"
+        }
+      }
+    },
+    {
+      "id": "EV17",
+      "intelligence_id": "INTEL17",
+      "topic": "液化天然气长协供应",
+      "frame": {
+        "dynamics": "process",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "supply",
+        "surface": "开始供应"
+      },
+      "roles": {
+        "supplier": [
+          "lng_exporter"
+        ],
+        "recipient": [
+          "utility_j"
+        ],
+        "goods": [
+          "lng"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-21",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-21"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-04-21T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV18",
+      "intelligence_id": "INTEL18",
+      "topic": "集装箱港口事故",
+      "frame": {
+        "dynamics": "change",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "accident",
+        "surface": "起重机倒塌"
+      },
+      "roles": {
+        "affected": [
+          "container_terminal"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-04-25",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-04-25"
+        }
+      },
+      "locations": [
+        "blue_port"
+      ],
+      "observed_at": "2026-04-25T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV19",
+      "intelligence_id": "INTEL19",
+      "topic": "跨境铁路建设",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "construct",
+        "surface": "开工建设"
+      },
+      "roles": {
+        "builder": [
+          "rail_consortium"
+        ],
+        "object": [
+          "cross_border_rail"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-05-02",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-05-02"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-05-02T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV20",
+      "intelligence_id": "INTEL20",
+      "topic": "小麦产量下调",
+      "frame": {
+        "dynamics": "change",
+        "topology": "intrinsic",
+        "agency": "unknown"
+      },
+      "predicate": {
+        "id": "decrease",
+        "surface": "下调产量预期"
+      },
+      "roles": {
+        "subject": [
+          "wheat_output"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-05-07",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-05-07"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-05-07T12:00:00+08:00",
+      "is_primary": true,
+      "attributes": {
+        "ratio": {
+          "type": "ratio",
+          "value": 0.12,
+          "surface": "下调12%"
+        }
+      }
+    },
+    {
+      "id": "EV21",
+      "intelligence_id": "INTEL21",
+      "topic": "先进制程芯片研发",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "develop",
+        "surface": "研发"
+      },
+      "roles": {
+        "developer": [
+          "micro_lab"
+        ],
+        "object": [
+          "two_nm_chip"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-05-14",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-05-14"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-05-14T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV22",
+      "intelligence_id": "INTEL22",
+      "topic": "开源大模型发布",
+      "frame": {
+        "dynamics": "change",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "release",
+        "surface": "发布"
+      },
+      "roles": {
+        "releaser": [
+          "ai_lab"
+        ],
+        "object": [
+          "open_model"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-05-20",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-05-20"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-05-20T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV23",
+      "intelligence_id": "INTEL23",
+      "topic": "量子网络测试",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "test",
+        "surface": "完成测试"
+      },
+      "roles": {
+        "tester": [
+          "quantum_institute"
+        ],
+        "object": [
+          "quantum_network"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-05-26",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-05-26"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-05-26T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV24",
+      "intelligence_id": "INTEL24",
+      "topic": "医院勒索软件攻击",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "disrupt",
+        "surface": "加密并中断"
+      },
+      "roles": {
+        "actor": [
+          "ransomware_group"
+        ],
+        "target": [
+          "hospital_system"
+        ],
+        "instrument": [
+          "ransomware"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-06-03",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-06-03"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-06-03T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV25",
+      "intelligence_id": "INTEL25",
+      "topic": "数据泄露通报",
+      "frame": {
+        "dynamics": "process",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "communicate",
+        "surface": "披露"
+      },
+      "roles": {
+        "sender": [
+          "cloud_company"
+        ],
+        "information": [
+          "breach_notice"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-06-07",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-06-07"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-06-07T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "relations": [
+        {
+          "predicate": "follows",
+          "target": "EV24",
+          "surface": "事件发生后发布通报"
+        }
+      ]
+    },
+    {
+      "id": "EV26",
+      "intelligence_id": "INTEL26",
+      "topic": "遥感卫星部署",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "deploy",
+        "surface": "部署入轨"
+      },
+      "roles": {
+        "deployer": [
+          "space_agency"
+        ],
+        "object": [
+          "remote_sat"
+        ],
+        "location": [
+          "low_orbit"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-06-12",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-06-12"
+        }
+      },
+      "locations": [
+        "low_orbit"
+      ],
+      "observed_at": "2026-06-12T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV27",
+      "intelligence_id": "INTEL27",
+      "topic": "商业飞船故障",
+      "frame": {
+        "dynamics": "change",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "accident",
+        "surface": "推进系统故障"
+      },
+      "roles": {
+        "affected": [
+          "cargo_spacecraft"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-06-18",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-06-18"
+        }
+      },
+      "locations": [
+        "low_orbit"
+      ],
+      "observed_at": "2026-06-18T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV28",
+      "intelligence_id": "INTEL28",
+      "topic": "沿海强震",
+      "frame": {
+        "dynamics": "process",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "natural_hazard",
+        "surface": "发生地震"
+      },
+      "roles": {
+        "phenomenon": [
+          "coastal_quake"
+        ],
+        "affected_area": [
+          "coastal_province"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-01",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-01"
+        }
+      },
+      "locations": [
+        "coastal_province"
+      ],
+      "observed_at": "2026-07-01T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "level": {
+          "type": "number",
+          "value": 7.1,
+          "unit": "级"
+        }
+      }
+    },
+    {
+      "id": "EV29",
+      "intelligence_id": "INTEL29",
+      "topic": "河流洪水",
+      "frame": {
+        "dynamics": "process",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "natural_hazard",
+        "surface": "暴发洪水"
+      },
+      "roles": {
+        "phenomenon": [
+          "river_flood"
+        ],
+        "affected_area": [
+          "river_basin"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-05",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-05"
+        }
+      },
+      "locations": [
+        "river_basin"
+      ],
+      "observed_at": "2026-07-05T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV30",
+      "intelligence_id": "INTEL30",
+      "topic": "登革热暴发",
+      "frame": {
+        "dynamics": "process",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "outbreak",
+        "surface": "病例暴发"
+      },
+      "roles": {
+        "phenomenon": [
+          "dengue"
+        ],
+        "affected_area": [
+          "south_city"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-09",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-09"
+        }
+      },
+      "locations": [
+        "south_city"
+      ],
+      "observed_at": "2026-07-09T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV31",
+      "intelligence_id": "INTEL31",
+      "topic": "疫苗紧急供应",
+      "frame": {
+        "dynamics": "process",
+        "topology": "transfer",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "supply",
+        "surface": "调拨供应"
+      },
+      "roles": {
+        "supplier": [
+          "health_ministry"
+        ],
+        "recipient": [
+          "south_hospitals"
+        ],
+        "goods": [
+          "dengue_vaccine"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-11",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-11"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-07-11T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ],
+      "relations": [
+        {
+          "predicate": "mitigates",
+          "target": "EV30",
+          "surface": "用于控制疫情"
+        }
+      ]
+    },
+    {
+      "id": "EV32",
+      "intelligence_id": "INTEL32",
+      "topic": "重症床位短缺",
+      "frame": {
+        "dynamics": "state",
+        "topology": "relational",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "shortage",
+        "surface": "出现短缺"
+      },
+      "roles": {
+        "resource": [
+          "icu_beds"
+        ],
+        "affected": [
+          "south_hospitals"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-14",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-14"
+        }
+      },
+      "locations": [
+        "south_city"
+      ],
+      "observed_at": "2026-07-14T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV33",
+      "intelligence_id": "INTEL33",
+      "topic": "山林野火",
+      "frame": {
+        "dynamics": "process",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "natural_hazard",
+        "surface": "野火蔓延"
+      },
+      "roles": {
+        "phenomenon": [
+          "forest_fire"
+        ],
+        "affected_area": [
+          "west_forest"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-19",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-19"
+        }
+      },
+      "locations": [
+        "west_forest"
+      ],
+      "observed_at": "2026-07-19T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV34",
+      "intelligence_id": "INTEL34",
+      "topic": "工业排放限制",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "restrict",
+        "surface": "限制排放"
+      },
+      "roles": {
+        "authority": [
+          "environment_agency"
+        ],
+        "target": [
+          "steel_mills"
+        ],
+        "object": [
+          "emission_quota"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-24",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-24"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-07-24T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV35",
+      "intelligence_id": "INTEL35",
+      "topic": "区域干旱",
+      "frame": {
+        "dynamics": "process",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "natural_hazard",
+        "surface": "持续干旱"
+      },
+      "roles": {
+        "phenomenon": [
+          "drought"
+        ],
+        "affected_area": [
+          "north_farms"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-07-29",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-07-29"
+        }
+      },
+      "locations": [
+        "north_farms"
+      ],
+      "observed_at": "2026-07-29T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ],
+      "relations": [
+        {
+          "predicate": "causes",
+          "target": "EV20",
+          "surface": "干旱导致产量预期下降"
+        }
+      ]
+    },
+    {
+      "id": "EV36",
+      "intelligence_id": "INTEL36",
+      "topic": "核电站恢复运行",
+      "frame": {
+        "dynamics": "change",
+        "topology": "intrinsic",
+        "agency": "unknown"
+      },
+      "predicate": {
+        "id": "restore",
+        "surface": "恢复运行"
+      },
+      "roles": {
+        "affected": [
+          "nuclear_plant"
+        ],
+        "actor": [
+          "grid_operator"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-03",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-03"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-08-03T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV37",
+      "intelligence_id": "INTEL37",
+      "topic": "加密资产冻结",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "seize",
+        "surface": "冻结资产"
+      },
+      "roles": {
+        "authority": [
+          "financial_unit"
+        ],
+        "object": [
+          "crypto_assets"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-08",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-08"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-08-08T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "amount": {
+          "type": "money",
+          "value": 120,
+          "currency": "USD",
+          "unit": "million"
+        }
+      }
+    },
+    {
+      "id": "EV38",
+      "intelligence_id": "INTEL38",
+      "topic": "关键矿产出口限制",
+      "frame": {
+        "dynamics": "change",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "restrict",
+        "surface": "限制出口"
+      },
+      "roles": {
+        "authority": [
+          "trade_ministry"
+        ],
+        "target": [
+          "foreign_buyers"
+        ],
+        "object": [
+          "rare_minerals"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-13",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-13"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-08-13T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV39",
+      "intelligence_id": "INTEL39",
+      "topic": "难民跨境转移",
+      "frame": {
+        "dynamics": "change",
+        "topology": "transfer",
+        "agency": "unknown"
+      },
+      "predicate": {
+        "id": "move",
+        "surface": "越境进入"
+      },
+      "roles": {
+        "theme": [
+          "refugees"
+        ],
+        "source": [
+          "conflict_zone"
+        ],
+        "destination": [
+          "safe_region"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-18",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-18"
+        }
+      },
+      "locations": [
+        "safe_region"
+      ],
+      "observed_at": "2026-08-18T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ],
+      "attributes": {
+        "quantity": {
+          "type": "number",
+          "value": 18000,
+          "unit": "人"
+        }
+      }
+    },
+    {
+      "id": "EV40",
+      "intelligence_id": "INTEL40",
+      "topic": "海底电缆修复",
+      "frame": {
+        "dynamics": "process",
+        "topology": "targeted",
+        "agency": "agentive"
+      },
+      "predicate": {
+        "id": "maintain",
+        "surface": "完成修复"
+      },
+      "roles": {
+        "actor": [
+          "cable_consortium"
+        ],
+        "object": [
+          "subsea_cable"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-22",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-22"
+        }
+      },
+      "locations": [
+        "north_sea"
+      ],
+      "observed_at": "2026-08-22T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "completed",
+          "scope": "event"
+        }
+      ]
+    },
+    {
+      "id": "EV41",
+      "intelligence_id": "INTEL41",
+      "topic": "自由贸易协定生效",
+      "frame": {
+        "dynamics": "state",
+        "topology": "intrinsic",
+        "agency": "non_agentive"
+      },
+      "predicate": {
+        "id": "valid",
+        "surface": "正式生效"
+      },
+      "roles": {
+        "subject": [
+          "trade_agreement"
+        ]
+      },
+      "time": {
+        "event_time": {
+          "normalized": "2026-08-28",
+          "precision": "day",
+          "approximate": false,
+          "surface": "2026-08-28"
+        }
+      },
+      "locations": [],
+      "observed_at": "2026-08-28T12:00:00+08:00",
+      "is_primary": true,
+      "qualifiers": [
+        {
+          "id": "Q1",
+          "type": "phase",
+          "value": "ongoing",
+          "scope": "event"
+        }
+      ]
+    }
+  ]
+}

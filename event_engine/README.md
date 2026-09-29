@@ -31,3 +31,26 @@ python -m pip install -e '.[mongodb]'
 ```bash
 python examples/basic_usage.py
 ```
+
+## 单文件接入演示
+
+`Event File v1` 使用一个 JSON 文件保存实体表和事件表。文件内的实体、事件和情报 ID
+会按 `dataset_id` 稳定映射为 UUID，因此同一个文件反复解析会得到相同标识。
+
+仓库提供了一个包含 40 余个不同主题事件的数据集：
+
+```bash
+python -m examples.file_ingestion_demo
+```
+
+也可以传入自己的文件：
+
+```bash
+python -m examples.file_ingestion_demo path/to/events.json
+```
+
+示例文件可通过下列命令重新生成：
+
+```bash
+python -m examples.build_multitopic_event_file
+```
