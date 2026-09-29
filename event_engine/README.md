@@ -13,6 +13,9 @@
 
 完整设计见 `DESIGN.md`。
 
+面向情报分析的长期能力、优先级和实施阶段见
+[`INTELLIGENCE_ANALYSIS_ROADMAP.md`](INTELLIGENCE_ANALYSIS_ROADMAP.md)。
+
 ## 安装与测试
 
 ```bash
