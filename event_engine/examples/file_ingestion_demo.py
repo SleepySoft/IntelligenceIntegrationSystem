@@ -37,18 +37,23 @@ def main() -> None:
         f"{len(predicate_counts)} 类谓词 / {relation_count} 条事件关系"
     )
     print("事件形态:", "、".join(f"{key}={value}" for key, value in sorted(frame_counts.items())))
-    print("\n事件列表")
-    print("序号  日期        主题                     谓词              参与实体")
-    print("-" * 94)
+    print("\n事件列表（基于谓词角色划分主体、客体和其他角色）")
     for index, event in enumerate(engine.timeline(frozenset(repository.data)), 1):
         topic = str(event.metadata.get("topic", ""))
         event_time = event.time.get("event_time")
         day = event_time.normalized if event_time else "-"
-        names = [dataset.entity_name(entity_uuid) for entity_uuid in engine.analyzer.participants(event)]
-        print(
-            f"{index:>2}    {day:<10}  {topic:<23}  "
-            f"{(event.predicate.id or 'null'):<16}  {'、'.join(names)}"
-        )
+        classified = engine.classify_event_roles(event.uuid)
+
+        def render(bindings) -> str:
+            return "、".join(
+                f"{binding.role}={dataset.entity_name(binding.entity_uuid)}"
+                for binding in bindings
+            ) or "—"
+
+        print(f"{index:>2}. {day} | {topic} | predicate={event.predicate.id or 'null'}")
+        print(f"    主体: {render(classified.subjects)}")
+        print(f"    客体: {render(classified.objects)}")
+        print(f"    其他: {render(classified.others)}")
 
     print("\n谓词分布（出现两次及以上）")
     repeated = [(key, value) for key, value in predicate_counts.most_common() if value > 1]

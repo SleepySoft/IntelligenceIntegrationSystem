@@ -134,6 +134,14 @@ class MatchResult:
     conflicts: tuple[str, ...] = ()
 
 @dataclass(frozen=True, slots=True)
+class EventRoleClassification:
+    """基于谓词语义划分的主体、客体和其他角色绑定。"""
+
+    subjects: tuple[RoleBinding, ...] = ()
+    objects: tuple[RoleBinding, ...] = ()
+    others: tuple[RoleBinding, ...] = ()
+
+@dataclass(frozen=True, slots=True)
 class WarZoneView:
     location_entity_uuid: UUID
     event_count: int

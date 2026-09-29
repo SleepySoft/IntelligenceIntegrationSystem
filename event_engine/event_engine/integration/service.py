@@ -2,7 +2,15 @@ from __future__ import annotations
 from uuid import UUID
 from ..analysis.event_analyzer import EventAnalyzer
 from ..analysis.canonicalizer import CanonicalEventMatcher
-from ..domain.models import CanonicalEvent, EventRecord, MatchDecision, MatchResult, SemanticRoleGroup, WarZoneView
+from ..domain.models import (
+    CanonicalEvent,
+    EventRecord,
+    EventRoleClassification,
+    MatchDecision,
+    MatchResult,
+    SemanticRoleGroup,
+    WarZoneView,
+)
 from ..domain.queries import EventPage, EventQuery
 from .ports import CanonicalEventRepository, EventRepository
 
@@ -19,6 +27,12 @@ class EventEngine:
 
     def query(self, query: EventQuery) -> EventPage:
         return self.events.search(query)
+
+    def classify_event_roles(self, event_uuid: UUID) -> EventRoleClassification:
+        event = self.events.get(event_uuid)
+        if not event:
+            raise KeyError(event_uuid)
+        return self.analyzer.classify_roles(event)
 
     def get_entity_actions(self, entity_uuid: UUID, **kwargs) -> tuple[EventRecord, ...]:
         q = EventQuery(entity_uuid=entity_uuid, semantic_groups=frozenset({SemanticRoleGroup.AGENT}), **kwargs)

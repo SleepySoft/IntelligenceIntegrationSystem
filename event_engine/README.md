@@ -36,6 +36,8 @@ python examples/basic_usage.py
 
 `Event File v1` 使用一个 JSON 文件保存实体表和事件表。文件内的实体、事件和情报 ID
 会按 `dataset_id` 稳定映射为 UUID，因此同一个文件反复解析会得到相同标识。
+演示会根据每个谓词的角色定义，分别列出主体、客体及 instrument、location、source
+等其他角色。
 
 仓库提供了一个包含 40 余个不同主题事件的数据集：
 

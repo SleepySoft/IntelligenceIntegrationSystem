@@ -28,6 +28,92 @@ class PredicateSpec:
     identity: IdentitySpec
     war_related: bool = False
 
+@dataclass(frozen=True, slots=True)
+class ArgumentRoleSpec:
+    """谓词的逻辑主体和客体角色；未列出的角色归入 others。"""
+
+    subject_roles: frozenset[str]
+    object_roles: frozenset[str]
+
+
+def _arguments(subjects: str = "", objects: str = "") -> ArgumentRoleSpec:
+    return ArgumentRoleSpec(frozenset(subjects.split()), frozenset(objects.split()))
+
+
+# 该表描述逻辑论元，而非单纯依赖角色名称猜测。例如 natural_hazard 的
+# phenomenon 是主体，而 move 的 source/destination 是其他角色。
+PREDICATE_ARGUMENT_SPECS: dict[str, ArgumentRoleSpec] = {
+    "exist": _arguments("subject"),
+    "possess": _arguments("holder", "asset"),
+    "control": _arguments("controller", "controlled"),
+    "member_of": _arguments("member", "organization"),
+    "located_at": _arguments("subject"),
+    "depend_on": _arguments("dependent", "dependency"),
+    "connected_to": _arguments("participant"),
+    "capable": _arguments("subject", "capability"),
+    "valid": _arguments("subject"),
+    "shortage": _arguments("resource", "affected"),
+    "increase": _arguments("subject agent"),
+    "decrease": _arguments("subject agent"),
+    "improve": _arguments("subject agent"),
+    "deteriorate": _arguments("subject agent"),
+    "create": _arguments("actor", "object"),
+    "terminate": _arguments("subject agent"),
+    "gain": _arguments("subject agent", "object"),
+    "lose": _arguments("subject agent", "object"),
+    "damage": _arguments("actor", "affected"),
+    "casualty": _arguments("actor", "affected"),
+    "restore": _arguments("actor", "affected"),
+    "appoint": _arguments("authority", "person position"),
+    "remove": _arguments("authority", "person position"),
+    "discover": _arguments("discoverer", "object"),
+    "default": _arguments("debtor", "obligation"),
+    "insolvency": _arguments("subject"),
+    "violate": _arguments("actor", "rule"),
+    "move": _arguments("agent theme"),
+    "transfer": _arguments("agent", "theme"),
+    "trade": _arguments("buyer seller", "goods"),
+    "acquire": _arguments("acquirer", "asset"),
+    "invest": _arguments("investor", "recipient resource"),
+    "fund": _arguments("provider", "recipient resource"),
+    "aid": _arguments("provider", "recipient goods"),
+    "pay": _arguments("payer", "payee"),
+    "lend": _arguments("lender", "borrower"),
+    "repay": _arguments("debtor", "creditor"),
+    "supply": _arguments("supplier", "recipient goods"),
+    "communicate": _arguments("sender", "information recipient"),
+    "operate": _arguments("subject operator"),
+    "produce": _arguments("producer", "product"),
+    "construct": _arguments("builder", "object"),
+    "develop": _arguments("developer", "object"),
+    "test": _arguments("tester", "object"),
+    "deploy": _arguments("deployer", "object"),
+    "maintain": _arguments("actor", "object"),
+    "inspect": _arguments("inspector", "object"),
+    "investigate": _arguments("investigator", "object"),
+    "negotiate": _arguments("party", "topic"),
+    "agree": _arguments("party", "agreement"),
+    "regulate": _arguments("authority", "target rule"),
+    "sanction": _arguments("authority", "target object"),
+    "restrict": _arguments("authority", "target object"),
+    "elect": _arguments("electorate", "person position"),
+    "adjudicate": _arguments("authority", "case party"),
+    "detain": _arguments("authority", "person"),
+    "seize": _arguments("authority", "object"),
+    "protest": _arguments("participant", "target"),
+    "cooperate": _arguments("party", "topic"),
+    "release": _arguments("releaser", "object recipient"),
+    "armed_conflict": _arguments("belligerent"),
+    "attack": _arguments("actor", "target"),
+    "defend": _arguments("actor", "target"),
+    "intercept": _arguments("actor", "target"),
+    "observe": _arguments("actor", "target"),
+    "disrupt": _arguments("actor", "target"),
+    "accident": _arguments("", "affected"),
+    "natural_hazard": _arguments("phenomenon", "affected_area"),
+    "outbreak": _arguments("phenomenon", "affected_area"),
+}
+
 DEFAULT_ROLE_GROUPS = {
     "actor": SemanticRoleGroup.AGENT,
     "agent": SemanticRoleGroup.AGENT,

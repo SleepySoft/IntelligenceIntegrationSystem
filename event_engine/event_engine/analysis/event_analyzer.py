@@ -3,8 +3,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Iterable
 from uuid import UUID
-from ..domain.models import EventRecord, SemanticRoleGroup, WarZoneView
-from ..domain.specs import PredicateSpec
+from ..domain.models import EventRecord, EventRoleClassification, SemanticRoleGroup, Topology, WarZoneView
+from ..domain.specs import PREDICATE_ARGUMENT_SPECS, PredicateSpec
 
 class EventAnalyzer:
     def __init__(self, specs: dict[str, PredicateSpec] | None = None):
@@ -24,6 +24,25 @@ class EventAnalyzer:
         for q in event.qualifiers:
             result[q.type].append(q.value)
         return {k: tuple(v) for k, v in result.items()}
+
+    def classify_roles(self, event: EventRecord) -> EventRoleClassification:
+        """按谓词将角色绑定划分为逻辑主体、客体和其他角色。"""
+
+        spec = PREDICATE_ARGUMENT_SPECS.get(event.predicate.id or "")
+        if spec:
+            subject_roles = spec.subject_roles
+            object_roles = spec.object_roles
+        else:
+            subject_roles, object_roles = self._fallback_argument_roles(event)
+
+        subjects = tuple(binding for binding in event.role_bindings if binding.role in subject_roles)
+        objects = tuple(binding for binding in event.role_bindings if binding.role in object_roles)
+        others = tuple(
+            binding
+            for binding in event.role_bindings
+            if binding.role not in subject_roles and binding.role not in object_roles
+        )
+        return EventRoleClassification(subjects, objects, others)
 
     def current_state(self, events: Iterable[EventRecord]) -> dict[str, str]:
         ordered = sorted(events, key=lambda e: e.observed_at or datetime.min.replace(tzinfo=timezone.utc))
@@ -81,3 +100,13 @@ class EventAnalyzer:
     @classmethod
     def _time_key(cls, event: EventRecord) -> str:
         return cls._time_surface(event) or "9999"
+
+    @staticmethod
+    def _fallback_argument_roles(event: EventRecord) -> tuple[frozenset[str], frozenset[str]]:
+        if event.frame.topology == Topology.INTRINSIC:
+            return frozenset({"subject"}), frozenset()
+        if event.frame.topology == Topology.RELATIONAL:
+            return frozenset({"subject", "counterpart"}), frozenset()
+        if event.frame.topology == Topology.TARGETED:
+            return frozenset({"actor"}), frozenset({"target"})
+        return frozenset({"agent"}), frozenset({"theme"})

@@ -53,6 +53,27 @@ class FileIngestionTests(unittest.TestCase):
 
         self.assertEqual(len(dataset.events), len(repository.data))
 
+    def test_classifies_subject_object_and_other_roles_by_predicate(self):
+        repository = InMemoryEventRepository()
+        engine = EventEngine(repository)
+        dataset = ingest_event_file(DATA_FILE, engine)
+        by_topic = {event.metadata["topic"]: event for event in dataset.events}
+
+        attack = engine.classify_event_roles(by_topic["边境哨所袭击"].uuid)
+        self.assertEqual({"actor"}, {binding.role for binding in attack.subjects})
+        self.assertEqual({"target"}, {binding.role for binding in attack.objects})
+        self.assertEqual({"instrument"}, {binding.role for binding in attack.others})
+
+        move = engine.classify_event_roles(by_topic["难民跨境转移"].uuid)
+        self.assertEqual({"theme"}, {binding.role for binding in move.subjects})
+        self.assertFalse(move.objects)
+        self.assertEqual({"source", "destination"}, {binding.role for binding in move.others})
+
+        for event in dataset.events:
+            classified = engine.classify_event_roles(event.uuid)
+            classified_bindings = classified.subjects + classified.objects + classified.others
+            self.assertCountEqual(event.role_bindings, classified_bindings)
+
 
 if __name__ == "__main__":
     unittest.main()
