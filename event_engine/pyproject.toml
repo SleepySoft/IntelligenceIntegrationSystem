@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "event-core-engine"
+version = "0.1.0"
+description = "Storage-independent Event V4 analysis, canonicalization and query engine"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+mongodb = ["pymongo>=4.6"]
+dev = ["pytest>=8", "mongomock>=4.1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
