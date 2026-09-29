@@ -5,6 +5,11 @@
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
 
+## 更新与通知
+
+20260929 - Token额度用尽，后面的预算留给v3，当前网站停止更新。从此branch开始分叉，main分支将停留在v2，之前采集的数据在整理后会上传度盘。
+
+
 ## v2版本的说明
 
 从2026年2月15日开始，main分支将正式切换到v2版本。
@@ -22,11 +27,6 @@ v2版本兼容v1版本的数据，数据库不需要额外的升级操作。
 另外向量数据库存储的格式也进行了调整，即将部分内容直接置入metadata中。借助向量数据库，IIS系统支持相似情报跳转及关联情报推演功能。
 
 经过调整后的向量数据库对关联情报的查询表现优异，接下来我会重点研究情报的聚合以及关联推演。
-
-
-## 更新与通知
-
-N/A
 
 
 ## 起因
