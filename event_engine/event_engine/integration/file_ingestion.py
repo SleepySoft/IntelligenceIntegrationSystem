@@ -7,10 +7,9 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import UUID, uuid5
 
-from ..domain.models import (
+from ..ir import (
     Agency,
     Dynamics,
-    EventRecord,
     EventRelation,
     Frame,
     Predicate,
@@ -20,7 +19,9 @@ from ..domain.models import (
     TimeExpression,
     Topology,
 )
-from ..domain.specs import DEFAULT_PREDICATE_SPECS, DEFAULT_ROLE_GROUPS
+from ..core.models import EventRecord
+from ..core.registry import PredicateRegistry
+from ..configs import default_registry
 from .service import EventEngine
 
 
@@ -50,10 +51,12 @@ class LoadedEventFile:
         return str(entity_uuid)
 
 
-def load_event_file(path: str | Path) -> LoadedEventFile:
+def load_event_file(path: str | Path, registry: PredicateRegistry | None = None) -> LoadedEventFile:
     """读取一个 Event File v1 JSON 文件，不执行任何持久化。"""
 
     source = Path(path)
+    if registry is None:
+        registry = default_registry()
     with source.open("r", encoding="utf-8") as stream:
         payload = json.load(stream)
 
@@ -77,7 +80,7 @@ def load_event_file(path: str | Path) -> LoadedEventFile:
         raise ValueError("事件 UUID 存在重复")
 
     events = tuple(
-        _load_event(raw_event, namespace, entities, event_uuids)
+        _load_event(raw_event, namespace, entities, event_uuids, registry)
         for raw_event in raw_events
     )
     return LoadedEventFile(dataset_id=dataset_id, entities=entities, events=events)
@@ -86,7 +89,7 @@ def load_event_file(path: str | Path) -> LoadedEventFile:
 def ingest_event_file(path: str | Path, engine: EventEngine) -> LoadedEventFile:
     """校验并把单个文件内的全部事件注册到 EventEngine。"""
 
-    dataset = load_event_file(path)
+    dataset = load_event_file(path, engine.registry)
     duplicates = [event.uuid for event in dataset.events if engine.events.get(event.uuid)]
     if duplicates:
         raise ValueError(f"事件已经存在，未执行导入: {duplicates}")
@@ -130,6 +133,7 @@ def _load_event(
     namespace: UUID,
     entities: Mapping[str, FileEntity],
     event_uuids: Mapping[str, UUID],
+    registry: PredicateRegistry,
 ) -> EventRecord:
     event_key = _required_text(raw, "id")
     frame = raw.get("frame")
@@ -144,8 +148,8 @@ def _load_event(
     if predicate_id is not None and not isinstance(predicate_id, str):
         raise ValueError(f"事件 {event_key} 的 predicate.id 无效")
     bindings: list[RoleBinding] = []
-    role_groups = DEFAULT_PREDICATE_SPECS.get(predicate_id or "")
-    role_groups_map = role_groups.role_groups if role_groups else DEFAULT_ROLE_GROUPS
+    spec = registry.get(predicate_id or "")
+    role_groups_map = spec.role_groups if spec else {}
     for role, entity_keys in roles.items():
         if not isinstance(entity_keys, list) or not entity_keys:
             raise ValueError(f"事件 {event_key} 的角色 {role} 必须引用至少一个实体")
@@ -194,7 +198,7 @@ def _load_event(
     if "topic" in raw:
         metadata.setdefault("topic", raw["topic"])
 
-    return EventRecord(
+    event = EventRecord(
         uuid=event_uuids[event_key],
         intelligence_uuid=_uuid_or_derived(
             raw.get("intelligence_uuid"), namespace, f"intelligence:{intelligence_key}"
@@ -220,6 +224,10 @@ def _load_event(
         is_primary=bool(raw.get("is_primary", True)),
         metadata=metadata,
     )
+    errors = registry.validate(event.ir)
+    if errors:
+        raise ValueError(f"事件 {event_key}: {'; '.join(errors)}")
+    return event
 
 
 def _load_time_expression(value: Any) -> TimeExpression | None:

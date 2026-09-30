@@ -1,6 +1,6 @@
 from __future__ import annotations
 from uuid import UUID
-from ..domain.queries import EventPage, EventQuery
+from ..core.queries import EventPage, EventQuery
 from .serialization import event_from_document, event_to_document
 
 class MongoQueryTranslator:

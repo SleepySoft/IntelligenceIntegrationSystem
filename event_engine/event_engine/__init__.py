@@ -1,2 +1,3 @@
-"""Storage-independent Event V4 engine."""
-from .domain.models import *
+"""Storage-independent event engine; domain packs are loaded at composition time."""
+from .ir import *
+from .core.models import CanonicalEvent, EventRecord, EventRoleClassification, MatchDecision, MatchResult
