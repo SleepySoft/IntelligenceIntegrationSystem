@@ -5,7 +5,7 @@ import calendar
 import re
 from datetime import datetime, timedelta, timezone
 
-from ..ir import TimeExpression
+from ..schema import TimeExpression
 
 
 def position(value: str | None) -> tuple[datetime, datetime] | None:

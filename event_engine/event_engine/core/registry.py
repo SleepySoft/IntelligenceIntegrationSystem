@@ -1,21 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from math import isfinite
 from types import MappingProxyType
 
-from ..ir import Agency, EventIR, SemanticRoleGroup
-from .specs import PredicateSpec
-
-
-@dataclass(frozen=True, slots=True)
-class DomainPack:
-    """领域配置的数据载体；内核不会按 domain_id 分支。"""
-
-    domain_id: str
-    version: str
-    specs: Mapping[str, PredicateSpec]
+from ..schema import Agency, EventIR, SemanticRoleGroup
+from ..schema.specs import DomainPack, PredicateSpec
 
 
 class PredicateRegistry(Mapping[str, PredicateSpec]):

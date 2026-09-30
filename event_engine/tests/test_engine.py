@@ -3,8 +3,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
 from event_engine.analysis.event_analyzer import EventAnalyzer
-from event_engine.domain.models import *
-from event_engine.domain.specs import DEFAULT_PREDICATE_SPECS
+from event_engine.schema import *
+from event_engine.configs import DEFAULT_PREDICATE_SPECS
 from event_engine.integration.service import EventEngine
 from event_engine.query.memory import InMemoryCanonicalEventRepository, InMemoryEventRepository
 

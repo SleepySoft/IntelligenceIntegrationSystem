@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from event_engine.analysis.event_analyzer import EventAnalyzer
-from event_engine.domain.specs import DEFAULT_PREDICATE_SPECS
+from event_engine.configs import DEFAULT_PREDICATE_SPECS
 from event_engine.integration.file_ingestion import ingest_event_file
 from event_engine.integration.service import EventEngine
 from event_engine.query.memory import InMemoryEventRepository

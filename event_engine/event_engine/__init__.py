@@ -1,3 +1,2 @@
-"""Storage-independent event engine; domain packs are loaded at composition time."""
-from .ir import *
-from .core.models import CanonicalEvent, EventRecord, EventRoleClassification, MatchDecision, MatchResult
+"""Storage-independent event engine; public contracts are defined in schema."""
+from .schema import *

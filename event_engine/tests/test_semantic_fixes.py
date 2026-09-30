@@ -5,10 +5,10 @@ from uuid import uuid4
 
 from event_engine.configs import default_registry
 from event_engine.core import (
-    CanonicalEventMatcher, EventAnalyzer, EventEngine, EventRecord,
-    LifecycleSpec, MatchDecision, PredicateRegistry,
+    CanonicalEventMatcher, EventAnalyzer, EventEngine, PredicateRegistry,
 )
-from event_engine.ir import (
+from event_engine.schema import (
+    EventRecord, LifecycleSpec, MatchDecision,
     Agency, Dynamics, Frame, Predicate, Qualifier, RoleBinding, SemanticRoleGroup,
     TimeExpression, Topology,
 )

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import FrozenSet
 from uuid import UUID
-from ..ir import SemanticRoleGroup
+from .models import SemanticRoleGroup
 
 @dataclass(frozen=True, slots=True)
 class EventQuery:

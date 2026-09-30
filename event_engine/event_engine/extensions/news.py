@@ -7,7 +7,7 @@ from typing import Iterable, Mapping
 from uuid import UUID
 
 from ..core.analyzer import EventAnalyzer
-from ..core.models import EventRecord
+from ..schema.models import EventRecord
 
 
 @dataclass(frozen=True, slots=True)

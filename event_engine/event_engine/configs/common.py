@@ -1,6 +1,6 @@
 """三个配置包共用的声明构造工具，不是独立领域包。"""
-from ..ir import Agency, Dynamics, Frame, SemanticRoleGroup, Topology
-from ..core.specs import ArgumentRoleSpec, IdentitySpec, LifecycleSpec, PredicateSpec, generic_spec
+from ..schema import Agency, Dynamics, Frame, SemanticRoleGroup, Topology
+from ..schema.specs import ArgumentRoleSpec, IdentitySpec, LifecycleSpec, PredicateSpec
 
 DEFAULT_ROLE_GROUPS = {
     "issuer": SemanticRoleGroup.AGENT,
@@ -107,7 +107,7 @@ def make_specs(arguments, identities=None, tags=None, frames=None):
     frames = frames or {}
     result = {}
     for predicate, projection in arguments.items():
-        identity = identities.get(predicate, generic_spec(predicate))
+        identity = identities.get(predicate, IdentitySpec(identity_roles=("subject",), auto_merge_threshold=.92, review_threshold=.75))
         roles = (projection.subject_roles | projection.object_roles
                  | set(identity.identity_roles) | set(identity.discriminator_roles)
                  | {"instrument", "location", "source", "destination", "beneficiary", "target"})

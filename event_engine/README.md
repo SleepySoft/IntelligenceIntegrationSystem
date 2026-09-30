@@ -2,10 +2,10 @@
 
 独立于 IIS 的 Event V4 事件管理核心。
 
-## EventIR、通用内核与领域配置
+## Schema、通用内核与领域配置
 
-- `event_engine.ir`：纯事件语义（EventIR、Frame、角色、时间、属性、Qualifier、Relation），无新闻来源或存储依赖。
-- `event_engine.core`：观察记录、查询与 Repository 协议、配置 Registry、分析、CanonicalEvent 匹配和用例编排。
+- `event_engine.schema`：公共数据与契约，包括 EventIR、观察记录、CanonicalEvent、匹配结果、状态投影、规则定义、查询和 Repository 协议；不依赖执行内核、领域配置或存储实现。
+- `event_engine.core`：配置 Registry、校验、分析、CanonicalEvent 匹配、状态计算和用例编排。
 - `event_engine.configs.news`：情报（新闻）的通用报道词汇。
 - `event_engine.configs.industry`：生产、建设、供应等产业词汇。
 - `event_engine.configs.financial`：交易、融资、债券发行、评级等金融词汇。
@@ -29,7 +29,14 @@ engine = EventEngine(InMemoryEventRepository(), registry=registry)
 新核心 API 默认使用空 Registry；`integration.service.EventEngine` 兼容入口默认组合三个包。
 接入、分析、匹配共享同一 Registry，显式传入空配置不会重新启用默认词汇。
 `EventRecord.ir` 提取纯语义，`EventRecord.from_ir(...)` 为语义补充来源与存储身份。
-本阶段保留 EventRecord 的旧构造参数及存储格式，旧 `domain`、`analysis` 导入仍可用。
+保留 EventRecord 的旧构造参数及存储格式；`domain/`、`ir/` 和 core 下的协议文件已移除，
+数据与契约统一从 `event_engine.schema` 导入，功能从 `event_engine.core` 导入。
+旧 `analysis` 服务入口仍保留。
+
+```python
+from event_engine.schema import EventRecord, IdentitySpec, EventQuery, EventRepository
+from event_engine.core import EventAnalyzer, EventEngine, PredicateRegistry
+```
 
 ## 身份匹配与状态整合
 

@@ -7,27 +7,36 @@
 
 ```text
 event_engine/
-├── ir/                 EventIR、Frame、角色、时间、属性、限定词、关系
+├── schema/             公共数据与契约，不加载执行或存储实现
+│   ├── models.py       EventIR、观察、CanonicalEvent、匹配结果、状态投影
+│   ├── specs.py        PredicateSpec、IdentitySpec、LifecycleSpec、DomainPack
+│   ├── queries.py      EventQuery、EventPage
+│   └── ports.py        EventRepository、CanonicalEventRepository 协议
 ├── core/
-│   ├── models.py       观察记录、CanonicalEvent、匹配结果、状态投影
-│   ├── specs.py        PredicateSpec、IdentitySpec、LifecycleSpec
 │   ├── registry.py     配置注册、冻结与语义校验
 │   ├── analyzer.py     通用角色分析、时间线、状态投影入口
 │   ├── canonicalizer.py 身份比较与 CanonicalEvent 重算
 │   ├── state.py        带来源和有效时间的生命周期投影
 │   ├── temporal.py     时间精度与区间计算
-│   ├── engine.py       查询、登记、匹配与绑定的用例编排
-│   └── queries.py / ports.py 查询对象与存储端口
+│   └── engine.py       查询、登记、匹配与绑定的用例编排
 ├── configs/            news、industry、financial 三类只读规则包
 ├── extensions/news.py 新闻专用分析（如战争区域）
 ├── query/              内存、MongoDB 与序列化适配器
 ├── integration/        文件接入及兼容服务入口
-└── domain/、analysis/  旧导入路径的兼容入口
+└── analysis/           旧分析服务的兼容入口
 ```
 
-依赖方向是 `core → ir`；配置包、领域扩展、存储适配和接入代码依赖核心公共协议。
+依赖方向是 `core → schema`；配置包的规则声明、领域扩展、存储适配和接入代码
+共享 schema 公共协议。配置组合加载由 Registry 完成。
 核心不导入三个配置包，不根据 `domain_id` 分支，也不依赖 MongoDB 或 IIS。
 行业影响、金融收益等业务推导不进入通用内核。
+
+本次组织调整将数据与契约统一到 `schema`，不是修改事件语义或存储格式。
+`DomainPack` 也是声明性数据，移出 Registry；`LifecycleSpec` 只保留迁移图，
+可达性算法移到 `core.state.lifecycle_allows`。`EventIR` 名称保留，表示纯事件语义，
+但其所属 schema 还包含观察外壳、派生结果和接口契约。
+已删除的 `domain/` 不恢复兼容包装，原 `ir/` 和 `core.models/specs/queries/ports`
+导入路径也不保留；所有仓库内调用已更新，外部调用需改为 `event_engine.schema`。
 
 配置不只是外部输入约束，也提供内部推理所需的语义：角色投影、身份维度、
 时间窗口、Frame 和状态迁移。内核知道这些规则，但不需要知道它们属于哪个领域。
@@ -155,4 +164,5 @@ python -X utf8 -m examples.basic_usage
 python -X utf8 -m examples.file_ingestion_demo
 ```
 
-本次验证：48 项测试通过，两个示例均通过。
+本次验证：49 项测试通过，两个示例均通过；新增测试确认导入 schema 不加载 core、
+领域配置、扩展、接入或存储模块。

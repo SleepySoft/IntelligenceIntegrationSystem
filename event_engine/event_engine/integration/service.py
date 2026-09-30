@@ -1,6 +1,6 @@
 """应用组装与旧接口兼容；默认同时加载三个领域包。"""
 from ..core.engine import EventEngine as CoreEventEngine
-from ..core.queries import EventQuery
+from ..schema.queries import EventQuery
 from ..configs import default_registry
 from ..extensions.news import NewsAnalyzer
 

@@ -4,6 +4,7 @@
 > 本文较宽的 Protocol/schema 示例仍是扩展草案，不是当前完整 API；
 > 当前字段、Frame 校验、身份证据门槛与状态投影以
 > [SEMANTIC_DECISIONS.md](SEMANTIC_DECISIONS.md) 为准。
+> 程序布局已统一为 `schema`（数据与契约）和 `core`（执行）；不再保留 `ir/`、`domain/`。
 
 ## 1. 文档目的
 

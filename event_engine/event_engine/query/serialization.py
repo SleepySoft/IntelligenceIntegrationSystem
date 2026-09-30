@@ -1,8 +1,8 @@
 from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
-from ..ir import *
-from ..core.models import EventRecord
+from ..schema import *
+from ..schema.models import EventRecord
 
 def event_to_document(e: EventRecord) -> dict:
     return {

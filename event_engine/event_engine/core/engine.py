@@ -3,7 +3,7 @@ from uuid import UUID
 from dataclasses import replace
 from .analyzer import EventAnalyzer
 from .canonicalizer import CanonicalEventMatcher
-from .models import (
+from ..schema.models import (
     CanonicalEvent,
     EventRecord,
     EventRoleClassification,
@@ -11,8 +11,8 @@ from .models import (
     MatchResult,
     SemanticRoleGroup,
 )
-from .queries import EventPage, EventQuery
-from .ports import CanonicalEventRepository, EventRepository
+from ..schema.queries import EventPage, EventQuery
+from ..schema.ports import CanonicalEventRepository, EventRepository
 from .registry import PredicateRegistry, as_registry
 
 class EventEngine:

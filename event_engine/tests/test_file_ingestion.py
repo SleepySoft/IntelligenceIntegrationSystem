@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from event_engine.domain.models import SemanticRoleGroup
+from event_engine.schema import SemanticRoleGroup
 from event_engine.integration.file_ingestion import ingest_event_file, load_event_file
 from event_engine.integration.service import EventEngine
 from event_engine.query.memory import InMemoryEventRepository

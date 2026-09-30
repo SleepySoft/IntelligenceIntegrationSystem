@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Mapping
 
-from ..ir import Frame, SemanticRoleGroup
+from .models import Frame, SemanticRoleGroup
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,21 +37,6 @@ class LifecycleSpec:
 
     transitions: Mapping[str, frozenset[tuple[str, str]]] = field(default_factory=dict)
 
-    def allows(self, kind: str, before: str, after: str) -> bool:
-        if before == after:
-            return True
-        edges = self.transitions.get(kind, frozenset())
-        reached, pending = {before}, [before]
-        while pending:
-            node = pending.pop()
-            for source, target in edges:
-                if source == node and target not in reached:
-                    if target == after:
-                        return True
-                    reached.add(target)
-                    pending.append(target)
-        return False
-
 
 @dataclass(frozen=True, slots=True)
 class ArgumentRoleSpec:
@@ -76,5 +61,10 @@ class PredicateSpec:
     lifecycle: LifecycleSpec | None = None
 
 
-def generic_spec(predicate_id: str | None) -> IdentitySpec:
-    return IdentitySpec(identity_roles=("subject",), auto_merge_threshold=.92, review_threshold=.75)
+@dataclass(frozen=True, slots=True)
+class DomainPack:
+    """领域配置的数据载体，不包含注册或推理逻辑。"""
+
+    domain_id: str
+    version: str
+    specs: Mapping[str, PredicateSpec]

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import UUID, uuid5
 
-from ..ir import (
+from ..schema import (
     Agency,
     Dynamics,
     EventRelation,
@@ -19,7 +19,7 @@ from ..ir import (
     TimeExpression,
     Topology,
 )
-from ..core.models import EventRecord
+from ..schema.models import EventRecord
 from ..core.registry import PredicateRegistry
 from ..configs import default_registry
 from .service import EventEngine

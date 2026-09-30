@@ -5,9 +5,9 @@ from typing import Mapping
 from uuid import uuid4
 
 from .analyzer import EventAnalyzer
-from .models import CanonicalEvent, EventRecord, MatchDecision, MatchResult
+from ..schema.models import CanonicalEvent, EventRecord, MatchDecision, MatchResult
 from .registry import as_registry
-from .specs import IdentitySpec, PredicateSpec, generic_spec
+from ..schema.specs import IdentitySpec, PredicateSpec
 from .temporal import event_bounds, expression_position, position
 
 
@@ -25,7 +25,7 @@ class CanonicalEventMatcher:
             conflicts.append("predicate冲突")
             return result(MatchDecision.DIFFERENT)
         spec = self.specs.get(observation.predicate.id or "")
-        identity = spec.identity if spec else generic_spec(observation.predicate.id)
+        identity = spec.identity if spec else _generic_identity()
         for ir in (observation.ir, replace(observation.ir, frame=candidate.frame)):
             errors = self.specs.validate(ir)
             if errors:
@@ -155,7 +155,7 @@ class CanonicalEventMatcher:
 
     def _identity_spec(self, event):
         spec = self.specs.get(event.predicate.id or "")
-        return spec.identity if spec else generic_spec(event.predicate.id)
+        return spec.identity if spec else _generic_identity()
 
     @staticmethod
     def _collect_roles(events, roles):
@@ -305,3 +305,8 @@ class CanonicalEventMatcher:
         return 0
 
     _event_bounds = staticmethod(event_bounds)
+
+
+def _generic_identity() -> IdentitySpec:
+    """未注册谓词的保守兜底；匹配器仍禁止据此自动合并。"""
+    return IdentitySpec(identity_roles=("subject",), auto_merge_threshold=.92, review_threshold=.75)

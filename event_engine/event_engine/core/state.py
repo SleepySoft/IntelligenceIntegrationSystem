@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from itertools import groupby
 from typing import Iterable
 
-from .models import EventRecord, QualifierObservation, StateProjection
-from .specs import LifecycleSpec
+from ..schema.models import EventRecord, QualifierObservation, StateProjection
+from ..schema.specs import LifecycleSpec
 from .temporal import effective_time
 
 
@@ -24,6 +24,22 @@ def assertion_limited(event: EventRecord) -> bool:
             return True
         if q.type == "modality" and q.value not in {"actual", "factual", "asserted"}:
             return True
+    return False
+
+
+def lifecycle_allows(lifecycle: LifecycleSpec, kind: str, before: str, after: str) -> bool:
+    if before == after:
+        return True
+    edges = lifecycle.transitions.get(kind, frozenset())
+    reached, pending = {before}, [before]
+    while pending:
+        node = pending.pop()
+        for source, target in edges:
+            if source == node and target not in reached:
+                if target == after:
+                    return True
+                reached.add(target)
+                pending.append(target)
     return False
 
 
@@ -84,7 +100,7 @@ def project_state(events: Iterable[EventRecord], lifecycle: LifecycleSpec | None
                 unknown.append(f"{kind} 有效时间缺失，不能判定 {current}->{value}; observations={refs}")
             elif lifecycle is None or kind not in lifecycle.transitions:
                 unknown.append(f"{kind} 未配置状态迁移，不能判定 {current}->{value}; observations={refs}")
-            elif lifecycle.allows(kind, current, value):
+            elif lifecycle_allows(lifecycle, kind, current, value):
                 current, current_time = value, when
                 supports = {x.event_uuid for x in batch}
             else:

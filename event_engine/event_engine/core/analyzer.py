@@ -2,11 +2,11 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable, Mapping
 from uuid import UUID
-from ..ir import EventIR, SemanticRoleGroup, Topology
-from .models import EventRecord, EventRoleClassification
-from .specs import PredicateSpec
+from ..schema import EventIR, SemanticRoleGroup, Topology
+from ..schema.models import EventRecord, EventRoleClassification
+from ..schema.specs import PredicateSpec
 from .registry import as_registry
-from .models import StateProjection
+from ..schema.models import StateProjection
 from .state import project_state
 
 class EventAnalyzer:

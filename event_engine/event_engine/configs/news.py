@@ -1,7 +1,7 @@
 """情报（新闻）通用报道词汇配置；不包含推理算法。"""
 from datetime import timedelta
-from ..core.registry import DomainPack
-from ..core.specs import IdentitySpec
+from ..schema.specs import DomainPack
+from ..schema.specs import IdentitySpec
 from .common import _arguments, _frame, frame_specs, make_specs
 
 PREDICATE_ARGUMENT_SPECS = {

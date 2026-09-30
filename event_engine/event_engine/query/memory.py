@@ -1,7 +1,7 @@
 from __future__ import annotations
 from uuid import UUID
-from ..core.models import CanonicalEvent, EventRecord
-from ..core.queries import EventPage, EventQuery
+from ..schema.models import CanonicalEvent, EventRecord
+from ..schema.queries import EventPage, EventQuery
 
 class InMemoryEventRepository:
     def __init__(self): self.data: dict[UUID, EventRecord] = {}

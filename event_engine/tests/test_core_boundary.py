@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from event_engine.core import (
-    ArgumentRoleSpec, DomainPack, EventAnalyzer, EventEngine, EventRecord,
-    IdentitySpec, MatchDecision, PredicateRegistry, PredicateSpec,
+from event_engine.core import EventAnalyzer, EventEngine, PredicateRegistry
+from event_engine.schema import (
+    ArgumentRoleSpec, DomainPack, EventRecord, IdentitySpec, MatchDecision, PredicateSpec,
 )
-from event_engine.ir import (
+from event_engine.schema import (
     Agency, Dynamics, EventIR, Frame, Predicate, Qualifier, RoleBinding,
     SemanticRoleGroup, TimeExpression, Topology,
 )
@@ -58,6 +58,18 @@ class CoreBoundaryTests(unittest.TestCase):
         self.assertEqual(record, event_from_document(event_to_document(record)))
         self.assertFalse(hasattr(ir, "intelligence_uuid"))
         self.assertEqual((self.entity,), EventAnalyzer(self.registry).participants(ir))
+
+    def test_schema_import_does_not_load_execution_or_adapters(self):
+        code = (
+            "import sys; import event_engine.schema; "
+            "from event_engine.schema import EventRecord, CanonicalEvent, LifecycleSpec, "
+            "DomainPack, EventQuery, EventRepository; "
+            "assert not any(n.startswith(('event_engine.core', 'event_engine.configs', "
+            "'event_engine.extensions', 'event_engine.integration', 'event_engine.query')) "
+            "for n in sys.modules); "
+            "assert not hasattr(LifecycleSpec(), 'allows')"
+        )
+        subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
 
     def test_unseen_vocabulary_drives_roles_queries_and_matching(self):
         engine = EventEngine(InMemoryEventRepository(), InMemoryCanonicalEventRepository(), registry=self.registry)
