@@ -7,6 +7,7 @@
 > 程序布局已统一为 `schema`（数据与契约）和 `core`（执行）；不再保留 `ir/`、`domain/`。
 > 领域声明、配置及专用算法统一到 `domains/<name>/`，支持显式选择和裁剪；
 > 原 `analysis/`、`configs/`、`extensions/` 不再保留。
+> `integration/` 也已移除；JSON 文件工具只是演示/测试注入，位于包外 `examples/`。
 
 ## 1. 文档目的
 

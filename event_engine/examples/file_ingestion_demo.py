@@ -8,7 +8,7 @@ from pathlib import Path
 
 from event_engine.core import EventAnalyzer
 from event_engine.domains import default_registry
-from event_engine.integration.file_ingestion import ingest_event_file
+from examples.file_ingestion import ingest_event_file
 from event_engine.core import EventEngine
 from event_engine.domains.news.analyzer import NewsAnalyzer
 from event_engine.query.memory import InMemoryEventRepository

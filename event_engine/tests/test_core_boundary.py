@@ -16,7 +16,7 @@ from event_engine.schema import (
     Agency, Dynamics, EventIR, Frame, Predicate, Qualifier, RoleBinding,
     SemanticRoleGroup, TimeExpression, Topology,
 )
-from event_engine.integration.file_ingestion import ingest_event_file
+from examples.file_ingestion import ingest_event_file
 from event_engine.query.memory import InMemoryCanonicalEventRepository, InMemoryEventRepository
 from event_engine.query.serialization import event_from_document, event_to_document
 
@@ -46,7 +46,7 @@ class CoreBoundaryTests(unittest.TestCase):
         code = (
             "import sys; import event_engine.core; "
             "assert not any(n.startswith(('event_engine.domains', 'event_engine.configs', 'event_engine.extensions', "
-            "'event_engine.domain', 'event_engine.query')) for n in sys.modules)"
+            "'event_engine.domain', 'event_engine.query', 'examples')) for n in sys.modules)"
         )
         subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
 
@@ -86,9 +86,8 @@ class CoreBoundaryTests(unittest.TestCase):
         self.assertEqual(MatchDecision.SAME_EVENT, result.decision)
 
     def test_explicit_empty_registry_does_not_load_defaults(self):
-        from event_engine.integration.service import EventEngine as CompatibleEngine
         registry = PredicateRegistry()
-        engine = CompatibleEngine(InMemoryEventRepository(), registry=registry)
+        engine = EventEngine(InMemoryEventRepository(), registry=registry)
         self.assertIs(registry, engine.registry)
         self.assertFalse(engine.analyzer.specs)
         self.assertFalse(engine.matcher.specs)

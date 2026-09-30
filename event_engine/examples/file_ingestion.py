@@ -1,3 +1,4 @@
+"""Event File v1 的演示/测试注入工具，不是持久化或查询适配器。"""
 from __future__ import annotations
 
 import json
@@ -7,7 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import UUID, uuid5
 
-from ..schema import (
+from event_engine.schema import (
     Agency,
     Dynamics,
     EventRelation,
@@ -19,10 +20,8 @@ from ..schema import (
     TimeExpression,
     Topology,
 )
-from ..schema.models import EventRecord
-from ..core.registry import PredicateRegistry
-from ..domains import default_registry
-from .service import EventEngine
+from event_engine.schema.models import EventRecord
+from event_engine.core import EventEngine, PredicateRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,12 +50,10 @@ class LoadedEventFile:
         return str(entity_uuid)
 
 
-def load_event_file(path: str | Path, registry: PredicateRegistry | None = None) -> LoadedEventFile:
+def load_event_file(path: str | Path, registry: PredicateRegistry) -> LoadedEventFile:
     """读取一个 Event File v1 JSON 文件，不执行任何持久化。"""
 
     source = Path(path)
-    if registry is None:
-        registry = default_registry()
     with source.open("r", encoding="utf-8") as stream:
         payload = json.load(stream)
 

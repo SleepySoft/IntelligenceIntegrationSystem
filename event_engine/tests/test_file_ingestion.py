@@ -2,8 +2,9 @@ import unittest
 from pathlib import Path
 
 from event_engine.schema import SemanticRoleGroup
-from event_engine.integration.file_ingestion import ingest_event_file, load_event_file
-from event_engine.integration.service import EventEngine
+from examples.file_ingestion import ingest_event_file, load_event_file
+from event_engine.core import EventEngine
+from event_engine.domains import default_registry
 from event_engine.query.memory import InMemoryEventRepository
 
 
@@ -12,8 +13,9 @@ DATA_FILE = Path(__file__).parents[1] / "examples" / "data" / "multitopic_events
 
 class FileIngestionTests(unittest.TestCase):
     def test_loads_multitopic_file_with_stable_references(self):
-        first = load_event_file(DATA_FILE)
-        second = load_event_file(DATA_FILE)
+        registry = default_registry()
+        first = load_event_file(DATA_FILE, registry)
+        second = load_event_file(DATA_FILE, registry)
 
         self.assertGreaterEqual(len(first.events), 30)
         self.assertGreaterEqual(len({event.metadata["topic"] for event in first.events}), 30)
@@ -30,7 +32,7 @@ class FileIngestionTests(unittest.TestCase):
 
     def test_ingests_and_supports_semantic_role_query(self):
         repository = InMemoryEventRepository()
-        engine = EventEngine(repository)
+        engine = EventEngine(repository, registry=default_registry())
         dataset = ingest_event_file(DATA_FILE, engine)
         armed_group = dataset.entities["armed_group"].uuid
 
@@ -45,7 +47,7 @@ class FileIngestionTests(unittest.TestCase):
 
     def test_rejects_duplicate_import_before_writing(self):
         repository = InMemoryEventRepository()
-        engine = EventEngine(repository)
+        engine = EventEngine(repository, registry=default_registry())
         dataset = ingest_event_file(DATA_FILE, engine)
 
         with self.assertRaisesRegex(ValueError, "事件已经存在"):
@@ -55,7 +57,7 @@ class FileIngestionTests(unittest.TestCase):
 
     def test_classifies_subject_object_and_other_roles_by_predicate(self):
         repository = InMemoryEventRepository()
-        engine = EventEngine(repository)
+        engine = EventEngine(repository, registry=default_registry())
         dataset = ingest_event_file(DATA_FILE, engine)
         by_topic = {event.metadata["topic"]: event for event in dataset.events}
 

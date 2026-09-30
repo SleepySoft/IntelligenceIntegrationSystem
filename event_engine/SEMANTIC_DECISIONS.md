@@ -27,9 +27,14 @@ event_engine/
 │   │   └── analyzer.py 战争区域等领域算法
 │   ├── industry/config.py 产业词汇和语义规则
 │   └── financial/config.py 金融词汇和语义规则
-├── query/              内存、MongoDB 与序列化适配器
-└── integration/        文件接入及应用组装入口
+└── query/              内存、MongoDB 与序列化适配器
 ```
+
+包外 `examples/file_ingestion.py` 是演示/测试数据注入工具：读取 JSON、解析引用和 UUID、
+校验后调用引擎登记。它没有持久化更新、索引或 Repository 查询能力，不能把“读取文件”
+等同于“文件持久层”。若未来实现可持续读写和查询的文件 Repository，才放到 adapters。
+`integration/ports.py` 的协议转发及 `service.py` 的默认组装包装已删除，不保留 integration。
+使用方显式选择 Registry 和存储，直接实例化 core.EventEngine；生产包不包含 examples。
 
 依赖方向是 `core → schema`；配置包的规则声明、领域扩展、存储适配和接入代码
 共享 schema 公共协议。配置组合加载由 Registry 完成。
@@ -43,9 +48,9 @@ event_engine/
 `domains` 入口不预加载任何领域。`load_pack(name)` 只加载该领域配置；
 `registry_for(*names)` 只组合指定包，空参数为空配置；算法由调用方显式导入。
 因此只选择金融时，新闻/产业及其算法可以不部署。共用 common 和 schema/core 仍需保留。
-`default_registry()` 明确加载全部三个内置领域，仅供完整演示及默认接入组装。
-裁剪部署应使用 core.EventEngine 并显式传入所选 Registry，文件解析也应传入该 Registry，
-不要调用依赖所有内置领域的默认组装。
+`default_registry()` 明确加载全部三个内置领域，仅供使用方明确选择完整配置。
+裁剪部署使用 core.EventEngine 并显式传入所选 Registry；演示文件解析也必须传入 Registry，
+不会隐式调用依赖所有内置领域的默认组装。
 
 `analysis/` 兼容包装与 `configs/`、`extensions/` 已取消，不再保留旧路径；
 `EventAnalyzer`、`CanonicalEventMatcher` 直接使用 core，默认配置由调用方传入。
@@ -166,8 +171,8 @@ strict 地点即使权重为零也须可比较。可重复事件不能只凭参�
 - 新成员与原成员有硬冲突：返回 ambiguous，不写入冲突成员。
 
 `current_qualifiers` 保留为生命周期值的兼容视图；需要来源、主张与争议时读取
-`state_projection`。核心入口默认空 Registry；兼容 `integration.service.EventEngine`
-默认组合三个包，显式空配置仍保持为空。接入、分析、匹配使用同一 Registry。
+`state_projection`。核心入口默认空 Registry，不再提供 `integration.service.EventEngine`
+兼容包装；显式空配置仍保持为空。示例注入、分析、匹配使用同一 Registry。
 
 新增 CanonicalEvent 的区分角色、身份属性和状态投影字段有默认值，旧数据并未自动迁移。
 旧聚合若缺这些字段，应从原观察重建；以前自动绑定的成员需复核，不能声称本次已经

@@ -4,6 +4,7 @@
 > 注册、校验、通用算法与编排位于 `core/`；`domain/` 和 `ir/` 已移除。
 > 新闻、产业、金融的配置、专用声明及算法归入 `domains/`；选择的包组合注册，
 > 新闻专用分析位于 `domains/news/analyzer.py`。`analysis/`、`configs/`、`extensions/` 已移除。
+> `integration/` 已移除；文件注入工具仅用于演示/测试，位于 `examples/file_ingestion.py`。
 > 本文的分析/整合/查询职责仍适用；实际接入、分析和匹配共享同一 Registry。
 > 身份证据门槛、区分角色/身份属性比较、区间时间比较和生命周期投影已实现。
 > 状态投影保留主张、来源、有效时间、支持观察与争议；仍不承担跨来源事实真值裁决。
@@ -59,7 +60,7 @@ AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
 - Event 与 CanonicalEvent 的可解释匹配。
 - CanonicalEvent 当前状态重算。
 
-### 3.2 整合层 `event_engine.integration`
+### 3.2 用例编排 `event_engine.core.engine`
 
 负责用例编排：
 
@@ -70,9 +71,16 @@ AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
 - 查询实体行为、实体遭遇、时间线；领域分析显式调用相应 domains 算法。
 - 将 Event 解析到 CanonicalEvent。
 
-整合层只依赖抽象 Repository，不依赖 MongoDB。
+核心编排只依赖抽象 Repository，不依赖 MongoDB。使用方负责选择配置和存储实例，
+不另设默认加载全部领域的 integration 包装。
 
-### 3.3 查询层 `event_engine.query`
+### 3.3 演示/测试注入 `examples.file_ingestion`
+
+Event File v1 解析、局部引用到 UUID 的转换和批量登记仅用于演示与回归测试。
+文件本身不提供 Repository、持久化更新、索引或查询，因此不放入运行时存储适配层。
+它接收显式 Registry 或目标引擎，调用核心登记 API，不承担引擎组装。
+
+### 3.4 查询层 `event_engine.query`
 
 实现实际存储查询：
 

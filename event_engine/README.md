@@ -41,7 +41,7 @@ zones = NewsAnalyzer(engine.analyzer).extract_war_zones(events)
 通用引擎不再提供 `extract_war_zones`；领域结果 `WarZoneView` 位于
 `domains/news/schema.py`。产业、金融尚无专用分析算法，不创建空算法占位文件。
 
-新核心 API 默认使用空 Registry；`integration.service.EventEngine` 兼容入口默认组合三个包。
+引擎 API 默认使用空 Registry；调用方显式选择领域并组装引擎，`integration/` 已移除。
 接入、分析、匹配共享同一 Registry，显式传入空配置不会重新启用默认词汇。
 `EventRecord.ir` 提取纯语义，`EventRecord.from_ir(...)` 为语义补充来源与存储身份。
 保留 EventRecord 的旧构造参数及存储格式；`domain/`、`ir/` 和 core 下的协议文件已移除，
@@ -120,6 +120,10 @@ python examples/basic_usage.py
 ```
 
 ## 单文件接入演示
+
+`examples/file_ingestion.py` 仅用于演示和测试数据注入，不是持久化层，也不是引擎的运行时 API。
+解析时必须传入 Registry，注入时使用目标引擎的 Registry，不自动加载全部领域。
+内存、MongoDB 查询仍由 Repository 实现，JSON 文件不承担存储查询能力。
 
 `Event File v1` 使用一个 JSON 文件保存实体表和事件表。文件内的实体、事件和情报 ID
 会按 `dataset_id` 稳定映射为 UUID，因此同一个文件反复解析会得到相同标识。
