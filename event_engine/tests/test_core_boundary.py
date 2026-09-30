@@ -45,7 +45,7 @@ class CoreBoundaryTests(unittest.TestCase):
     def test_core_import_does_not_load_domain_configuration_or_storage(self):
         code = (
             "import sys; import event_engine.core; "
-            "assert not any(n.startswith(('event_engine.configs', 'event_engine.extensions', "
+            "assert not any(n.startswith(('event_engine.domains', 'event_engine.configs', 'event_engine.extensions', "
             "'event_engine.domain', 'event_engine.query')) for n in sys.modules)"
         )
         subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
@@ -64,7 +64,7 @@ class CoreBoundaryTests(unittest.TestCase):
             "import sys; import event_engine.schema; "
             "from event_engine.schema import EventRecord, CanonicalEvent, LifecycleSpec, "
             "DomainPack, EventQuery, EventRepository; "
-            "assert not any(n.startswith(('event_engine.core', 'event_engine.configs', "
+            "assert not any(n.startswith(('event_engine.core', 'event_engine.domains', 'event_engine.configs', "
             "'event_engine.extensions', 'event_engine.integration', 'event_engine.query')) "
             "for n in sys.modules); "
             "assert not hasattr(LifecycleSpec(), 'allows')"
@@ -137,7 +137,9 @@ class CoreBoundaryTests(unittest.TestCase):
             self.assertFalse(empty_engine.events.data)
 
     def test_builtin_packs_compose_without_duplicate_definitions(self):
-        from event_engine.configs import FINANCIAL_PACK, INDUSTRY_PACK, NEWS_PACK
+        from event_engine.domains.news import PACK as NEWS_PACK
+        from event_engine.domains.industry import PACK as INDUSTRY_PACK
+        from event_engine.domains.financial import PACK as FINANCIAL_PACK
         registry = PredicateRegistry.from_packs(NEWS_PACK, INDUSTRY_PACK, FINANCIAL_PACK)
         self.assertEqual({"news": "1.1", "industry": "1.1", "financial": "1.1"}, dict(registry.pack_versions))
         for predicate in ("attack", "build_facility", "issue_bond"):

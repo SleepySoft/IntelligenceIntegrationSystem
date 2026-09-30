@@ -19,17 +19,38 @@ event_engine/
 │   ├── state.py        带来源和有效时间的生命周期投影
 │   ├── temporal.py     时间精度与区间计算
 │   └── engine.py       查询、登记、匹配与绑定的用例编排
-├── configs/            news、industry、financial 三类只读规则包
-├── extensions/news.py 新闻专用分析（如战争区域）
+├── domains/            可选择、可裁剪的领域能力
+│   ├── common.py       领域配置共用的声明构造工具
+│   ├── news/
+│   │   ├── config.py   新闻词汇和语义规则
+│   │   ├── schema.py   领域输出声明（WarZoneView）
+│   │   └── analyzer.py 战争区域等领域算法
+│   ├── industry/config.py 产业词汇和语义规则
+│   └── financial/config.py 金融词汇和语义规则
 ├── query/              内存、MongoDB 与序列化适配器
-├── integration/        文件接入及兼容服务入口
-└── analysis/           旧分析服务的兼容入口
+└── integration/        文件接入及应用组装入口
 ```
 
 依赖方向是 `core → schema`；配置包的规则声明、领域扩展、存储适配和接入代码
 共享 schema 公共协议。配置组合加载由 Registry 完成。
 核心不导入三个配置包，不根据 `domain_id` 分支，也不依赖 MongoDB 或 IIS。
 行业影响、金融收益等业务推导不进入通用内核。
+
+引擎包可以维护领域场景算法，但它们放在对应 `domains/<name>/`，不混入通用 core。
+配置、专用数据声明和算法集中管理；当前只有新闻有专用算法，产业/金融仅有配置。
+领域算法导入 core/schema，core 不反向依赖它们。
+
+`domains` 入口不预加载任何领域。`load_pack(name)` 只加载该领域配置；
+`registry_for(*names)` 只组合指定包，空参数为空配置；算法由调用方显式导入。
+因此只选择金融时，新闻/产业及其算法可以不部署。共用 common 和 schema/core 仍需保留。
+`default_registry()` 明确加载全部三个内置领域，仅供完整演示及默认接入组装。
+裁剪部署应使用 core.EventEngine 并显式传入所选 Registry，文件解析也应传入该 Registry，
+不要调用依赖所有内置领域的默认组装。
+
+`analysis/` 兼容包装与 `configs/`、`extensions/` 已取消，不再保留旧路径；
+`EventAnalyzer`、`CanonicalEventMatcher` 直接使用 core，默认配置由调用方传入。
+`extract_war_zones()` 从组装引擎移除，显式调用 `domains.news.analyzer.NewsAnalyzer`，
+其输出声明 `WarZoneView` 位于 `domains.news.schema`。
 
 本次组织调整将数据与契约统一到 `schema`，不是修改事件语义或存储格式。
 `DomainPack` 也是声明性数据，移出 Registry；`LifecycleSpec` 只保留迁移图，
@@ -164,5 +185,6 @@ python -X utf8 -m examples.basic_usage
 python -X utf8 -m examples.file_ingestion_demo
 ```
 
-本次验证：49 项测试通过，两个示例均通过；新增测试确认导入 schema 不加载 core、
-领域配置、扩展、接入或存储模块。
+本次验证：55 项测试通过，两个示例均通过；边界测试确认 schema/core 不加载领域，
+领域配置不加载专用算法，并模拟未选领域不可导入，验证金融配置仍可单独使用。
+按需加载测试见 [test_domains.py](tests/test_domains.py)。

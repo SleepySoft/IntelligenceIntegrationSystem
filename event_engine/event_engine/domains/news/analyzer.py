@@ -1,24 +1,13 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, Mapping
+from typing import Iterable
 from uuid import UUID
 
-from ..core.analyzer import EventAnalyzer
-from ..schema.models import EventRecord
-
-
-@dataclass(frozen=True, slots=True)
-class WarZoneView:
-    location_entity_uuid: UUID
-    event_count: int
-    first_activity: str | None
-    last_activity: str | None
-    predicate_distribution: Mapping[str, int]
-    supporting_event_uuids: tuple[UUID, ...]
-    active: bool
+from ...core.analyzer import EventAnalyzer
+from ...schema.models import EventRecord
+from .schema import WarZoneView
 
 
 class NewsAnalyzer:

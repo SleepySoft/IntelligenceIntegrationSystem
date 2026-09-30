@@ -6,10 +6,9 @@
 
 - `event_engine.schema`：公共数据与契约，包括 EventIR、观察记录、CanonicalEvent、匹配结果、状态投影、规则定义、查询和 Repository 协议；不依赖执行内核、领域配置或存储实现。
 - `event_engine.core`：配置 Registry、校验、分析、CanonicalEvent 匹配、状态计算和用例编排。
-- `event_engine.configs.news`：情报（新闻）的通用报道词汇。
-- `event_engine.configs.industry`：生产、建设、供应等产业词汇。
-- `event_engine.configs.financial`：交易、融资、债券发行、评级等金融词汇。
-- `event_engine.extensions.news`：战争区域等新闻领域分析。
+- `event_engine.domains.news`：新闻领域的规则配置、专用声明和算法。
+- `event_engine.domains.industry`：产业领域，目前提供生产、建设、供应等规则配置。
+- `event_engine.domains.financial`：金融领域，目前提供交易、融资、债券发行、评级等规则配置。
 - `event_engine.query`：内存与 MongoDB 存储适配器。
 
 三个配置包按词汇维护职责划分，可以组合加载；新闻报道产业或金融事件时同时加载相应包。
@@ -18,20 +17,38 @@
 配置既可约束外部输入，也提供内部角色投影和身份比较规则；内核不按领域名称分支。
 
 ```python
-from event_engine.core import EventEngine, PredicateRegistry
-from event_engine.configs import INDUSTRY_PACK, FINANCIAL_PACK
+from event_engine.core import EventEngine
+from event_engine.domains import registry_for
 from event_engine.query.memory import InMemoryEventRepository
 
-registry = PredicateRegistry.from_packs(INDUSTRY_PACK, FINANCIAL_PACK)
+registry = registry_for("industry", "financial")
 engine = EventEngine(InMemoryEventRepository(), registry=registry)
 ```
+
+`domains` 入口不自动导入领域；`registry_for()` 不传参数时返回空 Registry，
+指定金融时不加载新闻、产业或其算法。各领域的 `__init__` 只导出配置 `PACK`，
+专用算法需显式导入，便于选择和裁剪。自定义包仍可用 `PredicateRegistry.from_packs(...)`。
+
+```python
+from event_engine.domains.news.analyzer import NewsAnalyzer
+from event_engine.schema import EventQuery
+
+engine = EventEngine(InMemoryEventRepository(), registry=registry_for("news"))
+events = engine.events.search(EventQuery()).items
+zones = NewsAnalyzer(engine.analyzer).extract_war_zones(events)
+```
+
+通用引擎不再提供 `extract_war_zones`；领域结果 `WarZoneView` 位于
+`domains/news/schema.py`。产业、金融尚无专用分析算法，不创建空算法占位文件。
 
 新核心 API 默认使用空 Registry；`integration.service.EventEngine` 兼容入口默认组合三个包。
 接入、分析、匹配共享同一 Registry，显式传入空配置不会重新启用默认词汇。
 `EventRecord.ir` 提取纯语义，`EventRecord.from_ir(...)` 为语义补充来源与存储身份。
 保留 EventRecord 的旧构造参数及存储格式；`domain/`、`ir/` 和 core 下的协议文件已移除，
 数据与契约统一从 `event_engine.schema` 导入，功能从 `event_engine.core` 导入。
-旧 `analysis` 服务入口仍保留。
+`analysis/`、`configs/`、`extensions/` 也已移除；原配置与领域算法改从 `domains/` 导入。
+原 `DEFAULT_PREDICATE_SPECS` 常量改为显式调用 `default_registry()`（全部领域）
+或 `registry_for(...)`（所选领域），避免导入时自动组装所有配置。
 
 ```python
 from event_engine.schema import EventRecord, IdentitySpec, EventQuery, EventRepository

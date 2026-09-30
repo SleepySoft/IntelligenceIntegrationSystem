@@ -2,17 +2,17 @@ import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
-from event_engine.analysis.event_analyzer import EventAnalyzer
+from event_engine.core import EventAnalyzer
 from event_engine.schema import *
-from event_engine.configs import DEFAULT_PREDICATE_SPECS
-from event_engine.integration.service import EventEngine
+from event_engine.domains import default_registry
+from event_engine.core import EventEngine
 from event_engine.query.memory import InMemoryCanonicalEventRepository, InMemoryEventRepository
 
 class EngineTests(unittest.TestCase):
     def setUp(self):
         self.a,self.b,self.loc=uuid4(),uuid4(),uuid4()
         self.repo=InMemoryEventRepository(); self.crepo=InMemoryCanonicalEventRepository()
-        self.engine=EventEngine(self.repo,self.crepo,EventAnalyzer(DEFAULT_PREDICATE_SPECS))
+        self.engine=EventEngine(self.repo,self.crepo,EventAnalyzer(default_registry()))
     def event(self, day, q=None):
         return EventRecord(uuid4(),uuid4(),"E1",Frame(Dynamics.CHANGE,Topology.TRANSFER,Agency.AGENTIVE),
           Predicate("acquire","收购"),(RoleBinding("acquirer",self.a,SemanticRoleGroup.AGENT),RoleBinding("asset",self.b,SemanticRoleGroup.THEME)),

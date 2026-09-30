@@ -3,7 +3,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from event_engine.configs import default_registry
+from event_engine.domains import default_registry
 from event_engine.core import (
     CanonicalEventMatcher, EventAnalyzer, EventEngine, PredicateRegistry,
 )

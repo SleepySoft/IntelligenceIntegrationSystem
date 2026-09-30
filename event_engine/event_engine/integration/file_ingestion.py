@@ -21,7 +21,7 @@ from ..schema import (
 )
 from ..schema.models import EventRecord
 from ..core.registry import PredicateRegistry
-from ..configs import default_registry
+from ..domains import default_registry
 from .service import EventEngine
 
 

@@ -6,10 +6,11 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
-from event_engine.analysis.event_analyzer import EventAnalyzer
-from event_engine.configs import DEFAULT_PREDICATE_SPECS
+from event_engine.core import EventAnalyzer
+from event_engine.domains import default_registry
 from event_engine.integration.file_ingestion import ingest_event_file
-from event_engine.integration.service import EventEngine
+from event_engine.core import EventEngine
+from event_engine.domains.news.analyzer import NewsAnalyzer
 from event_engine.query.memory import InMemoryEventRepository
 
 
@@ -24,7 +25,7 @@ def main() -> None:
     repository = InMemoryEventRepository()
     engine = EventEngine(
         repository,
-        analyzer=EventAnalyzer(DEFAULT_PREDICATE_SPECS),
+        analyzer=EventAnalyzer(default_registry()),
     )
     dataset = ingest_event_file(args.file, engine)
 
@@ -60,7 +61,7 @@ def main() -> None:
     print("、".join(f"{key}={value}" for key, value in repeated) or "无")
 
     print("\n战争区域视图")
-    war_zones = engine.extract_war_zones(active_days=10000)
+    war_zones = NewsAnalyzer(engine.analyzer).extract_war_zones(dataset.events, active_days=10000)
     for zone in war_zones:
         print(
             f"{dataset.entity_name(zone.location_entity_uuid)}: "

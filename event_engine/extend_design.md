@@ -5,6 +5,8 @@
 > 当前字段、Frame 校验、身份证据门槛与状态投影以
 > [SEMANTIC_DECISIONS.md](SEMANTIC_DECISIONS.md) 为准。
 > 程序布局已统一为 `schema`（数据与契约）和 `core`（执行）；不再保留 `ir/`、`domain/`。
+> 领域声明、配置及专用算法统一到 `domains/<name>/`，支持显式选择和裁剪；
+> 原 `analysis/`、`configs/`、`extensions/` 不再保留。
 
 ## 1. 文档目的
 

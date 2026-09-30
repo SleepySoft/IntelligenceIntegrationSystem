@@ -2,8 +2,9 @@
 
 > 实现布局更新：数据模型、规则定义、查询和存储协议统一位于 `schema/`，
 > 注册、校验、通用算法与编排位于 `core/`；`domain/` 和 `ir/` 已移除。
-> 新闻、产业、金融词汇由 `configs/` 中三个包组合注册，新闻专用分析位于 `extensions/news.py`。
-> 本文的分析/整合/查询职责仍适用；旧模块路径是兼容入口。实际接入、分析和匹配共享同一 Registry。
+> 新闻、产业、金融的配置、专用声明及算法归入 `domains/`；选择的包组合注册，
+> 新闻专用分析位于 `domains/news/analyzer.py`。`analysis/`、`configs/`、`extensions/` 已移除。
+> 本文的分析/整合/查询职责仍适用；实际接入、分析和匹配共享同一 Registry。
 > 身份证据门槛、区分角色/身份属性比较、区间时间比较和生命周期投影已实现。
 > 状态投影保留主张、来源、有效时间、支持观察与争议；仍不承担跨来源事实真值裁决。
 > 具体执行规则与兼容性见 [SEMANTIC_DECISIONS.md](SEMANTIC_DECISIONS.md)。
@@ -46,14 +47,14 @@ AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
 
 ## 3. 三层架构
 
-### 3.1 分析层 `event_engine.analysis`
+### 3.1 分析职责：`event_engine.core` 与可选 `event_engine.domains`
 
 纯内存、无 I/O、确定性计算：
 
 - 单事件要素提取。
 - 语义角色组映射。
 - 实体作为行动者或承受者的事件分析。
-- 战争相关事件和战争区域统计。
+- 战争相关事件和战争区域统计（可选 `domains.news.analyzer`，不进入通用 core）。
 - 时间线构造。
 - Event 与 CanonicalEvent 的可解释匹配。
 - CanonicalEvent 当前状态重算。
@@ -66,7 +67,7 @@ AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
 - 通过 `EventRepository` 获取候选集。
 - 调用分析层完成精确过滤和聚合。
 - 注册 Event。
-- 查询实体行为、实体遭遇、战争区域、时间线。
+- 查询实体行为、实体遭遇、时间线；领域分析显式调用相应 domains 算法。
 - 将 Event 解析到 CanonicalEvent。
 
 整合层只依赖抽象 Repository，不依赖 MongoDB。
