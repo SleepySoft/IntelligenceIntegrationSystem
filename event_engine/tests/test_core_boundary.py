@@ -127,7 +127,7 @@ class CoreBoundaryTests(unittest.TestCase):
     def test_builtin_packs_compose_without_duplicate_definitions(self):
         from event_engine.configs import FINANCIAL_PACK, INDUSTRY_PACK, NEWS_PACK
         registry = PredicateRegistry.from_packs(NEWS_PACK, INDUSTRY_PACK, FINANCIAL_PACK)
-        self.assertEqual({"news": "1.0", "industry": "1.0", "financial": "1.0"}, dict(registry.pack_versions))
+        self.assertEqual({"news": "1.1", "industry": "1.1", "financial": "1.1"}, dict(registry.pack_versions))
         for predicate in ("attack", "build_facility", "issue_bond"):
             self.assertIn(predicate, registry)
         self.assertEqual(SemanticRoleGroup.AGENT, registry["issue_bond"].role_groups["issuer"])

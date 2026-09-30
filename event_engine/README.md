@@ -31,8 +31,35 @@ engine = EventEngine(InMemoryEventRepository(), registry=registry)
 `EventRecord.ir` 提取纯语义，`EventRecord.from_ir(...)` 为语义补充来源与存储身份。
 本阶段保留 EventRecord 的旧构造参数及存储格式，旧 `domain`、`analysis` 导入仍可用。
 
-本次完成结构抽取和统一配置注入；CanonicalEvent 身份属性比较、完整生命周期校验、
-跨来源事实性裁决仍沿用原薄版实现，不能将 `current_qualifiers` 视为已核实的现实状态。
+## 身份匹配与状态整合
+
+领域包版本为 `1.1`，所有内置谓词声明 Frame；注册和匹配均执行约束校验。
+Frame 只描述结构，不据此推断所有权、收益或其它领域结论。实际字段意义由 PredicateSpec 提供。
+
+自动合并先检查必备身份证据，再计算分数。身份角色默认必须齐全且一致；缺失、部分重叠、
+粗粒度或近似的关键时间不会被其它维度的高分补偿。IdentitySpec 可配置必备角色、必备属性、
+必备时间、最低证据覆盖率和时间精度。只有声明的身份属性参与匹配，非身份金额变化不改变事件身份。
+不同卖方、身份属性、关键地点或超出窗口的事件时间会阻止合并；数值单位不能比较时返回未知。
+区间事件比较完整端点，新成员还需与原成员兼容，不能利用聚合后的并集桥接不同事件。
+
+```python
+canonical, result = engine.resolve_canonical(observation_uuid)
+if canonical is None:  # ambiguous：保留观察，未自动绑定，也未创建重复身份
+    print(result.unknown, result.conflicts)
+```
+
+明确不同的事件创建新 CanonicalEvent；重复解析同一观察返回 duplicate_observation，不增加版本。
+当前状态由 `state_projection` 给出：values、支持观察 UUID、完整限定词及来源、冲突和未知项。
+`current_qualifiers` 保留为生命周期值的兼容视图，不再混入 epistemic、modality、polarity。
+状态按 Qualifier 有效时间（其次为事件有效时间）计算，报道到达时间不能冒充有效时间。
+LifecycleSpec 定义允许的状态路径；允许跳过未报道的中间步骤，但不生成中间事实。
+较晚收到的旧报道不会使 completed 回退；非法迁移保留原状态并记录争议。
+同一有效时间的不同状态不任意选取；不同授权/意图/指令主体的状态也不跨主体覆盖。
+否认、可能、预测、否定保留为主张，不能直接转成肯定发生的生命周期状态。
+
+`assertion_status` 为 unverified 或 disputed，表示报道及争议，不表示系统已经核实真值。
+未知单位不自动换算，来源可信度裁决尚未实现。旧 CanonicalEvent 若无区分角色、身份属性或
+状态投影，应从原观察重建后使用新规则；自动身份绑定发生变化时需复核已有成员。
 
 ## 设计结论
 
@@ -43,7 +70,8 @@ engine = EventEngine(InMemoryEventRepository(), registry=registry)
 - 引擎仅接受 Event、EventQuery、CanonicalEvent 等独立领域对象。
 - 三层为：纯内存分析层、用例整合层、查询适配层。
 
-完整设计见 `DESIGN.md`。
+完整设计见 `DESIGN.md`；已实现的结构边界、三项修复及兼容性说明见
+[`SEMANTIC_DECISIONS.md`](SEMANTIC_DECISIONS.md)。
 
 面向情报分析的长期能力、优先级和实施阶段见
 [`INTELLIGENCE_ANALYSIS_ROADMAP.md`](INTELLIGENCE_ANALYSIS_ROADMAP.md)。

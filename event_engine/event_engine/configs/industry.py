@@ -2,7 +2,7 @@
 from datetime import timedelta
 from ..core.registry import DomainPack
 from ..core.specs import IdentitySpec
-from .common import _arguments, make_specs
+from .common import _arguments, _frame, frame_specs, make_specs
 
 PREDICATE_ARGUMENT_SPECS = {
     "shortage": _arguments("resource", "affected"),
@@ -31,5 +31,13 @@ IDENTITIES = {
 }
 TAGS = {predicate: {"industry"} for predicate in PREDICATE_ARGUMENT_SPECS}
 
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS)
-PACK = DomainPack("industry", "1.0", PREDICATE_SPECS)
+FRAMES = frame_specs(
+    ("shortage", _frame("state", "relational", "non_agentive")),
+    ("supply", _frame("process", "transfer")),
+    ("operate", _frame("process", "intrinsic", "unknown")),
+    ("produce", _frame("process", "intrinsic")),
+    ("construct develop test maintain build_facility", _frame("process", "targeted")),
+    ("deploy expand_capacity suspend_production resume_production", _frame("change", "targeted")),
+)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
+PACK = DomainPack("industry", "1.1", PREDICATE_SPECS)

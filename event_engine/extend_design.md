@@ -1,5 +1,10 @@
 # Event Core Extend Design
 
+> 实现更新（2026-09-30）：EventIR、通用 core 及新闻/产业/金融三个配置包已落地。
+> 本文较宽的 Protocol/schema 示例仍是扩展草案，不是当前完整 API；
+> 当前字段、Frame 校验、身份证据门槛与状态投影以
+> [SEMANTIC_DECISIONS.md](SEMANTIC_DECISIONS.md) 为准。
+
 ## 1. 文档目的
 
 本文定义 Event Core 的扩展设计。该设计与 Leveling Design 配合使用。
@@ -35,8 +40,6 @@ MongoDB Adapter
 未来能力以独立模块形式接入。
 
 ```text
-Industry Domain Pack
-Financial Domain Pack
 EventEpisode
 MetricObservation
 ImpactAssessment
@@ -156,7 +159,8 @@ UNKNOWN
 CONFLICT
 ```
 
-缺失信息属于 UNKNOWN，只降低确定性。双方均有明确取值且不可兼容时才属于 CONFLICT。
+缺失信息属于 UNKNOWN，不产生正向证据；必备身份证据缺失时禁止自动合并，
+不能仅通过其它维度得分补偿。双方均有明确取值且不可兼容时才属于 CONFLICT。
 
 ### 3.7 误合并成本优先
 
@@ -198,7 +202,8 @@ class DomainPack(Protocol):
         ...
 ```
 
-首期可以只实现 `predicate_specs()`。实体领域类型可继续由外部 Entity Registry 管理。
+上述是未来 Protocol 草案。当前 `DomainPack` 是包含 `domain_id`、`version`、`specs`
+的数据类，通过 PredicateRegistry 加载；实体领域类型仍由外部 Entity Registry 管理。
 
 Domain Pack 应是只读配置对象。加载后由 Registry 统一校验和冻结。
 
@@ -222,7 +227,7 @@ class PredicateSpec:
 
 其中：
 
-- `frame` 定义固定事件类型。
+- `frame` 定义默认结构约束；当前 `allowed_frames` 可显式声明允许的变体。
 - `required_roles` 和 `optional_roles` 定义结构约束。
 - `role_specs` 定义角色的统一语义组和实体类型约束。
 - `identity_spec` 定义 CanonicalEvent 身份判定。

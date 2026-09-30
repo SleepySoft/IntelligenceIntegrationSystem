@@ -1,6 +1,6 @@
 """三个配置包共用的声明构造工具，不是独立领域包。"""
-from ..ir import SemanticRoleGroup
-from ..core.specs import ArgumentRoleSpec, IdentitySpec, PredicateSpec, generic_spec
+from ..ir import Agency, Dynamics, Frame, SemanticRoleGroup, Topology
+from ..core.specs import ArgumentRoleSpec, IdentitySpec, LifecycleSpec, PredicateSpec, generic_spec
 
 DEFAULT_ROLE_GROUPS = {
     "issuer": SemanticRoleGroup.AGENT,
@@ -78,9 +78,33 @@ def _arguments(subjects: str = "", objects: str = "") -> ArgumentRoleSpec:
     return ArgumentRoleSpec(frozenset(subjects.split()), frozenset(objects.split()))
 
 
-def make_specs(arguments, identities=None, tags=None):
+COMMON_LIFECYCLE = LifecycleSpec({
+    "phase": frozenset({("not_started", "ongoing"), ("not_started", "cancelled"),
+                        ("planned", "ongoing"), ("planned", "cancelled"),
+                        ("ongoing", "paused"), ("ongoing", "suspended"),
+                        ("paused", "ongoing"), ("suspended", "ongoing"),
+                        ("ongoing", "completed"), ("ongoing", "cancelled"),
+                        ("ongoing", "terminated")}),
+    "intention": frozenset({("planned", "confirmed"), ("planned", "cancelled")}),
+    "authorization": frozenset({("pending", "approved"), ("pending", "denied"),
+                                ("approved", "revoked")}),
+    "directive": frozenset({("ordered", "rescinded")}),
+})
+
+
+def _frame(dynamics, topology, agency="agentive"):
+    return Frame(Dynamics(dynamics), Topology(topology), Agency(agency))
+
+
+def frame_specs(*groups):
+    """配置声明的简写；不是根据角色或领域名猜测 Frame。"""
+    return {predicate: frame for names, frame in groups for predicate in names.split()}
+
+
+def make_specs(arguments, identities=None, tags=None, frames=None):
     identities = identities or {}
     tags = tags or {}
+    frames = frames or {}
     result = {}
     for predicate, projection in arguments.items():
         identity = identities.get(predicate, generic_spec(predicate))
@@ -90,5 +114,6 @@ def make_specs(arguments, identities=None, tags=None):
         result[predicate] = PredicateSpec(
             predicate, {r: DEFAULT_ROLE_GROUPS.get(r, SemanticRoleGroup.OTHER) for r in roles},
             identity, arguments=projection, tags=frozenset(tags.get(predicate, ())),
+            frame=frames.get(predicate), lifecycle=COMMON_LIFECYCLE,
         )
     return result

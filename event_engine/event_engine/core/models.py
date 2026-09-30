@@ -68,6 +68,9 @@ class CanonicalEvent:
     event_time_end: str | None = None
     unresolved_conflicts: tuple[str, ...] = ()
     version: int = 1
+    discriminator_roles: Mapping[str, tuple[UUID, ...]] = field(default_factory=dict)
+    identity_attributes: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    state_projection: StateProjection | None = None
 
 @dataclass(frozen=True, slots=True)
 class MatchResult:
@@ -77,6 +80,30 @@ class MatchResult:
     matched: tuple[str, ...] = ()
     unknown: tuple[str, ...] = ()
     conflicts: tuple[str, ...] = ()
+    evidence_coverage: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class QualifierObservation:
+    """限定词及其来源；不因生成当前状态而丢弃主张。"""
+
+    event_uuid: UUID
+    intelligence_uuid: UUID
+    qualifier: Qualifier
+    effective_at: datetime | None
+    observed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class StateProjection:
+    """报道状态的可解释投影，不承担事实真值裁决。"""
+
+    values: Mapping[str, str] = field(default_factory=dict)
+    supporting_event_uuids: Mapping[str, tuple[UUID, ...]] = field(default_factory=dict)
+    observations: tuple[QualifierObservation, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    unknown: tuple[str, ...] = ()
+    assertion_status: str = "unverified"
 
 @dataclass(frozen=True, slots=True)
 class EventRoleClassification:

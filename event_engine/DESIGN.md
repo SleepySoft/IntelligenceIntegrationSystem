@@ -3,7 +3,9 @@
 > 实现布局更新：纯语义位于 `ir/`，通用算法、查询/存储协议和编排位于 `core/`；
 > 新闻、产业、金融词汇由 `configs/` 中三个包组合注册，新闻专用分析位于 `extensions/news.py`。
 > 本文的分析/整合/查询职责仍适用；旧模块路径是兼容入口。实际接入、分析和匹配共享同一 Registry。
-> 当前身份属性、生命周期及事实性整合仍是薄版，文中对应规格不代表已经完整实现。
+> 身份证据门槛、区分角色/身份属性比较、区间时间比较和生命周期投影已实现。
+> 状态投影保留主张、来源、有效时间、支持观察与争议；仍不承担跨来源事实真值裁决。
+> 具体执行规则与兼容性见 [SEMANTIC_DECISIONS.md](SEMANTIC_DECISIONS.md)。
 
 ## 1. 目标
 
@@ -107,6 +109,7 @@ AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
 - 首次与最近观察时间。
 - 事件时间边界。
 - 版本号与未解决冲突。
+- 区分角色、已声明身份属性，以及保留完整限定观察的 `StateProjection`。
 
 原则：
 
@@ -134,22 +137,33 @@ AND NoIdentityAttributeConflict
 通过硬约束后计算：
 
 ```text
-score = role_weight * role_score
-      + time_weight * time_score
-      + location_weight * location_score
-      + attribute_weight * attribute_score
-      + lifecycle_weight * lifecycle_score
+score = sum(active_weight * dimension_score) / sum(active_weight)
+coverage = sum(active_weight * comparable_fraction) / sum(active_weight)
 ```
 
-缺失值为 UNKNOWN，只降低信息完备度，不等于冲突。双方都有明确值且不同才是 CONFLICT。
+active 维度为启用的角色、时间、地点和已声明身份属性；生命周期不参与身份评分。
+
+缺失值为 UNKNOWN，不产生正向证据，不等于冲突。必备身份证据缺失时禁止自动合并，
+即使其余维度得分很高也返回 ambiguous。双方都有可比较明确值且不兼容才是 CONFLICT。
+未声明为身份属性的数值变化不参与身份判定；不能比较的单位属于 UNKNOWN。
+生命周期进展独立于身份评分，不能补偿身份证据缺失。
 
 ### 5.2 决策
 
 - 存在硬冲突：`different_event`
 - 精确身份匹配且 Qualifier 有进展：`state_update`
 - 分数达到自动阈值，且领先第二候选达到 margin：自动绑定
-- 分数达到复核阈值：`ambiguous`
-- 否则：新建 CanonicalEvent
+- 必备证据或覆盖率不足：`ambiguous`，不因低分另造身份
+- 证据足够但分数仅达到复核阈值：`ambiguous`
+- 证据足够但低于复核阈值：该候选为 `different_event`
+
+信息不足返回 `(None, MatchResult(ambiguous, ...))`，原观察仍保留，不写入身份绑定。
+只有全部候选被判为 different_event 或无候选时才创建新 CanonicalEvent。
+新成员与已有原成员逐一检查硬冲突，避免时间/地点并集造成桥接误合并。
+
+状态投影按有效时间和 LifecycleSpec 计算，保留每条限定词的来源与主体；否认、预测和
+不确定性不覆盖生命周期值。同时间不同主张记录争议；非法回退保留最后合法报道状态。
+`current_qualifiers` 是兼容生命周期视图，事实性及冲突应读取 `state_projection`。
 
 ### 5.3 谓词特定 IdentitySpec
 

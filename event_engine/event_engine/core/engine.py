@@ -64,7 +64,7 @@ class EventEngine:
     def timeline(self, event_uuids: frozenset[UUID]) -> tuple[EventRecord, ...]:
         return self.analyzer.timeline(self.events.search(EventQuery(event_uuids=event_uuids)).items)
 
-    def resolve_canonical(self, observation_uuid: UUID) -> tuple[CanonicalEvent, MatchResult]:
+    def resolve_canonical(self, observation_uuid: UUID) -> tuple[CanonicalEvent | None, MatchResult]:
         if not self.canonicals:
             raise RuntimeError("CanonicalEventRepository未配置")
         observation = self.events.get(observation_uuid)
@@ -79,8 +79,18 @@ class EventEngine:
         if result.decision in (MatchDecision.SAME_EVENT, MatchDecision.STATE_UPDATE, MatchDecision.DUPLICATE):
             canonical = self.canonicals.get(result.candidate_uuid)
             assert canonical is not None
+            if result.decision == MatchDecision.DUPLICATE:
+                return canonical, result
             members = self.events.search(EventQuery(event_uuids=frozenset(set(canonical.observation_event_uuids)|{observation.uuid}))).items
-            updated = self.matcher.update_canonical(canonical, members)
+            try:
+                updated = self.matcher.update_canonical(canonical, members)
+            except ValueError as error:
+                return None, replace(result, decision=MatchDecision.AMBIGUOUS,
+                                     conflicts=result.conflicts + (str(error),))
             self.canonicals.update(updated)
+            changed = updated.current_qualifiers != canonical.current_qualifiers
+            result = replace(result, decision=MatchDecision.STATE_UPDATE if changed else MatchDecision.SAME_EVENT,
+                             conflicts=result.conflicts + updated.unresolved_conflicts)
             return updated, result
-        raise ValueError(f"CanonicalEvent未自动解析: {result.decision.value}; conflicts={result.conflicts}")
+        # 信息不足时保留原观察，让调用方读取原因；不合并也不创建重复身份。
+        return None, result

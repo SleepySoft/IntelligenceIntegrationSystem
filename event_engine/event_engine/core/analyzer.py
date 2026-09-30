@@ -1,12 +1,13 @@
 from __future__ import annotations
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Iterable, Mapping
 from uuid import UUID
 from ..ir import EventIR, SemanticRoleGroup, Topology
 from .models import EventRecord, EventRoleClassification
 from .specs import PredicateSpec
 from .registry import as_registry
+from .models import StateProjection
+from .state import project_state
 
 class EventAnalyzer:
     def __init__(self, specs: Mapping[str, PredicateSpec] | None = None):
@@ -47,13 +48,16 @@ class EventAnalyzer:
         return EventRoleClassification(subjects, objects, others)
 
     def current_state(self, events: Iterable[EventRecord]) -> dict[str, str]:
-        ordered = sorted(events, key=lambda e: e.observed_at or datetime.min.replace(tzinfo=timezone.utc))
-        state: dict[str, str] = {}
-        for event in ordered:
-            for q in event.qualifiers:
-                if q.scope == "event":
-                    state[q.type] = q.value
-        return state
+        """兼容视图，仅返回生命周期值；证据与争议见 project_state。"""
+        return dict(self.project_state(events).values)
+
+    def project_state(self, events: Iterable[EventRecord]) -> StateProjection:
+        events = tuple(events)
+        predicates = {event.predicate.id for event in events}
+        if len(predicates) > 1:
+            raise ValueError("状态投影只能处理同一谓词的事件观察")
+        spec = self.specs.get(events[0].predicate.id or "") if events else None
+        return project_state(events, spec.lifecycle if spec else None)
 
     def entity_actions(self, events: Iterable[EventRecord], entity_uuid: UUID) -> tuple[EventRecord, ...]:
         return tuple(e for e in events if entity_uuid in self.agents(e))

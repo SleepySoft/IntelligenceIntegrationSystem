@@ -2,7 +2,7 @@
 from datetime import timedelta
 from ..core.registry import DomainPack
 from ..core.specs import IdentitySpec
-from .common import _arguments, make_specs
+from .common import _arguments, _frame, frame_specs, make_specs
 
 PREDICATE_ARGUMENT_SPECS = {
     "exist": _arguments("subject"),
@@ -66,6 +66,7 @@ IDENTITIES = {
         role_weight=.35, time_weight=.30, location_weight=.25,
         attribute_weight=.10, lifecycle_weight=0,
         auto_merge_threshold=.90, review_threshold=.72,
+        max_time_uncertainty=timedelta(days=1),
     ),
     "armed_conflict": IdentitySpec(
         identity_roles=("belligerent",), time_mode="interval",
@@ -77,9 +78,25 @@ IDENTITIES = {
         identity_roles=("theme",), discriminator_roles=("source", "destination"),
         time_mode="occurrence", time_tolerance=timedelta(days=2),
         location_mode="strict", repeatability="high",
+        max_time_uncertainty=timedelta(days=1),
     ),
 }
 TAGS = {"attack": {"war"}, "armed_conflict": {"war"}}
 
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS)
-PACK = DomainPack("news", "1.0", PREDICATE_SPECS)
+FRAMES = frame_specs(
+    ("exist capable", _frame("state", "intrinsic", "unknown")),
+    ("valid", _frame("state", "intrinsic", "non_agentive")),
+    ("possess control member_of located_at depend_on connected_to", _frame("state", "relational", "unknown")),
+    ("increase decrease improve deteriorate terminate gain lose restore", _frame("change", "intrinsic", "unknown")),
+    ("create damage casualty discover appoint remove adjudicate detain seize sanction restrict violate", _frame("change", "targeted")),
+    ("inspect investigate protest regulate attack defend intercept observe disrupt", _frame("process", "targeted")),
+    ("negotiate cooperate armed_conflict", _frame("process", "relational")),
+    ("agree elect", _frame("change", "relational")),
+    ("transfer aid release", _frame("change", "transfer")),
+    ("communicate", _frame("process", "transfer")),
+    ("move", _frame("change", "transfer", "unknown")),
+    ("accident", _frame("change", "intrinsic", "non_agentive")),
+    ("natural_hazard outbreak", _frame("process", "intrinsic", "non_agentive")),
+)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
+PACK = DomainPack("news", "1.1", PREDICATE_SPECS)

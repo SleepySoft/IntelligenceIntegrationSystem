@@ -2,7 +2,7 @@
 from datetime import timedelta
 from ..core.registry import DomainPack
 from ..core.specs import IdentitySpec
-from .common import _arguments, make_specs
+from .common import _arguments, _frame, frame_specs, make_specs
 
 PREDICATE_ARGUMENT_SPECS = {
     "default": _arguments("debtor", "obligation"),
@@ -26,9 +26,11 @@ IDENTITIES = {
         location_mode="ignore", repeatability="low",
         role_weight=.65, time_weight=.10, location_weight=0,
         attribute_weight=.15, lifecycle_weight=.10,
+        auto_merge_require_time=True,
     ),
     "issue_bond": IdentitySpec(("issuer", "security"), time_mode="episode",
-                               location_mode="ignore"),
+                               location_mode="ignore", identity_attributes=("currency", "maturity"),
+                               auto_merge_require_time=True),
     "rating_change": IdentitySpec(("rater", "security"), time_mode="occurrence",
                                   time_tolerance=timedelta(days=1), location_mode="ignore"),
     "declare_dividend": IdentitySpec(("issuer", "security"), time_mode="occurrence",
@@ -36,5 +38,12 @@ IDENTITIES = {
 }
 TAGS = {predicate: {"financial"} for predicate in PREDICATE_ARGUMENT_SPECS}
 
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS)
-PACK = DomainPack("financial", "1.0", PREDICATE_SPECS)
+FRAMES = frame_specs(
+    ("trade acquire pay lend repay issue_bond", _frame("change", "transfer")),
+    ("invest fund", _frame("process", "transfer")),
+    ("default", _frame("change", "intrinsic", "unknown")),
+    ("insolvency", _frame("change", "intrinsic", "non_agentive")),
+    ("rating_change declare_dividend", _frame("change", "targeted")),
+)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
+PACK = DomainPack("financial", "1.1", PREDICATE_SPECS)

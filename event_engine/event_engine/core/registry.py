@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from math import isfinite
 from types import MappingProxyType
 
-from ..ir import EventIR, SemanticRoleGroup
+from ..ir import Agency, EventIR, SemanticRoleGroup
 from .specs import PredicateSpec
 
 
@@ -31,12 +31,26 @@ class PredicateRegistry(Mapping[str, PredicateSpec]):
                        identity.attribute_weight, identity.lifecycle_weight)
             if any(not isfinite(w) or w < 0 for w in weights) or sum(weights) <= 0:
                 raise ValueError(f"身份权重无效: {key}")
+            active_weight = (identity.role_weight if identity.identity_roles else 0)
+            active_weight += identity.time_weight if identity.time_mode != "ignore" else 0
+            active_weight += identity.location_weight if identity.location_mode != "ignore" else 0
+            active_weight += identity.attribute_weight if (identity.identity_attributes or identity.auto_merge_required_attributes) else 0
+            if active_weight <= 0:
+                raise ValueError(f"缺少身份证据权重: {key}")
             if not 0 <= identity.review_threshold <= identity.auto_merge_threshold <= 1:
                 raise ValueError(f"身份阈值无效: {key}")
             if not 0 <= identity.auto_merge_margin <= 1:
                 raise ValueError(f"候选领先差值无效: {key}")
+            if not 0 <= identity.min_evidence_coverage <= 1:
+                raise ValueError(f"证据覆盖率无效: {key}")
+            if identity.max_time_uncertainty is not None and identity.max_time_uncertainty.total_seconds() <= 0:
+                raise ValueError(f"时间精度限制无效: {key}")
+            if identity.auto_merge_required_roles is not None and not set(identity.auto_merge_required_roles) <= set(identity.identity_roles):
+                raise ValueError(f"自动合并必备角色不是身份角色: {key}")
             if identity.time_mode not in {"occurrence", "episode", "interval", "ignore"}:
                 raise ValueError(f"时间模式无效: {key}")
+            if identity.auto_merge_require_time and identity.time_mode == "ignore":
+                raise ValueError(f"必备事件时间不能设置为 ignore: {key}")
             if identity.location_mode not in {"strict", "weak", "ignore"}:
                 raise ValueError(f"地点模式无效: {key}")
             if identity.time_tolerance is not None and identity.time_tolerance.total_seconds() <= 0:
@@ -49,7 +63,13 @@ class PredicateRegistry(Mapping[str, PredicateSpec]):
                           | set(spec.arguments.subject_roles) | set(spec.arguments.object_roles))
             if referenced - declared:
                 raise ValueError(f"未定义的角色: {key}: {sorted(referenced - declared)}")
-            frozen[key] = replace(spec, role_groups=MappingProxyType(dict(spec.role_groups)))
+            lifecycle = spec.lifecycle
+            if lifecycle is not None:
+                if set(lifecycle.transitions) - {"phase", "intention", "authorization", "directive"}:
+                    raise ValueError(f"事实性不能作为生命周期状态: {key}")
+                lifecycle = replace(lifecycle, transitions=MappingProxyType(
+                    {kind: frozenset(edges) for kind, edges in lifecycle.transitions.items()}))
+            frozen[key] = replace(spec, role_groups=MappingProxyType(dict(spec.role_groups)), lifecycle=lifecycle)
         self._specs = MappingProxyType(frozen)
         self.pack_versions: Mapping[str, str] = MappingProxyType({})
 
@@ -85,7 +105,12 @@ class PredicateRegistry(Mapping[str, PredicateSpec]):
             return ("谓词未注册",) if require_known else ()
         errors = [f"必填角色缺失: {role}" for role in spec.required_roles
                   if not event.entities_for_role(role)]
-        if spec.frame is not None and spec.frame != event.frame:
+        allowed = spec.allowed_frames or ((spec.frame,) if spec.frame is not None else ())
+        if allowed and not any(
+            frame.dynamics == event.frame.dynamics and frame.topology == event.frame.topology
+            and (frame.agency == event.frame.agency or Agency.UNKNOWN in (frame.agency, event.frame.agency))
+            for frame in allowed
+        ):
             errors.append("Frame 与谓词定义不一致")
         return tuple(errors)
 

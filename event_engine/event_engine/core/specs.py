@@ -19,10 +19,38 @@ class IdentitySpec:
     time_weight: float = 0.20
     location_weight: float = 0.15
     attribute_weight: float = 0.10
-    lifecycle_weight: float = 0.05
+    lifecycle_weight: float = 0.05  # 兼容旧配置；状态变化不再参与身份评分。
     auto_merge_threshold: float = 0.85
     review_threshold: float = 0.65
     auto_merge_margin: float = 0.15
+    identity_attributes: tuple[str, ...] = ()
+    auto_merge_required_roles: tuple[str, ...] | None = None
+    auto_merge_required_attributes: tuple[str, ...] = ()
+    min_evidence_coverage: float = 0.75
+    max_time_uncertainty: timedelta | None = None
+    auto_merge_require_time: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class LifecycleSpec:
+    """各状态维度的允许迁移；可跨越未报道的中间步骤，但不生成中间事实。"""
+
+    transitions: Mapping[str, frozenset[tuple[str, str]]] = field(default_factory=dict)
+
+    def allows(self, kind: str, before: str, after: str) -> bool:
+        if before == after:
+            return True
+        edges = self.transitions.get(kind, frozenset())
+        reached, pending = {before}, [before]
+        while pending:
+            node = pending.pop()
+            for source, target in edges:
+                if source == node and target not in reached:
+                    if target == after:
+                        return True
+                    reached.add(target)
+                    pending.append(target)
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +72,8 @@ class PredicateSpec:
     tags: frozenset[str] = frozenset()
     required_roles: tuple[str, ...] = ()
     frame: Frame | None = None
+    allowed_frames: tuple[Frame, ...] = ()
+    lifecycle: LifecycleSpec | None = None
 
 
 def generic_spec(predicate_id: str | None) -> IdentitySpec:
