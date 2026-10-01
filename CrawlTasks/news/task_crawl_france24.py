@@ -1,7 +1,7 @@
 from typing import Optional
 
 from CrawlerServiceEngine import ServiceContext
-from CrawlTasks.crawler_config_france24 import CRAWLER_CONFIG
+from crawler_config_france24 import CRAWLER_CONFIG
 from Workflow.IntelligenceCrawlFlow import CommonIntelligenceCrawlFlow
 
 NAME = 'france24'

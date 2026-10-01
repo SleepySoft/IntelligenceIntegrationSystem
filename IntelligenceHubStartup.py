@@ -13,13 +13,13 @@ from functools import partial
 from AIClientCenter.AIClientManagerBackend import AIDashboardService
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
-from Tools.MongoDBAccess import MongoDBStorage
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
+from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from AIClientCenter.AIClientManager import AIClientManager
 from AIClientCenter.ClientStateSQLiteLogger import ClientStateSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
@@ -157,44 +157,27 @@ def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, Intelligenc
     mongodb_user = config.get('mongodb.user', '')
     mongodb_pass = config.get('mongodb.password', '')
 
+    # ------------------------------- Subsystems ------------------------------
+
+    subsystem_registry = SubsystemRegistry.build_from_config(
+        config,
+        mongodb_params={
+            'host': mongodb_host,
+            'port': mongodb_port,
+            'username': mongodb_user,
+            'password': mongodb_pass,
+        },
+        db_name='IntelligenceIntegrationSystem',
+    )
+    logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
+                f"list={subsystem_registry.describe()}")
+
     hub = IntelligenceHub(
         ref_url=ref_host_url,
 
         vector_db_client=vector_db_client,
-
-        db_cache=MongoDBStorage(
-            host=mongodb_host,
-            port=mongodb_port,
-            db_name='IntelligenceIntegrationSystem',
-            username=mongodb_user,
-            password=mongodb_pass,
-            collection_name='intelligence_cached'),
-
-        db_archive=MongoDBStorage(
-            host=mongodb_host,
-            port=mongodb_port,
-            db_name='IntelligenceIntegrationSystem',
-            username=mongodb_user,
-            password=mongodb_pass,
-            collection_name='intelligence_archived'),
-
-        db_low_value=MongoDBStorage(
-            host=mongodb_host,
-            port=mongodb_port,
-            db_name='IntelligenceIntegrationSystem',
-            username=mongodb_user,
-            password=mongodb_pass,
-            collection_name='intelligence_low_value'),
-
-        db_recommendation=MongoDBStorage(
-            host=mongodb_host,
-            port=mongodb_port,
-            db_name='IntelligenceIntegrationSystem',
-            username=mongodb_user,
-            password=mongodb_pass,
-            collection_name='intelligence_recommendation'),
-
-            ai_client_manager = client_manager
+        subsystem_registry=subsystem_registry,
+        ai_client_manager=client_manager,
     )
     hub.startup(ai_analysis_thread)
 
@@ -219,6 +202,7 @@ def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, Intelligenc
         access_manager=access_manager,
         rss_publisher=RSSPublisher(rss_base_url),
         public_search_limits=public_search_limits,
+        subsystem_registry=subsystem_registry,
     )
 
     hub_service.register_routers(wsgi_app)

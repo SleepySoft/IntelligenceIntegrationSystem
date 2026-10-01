@@ -54,6 +54,7 @@
 - **`AIClientCenter/`** — AI 客户端管理中心
   - 支持多厂商、多账号、Token 轮询、余额监控、故障切换
   - 关键类：`AIClientManager`, `BaseAIClient`, `StandardOpenAIClient`, `OuterTokenRotatingOpenAIClient`
+  - 另支持基于本机命令行 Agent 的客户端（`AgentHarnessClients.py`：`CodexCLIClient` / `KimiCLIClient`），分 stateless（模拟单次调用）与 session（沿上下文续接、利用缓存省 Token）两种模式，调研见 `AIClientCenter/doc/AgentCLIResearch.md`
   - 配置方式：将 `AIClientConfigExample.py` 复制为 `_config/ai_client_config.py` 并修改
 
 - **`CrawlTasks/`** — 具体抓取任务模块

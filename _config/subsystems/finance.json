@@ -1,0 +1,11 @@
+{
+  "name": "finance",
+  "display_name": "财经情报",
+  "url_prefix": "/finance",
+  "collection_prefix": "finance_intelligence_",
+  "prompt_files": [
+    "_config/subsystems/finance/prompt_v1.md"
+  ],
+  "ai_client_group": null,
+  "scoring": null
+}

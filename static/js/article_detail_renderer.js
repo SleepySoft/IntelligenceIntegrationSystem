@@ -79,6 +79,16 @@ window.ArticleDetailRenderer = {
 
     // 统一生成 HTML 结构
     generateHTML: function(article) {
+        // 先问插件：有整详情则由协议处理，否则回退默认实现
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers
+                ? window.SubsystemUI.makeHelpers(this, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
+                : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
+            const built = window.SubsystemUI.buildDetail(plugin, article, this, helpers);
+            if (built && built.html) return built.html;
+        }
+
         const uuid = this.escapeHTML(article?.UUID || '');
         const informant = article?.INFORMANT ? this.escapeHTML(article.INFORMANT) : '';
         const pubTime = this.anyTimeToTimeStr(article?.PUB_TIME || 'N/A');
@@ -110,9 +120,9 @@ window.ArticleDetailRenderer = {
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
                         ${informant ? `<a href="${informant}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-link-45deg"></i> Source</a>` : ''}
-                        <a href="/intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6" class="btn btn-outline-primary btn-sm">
+                        ${window.IIS_VECTOR_ENABLED === false ? '' : `<a href="${window.IIS_BASE_PATH || ''}/intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-intersect"></i> Find Similar
-                        </a>
+                        </a>`}
                     </div>
                 </div>
             </section>
@@ -170,12 +180,13 @@ window.ArticleDetailRenderer = {
             });
 
             try {
-                const r = await fetch('/manual_rate', {
+                const r = await fetch((window.IIS_BASE_PATH || '') + '/manual_rate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         uuid: uuid,
                         ratings: ratings,
+                        subsystem: window.IIS_SUBSYSTEM || '',
                         timestamp: new Date().toISOString()
                     })
                 });

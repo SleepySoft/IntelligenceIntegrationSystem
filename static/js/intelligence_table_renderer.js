@@ -79,12 +79,24 @@ class ArticleRenderer {
     generateArticleCardHtml(article) {
         if (!article) return '';
 
+        // 先问插件：有整卡/块覆盖则由协议处理，否则回退后面的默认实现
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers ? window.SubsystemUI.makeHelpers(this, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '') : {
+                base: window.IIS_BASE_PATH || '',
+                subsystem: window.IIS_SUBSYSTEM || '',
+            };
+            const built = window.SubsystemUI.buildCard(plugin, article, this, helpers);
+            if (built && built.html) return built.html;
+        }
+
+
         // 1. 获取 Appendix (防止 undefined)
         const appendix = article.APPENDIX || {};
 
         // 1.2 ID 获取
         const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
-        const intelUrl = `/intelligence/${uuid}`;
+        const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
 
         // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
         const informant_val = article.INFORMANT || article.informant || article.source || "";
@@ -523,7 +535,7 @@ class ArticleRenderer {
             return this.promptCache.get(key);
         }
 
-        const url = `/api/prompts/${encodeURIComponent(key)}`;
+        const url = `${window.IIS_BASE_PATH || ''}/prompt?version=${encodeURIComponent(key)}`;
 
         const resp = await fetch(url, {
             method: 'GET',

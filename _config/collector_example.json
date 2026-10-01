@@ -1,0 +1,17 @@
+{
+  "collector": {
+    "name": "main",
+    "submit_ihub_url": "http://127.0.0.1:5000",
+    "default_token": "",
+    "default_subsystem": "news",
+    "global_site_proxy": {
+      "http": "http://127.0.0.1:10809",
+      "https": "http://127.0.0.1:10809"
+    },
+    "cn_site_proxy": {},
+    "task_dirs": {
+      "news": "CrawlTasks/news",
+      "finance": "CrawlTasks/finance"
+    }
+  }
+}
