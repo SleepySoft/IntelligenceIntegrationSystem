@@ -288,7 +288,8 @@ def run():
                                 with_logger_manager=True)
     log_backend.register_router(app=wsgi_app, wrapper=ihub_service.access_manager.login_required)
 
-    client_manager_backend = AIDashboardService(client_manager)
+    # 此面板挂在登录保护下；启用手动调用页以便验证指定 API/Harness Client。
+    client_manager_backend = AIDashboardService(client_manager, enable_manual_calls=True)
     client_manager_backend.mount_to_app(
         app=wsgi_app,
         wrapper=ihub_service.access_manager.login_required,
