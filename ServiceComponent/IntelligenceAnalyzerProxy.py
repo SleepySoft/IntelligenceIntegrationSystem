@@ -7,7 +7,7 @@ import json_repair
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ValidationError
 
-from AIClientCenter.AIClientManager import BaseAIClient
+from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
 from MyPythonUtility.DictTools import dict_list_to_markdown
 

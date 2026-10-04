@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Dict, Any, Tuple, List
 
 from Tools.MongoDBAccess import MongoDBStorage
-from AIClientCenter.AIClientManager import AIClientManager
+from AIClientCenter.core.manager import AIClientManager
 from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TRANSLATED_REV
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 

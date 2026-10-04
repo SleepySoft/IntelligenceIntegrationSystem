@@ -10,7 +10,7 @@ from typing import Tuple
 from pathlib import Path
 from functools import partial
 
-from AIClientCenter.AIClientManagerBackend import AIDashboardService
+from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from IntelligenceHub import IntelligenceHub
 from Tools.SystemMonitorService import MonitorAPI
@@ -20,8 +20,8 @@ from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
-from AIClientCenter.AIClientManager import AIClientManager
-from AIClientCenter.ClientStateSQLiteLogger import ClientStateSQLiteLogger
+from AIClientCenter.core.manager import AIClientManager
+from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
@@ -259,7 +259,7 @@ def config_log():
     limit_logger_level("Tools.RequestTracer")
     limit_logger_level("Tools.DateTimeUtility")
     limit_logger_level("PyLoggingBackend.LoggerBackend")
-    limit_logger_level("AIClientCenter.AIServiceTokenRotator")
+    limit_logger_level("AIClientCenter.services.token_rotator")
 
 
 def run():

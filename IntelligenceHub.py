@@ -17,7 +17,7 @@ from ServiceComponent.DynamicGraphEngine import DynamicGraphEngine
 from VectorDB.VectorDBClient import VectorDBClient
 from ServiceComponent.IntelligenceHubDefines_v2 import *
 from MyPythonUtility.DictTools import check_sanitize_dict, DictPrinter
-from AIClientCenter.AIClientManager import AIClientManager
+from AIClientCenter.core.manager import AIClientManager
 from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine

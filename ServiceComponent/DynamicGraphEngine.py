@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Set, Tuple
 
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from Tools.MongoDBAccess import MongoDBStorage
-from AIClientCenter.AIClientManager import BaseAIClient
+from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.DictTools import dict_list_to_markdown
 from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TIME_ARCHIVED
 
