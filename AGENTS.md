@@ -55,7 +55,7 @@
   - 支持多厂商、多账号、Token 轮询、余额监控、故障切换
   - 关键类：`AIClientManager`, `BaseAIClient`, `StandardOpenAIClient`, `OuterTokenRotatingOpenAIClient`
   - 另支持基于本机命令行 Agent 的客户端（`harness/cli.py`：`CodexCLIClient` / `KimiCLIClient`），分 stateless（模拟单次调用）与 session（沿上下文续接、利用缓存省 Token）两种模式，调研见 `AIClientCenter/doc/AgentCLIResearch.md`
-  - 配置方式：将 `AIClientCenter/config/example.py` 的内容复制到 `_config/ai_client_config.py` 并修改
+  - 独立入口配置方式：复制 `AIClientCenter/config/example.py` 为 `AIClientCenter/config/config.py` 并修改；IIS 集成仍使用 `_config/ai_client_config.py`
 
 - **`CrawlTasks/`** — 具体抓取任务模块
   - 每个文件对应一个媒体源的抓取逻辑（如 `task_crawl_bbc.py`, `task_crawl_nhk_ic.py`）
