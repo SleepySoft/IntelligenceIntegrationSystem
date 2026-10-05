@@ -13,7 +13,8 @@ from functools import partial
 from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
-from ServiceComponent.adapters import IISAsyncTranslationExtension, IISVectorExtension
+from ServiceComponent.adapters import (
+    IISAsyncTranslationExtension, IISUnarchivedReplayExtension, IISVectorExtension)
 from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
@@ -172,6 +173,10 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     extensions = []
     services = {}
     vector_search = None
+    if config.get('intelligence_hub.replay_unarchived', True):
+        replay_extension = IISUnarchivedReplayExtension(subsystem_registry)
+        extensions.append(replay_extension)
+        services["unarchived_replay"] = replay_extension
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)
     translation_extension = None
     if translation_enabled:
