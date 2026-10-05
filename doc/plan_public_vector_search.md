@@ -1,5 +1,10 @@
 # 公开搜索页（含向量搜索）性能与稳定性方案
 
+> 状态说明（2026-10）：本文保留原始性能方案和人工分析。Hub 已完成事件化重构，
+> `IntelligenceHub` 不再持有向量线程；检索经 `HubApplication` 委托给启动组合层安装的
+> `IISVectorExtension`，写入由该扩展订阅归档/翻译完成事件处理。下文中的旧 Hub 方法名
+> 应按此映射理解，未实现的性能项仍以 VectorDB 服务端为准。
+
 > 目标：在保持 `/intelligences/search` 页面对未登录用户开放、并允许使用向量搜索的前提下，防止资源被滥用，降低 VectorDB 服务被外部查询拖垮的风险，并建立可分析的性能日志。
 
 ---
@@ -11,7 +16,8 @@
 ```
 用户浏览器
   → /intelligences/query (IntelligenceHubWebService)
-      → IntelligenceHub.vector_search_intelligence()
+      → HubApplication.vector_search_intelligence()
+          → IISVectorExtension.search()
           → IntelligenceVectorDBEngine.query()
               → RemoteCollection.search()  // VectorDBClient
                   → POST /api/collections/<name>/search-jobs  // VectorDBBService
@@ -34,7 +40,7 @@
 | 风险点 | 说明 | 后果 |
 |--------|------|------|
 | 外部请求耗尽搜索线程池 | 4 个 worker 被大量长耗时搜索占满 | 新请求排队/超时，向量服务“不可用” |
-| 高并发搜索抢占 embedding 推理资源 | `encode()` 是 CPU/GPU 密集型 | 内部向量化任务变慢，vectorize_queue 堆积 |
+| 高并发搜索抢占 embedding 推理资源 | `encode()` 是 CPU/GPU 密集型 | 向量扩展的内部索引队列积压 |
 | 超大 `top_n` 或深分页 | 当前服务端未限制 `top_n`，web 端仅限制 `page*per_page ≤ 50` | 内存突增、Chroma 查询变慢 |
 | 未登录用户无限制 | 可任意访问全文向量库、深分页、宽时间窗 | 资源滥用、被爬虫/脚本刷接口 |
 | 缺乏可观测性 | 仅有普通日志，没有按任务/阶段/资源的结构化性能数据 | 出问题后无法定位是超时、内存、CPU 还是崩溃 |
@@ -86,8 +92,8 @@
 - 所有记录统一字段：`operation`, `elapsed_ms`, `status`, `client_ip`, `is_public`, `top_n`, `collection`, `result_count`, `mem_rss_mb`, `cpu_percent`, `queue_size`, `error` 等。
 - 接入点：
   1. `IntelligenceHubWebService.intelligences_query_api`（整个查询生命周期）。
-  2. `IntelligenceHub.vector_search_intelligence`（向量搜索本身）。
-  3. `IntelligenceHub._vectorization_thread`（每次 upsert）。
+  2. `HubApplication.vector_search_intelligence` / `IISVectorExtension.search`（向量搜索本身）。
+  3. `IISVectorExtension` 的异步索引循环（每次 upsert）。
   4. `VectorDBBService` 的 `/search` 与 `/search-jobs`（排队等待时间、实际搜索时间）。
   5. `VectorStorageEngine._worker_loop` / `_handle_upsert_task`。
 
@@ -109,9 +115,9 @@
    - 开放 `/intelligences/search`；
    - 在 `/intelligences/query` 增加未登录限制、速率限制、全局并发限制；
    - 添加查询性能日志。
-3. 修改 `IntelligenceHub.py`：
-   - `vector_search_intelligence` 增加性能记录；
-   - `_vectorization_thread` 增加 upsert 性能记录。
+3. 修改 `IISVectorExtension`：
+   - `search` 增加性能记录；
+   - 异步索引循环增加 upsert 性能记录。
 4. 修改 `VectorDB/VectorDBBService.py`：
    - 新增搜索并发控制；
    - 在搜索与 upsert 路径记录性能；

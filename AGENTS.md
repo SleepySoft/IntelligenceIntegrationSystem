@@ -156,8 +156,9 @@ pip install -r requirements_freeze.txt
 1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
    - 修改 MongoDB 地址、Token、向量库路径等
    - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、最大页码、时间窗口、向量 `top_n`、速率限制、并发上限等。未登录用户仅允许按归档时间（Archive Time）搜索，避免 Publish Time 与 Archive Time 双重过滤。
-2. **AI 服务配置**：复制 `AIClientCenter/AIClientConfigExample.py` → `_config/ai_client_config.py`
-   - 填入实际 API Key、模型地址、优先级、分组限制等
+2. **AI 服务配置**：复制 `_config/ai_client_config_example.py` → `_config/ai_client_config.py`
+   - 填入实际 API Key、模型地址、优先级、分组限制等；本机 harness 可使用
+     `AIClientCenter/config/config.py` 的独立配置进行手动验证。
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
 
 ### 4.4 启动服务
@@ -308,6 +309,8 @@ pytest Test/
 | `doc/IntelligenceDesign.md` | v1 设计理念与情报分类评分标准 |
 | `doc/IntelligenceDesign_v2.md` | v2 设计理念与改进点 |
 | `doc/iis_v2_concept.md` | v2 概念说明（与 v1 的区别） |
+| `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
+| `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展的未实现设计提案 |
 | `doc/IIS_Diagram.drawio` | 系统架构图（可用 draw.io 打开） |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |

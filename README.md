@@ -204,6 +204,10 @@ python CrawlerServiceEngine.py
 > 对于抓取外网新闻，需要配置 global_site_proxy。
 > 
 > 注意intelligence_hub_web_service及collector段的token并非AI服务的Token，而是爬虫引擎提交情报时的凭证以及IHub接受提交情报的凭证，两边需要对上（因为二者可以部署在不同的机器上）。
+>
+> `intelligence_hub.replay_unarchived` 控制启动后是否从 cache 恢复未归档记录（默认开启）；
+> `intelligence_hub.translation.enabled` 控制异步翻译扩展（默认开启）。关闭
+> `intelligence_hub.vectordb.enabled` 时，向量索引、聚合和图谱扩展不会安装，主分析归档流程仍可运行。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。
@@ -212,7 +216,9 @@ python CrawlerServiceEngine.py
 > 
 > 如果想使用AI进行情报分析，需要配置 [ai_client_config.py](_config/ai_client_config.py) 。由于AI服务配置比较复杂，因此直接使用python文件而非json文件。
 > 
-> 配置请参考：[AIClientConfigExample.py](AIClientCenter/ai_client_config_example.py) ，按需要复制修改对应项即可。
+> 配置请参考：[ai_client_config_example.py](_config/ai_client_config_example.py) ，复制为
+> `ai_client_config.py` 后按需要修改对应项即可。AIClientCenter 的独立 CLI/harness
+> 配置请参阅 [AIClientCenter/README.md](AIClientCenter/README.md)。
 > 
 
 #### 启动

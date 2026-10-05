@@ -8,7 +8,7 @@
 
 | # | 决策 | 说明 |
 |---|------|------|
-| 1 | 统一 schema | 所有子系统共用 `ArchivedData`；领域额外字段先放 `APPENDIX`（后续再考虑动态/升级 schema） |
+| 1 | 当前 schema 与运行时解耦 | 新闻适配器当前使用 `ArchivedData`；运行时 payload 不透明，未来子系统可使用不同输入、输出和归档结构，不要求预先归一化。 |
 | 2 | 单库分集合 | 同一个 MongoDB 库，每子系统一套 collection；每份文档带 `APPENDIX.__SUBSYSTEM__` 标记 |
 | 3 | 硬路由、暂不跨系统 | 情报按其 `subsystem` 标记交给对应子系统分析；查询/检索按子系统隔离 |
 | 4 | 配置分离 | 入口与公共配置在 `config.json`，子系统详细配置（prompt、集合前缀、URL）独立文件 |
@@ -176,14 +176,13 @@ prompt 与采集/分析链路：
 ```
 /collect ---> submit_collected_data
               |  subsystem 字段路由到 SubsystemContext（未知 -> 拒绝）
-              |  缓存到 {prefix}cached，标记 subsystem
-              +-> original_queue（共享队列）
-                    |
-        _ai_analysis_worker：按子系统选 prompt / 评分配置 / 校验
-              |（结果 APPENDIX 带 __SUBSYSTEM__ 与 AI 领域扩展字段）
+              |  IISPipelinePorts：缓存、去重、Prompt/评分、归档
               v
-        _post_process_worker：按子系统去重 -> 归档 {prefix}archived
-              | 默认子系统：翻译/向量化；非默认：跳过（日志提示）
+        intake.received -> analysis.requested -> archive.completed
+              |（事件仅携带 payload 与 subsystem，不校验领域结构）
+              +-> IISUnarchivedReplayExtension：启动时从 {prefix}cached 恢复
+              +-> 默认子系统：IISAsyncTranslationExtension -> translation.completed
+              +-> 默认子系统：IISVectorExtension（中文直接索引，翻译后再索引）
               v
         /{name}/intelligences/query 等按子系统查询
 ```

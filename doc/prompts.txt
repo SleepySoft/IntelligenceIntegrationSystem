@@ -569,7 +569,11 @@ MongoDB里存储了一系列dict数据，key的描述如下：
         pass
 """
 
-另一个涉及查询的参考代码如下：
+另一个涉及查询的历史参考代码如下：
+
+> 说明：以下片段记录的是重构前的 queue 恢复实现，保留用于理解旧数据标记。
+> 当前实现由 `IISUnarchivedReplayExtension` 在启动时扫描 cache，并直接发布
+> `analysis.requested` 事件；不再使用 `original_queue`。
 
 """
     def _load_unarchived_data(self):
