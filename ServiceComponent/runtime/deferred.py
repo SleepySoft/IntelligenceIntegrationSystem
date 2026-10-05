@@ -16,11 +16,13 @@ class DeferredServicePlugin(HubPlugin):
     """在前置条件满足后创建服务，避免 Hub 轮询基础设施状态。"""
 
     def __init__(self, available: Callable[[], bool], factory: Callable[[], Any],
-                 *, retry_interval: float = 1.0, name: str = "deferred-service"):
+                 *, retry_interval: float = 1.0, name: str = "deferred-service",
+                 on_ready: Optional[Callable[[Any], None]] = None):
         self.available = available
         self.factory = factory
         self.retry_interval = retry_interval
         self.name = name
+        self.on_ready = on_ready
         self._stop = threading.Event()
         self._ready = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -66,6 +68,8 @@ class DeferredServicePlugin(HubPlugin):
                     with self._lock:
                         self._service = service
                     self._ready.set()
+                    if self.on_ready:
+                        self.on_ready(service)
                     logger.info("Deferred service ready: %s", self.name)
                     return
             except Exception:

@@ -14,6 +14,7 @@ from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import IISAsyncTranslationExtension, IISVectorExtension
+from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
@@ -198,6 +199,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         services["translation"] = translation_extension
 
     vector_db_client = check_start_vector_db_service(config)
+    aggregation_extension = None
+    graph_extension = None
     if vector_db_client is not None:
         from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
         from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
@@ -213,6 +216,108 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         extensions.append(vector_extension)
         services["vector"] = vector_extension
         vector_search = vector_extension.search
+
+        from ServiceComponent.IntelligenceAggregationEngine import (
+            IntelligenceAggregationEngine, generate_aggregation_plan)
+        from ServiceComponent.DynamicGraphEngine import DynamicGraphEngine
+
+        def create_aggregation_service():
+            service = IntelligenceAggregationEngine(
+                vector_db_client, generate_aggregation_plan(profile="agglomerative_strict"))
+            service.ensure_plan(overwrite=True)
+            return service
+
+        aggregation_extension = DeferredServicePlugin(
+            lambda: vector_extension.ready,
+            create_aggregation_service,
+            name="summary-aggregation",
+            on_ready=lambda _: run_aggregation(),
+        )
+        graph_extension = DeferredServicePlugin(
+            lambda: vector_extension.ready,
+            lambda: DynamicGraphEngine(
+                mongo_db=subsystem_registry.default().mongo_db_archive,
+                query_engine=subsystem_registry.default().archive_query_engine,
+                vector_engine=vector_extension.summary_engine,
+                ai_client=None,
+            ),
+            name="dynamic-graph",
+        )
+        extensions.extend((aggregation_extension, graph_extension))
+        services["aggregation"] = aggregation_extension
+        services["dynamic_graph"] = graph_extension
+
+    # 实体统计、导出和聚合触发均为外围维护能力，不参与主处理链。
+    from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
+    from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
+
+    entity_frequency_engine = EntityFrequencyEngine(
+        db_path=os.path.join(DATA_PATH, "entity_frequency.db"),
+        mongo_db_archive=subsystem_registry.default().mongo_db_archive,
+    )
+    services["entity_frequency"] = entity_frequency_engine
+
+    def export_weekly():
+        now = datetime.datetime.now()
+        year, week, _ = now.isocalendar()
+        context = subsystem_registry.default()
+        if context.mongo_db_archive:
+            context.mongo_db_archive.export_by_week(
+                year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
+                time_field="APPENDIX.__TIME_ARCHIVED__", add_timestamp=True)
+        if context.mongo_db_cache:
+            context.mongo_db_cache.export_by_week(
+                year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),
+                time_field="created_at", add_timestamp=True)
+
+    def export_monthly():
+        target = datetime.datetime.now().replace(day=1) - datetime.timedelta(days=1)
+        context = subsystem_registry.default()
+        if context.mongo_db_archive:
+            context.mongo_db_archive.export_by_month(
+                year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
+                time_field="APPENDIX.__TIME_ARCHIVED__", add_timestamp=True)
+        if context.mongo_db_cache:
+            context.mongo_db_cache.export_by_month(
+                year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),
+                time_field="created_at", add_timestamp=True)
+
+    def run_aggregation():
+        if not aggregation_extension:
+            return
+        service = aggregation_extension.service
+        if service is None:
+            return
+        query_engine = subsystem_registry.default().archive_query_engine
+        latest = query_engine.get_latest_archive_timestamp()
+        period = None
+        if latest and datetime.datetime.now().timestamp() - latest >= 24 * 3600:
+            period = (latest - 24 * 3600, latest)
+        service.trigger_offline(
+            overrides=None, time_range=period,
+            doc_fetcher=lambda identifiers: query_engine.get_intelligence(identifiers, light_weight=True))
+
+    def build_entity_frequency():
+        end = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        for _ in entity_frequency_engine.build_cache_with_progress(end - datetime.timedelta(days=1), end):
+            pass
+
+    def bootstrap_maintenance():
+        end = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        for _ in entity_frequency_engine.build_cache_with_progress(end - datetime.timedelta(days=30), end):
+            pass
+
+    def configure_maintenance(scheduler):
+        scheduler.add_weekly_task(export_weekly, task_id="export_mongodb_weekly_task", day_of_week="sun", use_new_thread=True)
+        scheduler.add_monthly_task(export_monthly, task_id="export_mongodb_monthly_task", day=1, use_new_thread=True)
+        scheduler.add_hourly_task(run_aggregation, task_id="summary_aggregation_hourly", use_new_thread=True)
+        scheduler.add_hourly_task(build_entity_frequency, task_id="entity_frequency_hourly", use_new_thread=True)
+
+    extensions.append(ScheduledMaintenancePlugin(
+        lambda: AdvancedScheduler(logger=logging.getLogger("Scheduler")),
+        configure_maintenance,
+        bootstrap_maintenance,
+    ))
 
     hub = HubApplication(
         subsystem_registry=subsystem_registry,

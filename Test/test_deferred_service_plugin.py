@@ -5,8 +5,10 @@ from ServiceComponent.runtime import DeferredServicePlugin, HubRuntime
 
 def test_deferred_service_waits_for_dependency_and_proxies_ready_service():
     available = [False]
+    ready = []
     plugin = DeferredServicePlugin(
-        lambda: available[0], lambda: {"created": True}, retry_interval=0.01, name="test")
+        lambda: available[0], lambda: {"created": True}, retry_interval=0.01, name="test",
+        on_ready=ready.append)
     runtime = HubRuntime()
     runtime.install(plugin)
     runtime.start()
@@ -15,6 +17,7 @@ def test_deferred_service_waits_for_dependency_and_proxies_ready_service():
     available[0] = True
     assert _wait_until(lambda: plugin.ready)
     assert plugin.service == {"created": True}
+    assert ready == [{"created": True}]
     runtime.stop()
 
 

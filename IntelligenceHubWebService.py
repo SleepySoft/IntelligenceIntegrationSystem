@@ -1325,7 +1325,7 @@ class IntelligenceHubWebService:
                 cache_key = ("clusters_latest", source, limit, client_sort_by, desc)
 
                 hub = self.intelligence_hub
-                agg = getattr(hub, "aggregation_engine_summary", None)
+                agg = hub.get_service("aggregation")
                 if not agg:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
 
@@ -1385,7 +1385,7 @@ class IntelligenceHubWebService:
                 cache_key = ("cluster_members", source, cluster_id, offset, limit, sort_by, desc)
 
                 hub = self.intelligence_hub
-                agg = getattr(hub, "aggregation_engine_summary", None)
+                agg = hub.get_service("aggregation")
                 if not agg:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
 
@@ -1715,7 +1715,7 @@ class IntelligenceHubWebService:
             if (end_time - start_time).days > 366:
                 return jsonify({"error": "Time range exceeds maximum limit of 12 months (366 days)."}), 400
 
-            engine = self.intelligence_hub.entity_frequency_engine
+            engine = self.intelligence_hub.get_service("entity_frequency")
             if not engine:
                 return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
 
@@ -1767,7 +1767,7 @@ class IntelligenceHubWebService:
             except Exception as e:
                 return jsonify({"error": f"Parameter parse error: {e}"}), 400
 
-            engine = self.intelligence_hub.entity_frequency_engine
+            engine = self.intelligence_hub.get_service("entity_frequency")
             if not engine:
                 return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
 
@@ -1789,7 +1789,7 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def entity_frequency_build_cache_cancel():
             """取消正在进行的缓存构建任务。"""
-            engine = self.intelligence_hub.entity_frequency_engine
+            engine = self.intelligence_hub.get_service("entity_frequency")
             if not engine:
                 return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
             engine.cancel_build()
@@ -1805,7 +1805,7 @@ class IntelligenceHubWebService:
             start_str = data.get('start_time')
             end_str = data.get('end_time')
 
-            engine = self.intelligence_hub.entity_frequency_engine
+            engine = self.intelligence_hub.get_service("entity_frequency")
             if not engine:
                 return jsonify({"error": "EntityFrequencyEngine not initialized"}), 503
 
@@ -1849,7 +1849,7 @@ class IntelligenceHubWebService:
                 time_range = (start_ts, end_ts)
 
             try:
-                agg_engine = self.intelligence_hub.aggregation_engine_summary
+                agg_engine = self.intelligence_hub.get_service("aggregation")
                 if not agg_engine:
                     return jsonify({"error": "Engine not ready"}), 503
 
@@ -1875,7 +1875,7 @@ class IntelligenceHubWebService:
             触发一次异步的情报脉络图谱推演
             Body JSON: {"seed_uuid": "xxx", "max_depth": 3, "window_days": 7}
             """
-            graph_engine = self.intelligence_hub.dynamic_graph_engine
+            graph_engine = self.intelligence_hub.get_service("dynamic_graph")
 
             if graph_engine is None:
                 return jsonify({
@@ -1914,7 +1914,7 @@ class IntelligenceHubWebService:
             """
             前端轮询接口，获取推演状态与最终数据
             """
-            graph_engine = self.intelligence_hub.dynamic_graph_engine
+            graph_engine = self.intelligence_hub.get_service("dynamic_graph")
 
             if graph_engine is None:
                 return jsonify({
