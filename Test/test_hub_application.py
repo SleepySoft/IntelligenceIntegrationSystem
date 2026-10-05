@@ -61,6 +61,15 @@ def test_application_rejects_unknown_subsystem_before_queueing():
     assert not app.submit_collected_data({"subsystem": "unknown"})
 
 
+def test_application_requires_pipeline_ports_from_composition_root():
+    try:
+        HubApplication(subsystem_registry=Registry(), ai_client_manager=object())
+    except ValueError as exc:
+        assert "pipeline_ports" in str(exc)
+    else:
+        raise AssertionError("应用门面不得隐式选择 IIS 领域端口")
+
+
 def test_application_accepts_optional_search_and_named_services_from_composition_root():
     sentinel = object()
     app = HubApplication(

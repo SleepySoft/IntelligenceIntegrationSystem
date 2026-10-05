@@ -291,14 +291,12 @@
         </div>
         <div class="card-body">
             <div class="grid" id="hubMetrics">
-                <div class="metric"><div class="metric-label">待分析队列</div><div class="metric-value" id="waitingProcess">--</div></div>
-                <div class="metric"><div class="metric-label">后处理队列</div><div class="metric-value" id="postProcess">--</div></div>
-                <div class="metric"><div class="metric-label">未归档队列</div><div class="metric-value" id="unarchivedQueue">--</div></div>
-                <div class="metric"><div class="metric-label">向量化队列</div><div class="metric-value" id="vectorizeQueue">--</div></div>
-                <div class="metric success"><div class="metric-label">已归档</div><div class="metric-value" id="archivedCount">--</div></div>
-                <div class="metric warning"><div class="metric-label">已丢弃</div><div class="metric-value" id="droppedCount">--</div></div>
-                <div class="metric danger"><div class="metric-label">错误数</div><div class="metric-value" id="errorCount">--</div></div>
-                <div class="metric"><div class="metric-label">AI 对话 / 警告 / 错误</div><div class="metric-value" id="conversationStats">--</div></div>
+                <div class="metric"><div class="metric-label">待处理事件</div><div class="metric-value" id="pendingEvents">--</div></div>
+                <div class="metric"><div class="metric-label">活动处理器</div><div class="metric-value" id="activeHandlers">--</div></div>
+                <div class="metric"><div class="metric-label">已投递事件</div><div class="metric-value" id="emittedEvents">--</div></div>
+                <div class="metric success"><div class="metric-label">已处理事件</div><div class="metric-value" id="processedEvents">--</div></div>
+                <div class="metric"><div class="metric-label">处理器调用</div><div class="metric-value" id="handlerCalls">--</div></div>
+                <div class="metric danger"><div class="metric-label">处理器失败</div><div class="metric-value" id="handlerFailures">--</div></div>
             </div>
         </div>
     </div>
@@ -500,22 +498,19 @@
     }
 
     function renderHubMetrics(hub) {
-        setText('waitingProcess', formatNumber(hub.waiting_process));
-        setText('postProcess', formatNumber(hub.post_process));
-        setText('unarchivedQueue', formatNumber(hub.unarchived_queue));
-        setText('vectorizeQueue', formatNumber(hub.vectorize_queue));
-        setText('archivedCount', formatNumber(hub.archived));
-        setText('droppedCount', formatNumber(hub.dropped));
-        setText('errorCount', formatNumber(hub.error));
-        setText('conversationStats', `${formatNumber(hub.conversation_total)} / ${formatNumber(hub.conversation_warning)} / ${formatNumber(hub.conversation_error)}`);
+        const runtime = hub.runtime || {};
+        setText('pendingEvents', formatNumber(runtime.pending_events));
+        setText('activeHandlers', formatNumber(runtime.active_handlers));
+        setText('emittedEvents', formatNumber(runtime.emitted));
+        setText('processedEvents', formatNumber(runtime.processed));
+        setText('handlerCalls', formatNumber(runtime.handler_calls));
+        setText('handlerFailures', formatNumber(runtime.handler_failures));
 
-        // Queue backlog warnings
-        const waitingEl = document.getElementById('waitingProcess').parentElement;
-        const vectorEl = document.getElementById('vectorizeQueue').parentElement;
-        applyClass(waitingEl, 'warning', (hub.waiting_process || 0) > 500);
-        applyClass(waitingEl, 'danger', (hub.waiting_process || 0) > 1500);
-        applyClass(vectorEl, 'warning', (hub.vectorize_queue || 0) > 300);
-        applyClass(vectorEl, 'danger', (hub.vectorize_queue || 0) > 800);
+        const pendingEl = document.getElementById('pendingEvents').parentElement;
+        const failureEl = document.getElementById('handlerFailures').parentElement;
+        applyClass(pendingEl, 'warning', (runtime.pending_events || 0) > 500);
+        applyClass(pendingEl, 'danger', (runtime.pending_events || 0) > 1500);
+        applyClass(failureEl, 'danger', (runtime.handler_failures || 0) > 0);
     }
 
     function renderFlowChart(data) {

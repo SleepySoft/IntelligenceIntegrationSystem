@@ -1,6 +1,11 @@
 {
   "intelligence_hub": {
     "ai_analysis_thread": 1,
+    "replay_unarchived": true,
+
+    "translation": {
+      "enabled": true
+    },
 
     "subsystems": {
       "default": "news",

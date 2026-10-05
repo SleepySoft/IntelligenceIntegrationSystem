@@ -15,6 +15,8 @@ def test_runtime_routes_opaque_payload_and_preserves_subsystem():
     runtime.stop()
     assert received[0].payload == {"ticker": ["ABC"]}
     assert received[0].subsystem == "finance"
+    assert runtime.stats["pending_events"] == 0
+    assert runtime.stats["active_handlers"] == 0
 
 
 def test_runtime_allows_handlers_to_publish_the_next_stage():

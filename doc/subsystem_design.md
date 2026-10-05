@@ -13,7 +13,7 @@
 | 3 | 硬路由、暂不跨系统 | 情报按其 `subsystem` 标记交给对应子系统分析；查询/检索按子系统隔离 |
 | 4 | 配置分离 | 入口与公共配置在 `config.json`，子系统详细配置（prompt、集合前缀、URL）独立文件 |
 | 5 | Blueprint 前缀 | Web 层用 Flask Blueprint 按子系统注册不同前缀路径 |
-| 6 | Hub 拆资源、流程不变 | 子系统资源收敛到 `SubsystemContext`，队列/线程框架不变 |
+| 6 | Hub 拆资源、流程可组合 | 子系统资源收敛到 `SubsystemContext`，领域端口在事件运行时中编排，外围能力以扩展订阅事件 |
 | 7 | 向前兼容 | 旧配置兼容只在 `IntelligenceHubStartup` 完成（旧配置 → `SubsystemRegistry`）；`IntelligenceHub` 及以下组件全部只使用新机制 |
 | 8 | 采集简单兼容 | `CollectedData.subsystem` 透传；子项目（submodule）不动 |
 
@@ -37,7 +37,8 @@
    prompts=prompts_v2x  prompt 文件          prompt 文件
    url_prefix=''(根)     /finance             /industry
                            |
-      IntelligenceHub（流程不变：队列 + AI 分析线程 + 后处理线程 + 向量化线程）
+      HubRuntime + EventPipelinePlugin（事件阶段 + AI worker）
+      可选扩展（恢复 / 翻译 / 向量 / 聚合 / 图谱 / 维护）
                            |
       IntelligenceHubWebService（根路由 + 每子系统 Blueprint）
 ```

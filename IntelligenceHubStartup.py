@@ -14,7 +14,7 @@ from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import (
-    IISAsyncTranslationExtension, IISUnarchivedReplayExtension, IISVectorExtension)
+    IISAsyncTranslationExtension, IISPipelinePorts, IISUnarchivedReplayExtension, IISVectorExtension)
 from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
@@ -328,6 +328,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         subsystem_registry=subsystem_registry,
         ai_client_manager=client_manager,
         worker_count=ai_analysis_thread,
+        pipeline_ports=IISPipelinePorts(subsystem_registry, client_manager),
         extensions=extensions,
         vector_search=vector_search,
         services=services,

@@ -64,3 +64,28 @@ intake.received
 5. 应用门面和启动组装。
 6. Web adapter、领域页面贡献合同。
 7. 移除旧 Hub 的直连组件构造与过时文档。
+
+## 当前落地
+
+- `HubApplication` 只接受已构造的 `pipeline_ports`、运行时和插件；它不选择
+  IIS 的 schema、AI 分析器或存储实现。
+- `IISPipelinePorts` 是当前新闻情报领域的适配器。未来子系统可提供完全不同的
+  输入、分析、校验与归档端口，不需要修改运行时。
+- `IISUnarchivedReplayExtension` 从 cache 恢复未归档记录，并从分析阶段续接，避免
+  被 intake 去重规则拦截。
+- 翻译补丁发布 `extension.translation.completed`；向量扩展订阅归档和翻译完成事件。
+  因而外文记录仅在翻译完成后索引，中文记录直接索引。
+- 聚合、图谱、实体频率、导出和定时调度都在 `IntelligenceHubStartup` 组合，而不在
+  `IntelligenceHub.py` 或 `HubApplication` 内构造。
+
+## 配置开关
+
+`intelligence_hub.replay_unarchived` 默认为 `true`，控制启动时是否恢复 cache 中的
+未归档数据；`intelligence_hub.translation.enabled` 默认为 `true`，控制异步翻译扩展。
+`intelligence_hub.vectordb.enabled` 为 `false` 时，不会安装向量、聚合或图谱扩展。
+
+## 测试边界
+
+`Test/test_hub_runtime.py`、`test_event_pipeline.py` 与各 `test_iis_*_extension.py`
+使用 fake 端口和 fake 基础设施，覆盖主链路、恢复、翻译→索引顺序、向量检索、定时
+生命周期以及可选服务的延迟就绪，不建立真实 API、MongoDB 或 VectorDB 连接。

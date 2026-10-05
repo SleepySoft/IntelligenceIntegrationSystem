@@ -306,10 +306,10 @@ python CrawlerServiceEngine.py
 
 ### IntelligenceHub
 
-+ [IntelligenceHub.py](IntelligenceHub.py)（IHub）：程序的核心。所有的信息都会提交汇总至此，由该模块进行处理、分析、归档，并提供查询功能。
++ [IntelligenceHub.py](IntelligenceHub.py)（IHub）：兼容导出入口。核心运行时位于 `ServiceComponent/runtime/`，应用门面位于 `ServiceComponent/HubApplication.py`；两者不直接依赖 MongoDB、AI、向量或 Flask。
 + [IntelligenceHubWebService.py](IntelligenceHubWebService.py)：为IHub提供网络服务的模块，包括API、网页发布和鉴权。
 + 
-+ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：初始化所有子组件、IntelligenceHub和IntelligenceHubWebService。
++ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：组合根。它初始化子系统和 AI 管理器，并按配置安装主流程、cache 恢复、翻译、向量索引、定时维护、聚合和图谱等扩展。
 + [IntelligenceHubLauncher.py](IntelligenceHubStartup.py)：IHub的**启动**器，选用合适的backend载入IntelligenceHubWebService的wsgi_app，
   > [20250910] 提供Flask原生、waitress、gunicorn三种WSGI服务器，默认服务器为waitress。
   > 
@@ -318,7 +318,7 @@ python CrawlerServiceEngine.py
   > 该文件不包含业务代码，几乎全部由AI生成，没有阅读的必要。如果对启动原理不理解，可以去搜索WSGI的机制。
   > 
 
-> IHub的处理流程请参见：[IIS_Diagram.drawio](doc/IIS_Diagram.drawio)
+> IHub 的现行处理流程为事件链：`intake.received → analysis.requested → archive.completed`。向量、翻译等可选能力订阅归档事件，详情见 [hub_runtime_refactor.md](doc/hub_runtime_refactor.md)。历史图示仍可用于理解业务概念，但其中的内部队列已由事件运行时替换。
 
 ### 分析
 

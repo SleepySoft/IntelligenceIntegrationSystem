@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from ServiceComponent.adapters import IISPipelinePorts
 from ServiceComponent.pipeline import ARCHIVE_REQUESTED, EventPipelinePlugin, INTAKE_RECEIVED
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
@@ -35,7 +34,9 @@ class HubApplication:
             raise ValueError("subsystem_registry 必须提供默认子系统。")
         self.default_subsystem_name = self.default_subsystem.name
         self.runtime = runtime or HubRuntime(worker_count=worker_count)
-        ports = pipeline_ports or IISPipelinePorts(subsystem_registry, ai_client_manager)
+        if pipeline_ports is None:
+            raise ValueError("pipeline_ports 必须由组合根提供。")
+        ports = pipeline_ports
         self.runtime.install(EventPipelinePlugin(ports, ports, ports))
         for extension in extensions:
             self.runtime.install(extension)

@@ -43,8 +43,8 @@
 | 文件 | 职责 |
 |------|------|
 | `GlobalConfig.py` | 全局路径、代理、超时、默认端口等常量 |
-| `IntelligenceHub.py` | **核心引擎**。管理队列、AI 分析线程、后处理线程、向量化线程、定时任务 |
-| `IntelligenceHubStartup.py` | **启动组装**。读取配置、初始化 MongoDB/VectorDB/AIClientManager、组装 Hub 和 WebService |
+| `IntelligenceHub.py` | 兼容入口，只导出 `HubApplication` 与情报数据模型；不构造基础设施。 |
+| `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
 | `prompts_v2x.py` | AI 分析 Prompt 定义表 |
@@ -206,13 +206,10 @@ python VectorDB/VectorDBBService.py \
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验
 
 ### 5.3 并发模型
-- `IntelligenceHub` 内部使用 **多线程 + 队列**：
-  - `original_queue`：待分析原始数据
-  - `processed_queue`：分析完成待归档数据
-  - `unarchived_queue`：重启时加载的未归档数据（低优先级）
-  - `vectorize_queue`：待向量化的数据
-- AI 分析线程数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量
-- 向量化线程在后台无限重试连接 VectorDB，直到成功或收到关闭信号
+- `HubRuntime` 使用事件队列和 worker：`intake.received → analysis.requested → archive.completed`。
+  运行时不解析 payload；各子系统可使用各自的数据结构。
+- AI worker 数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量。
+- 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）

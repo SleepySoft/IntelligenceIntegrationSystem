@@ -167,7 +167,11 @@ class HubRuntime:
     @property
     def stats(self) -> Dict[str, int]:
         with self._lock:
-            return dict(self._stats)
+            return {
+                **self._stats,
+                "pending_events": self._queue.qsize(),
+                "active_handlers": self._active_count,
+            }
 
     def _worker_loop(self) -> None:
         while True:
