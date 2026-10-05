@@ -3,5 +3,7 @@
 from ServiceComponent.runtime.events import HubEvent, HandlerFailure
 from ServiceComponent.runtime.runtime import HubPlugin, HubRuntime
 from ServiceComponent.runtime.callbacks import EventCallbackPlugin
+from ServiceComponent.runtime.maintenance import ScheduledMaintenancePlugin
 
-__all__ = ["EventCallbackPlugin", "HandlerFailure", "HubEvent", "HubPlugin", "HubRuntime"]
+__all__ = ["EventCallbackPlugin", "HandlerFailure", "HubEvent", "HubPlugin", "HubRuntime",
+           "ScheduledMaintenancePlugin"]
