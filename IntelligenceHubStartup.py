@@ -12,7 +12,7 @@ from functools import partial
 
 from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
-from IntelligenceHub import IntelligenceHub
+from ServiceComponent.HubApplication import HubApplication
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 self_path = os.path.dirname(os.path.abspath(__file__))
 
 
-def show_intelligence_hub_statistics_forever(hub: IntelligenceHub):
+def show_intelligence_hub_statistics_forever(hub: HubApplication):
     prev_statistics = {}
     while True:
         if hub.statistics != prev_statistics:
@@ -136,22 +136,16 @@ def check_start_vector_db_service(config: EasyConfig, force_restart: bool = Fals
     return vector_db_client
 
 
-def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, IntelligenceHubWebService, AIClientManager]:
+def start_intelligence_hub_service(config) -> Tuple[HubApplication, IntelligenceHubWebService, AIClientManager]:
 
     # ------------------------------- AI Service -------------------------------
 
     client_manager = build_ai_client_manager(config)
     client_manager.start_monitoring()
 
-    # ------------------------------- Vector DB --------------------------------
-
-    vector_db_client = check_start_vector_db_service(config)
-
     # ------------------------------- Core: IHub -------------------------------
 
     ai_analysis_thread = config.get('intelligence_hub.ai_analysis_thread', 1)
-    ref_host_url = config.get('intelligence_hub_web_service.service.host_url', 'http://127.0.0.1:5000')
-
     mongodb_host = config.get('mongodb.host', 'localhost')
     mongodb_port = config.get('mongodb.port', 27017)
     mongodb_user = config.get('mongodb.user', '')
@@ -172,14 +166,12 @@ def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, Intelligenc
     logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
                 f"list={subsystem_registry.describe()}")
 
-    hub = IntelligenceHub(
-        ref_url=ref_host_url,
-
-        vector_db_client=vector_db_client,
+    hub = HubApplication(
         subsystem_registry=subsystem_registry,
         ai_client_manager=client_manager,
+        worker_count=ai_analysis_thread,
     )
-    hub.startup(ai_analysis_thread)
+    hub.startup()
 
     # ----------------------- Main Service and Access Control -----------------------
 
