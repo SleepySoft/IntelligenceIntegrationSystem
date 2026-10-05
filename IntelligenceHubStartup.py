@@ -13,7 +13,7 @@ from functools import partial
 from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
-from ServiceComponent.adapters import IISVectorExtension
+from ServiceComponent.adapters import IISAsyncTranslationExtension, IISVectorExtension
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
@@ -167,11 +167,37 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
                 f"list={subsystem_registry.describe()}")
 
-    # 可选能力在组合根创建并注入；HubApplication 不知道 VectorDB、集合或索引线程。
-    vector_db_client = check_start_vector_db_service(config)
+    # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
     extensions = []
     services = {}
     vector_search = None
+    translation_enabled = config.get('intelligence_hub.translation.enabled', True)
+    translation_extension = None
+    if translation_enabled:
+        from ServiceComponent.AsyncTranslationPatch import AsyncTranslationPatch, needs_translation
+
+        def create_translation_patch(shutdown_flag, on_patched):
+            return AsyncTranslationPatch(
+                mongo_db_archive=subsystem_registry.default().mongo_db_archive,
+                query_engine=subsystem_registry.default().archive_query_engine,
+                ai_client_manager=client_manager,
+                shutdown_flag=shutdown_flag,
+                on_patched=on_patched,
+                translated_revision="tr_patch_20260311",
+                backfill_enabled=True,
+                backfill_scan_limit_per_round=200,
+                backfill_interval_sec=600,
+            )
+
+        translation_extension = IISAsyncTranslationExtension(
+            default_subsystem=subsystem_registry.default_name,
+            translator_factory=create_translation_patch,
+            needs_translation=needs_translation,
+        )
+        extensions.append(translation_extension)
+        services["translation"] = translation_extension
+
+    vector_db_client = check_start_vector_db_service(config)
     if vector_db_client is not None:
         from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
         from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
@@ -181,6 +207,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             default_subsystem=subsystem_registry.default_name,
             engine_factory=IntelligenceVectorDBEngine,
             record_factory=ArchivedData,
+            skip_archive_predicate=(translation_extension.should_defer_index
+                                    if translation_extension else None),
         )
         extensions.append(vector_extension)
         services["vector"] = vector_extension
