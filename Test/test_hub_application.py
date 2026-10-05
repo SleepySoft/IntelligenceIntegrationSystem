@@ -59,3 +59,16 @@ def test_application_rejects_unknown_subsystem_before_queueing():
         subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
 
     assert not app.submit_collected_data({"subsystem": "unknown"})
+
+
+def test_application_accepts_optional_search_and_named_services_from_composition_root():
+    sentinel = object()
+    app = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports(),
+        vector_search=lambda **kwargs: [("vector-id", 0.9, kwargs)],
+        services={"vector": sentinel},
+    )
+
+    assert app.vector_search_intelligence(text="query") == [("vector-id", 0.9, {"text": "query"})]
+    assert app.get_service("vector") is sentinel
+    assert app.get_service("missing", "fallback") == "fallback"

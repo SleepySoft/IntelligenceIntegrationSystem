@@ -13,6 +13,7 @@ from functools import partial
 from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
+from ServiceComponent.adapters import IISVectorExtension
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
@@ -166,10 +167,32 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
                 f"list={subsystem_registry.describe()}")
 
+    # 可选能力在组合根创建并注入；HubApplication 不知道 VectorDB、集合或索引线程。
+    vector_db_client = check_start_vector_db_service(config)
+    extensions = []
+    services = {}
+    vector_search = None
+    if vector_db_client is not None:
+        from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
+        from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
+
+        vector_extension = IISVectorExtension(
+            vector_db_client,
+            default_subsystem=subsystem_registry.default_name,
+            engine_factory=IntelligenceVectorDBEngine,
+            record_factory=ArchivedData,
+        )
+        extensions.append(vector_extension)
+        services["vector"] = vector_extension
+        vector_search = vector_extension.search
+
     hub = HubApplication(
         subsystem_registry=subsystem_registry,
         ai_client_manager=client_manager,
         worker_count=ai_analysis_thread,
+        extensions=extensions,
+        vector_search=vector_search,
+        services=services,
     )
     hub.startup()
 
