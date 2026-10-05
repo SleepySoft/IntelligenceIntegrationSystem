@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ServiceComponent.pipeline import ARCHIVE_COMPLETED
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
+from ServiceComponent.extensions import TRANSLATION_COMPLETED
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class IISVectorExtension(HubPlugin):
             default_subsystem: str,
             engine_factory: Callable[[Any], Any],
             record_factory: Callable[[Dict[str, Any]], Any],
+            skip_archive_predicate: Optional[Callable[[HubEvent], bool]] = None,
             retry_interval: float = 5.0,
     ):
         if not default_subsystem:
@@ -39,6 +41,7 @@ class IISVectorExtension(HubPlugin):
         self.default_subsystem = default_subsystem
         self.engine_factory = engine_factory
         self.record_factory = record_factory
+        self.skip_archive_predicate = skip_archive_predicate
         self.retry_interval = retry_interval
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -51,6 +54,7 @@ class IISVectorExtension(HubPlugin):
 
     def register(self, runtime: HubRuntime) -> None:
         runtime.subscribe(ARCHIVE_COMPLETED, self._on_archived)
+        runtime.subscribe(TRANSLATION_COMPLETED, self._on_archived)
 
     def start(self, runtime: HubRuntime) -> None:
         if self.vector_client is None:
@@ -119,6 +123,9 @@ class IISVectorExtension(HubPlugin):
 
     def _on_archived(self, event: HubEvent, runtime: HubRuntime) -> None:
         if event.subsystem != self.default_subsystem or not isinstance(event.payload, dict):
+            return
+        if event.event_type == ARCHIVE_COMPLETED and self.skip_archive_predicate and \
+                self.skip_archive_predicate(event):
             return
         try:
             self._pending.put_nowait(dict(event.payload))

@@ -2,5 +2,6 @@
 
 from ServiceComponent.adapters.iis_pipeline import IISPipelinePorts
 from ServiceComponent.adapters.iis_vector import IISVectorExtension
+from ServiceComponent.adapters.iis_translation import IISAsyncTranslationExtension
 
-__all__ = ["IISPipelinePorts", "IISVectorExtension"]
+__all__ = ["IISAsyncTranslationExtension", "IISPipelinePorts", "IISVectorExtension"]
