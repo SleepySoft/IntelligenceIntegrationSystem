@@ -44,6 +44,17 @@ class EventPipelinePlugin(HubPlugin):
         runtime.subscribe(ANALYSIS_COMPLETED, self._on_analysis_completed)
         runtime.subscribe(ARCHIVE_REQUESTED, self._on_archive_requested)
 
+    def stop(self, runtime: HubRuntime) -> None:
+        """通知可能正在等待外围资源的端口停止。"""
+        stopped = set()
+        for port in (self._intake, self._analysis, self._archive):
+            if id(port) in stopped:
+                continue
+            stopped.add(id(port))
+            stop = getattr(port, "stop", None)
+            if callable(stop):
+                stop()
+
     def _on_intake_received(self, event: HubEvent, runtime: HubRuntime) -> None:
         self._run_stage(
             event, runtime, "intake", self._intake.accept,

@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import random
+import threading
 from typing import Any, Callable, Optional
+
+from tenacity import (
+    Retrying,
+    retry_if_exception_type,
+    retry_if_result,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from ServiceComponent.IntelligenceHubDefines_v2 import (
     APPENDIX_ARCHIVED_FLAG,
@@ -21,6 +31,8 @@ from ServiceComponent.IntelligenceHubDefines_v2 import (
     ARCHIVED_FLAG_ARCHIVED,
     ARCHIVED_FLAG_DROP,
     ARCHIVED_FLAG_DUPLICATED,
+    ARCHIVED_FLAG_ERROR,
+    ARCHIVED_FLAG_SENSITIVE,
     ArchivedData,
     CollectedData,
 )
@@ -28,6 +40,9 @@ from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
 from Tools.DateTimeUtility import get_aware_time, time_digit_list_to_datetime, time_str_to_datetime
 from MyPythonUtility.DictTools import check_sanitize_dict
+
+
+logger = logging.getLogger(__name__)
 
 
 class IISPipelinePorts:
@@ -44,11 +59,18 @@ class IISPipelinePorts:
             *,
             analyzer: Optional[Callable[[Any, str, dict], dict]] = None,
             scorer_factory: Callable[[Optional[dict]], Any] = None,
+            retry_wait: Any = None,
+            client_wait_interval: float = 1.0,
     ):
+        if client_wait_interval <= 0:
+            raise ValueError("client_wait_interval 必须大于 0。")
         self._registry = subsystem_registry
         self._ai_client_manager = ai_client_manager
         self._analyzer = analyzer or self._load_default_analyzer()
         self._scorer_factory = scorer_factory or self._load_default_scorer_factory()
+        self._stop_event = threading.Event()
+        self._retry_wait = retry_wait or wait_exponential(multiplier=1, min=1, max=30)
+        self._client_wait_interval = client_wait_interval
 
     @staticmethod
     def _load_default_scorer_factory() -> Callable[[Optional[dict]], Any]:
@@ -85,49 +107,62 @@ class IISPipelinePorts:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
         if self._is_duplicated(original_data, "INFORMANT", ctx.archive_query_engine):
+            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
+            self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         if not ctx.prompt_table:
+            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+            self._increment_stat(ctx, "error")
             return StageResult.reject("prompt_not_configured")
 
-        prompt_version = random.choice(list(ctx.prompt_table.keys()))
-        ai_client = self._ai_client_manager.get_available_client(
-            f"HubRuntime-{event.correlation_id or event.event_id}")
-        if ai_client is None:
-            return StageResult.reject("no_available_ai_client")
-
         try:
-            result = self._analyzer(ai_client, ctx.prompt_table[prompt_version], original_data)
-        finally:
-            self._ai_client_manager.release_client(ai_client)
-        if not isinstance(result, dict):
-            return StageResult.reject("analysis_result_not_dict")
-        if result.get("error"):
-            return StageResult.reject(f"analysis_failed:{result['error']}")
-        if self._is_low_value(result):
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
-            return StageResult.reject("low_value")
+            result, prompt_version, ai_service, ai_model = self._analyze_with_retry(
+                ctx, event, original_data)
+            if not isinstance(result, dict):
+                raise TypeError("analysis_result_not_dict")
+            if result.get("error"):
+                state = (ARCHIVED_FLAG_SENSITIVE
+                         if result.get("api_error_code") == "HTTP_400"
+                         else ARCHIVED_FLAG_ERROR)
+                self._mark_cache(original_data.get("UUID", ""), state, ctx)
+                self._increment_stat(ctx, "error")
+                return StageResult.reject(f"analysis_failed:{result['error']}")
 
-        result["UUID"] = str(original_data.get("UUID", "")).strip()
-        result["INFORMANT"] = str(original_data.get("informant", "")).strip()
-        appendix = result.setdefault("APPENDIX", {})
-        ai_appendix = dict(appendix) if isinstance(appendix, dict) else {}
-        result["APPENDIX"] = {
-            **ai_appendix,
-            APPENDIX_PROMPT_VERSION: prompt_version,
-            APPENDIX_AI_SERVICE: ai_client.get_api_base_url(),
-            APPENDIX_AI_MODEL: ai_client.get_current_model(),
-            APPENDIX_SUBSYSTEM: ctx.name,
-        }
-        self._copy_timestamps(original_data, result)
-        result["APPENDIX"][APPENDIX_TOTAL_SCORE] = self._scorer_factory(
-            getattr(ctx, "scoring_config", None)).calculate_single(result)
+            result["UUID"] = str(original_data.get("UUID", "")).strip()
+            result["INFORMANT"] = str(original_data.get("informant", "")).strip()
+            appendix = result.setdefault("APPENDIX", {})
+            ai_appendix = dict(appendix) if isinstance(appendix, dict) else {}
+            result["APPENDIX"] = {
+                **ai_appendix,
+                APPENDIX_PROMPT_VERSION: prompt_version,
+                APPENDIX_AI_SERVICE: ai_service,
+                APPENDIX_AI_MODEL: ai_model,
+                APPENDIX_SUBSYSTEM: ctx.name,
+            }
+            self._copy_timestamps(original_data, result)
 
-        validated, error = check_sanitize_dict(result, ArchivedData)
-        if error:
-            return StageResult.reject(error)
-        validated["RAW_DATA"] = original_data
-        validated["SUBMITTER"] = "HubRuntime analysis adapter"
-        return StageResult.allow(validated, subsystem=ctx.name)
+            if self._is_low_value(result):
+                low_value, error = check_sanitize_dict(result, ArchivedData)
+                if error:
+                    raise ValueError(error)
+                if ctx.mongo_db_low_value:
+                    ctx.mongo_db_low_value.insert(low_value)
+                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
+                self._increment_stat(ctx, "dropped")
+                return StageResult.reject("low_value")
+
+            result["APPENDIX"][APPENDIX_TOTAL_SCORE] = self._scorer_factory(
+                getattr(ctx, "scoring_config", None)).calculate_single(result)
+            validated, error = check_sanitize_dict(result, ArchivedData)
+            if error:
+                raise ValueError(error)
+            validated["RAW_DATA"] = original_data
+            validated["SUBMITTER"] = "HubRuntime analysis adapter"
+            return StageResult.allow(validated, subsystem=ctx.name)
+        except Exception as exc:
+            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+            self._increment_stat(ctx, "error")
+            return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
 
     def archive(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
@@ -146,6 +181,57 @@ class IISPipelinePorts:
             ctx.mongo_db_archive.insert(data)
         self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_ARCHIVED, ctx)
         return StageResult.allow(data, subsystem=ctx.name)
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def _analyze_with_retry(self, ctx: Any, event: HubEvent,
+                            original_data: dict) -> tuple[dict, int, str, str]:
+        prompt_version = random.choice(list(ctx.prompt_table.keys()))
+        client_metadata = {"service": "", "model": ""}
+        user_name = f"HubRuntime-{event.correlation_id or event.event_id}"
+
+        def analyze_once():
+            ai_client = self._wait_for_ai_client(ctx, user_name)
+            try:
+                client_metadata["service"] = ai_client.get_api_base_url()
+                client_metadata["model"] = ai_client.get_current_model()
+                return self._analyzer(
+                    ai_client, ctx.prompt_table[prompt_version], original_data)
+            finally:
+                self._ai_client_manager.release_client(ai_client)
+
+        retryer = Retrying(
+            wait=self._retry_wait,
+            stop=stop_after_attempt(3),
+            retry=(retry_if_exception_type(Exception)
+                   | retry_if_result(self._is_retryable_analysis_result)),
+            retry_error_callback=lambda state: state.outcome.result(),
+            reraise=True,
+        )
+        result = retryer(analyze_once)
+        return result, prompt_version, client_metadata["service"], client_metadata["model"]
+
+    def _wait_for_ai_client(self, ctx: Any, user_name: str) -> Any:
+        attempts = 0
+        while not self._stop_event.is_set():
+            kwargs = {}
+            if getattr(ctx, "ai_client_group", None):
+                kwargs["target_group_id"] = ctx.ai_client_group
+            client = self._ai_client_manager.get_available_client(user_name, **kwargs)
+            if client is not None:
+                return client
+            attempts += 1
+            if attempts % 10 == 0:
+                logger.warning("Hub analysis is waiting for an available AI client (%ss).", attempts)
+            self._stop_event.wait(self._client_wait_interval)
+        raise RuntimeError("hub_stopping_while_waiting_for_ai_client")
+
+    @staticmethod
+    def _is_retryable_analysis_result(result: Any) -> bool:
+        if not isinstance(result, dict):
+            return True
+        return bool(result.get("error")) and result.get("api_error_code") != "HTTP_400"
 
     def _resolve_context(self, event: HubEvent) -> Any:
         ctx = self._registry.resolve(event.subsystem)
@@ -171,9 +257,19 @@ class IISPipelinePorts:
 
     @staticmethod
     def _mark_cache(uuid: str, state: str, ctx: Any) -> None:
-        if uuid and ctx.mongo_db_cache:
+        if not uuid or not ctx.mongo_db_cache:
+            return
+        try:
             ctx.mongo_db_cache.update(
                 {"UUID": uuid}, {f"APPENDIX.{APPENDIX_ARCHIVED_FLAG}": state})
+        except Exception:
+            logger.exception("Failed to mark cache record %s as %s.", uuid, state)
+
+    @staticmethod
+    def _increment_stat(ctx: Any, name: str) -> None:
+        stats = getattr(ctx, "stats", None)
+        if isinstance(stats, dict):
+            stats[name] = stats.get(name, 0) + 1
 
     @staticmethod
     def _copy_timestamps(original_data: dict, processed_data: dict) -> None:

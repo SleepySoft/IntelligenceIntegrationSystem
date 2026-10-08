@@ -1,5 +1,8 @@
+from tenacity import wait_none
+
 from ServiceComponent.adapters import IISPipelinePorts
 from ServiceComponent.pipeline import (
+    ANALYSIS_FAILED,
     ARCHIVE_COMPLETED,
     EventPipelinePlugin,
     INTAKE_RECEIVED,
@@ -32,6 +35,7 @@ class FakeContext:
     name = "finance"
     prompt_table = {1: "finance prompt"}
     scoring_config = None
+    ai_client_group = None
 
     def __init__(self):
         self.mongo_db_cache = FakeStorage()
@@ -39,6 +43,7 @@ class FakeContext:
         self.mongo_db_low_value = FakeStorage()
         self.cache_query_engine = FakeQuery()
         self.archive_query_engine = FakeQuery()
+        self.stats = {"archived": 0, "dropped": 0, "error": 0}
 
 
 class FakeRegistry:
@@ -132,3 +137,106 @@ def test_iis_adapter_keeps_low_value_result_out_of_archive():
     runtime.stop()
     assert not ctx.mongo_db_archive.inserted
     assert ctx.mongo_db_cache.updated
+    assert len(ctx.mongo_db_low_value.inserted) == 1
+    assert ctx.stats["dropped"] == 1
+
+
+def test_iis_adapter_retries_transient_ai_errors_three_times():
+    ctx = FakeContext()
+    manager = FakeClientManager()
+    calls = []
+
+    def flaky_analyzer(*_):
+        calls.append(1)
+        if len(calls) < 3:
+            return {"error": "temporary"}
+        return _analyzer(*_)
+
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), manager, analyzer=flaky_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    runtime = HubRuntime()
+    runtime.install(EventPipelinePlugin(ports, ports, ports))
+    runtime.start()
+    runtime.emit(HubEvent(INTAKE_RECEIVED, _original(), "finance"))
+
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+    assert len(calls) == 3
+    assert len(manager.released) == 3
+    assert len(ctx.mongo_db_archive.inserted) == 1
+
+
+def test_iis_adapter_marks_http_400_sensitive_without_retrying():
+    ctx = FakeContext()
+    calls = []
+
+    def rejected_analyzer(*_):
+        calls.append(1)
+        return {"error": "bad request", "api_error_code": "HTTP_400"}
+
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=rejected_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    runtime = HubRuntime()
+    runtime.install(EventPipelinePlugin(ports, ports, ports))
+    failed = []
+    runtime.subscribe(ANALYSIS_FAILED, lambda event, _: failed.append(event.payload))
+    runtime.start()
+    runtime.emit(HubEvent(INTAKE_RECEIVED, _original(), "finance"))
+
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+    assert len(calls) == 1
+    assert failed
+    assert ctx.mongo_db_cache.updated[-1][1]["APPENDIX.__ARCHIVED__"] == "S"
+
+
+def test_iis_adapter_marks_persistent_ai_error_after_three_attempts():
+    ctx = FakeContext()
+    calls = []
+
+    def failed_analyzer(*_):
+        calls.append(1)
+        return {"error": "temporary but persistent"}
+
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=failed_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    runtime = HubRuntime()
+    runtime.install(EventPipelinePlugin(ports, ports, ports))
+    runtime.start()
+    runtime.emit(HubEvent(INTAKE_RECEIVED, _original(), "finance"))
+
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+    assert len(calls) == 3
+    assert not ctx.mongo_db_archive.inserted
+    assert ctx.mongo_db_cache.updated[-1][1]["APPENDIX.__ARCHIVED__"] == "E"
+
+
+def test_iis_adapter_waits_until_an_ai_client_is_available():
+    ctx = FakeContext()
+
+    class DelayedClientManager(FakeClientManager):
+        def __init__(self):
+            super().__init__()
+            self.attempts = 0
+
+        def get_available_client(self, user):
+            self.attempts += 1
+            return self.client if self.attempts >= 3 else None
+
+    manager = DelayedClientManager()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), manager, analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer(), client_wait_interval=0.001)
+    runtime = HubRuntime()
+    runtime.install(EventPipelinePlugin(ports, ports, ports))
+    runtime.start()
+    runtime.emit(HubEvent(INTAKE_RECEIVED, _original(), "finance"))
+
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+    assert manager.attempts == 3
+    assert len(ctx.mongo_db_archive.inserted) == 1
