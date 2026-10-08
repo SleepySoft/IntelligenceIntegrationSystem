@@ -140,3 +140,25 @@ collect
 
 记录本文件时，主仓库分支为 `SubSystem`。`IntelligenceCrawler` 和 `PyLoggingBackend` 子模块内
 各有一个原有的未跟踪 `pyproject.toml`，本轮未修改、未提交。
+
+## 2026-10-08 接续进展
+
+本次已从上述交接点继续完成以下可独立验证的基础设施：
+
+- 根 `requirements.txt` 已通过 editable 本地依赖正式安装 `event_engine`，项目最低版本文档统一为 Python 3.11。
+- 新增独立 `EventV4PipelinePorts`，旧 `IISPipelinePorts` 未增加 v4 条件分支。
+- V4 分析严格调用 `validate_analysis_result_v4()`，区分 valuable/non_intelligence，并保留既有客户端等待、释放、缓存状态、错误分类和三次重试行为。
+- 结构/语义校验失败后的下一次请求会携带精简校验错误，不再原样重试同一 Prompt。
+- 新增生产转换服务：全局情报 UUID、全局实体 UUID、事件 UUID、roles、location、qualifier.by 和事件关系均完成转换；事件 UUID 使用 `uuid5(intelligence_uuid, local_event_id)` 稳定派生。
+- 新增 `ArchivedIntelligenceV4` 与 `LowValueIntelligenceV4` 存储信封，评分器可直接读取嵌套的 `assessment.rate` 并保留中文 alias。
+- 新增基础确定性实体解析器与 Mongo 实体仓库。当前只自动合并“规范名称 + 类型 + 国家代码”完全一致的实体，复杂别名及人工合并/拆分入口仍待实现。
+- 新增 Mongo V4 归档仓库；实体、情报和事件使用稳定唯一键，事件采用批量 upsert。跨集合提交使用可重放 outbox，写入顺序为 pending outbox → events → intelligence → committed outbox，避免出现情报已归档但事件缺失；`recover_pending()` 可恢复中断提交。
+- Event Engine 与 IIS `Test/` 联合测试目前为 101 项通过。
+- 已验证 `pip install --no-deps -e ./event_engine` 后可在仓库外正常导入 `event_engine.extraction`，不依赖源码路径桥接。
+
+尚未完成：
+
+- 尚未在 `IntelligenceHubStartup.py` 切换生产组合根；当前 V4 端口和仓库需要先完成查询/展示与外围扩展适配再启用。
+- 尚未提供实体人工合并/拆分入口。
+- 尚未把查询层、Web API、向量、翻译、统计、实体频率、动态图谱和模板改为 V4 DTO。
+- CanonicalEvent 自动归并继续按原计划延后。

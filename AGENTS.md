@@ -22,7 +22,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 语言 | Python 3.10+ |
+| 语言 | Python 3.11+ |
 | Web 框架 | Flask（主服务）、FastAPI（部分子服务） |
 | WSGI 服务器 | Waitress（Windows 默认）、Gunicorn（Linux 可选）、Flask dev server |
 | 数据库 | MongoDB（文档存储）、SQLite（用户认证、AI 客户端状态日志） |
@@ -124,7 +124,7 @@
 
 ### 4.1 环境准备
 
-1. 安装 Python 3.10+
+1. 安装 Python 3.11+
 2. 安装并启动 MongoDB（默认 `localhost:27017`）
 3. 下载向量模型 `BAAI/bge-m3`（供 VectorDB 使用）
 4. 克隆仓库并拉取子模块：
@@ -200,7 +200,7 @@ python VectorDB/VectorDBBService.py \
 - 类名/函数名使用英文，遵循 PEP 8
 
 ### 5.2 数据模型
-- 所有跨模块传输的数据结构必须使用 `ServiceComponent.IntelligenceHubDefines_v2` 中的 Pydantic 模型定义
+- v1/v2 主链跨模块数据使用 `ServiceComponent.IntelligenceHubDefines_v2` 中的 Pydantic 模型；Event V4 接入使用 `ServiceComponent.IntelligenceHubDefines_v4` 与 `event_engine.extraction`，不得复制事件字段或 Registry 规则
 - `CollectedData`：采集端提交的原始数据
 - `ArchivedData`：AI 分析后归档的数据（含 `APPENDIX` 元数据）
 - `ProcessedData`：中间处理数据，用于清洗和校验
