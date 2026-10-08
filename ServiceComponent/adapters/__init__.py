@@ -4,6 +4,7 @@ from ServiceComponent.adapters.iis_pipeline import IISPipelinePorts
 from ServiceComponent.adapters.iis_vector import IISVectorExtension
 from ServiceComponent.adapters.iis_translation import IISAsyncTranslationExtension
 from ServiceComponent.adapters.iis_replay import IISUnarchivedReplayExtension
+from ServiceComponent.adapters.event_v4_pipeline import EventV4PipelinePorts
 
-__all__ = ["IISAsyncTranslationExtension", "IISPipelinePorts", "IISUnarchivedReplayExtension",
-           "IISVectorExtension"]
+__all__ = ["EventV4PipelinePorts", "IISAsyncTranslationExtension", "IISPipelinePorts",
+           "IISUnarchivedReplayExtension", "IISVectorExtension"]
