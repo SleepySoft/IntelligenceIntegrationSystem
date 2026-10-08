@@ -1,9 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from tenacity import wait_none
 
 from ServiceComponent.adapters import IISPipelinePorts
 from ServiceComponent.pipeline import (
     ANALYSIS_FAILED,
     ARCHIVE_COMPLETED,
+    ARCHIVE_FAILED,
+    ARCHIVE_REQUESTED,
     EventPipelinePlugin,
     INTAKE_RECEIVED,
     INTAKE_REJECTED,
@@ -240,3 +244,46 @@ def test_iis_adapter_waits_until_an_ai_client_is_available():
     runtime.stop()
     assert manager.attempts == 3
     assert len(ctx.mongo_db_archive.inserted) == 1
+
+
+def test_iis_adapter_rejects_invalid_direct_archive_payload():
+    ctx = FakeContext()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer())
+    runtime = HubRuntime()
+    runtime.install(EventPipelinePlugin(ports, ports, ports))
+    failed = []
+    runtime.subscribe(ARCHIVE_FAILED, lambda event, _: failed.append(event.payload))
+    runtime.start()
+    runtime.emit(HubEvent(
+        ARCHIVE_REQUESTED,
+        {"UUID": "bad", "INFORMANT": "source", "EVENT_TEXT": "looks valid"},
+        "finance",
+    ))
+
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+    assert failed
+    assert not ctx.mongo_db_archive.inserted
+    assert ctx.mongo_db_cache.updated[-1][1]["APPENDIX.__ARCHIVED__"] == "E"
+
+
+def test_iis_adapter_serializes_cache_duplicate_check_and_insert():
+    ctx = FakeContext()
+
+    class StorageBackedQuery:
+        def common_query(self, **kwargs):
+            return list(ctx.mongo_db_cache.inserted)
+
+    ctx.cache_query_engine = StorageBackedQuery()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer())
+    event = HubEvent(INTAKE_RECEIVED, _original(), "finance")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: ports.accept(event), range(2)))
+
+    assert sum(result.accepted for result in results) == 1
+    assert len(ctx.mongo_db_cache.inserted) == 1

@@ -69,6 +69,7 @@ class IISPipelinePorts:
         self._analyzer = analyzer or self._load_default_analyzer()
         self._scorer_factory = scorer_factory or self._load_default_scorer_factory()
         self._stop_event = threading.Event()
+        self._dedupe_lock = threading.RLock()
         self._retry_wait = retry_wait or wait_exponential(multiplier=1, min=1, max=30)
         self._client_wait_interval = client_wait_interval
 
@@ -97,10 +98,12 @@ class IISPipelinePorts:
         data.setdefault("collect_time", get_aware_time())
         data[APPENDIX_TIME_POST] = get_aware_time()
 
-        if self._is_duplicated(data, "informant", ctx.cache_query_engine):
-            return StageResult.reject("collected_data_duplicated")
-        if ctx.mongo_db_cache:
-            ctx.mongo_db_cache.insert(data)
+        # 查询与插入必须在同一临界区，避免多个分析 worker 同时接收同一记录。
+        with self._dedupe_lock:
+            if self._is_duplicated(data, "informant", ctx.cache_query_engine):
+                return StageResult.reject("collected_data_duplicated")
+            if ctx.mongo_db_cache:
+                ctx.mongo_db_cache.insert(data)
         return StageResult.allow(data, subsystem=ctx.name)
 
     def analyze(self, event: HubEvent) -> StageResult:
@@ -166,21 +169,38 @@ class IISPipelinePorts:
 
     def archive(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
-        data = dict(event.payload)
-        if self._is_duplicated(data, "INFORMANT", ctx.archive_query_engine):
-            self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
-            return StageResult.reject("archive_duplicated")
-        if self._is_low_value(data):
-            if ctx.mongo_db_low_value:
-                ctx.mongo_db_low_value.insert(data)
-            self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
-            return StageResult.reject("low_value")
+        raw_data = dict(event.payload)
+        data, error = check_sanitize_dict(raw_data, ArchivedData)
+        if error:
+            self._mark_cache(raw_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+            self._increment_stat(ctx, "error")
+            return StageResult.reject(error)
+        data.setdefault("APPENDIX", {})[APPENDIX_SUBSYSTEM] = ctx.name
 
-        data.setdefault("APPENDIX", {})[APPENDIX_TIME_ARCHIVED] = get_aware_time()
-        if ctx.mongo_db_archive:
-            ctx.mongo_db_archive.insert(data)
-        self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_ARCHIVED, ctx)
-        return StageResult.allow(data, subsystem=ctx.name)
+        try:
+            # 归档去重和写入同样需要原子化，防止多个 worker 重复落库。
+            with self._dedupe_lock:
+                if self._is_duplicated(data, "INFORMANT", ctx.archive_query_engine):
+                    self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
+                    self._increment_stat(ctx, "dropped")
+                    return StageResult.reject("archive_duplicated")
+                if self._is_low_value(data):
+                    if ctx.mongo_db_low_value:
+                        ctx.mongo_db_low_value.insert(data)
+                    self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
+                    self._increment_stat(ctx, "dropped")
+                    return StageResult.reject("low_value")
+
+                data["APPENDIX"][APPENDIX_TIME_ARCHIVED] = get_aware_time()
+                if ctx.mongo_db_archive:
+                    ctx.mongo_db_archive.insert(data)
+                self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_ARCHIVED, ctx)
+            self._increment_stat(ctx, "archived")
+            return StageResult.allow(data, subsystem=ctx.name)
+        except Exception as exc:
+            self._mark_cache(data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+            self._increment_stat(ctx, "error")
+            return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
 
     def stop(self) -> None:
         self._stop_event.set()
