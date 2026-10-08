@@ -35,6 +35,8 @@ class ManualDebugAnalysisService(HubPlugin):
             raise ValueError("worker_count 必须大于 0")
         if not callable(getattr(analysis_port, "analyze_transient", None)):
             raise TypeError("analysis_port 必须实现 analyze_transient()")
+        if not callable(getattr(analysis_port, "get_transient_prompt_table", None)):
+            raise TypeError("analysis_port 必须实现 get_transient_prompt_table()")
         self._analysis_port = analysis_port
         self._registry = subsystem_registry
         self._max_results = max_results
@@ -63,7 +65,31 @@ class ManualDebugAnalysisService(HubPlugin):
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
 
-    def submit(self, *, content: str, title: str = "", subsystem: str = "") -> dict[str, Any]:
+    def prompt_catalog(self, subsystem: str = "") -> dict[str, Any]:
+        subsystem = str(subsystem or "").strip() or self._registry.default_name
+        if self._registry.resolve(subsystem) is None:
+            raise ValueError(f"未知子系统: {subsystem}")
+        table = self._analysis_port.get_transient_prompt_table(subsystem)
+        if not table:
+            raise ValueError(f"子系统 {subsystem} 没有可用 Prompt")
+        versions = sorted(int(version) for version in table)
+        return {"subsystem": subsystem, "versions": versions, "default_version": versions[-1]}
+
+    def get_prompt(self, *, subsystem: str = "", version: int | str) -> dict[str, Any]:
+        catalog = self.prompt_catalog(subsystem)
+        version = int(version)
+        table = self._analysis_port.get_transient_prompt_table(catalog["subsystem"])
+        if version not in table:
+            raise ValueError(f"Prompt v{version} 未配置")
+        return {
+            "subsystem": catalog["subsystem"],
+            "version": version,
+            "content": table[version],
+        }
+
+    def submit(self, *, content: str, title: str = "", subsystem: str = "",
+               prompt_version: int | str | None = None,
+               prompt_override: str | None = None) -> dict[str, Any]:
         content = str(content or "").strip()
         if len(content) < 10:
             raise ValueError("正文至少需要 10 个字符")
@@ -72,6 +98,18 @@ class ManualDebugAnalysisService(HubPlugin):
         subsystem = str(subsystem or "").strip() or self._registry.default_name
         if self._registry.resolve(subsystem) is None:
             raise ValueError(f"未知子系统: {subsystem}")
+        catalog = self.prompt_catalog(subsystem)
+        if prompt_version in (None, ""):
+            prompt_version = catalog["default_version"]
+        prompt_version = int(prompt_version)
+        if prompt_version not in catalog["versions"]:
+            raise ValueError(f"Prompt v{prompt_version} 未配置")
+        if prompt_override is not None:
+            prompt_override = str(prompt_override)
+            if not prompt_override.strip():
+                raise ValueError("覆盖 Prompt 不能为空")
+            if len(prompt_override) > 100_000:
+                raise ValueError("覆盖 Prompt 不能超过 100000 个字符")
 
         job_id = str(uuid4())
         now = datetime.now(timezone.utc)
@@ -80,6 +118,7 @@ class ManualDebugAnalysisService(HubPlugin):
             token=MANUAL_TEST_TOKEN,
             source=MANUAL_TEST_SOURCE,
             target="manual-debug",
+            prompt=prompt_override,
             title=_derive_title(title, content),
             authors=[],
             content=content,
@@ -87,7 +126,13 @@ class ManualDebugAnalysisService(HubPlugin):
             collect_time=now,
             informant=f"test://manual/{job_id}",
             subsystem=subsystem,
-            temp_data={"transient": True, "manual_debug": True},
+            temp_data={
+                "transient": True,
+                "manual_debug": {
+                    "prompt_version": prompt_version,
+                    "prompt_overridden": prompt_override is not None,
+                },
+            },
         ).model_dump()
         record = {
             "job_id": job_id,
@@ -96,6 +141,10 @@ class ManualDebugAnalysisService(HubPlugin):
             "started_at": None,
             "finished_at": None,
             "subsystem": subsystem,
+            "prompt": {
+                "version": prompt_version,
+                "overridden": prompt_override is not None,
+            },
             "input": collected,
             "result": None,
             "error": "",
@@ -176,6 +225,7 @@ class ManualDebugAnalysisService(HubPlugin):
             "started_at": record["started_at"],
             "finished_at": record["finished_at"],
             "subsystem": record["subsystem"],
+            "prompt": dict(record["prompt"]),
             "input": {
                 "UUID": source["UUID"],
                 "title": source["title"],

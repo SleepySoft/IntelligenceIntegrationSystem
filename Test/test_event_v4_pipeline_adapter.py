@@ -224,3 +224,36 @@ def test_v4_transient_non_intelligence_is_not_saved():
     assert result.metadata["low_value"] is True
     assert result.payload["analysis"]["kind"] == "non_intelligence"
     assert not repository.low_values
+
+
+def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validation():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    prompts = []
+
+    def analyzer(client, prompt, original):
+        prompts.append(prompt)
+        return _valuable()
+
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    original.update({
+        "source": MANUAL_TEST_SOURCE,
+        "prompt": "V4 覆盖版 {{CONTENT}} Prompt",
+        "temp_data": {
+            "manual_debug": {"prompt_version": 40, "prompt_overridden": True}
+        },
+    })
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "news"))
+
+    assert result.accepted
+    assert prompts == ["V4 覆盖版 {{CONTENT}} Prompt"]
+    assert result.payload["debug_prompt"] == {"version": 40, "overridden": True}

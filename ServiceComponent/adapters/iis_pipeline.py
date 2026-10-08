@@ -27,6 +27,7 @@ from ServiceComponent.IntelligenceHubDefines_v2 import (
     APPENDIX_AI_MODEL,
     APPENDIX_AI_SERVICE,
     APPENDIX_PROMPT_VERSION,
+    APPENDIX_PROMPT_OVERRIDE,
     APPENDIX_TOTAL_SCORE,
     ARCHIVED_FLAG_ARCHIVED,
     ARCHIVED_FLAG_DROP,
@@ -128,6 +129,13 @@ class IISPipelinePorts:
             return StageResult.reject("transient_analysis_requires_manual_test_source")
         return self._analyze(event, persist=False)
 
+    def get_transient_prompt_table(self, subsystem: str) -> dict[int, str]:
+        ctx = self._registry.resolve(subsystem)
+        if ctx is None:
+            raise ValueError(f"unknown_subsystem:{subsystem!r}")
+        self._registry.refresh_prompts(ctx)
+        return dict(ctx.prompt_table)
+
     def _analyze(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
@@ -142,9 +150,14 @@ class IISPipelinePorts:
             return StageResult.reject("prompt_not_configured")
 
         try:
+            requested_prompt_version, prompt_override = (
+                self._transient_prompt_options(original_data) if not persist else (None, None)
+            )
             result, prompt_version, ai_service, ai_model = self._analyze_with_retry(
                 ctx, event, original_data,
-                analyzer=self._analyzer if persist else self._transient_analyzer)
+                analyzer=self._analyzer if persist else self._transient_analyzer,
+                prompt_version=requested_prompt_version,
+                prompt_override=prompt_override)
             if not isinstance(result, dict):
                 raise TypeError("analysis_result_not_dict")
             if result.get("error"):
@@ -167,6 +180,8 @@ class IISPipelinePorts:
                 APPENDIX_AI_MODEL: ai_model,
                 APPENDIX_SUBSYSTEM: ctx.name,
             }
+            if not persist:
+                result["APPENDIX"][APPENDIX_PROMPT_OVERRIDE] = bool(prompt_override)
             self._copy_timestamps(original_data, result)
 
             if self._is_low_value(result):
@@ -240,8 +255,14 @@ class IISPipelinePorts:
         self._stop_event.set()
 
     def _analyze_with_retry(self, ctx: Any, event: HubEvent,
-                            original_data: dict, *, analyzer=None) -> tuple[dict, int, str, str]:
-        prompt_version = random.choice(list(ctx.prompt_table.keys()))
+                            original_data: dict, *, analyzer=None,
+                            prompt_version: int | None = None,
+                            prompt_override: str | None = None) -> tuple[dict, int, str, str]:
+        if prompt_version is None:
+            prompt_version = random.choice(list(ctx.prompt_table.keys()))
+        elif prompt_version not in ctx.prompt_table:
+            raise ValueError(f"prompt_version_not_configured:{prompt_version}")
+        prompt = prompt_override if prompt_override is not None else ctx.prompt_table[prompt_version]
         client_metadata = {"service": "", "model": ""}
         user_name = f"HubRuntime-{event.correlation_id or event.event_id}"
 
@@ -251,7 +272,7 @@ class IISPipelinePorts:
                 client_metadata["service"] = ai_client.get_api_base_url()
                 client_metadata["model"] = ai_client.get_current_model()
                 return (analyzer or self._analyzer)(
-                    ai_client, ctx.prompt_table[prompt_version], original_data)
+                    ai_client, prompt, original_data)
             finally:
                 self._ai_client_manager.release_client(ai_client)
 
@@ -265,6 +286,18 @@ class IISPipelinePorts:
         )
         result = retryer(analyze_once)
         return result, prompt_version, client_metadata["service"], client_metadata["model"]
+
+    @staticmethod
+    def _transient_prompt_options(original_data: dict) -> tuple[int | None, str | None]:
+        settings = original_data.get("temp_data", {}).get("manual_debug", {})
+        version = settings.get("prompt_version")
+        version = int(version) if version not in (None, "") else None
+        override = original_data.get("prompt")
+        if override is not None:
+            override = str(override)
+            if not override.strip():
+                raise ValueError("prompt_override 不能为空")
+        return version, override
 
     def _wait_for_ai_client(self, ctx: Any, user_name: str) -> Any:
         attempts = 0

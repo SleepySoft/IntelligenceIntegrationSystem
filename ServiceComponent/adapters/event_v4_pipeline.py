@@ -97,6 +97,11 @@ class EventV4PipelinePorts(IISPipelinePorts):
             return StageResult.reject("transient_analysis_requires_manual_test_source")
         return self._analyze_v4(event, persist=False)
 
+    def get_transient_prompt_table(self, subsystem: str) -> dict[int, str]:
+        if self._registry.resolve(subsystem) is None:
+            raise ValueError(f"unknown_subsystem:{subsystem!r}")
+        return dict(self._prompt_table)
+
     def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
@@ -107,9 +112,14 @@ class EventV4PipelinePorts(IISPipelinePorts):
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         try:
+            requested_prompt_version, prompt_override = (
+                self._transient_prompt_options(original_data) if not persist else (None, None)
+            )
             analysis, prompt_version, ai_service, ai_model = self._analyze_v4_with_retry(
                 ctx, event, original_data,
                 analyzer=self._analyzer if persist else self._transient_analyzer,
+                prompt_version=requested_prompt_version,
+                prompt_override=prompt_override,
             )
             processed_at = datetime.now(timezone.utc)
             if isinstance(analysis, NonIntelligenceV4):
@@ -129,8 +139,13 @@ class EventV4PipelinePorts(IISPipelinePorts):
                     self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
                     self._increment_stat(ctx, "dropped")
                     return StageResult.reject("non_intelligence")
+                debug_result = low_value.model_dump(mode="json", by_alias=True)
+                debug_result["debug_prompt"] = {
+                    "version": prompt_version,
+                    "overridden": bool(prompt_override),
+                }
                 return StageResult.allow(
-                    low_value.model_dump(mode="json", by_alias=True),
+                    debug_result,
                     subsystem=ctx.name, transient=True, low_value=True,
                 )
 
@@ -167,6 +182,10 @@ class EventV4PipelinePorts(IISPipelinePorts):
 
                 result = archive.model_dump(mode="json", by_alias=True)
                 result["events"] = [event_to_document(item) for item in conversion.events]
+                result["debug_prompt"] = {
+                    "version": prompt_version,
+                    "overridden": bool(prompt_override),
+                }
                 return StageResult.allow(
                     result, subsystem=ctx.name, transient=True, low_value=False,
                 )
@@ -211,9 +230,16 @@ class EventV4PipelinePorts(IISPipelinePorts):
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
+        prompt_version: int | None = None, prompt_override: str | None = None,
     ) -> tuple[ValuableIntelligenceV4 | NonIntelligenceV4, int, str, str]:
-        prompt_version = random.choice(list(self._prompt_table.keys()))
-        base_prompt = self._prompt_table[prompt_version]
+        if prompt_version is None:
+            prompt_version = random.choice(list(self._prompt_table.keys()))
+        elif prompt_version not in self._prompt_table:
+            raise ValueError(f"prompt_version_not_configured:{prompt_version}")
+        base_prompt = (
+            prompt_override if prompt_override is not None
+            else self._prompt_table[prompt_version]
+        )
         prompt = base_prompt
         user_name = f"HubRuntime-v4-{event.correlation_id or event.event_id}"
         service = ""

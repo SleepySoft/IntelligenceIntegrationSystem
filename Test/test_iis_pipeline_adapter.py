@@ -364,3 +364,33 @@ def test_transient_analysis_uses_dedicated_non_recording_analyzer():
 
     assert result.accepted
     assert result.payload["EVENT_TITLE"] == "Market event"
+
+
+def test_transient_analysis_uses_selected_version_and_one_time_prompt_override():
+    ctx = FakeContext()
+    prompts = []
+
+    def capture_analyzer(client, prompt, original):
+        prompts.append(prompt)
+        return _analyzer(client, "finance prompt", original)
+
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(),
+        analyzer=capture_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    original = _original()
+    original.update({
+        "source": MANUAL_TEST_SOURCE,
+        "prompt": "覆盖版 {{CONTENT}} Prompt",
+        "temp_data": {
+            "manual_debug": {"prompt_version": 1, "prompt_overridden": True}
+        },
+    })
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "finance"))
+
+    assert result.accepted
+    assert prompts == ["覆盖版 {{CONTENT}} Prompt"]
+    assert result.payload["APPENDIX"]["__PROMPT_VERSION__"] == 1
+    assert result.payload["APPENDIX"]["__PROMPT_OVERRIDE__"] is True

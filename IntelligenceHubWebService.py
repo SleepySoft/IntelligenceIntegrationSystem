@@ -854,6 +854,8 @@ class IntelligenceHubWebService:
                     content=data.get("content", ""),
                     title=data.get("title", ""),
                     subsystem=data.get("subsystem", ""),
+                    prompt_version=data.get("prompt_version"),
+                    prompt_override=data.get("prompt_override"),
                 )
                 return jsonify({
                     "success": True,
@@ -866,6 +868,24 @@ class IntelligenceHubWebService:
             except Exception as exc:
                 logger.exception("manual debug intelligence submit failed")
                 return jsonify({"error": str(exc)}), 500
+
+        @app.route('/api/debug/prompts', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def manual_debug_prompts_api():
+            service = self.intelligence_hub.get_service("manual_debug_analysis")
+            if service is None:
+                return jsonify({"error": "人工调试分析服务未启用"}), 503
+            subsystem = request.args.get("subsystem", "")
+            version = request.args.get("version")
+            try:
+                data = (
+                    service.get_prompt(subsystem=subsystem, version=version)
+                    if version not in (None, "")
+                    else service.prompt_catalog(subsystem)
+                )
+                return jsonify({"success": True, "data": data})
+            except (TypeError, ValueError) as exc:
+                return jsonify({"error": str(exc)}), 400
 
         @app.route('/api/debug/intelligence/<string:job_id>', methods=['GET'])
         @WebServiceAccessManager.login_required

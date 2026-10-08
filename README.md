@@ -267,7 +267,8 @@ python CrawlerServiceEngine.py
 + 登录后台后可打开 [localhost:5000/debug/intelligence](http://localhost:5000/debug/intelligence)
   人工粘贴正文并调试 AI 分析。该入口自动补齐 `CollectedData` 元数据，将 `source` 固定为
   `__IIS_MANUAL_TEST__`，结果仅保存在当前进程的有界内存列表中，不写入 cache、archive、
-  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。
+  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可按子系统选择正式
+  Prompt 版本，并可编辑后仅对本次任务进行覆盖；日期、正文等占位符仍由正式分析消息构造器拼接。
 
 
 ## 其它工具

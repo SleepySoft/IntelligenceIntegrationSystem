@@ -9,7 +9,9 @@
         body { background: #f5f7fa; }
         .page-shell { max-width: 1180px; margin: 28px auto; }
         .card { border: 0; box-shadow: 0 4px 18px rgba(25, 40, 70, .08); }
-        textarea { min-height: 320px; resize: vertical; }
+        textarea { resize: vertical; }
+        #content { min-height: 300px; }
+        #prompt-editor { min-height: 380px; font-size: .82rem; }
         pre { max-height: 620px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
         .job-item { cursor: pointer; }
         .job-item:hover { background: #f1f5ff; }
@@ -58,6 +60,26 @@
                         <label class="form-label" for="content">正文</label>
                         <textarea class="form-control font-monospace" id="content" required minlength="10"
                                   maxlength="200000" placeholder="粘贴待分析的新闻或情报正文……"></textarea>
+
+                        <hr class="my-4">
+                        <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-2">
+                            <div>
+                                <label class="form-label" for="prompt-version">Prompt 版本</label>
+                                <select class="form-select" id="prompt-version"></select>
+                            </div>
+                            <div class="d-flex align-items-center gap-3 pb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="prompt-override">
+                                    <label class="form-check-label" for="prompt-override">使用编辑后的 Prompt 覆盖本次分析</label>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary" id="reload-prompt" type="button">恢复所选版本</button>
+                            </div>
+                        </div>
+                        <textarea class="form-control font-monospace" id="prompt-editor" maxlength="100000"
+                                  spellcheck="false" placeholder="正在加载正式流程 Prompt……"></textarea>
+                        <div id="prompt-message" class="form-text">
+                            文本通过正式分析器的消息拼接机制处理；只有勾选覆盖时才使用编辑内容。
+                        </div>
                         <div class="d-flex justify-content-between align-items-center mt-3">
                             <span id="message" class="small text-muted"></span>
                             <button id="submit-button" class="btn btn-primary" type="submit">提交分析</button>
@@ -98,8 +120,14 @@
     const resultStatus = document.getElementById('result-status');
     const submitButton = document.getElementById('submit-button');
     const jobList = document.getElementById('job-list');
+    const subsystemSelect = document.getElementById('subsystem');
+    const promptVersionSelect = document.getElementById('prompt-version');
+    const promptEditor = document.getElementById('prompt-editor');
+    const promptOverride = document.getElementById('prompt-override');
+    const promptMessage = document.getElementById('prompt-message');
     let activeJobId = null;
     let pollTimer = null;
+    let loadedPromptText = '';
 
     function renderRecord(record) {
         activeJobId = record.job_id;
@@ -140,7 +168,8 @@
                 const title = item.input?.title || item.job_id;
                 button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span class="text-truncate"></span><small><i class="status-dot status-${item.status}"></i> ${item.status}</small></div><small class="text-muted"></small>`;
                 button.querySelector('span').textContent = title;
-                button.querySelector('.text-muted').textContent = `${item.subsystem} · ${item.job_id}`;
+                const promptLabel = `Prompt v${item.prompt?.version ?? '?'}${item.prompt?.overridden ? ' · 已覆盖' : ''}`;
+                button.querySelector('.text-muted').textContent = `${item.subsystem} · ${promptLabel} · ${item.job_id}`;
                 button.addEventListener('click', () => loadJob(item.job_id).catch(showError));
                 jobList.appendChild(button);
             });
@@ -153,6 +182,48 @@
     function showError(error) {
         message.textContent = error.message;
         message.className = 'small text-danger';
+    }
+
+    async function fetchPrompt(params) {
+        const response = await fetch(`/api/debug/prompts?${new URLSearchParams(params)}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        return payload.data;
+    }
+
+    async function loadPromptCatalog() {
+        promptVersionSelect.disabled = true;
+        promptEditor.disabled = true;
+        try {
+            const catalog = await fetchPrompt({subsystem: subsystemSelect.value});
+            promptVersionSelect.innerHTML = '';
+            catalog.versions.forEach(version => {
+                const option = document.createElement('option');
+                option.value = String(version);
+                option.textContent = `v${version}`;
+                option.selected = version === catalog.default_version;
+                promptVersionSelect.appendChild(option);
+            });
+            await loadSelectedPrompt();
+        } catch (error) {
+            promptMessage.textContent = error.message;
+            promptMessage.className = 'form-text text-danger';
+        } finally {
+            promptVersionSelect.disabled = false;
+            promptEditor.disabled = false;
+        }
+    }
+
+    async function loadSelectedPrompt() {
+        const selected = await fetchPrompt({
+            subsystem: subsystemSelect.value,
+            version: promptVersionSelect.value,
+        });
+        loadedPromptText = selected.content;
+        promptEditor.value = loadedPromptText;
+        promptOverride.checked = false;
+        promptMessage.textContent = `已载入 ${selected.subsystem} / Prompt v${selected.version}。编辑文本会自动启用单次覆盖。`;
+        promptMessage.className = 'form-text';
     }
 
     form.addEventListener('submit', async event => {
@@ -168,6 +239,8 @@
                     title: document.getElementById('title').value,
                     subsystem: document.getElementById('subsystem').value,
                     content: document.getElementById('content').value,
+                    prompt_version: Number(promptVersionSelect.value),
+                    prompt_override: promptOverride.checked ? promptEditor.value : null,
                 }),
             });
             const payload = await response.json();
@@ -184,6 +257,13 @@
     });
 
     document.getElementById('refresh-button').addEventListener('click', loadList);
+    subsystemSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
+    promptVersionSelect.addEventListener('change', () => loadSelectedPrompt().catch(showError));
+    promptEditor.addEventListener('input', () => {
+        promptOverride.checked = promptEditor.value !== loadedPromptText;
+    });
+    document.getElementById('reload-prompt').addEventListener('click', () => loadSelectedPrompt().catch(showError));
+    loadPromptCatalog();
     loadList();
 </script>
 </body>
