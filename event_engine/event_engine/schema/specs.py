@@ -141,6 +141,10 @@ class PredicateSpec:
     allowed_frames: tuple[Frame, ...] = ()
     # 状态迁移图；None 不表示任意不同状态可覆盖，仅保留首次值/同值，缺规则的迁移记未知。
     lifecycle: LifecycleSpec | None = None
+    # 面向抽取器和人工展示的稳定名称与边界说明。它们属于领域词表，不能由 Prompt
+    # 另行维护；核心匹配算法不读取这两个字段。
+    label: str = ""
+    definition: str = ""
 
 
 @dataclass(frozen=True, slots=True)

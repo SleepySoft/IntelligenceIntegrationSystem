@@ -101,19 +101,22 @@ def frame_specs(*groups):
     return {predicate: frame for names, frame in groups for predicate in names.split()}
 
 
-def make_specs(arguments, identities=None, tags=None, frames=None):
+def make_specs(arguments, identities=None, tags=None, frames=None, metadata=None):
     identities = identities or {}
     tags = tags or {}
     frames = frames or {}
+    metadata = metadata or {}
     result = {}
     for predicate, projection in arguments.items():
         identity = identities.get(predicate, IdentitySpec(identity_roles=("subject",), auto_merge_threshold=.92, review_threshold=.75))
         roles = (projection.subject_roles | projection.object_roles
                  | set(identity.identity_roles) | set(identity.discriminator_roles)
                  | {"instrument", "location", "source", "destination", "beneficiary", "target"})
+        label, definition = metadata.get(predicate, (predicate, ""))
         result[predicate] = PredicateSpec(
             predicate, {r: DEFAULT_ROLE_GROUPS.get(r, SemanticRoleGroup.OTHER) for r in roles},
             identity, arguments=projection, tags=frozenset(tags.get(predicate, ())),
             frame=frames.get(predicate), lifecycle=COMMON_LIFECYCLE,
+            label=label, definition=definition,
         )
     return result

@@ -26,17 +26,18 @@
 
 ### 2.1 IIS 侧
 
-AI 原始结果仍为 `ValuableIntelligenceV4`。写入时：
+AI 的事件抽取部分为 `EventExtractionResult`，可以独立使用，也可以嵌入 IIS 等外部结果。写入时：
 
-1. 为 `EVENTS[]` 中每个 Event 分配全局 UUID。
+1. 为 `event_extraction.events[]` 中每个 Event 分配全局 UUID。
 2. Event 独立写入事件存储。
 3. Event 记录 `intelligence_uuid`、原局部 `E<number>` 和全局化后的实体绑定。
-4. `ValuableIntelligenceV4` 的持久化对象仅保存 Event UUID 列表与 `primary_event_uuid`。
-5. 消息级字段，例如 RATE、EVENT_TEXT、TAXONOMY，留在 ValuableIntelligenceV4，不进入事件引擎。
+4. 外部持久化对象仅保存 Event UUID 列表与 `primary_event_uuid`，不重复保存局部事件对象。
+5. 消息级字段，例如评分、正文和分类，留在外部包装模型，不进入事件引擎。
 
 ### 2.2 Event 引擎侧
 
-引擎不读取 ValuableIntelligenceV4，不了解新闻、正文、相似消息或 AI Prompt。它只依赖：
+核心引擎不读取外部包装模型，不了解新闻、正文或相似消息。抽取层只负责编译事件 Prompt、校验
+`EventExtractionResult`，随后由接入层转换为核心对象。核心只依赖：
 
 - `EventRecord`
 - `EventQuery`

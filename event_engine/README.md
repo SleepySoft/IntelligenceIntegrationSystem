@@ -9,6 +9,7 @@
 - `event_engine.domains.news`：新闻领域的规则配置、专用声明和算法。
 - `event_engine.domains.industry`：产业领域，目前提供生产、建设、供应等规则配置。
 - `event_engine.domains.financial`：金融领域，目前提供交易、融资、债券发行、评级等规则配置。
+- `event_engine.extraction`：可独立使用的事件抽取模型与 Prompt；目录、Frame、角色和生命周期词值均由显式 Registry 生成。
 - `event_engine.query`：内存与 MongoDB 存储适配器。
 
 三个配置包按词汇维护职责划分，可以组合加载；新闻报道产业或金融事件时同时加载相应包。
@@ -57,7 +58,7 @@ from event_engine.core import EventAnalyzer, EventEngine, PredicateRegistry
 
 ## 身份匹配与状态整合
 
-领域包版本为 `1.1`，所有内置谓词声明 Frame；注册和匹配均执行约束校验。
+领域包版本为 `1.2`，所有内置谓词声明抽取名称、边界和 Frame；注册、抽取和匹配共享同一 Registry。
 Frame 只描述结构，不据此推断所有权、收益或其它领域结论。实际字段意义由 PredicateSpec 提供。
 
 自动合并先检查必备身份证据，再计算分数。身份角色默认必须齐全且一致；缺失、部分重叠、
@@ -85,12 +86,26 @@ LifecycleSpec 定义允许的状态路径；允许跳过未报道的中间步骤
 未知单位不自动换算，来源可信度裁决尚未实现。旧 CanonicalEvent 若无区分角色、身份属性或
 状态投影，应从原观察重建后使用新规则；自动身份绑定发生变化时需复核已有成员。
 
+## 独立事件抽取与外部组合
+
+```python
+from event_engine.domains import registry_for
+from event_engine.extraction import build_event_extraction_prompt, validate_event_extraction
+
+registry = registry_for("news", "industry", "financial")
+prompt = build_event_extraction_prompt(registry)
+result = validate_event_extraction(model_json, registry)
+```
+
+外部系统通过 `build_event_extraction_section(registry)` 取得可组合章节，并在自己的输出模型中嵌入
+`EventExtractionResult`。外部 Prompt 不维护谓词副本，也不修改事件抽取结构。
+
 ## 设计结论
 
-- AI 分析输出为 `ValuableIntelligenceV4`。
+- 独立抽取输出为 `EventExtractionResult`；IIS 可将它包装进自己的分析结果。
 - 持久化时先为其中每个 Event 分配全局 UUID，并独立存储。
-- `ValuableIntelligenceV4.EVENTS` 在存储模型中转换为 Event UUID 列表。
-- Event 保存 `intelligence_uuid`，用于追溯所属情报，但引擎不读取或理解 `ValuableIntelligenceV4`。
+- `EventExtractionResult.events` 在存储模型中转换为 Event UUID 列表。
+- Event 保存 `intelligence_uuid`，用于追溯所属情报；核心引擎不读取或理解外部包装模型。
 - 引擎仅接受 Event、EventQuery、CanonicalEvent 等独立领域对象。
 - 三层为：纯内存分析层、用例整合层、查询适配层。
 
@@ -105,6 +120,12 @@ LifecycleSpec 定义允许的状态路径；允许跳过未报道的中间步骤
 ```bash
 python -m pip install -e .
 python -m unittest discover -s tests -v
+```
+
+事件抽取支持：
+
+```bash
+python -m pip install -e '.[extraction]'
 ```
 
 MongoDB 支持：

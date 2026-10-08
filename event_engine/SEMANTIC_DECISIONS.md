@@ -69,7 +69,7 @@ event_engine/
 这是“领域知识作为数据，通用算法消费协议”，不是“无语义配置的通用推理”。
 
 三个包按词汇维护职责划分，并非互斥业务分类；新闻涉及金融时组合加载金融包。
-当前包版本为 `1.1`。`DomainPack` 实际是包含 `domain_id`、`version`、`specs` 的数据类，
+当前包版本为 `1.2`。`DomainPack` 实际是包含 `domain_id`、`version`、`specs` 的数据类，
 不是扩展草案中的实体类型注册服务。
 
 `EventIR` 不含来源与存储身份；`EventRecord` 补充观察 UUID、情报 UUID、局部 ID、

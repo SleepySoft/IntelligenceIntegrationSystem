@@ -38,7 +38,7 @@ class BlockUnselected:
 
 sys.meta_path.insert(0, BlockUnselected())
 registry = registry_for('financial')
-assert dict(registry.pack_versions) == {'financial': '1.1'}
+assert dict(registry.pack_versions) == {'financial': '1.2'}
 assert 'issue_bond' in registry and 'attack' not in registry
 assert not any(n.startswith(('event_engine.domains.news', 'event_engine.domains.industry'))
                for n in sys.modules)
@@ -47,7 +47,7 @@ assert not any(n.startswith(('event_engine.domains.news', 'event_engine.domains.
 
     def test_selected_packs_compose_without_news(self):
         registry = registry_for("industry", "financial")
-        self.assertEqual({"industry": "1.1", "financial": "1.1"}, dict(registry.pack_versions))
+        self.assertEqual({"industry": "1.2", "financial": "1.2"}, dict(registry.pack_versions))
         self.assertIn("build_facility", registry)
         self.assertIn("issue_bond", registry)
         self.assertNotIn("attack", registry)

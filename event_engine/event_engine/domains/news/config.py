@@ -3,6 +3,7 @@ from datetime import timedelta
 from ...schema.specs import DomainPack
 from ...schema.specs import IdentitySpec
 from ..common import _arguments, _frame, frame_specs, make_specs
+from ..metadata import NEWS_PREDICATE_METADATA
 
 PREDICATE_ARGUMENT_SPECS = {
     "exist": _arguments("subject"),
@@ -98,5 +99,5 @@ FRAMES = frame_specs(
     ("accident", _frame("change", "intrinsic", "non_agentive")),
     ("natural_hazard outbreak", _frame("process", "intrinsic", "non_agentive")),
 )
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
-PACK = DomainPack("news", "1.1", PREDICATE_SPECS)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, NEWS_PREDICATE_METADATA)
+PACK = DomainPack("news", "1.2", PREDICATE_SPECS)

@@ -3,6 +3,7 @@ from datetime import timedelta
 from ...schema.specs import DomainPack
 from ...schema.specs import IdentitySpec
 from ..common import _arguments, _frame, frame_specs, make_specs
+from ..metadata import INDUSTRY_PREDICATE_METADATA
 
 PREDICATE_ARGUMENT_SPECS = {
     "shortage": _arguments("resource", "affected"),
@@ -39,5 +40,5 @@ FRAMES = frame_specs(
     ("construct develop test maintain build_facility", _frame("process", "targeted")),
     ("deploy expand_capacity suspend_production resume_production", _frame("change", "targeted")),
 )
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
-PACK = DomainPack("industry", "1.1", PREDICATE_SPECS)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, INDUSTRY_PREDICATE_METADATA)
+PACK = DomainPack("industry", "1.2", PREDICATE_SPECS)

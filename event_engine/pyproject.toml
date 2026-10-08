@@ -11,7 +11,8 @@ dependencies = []
 
 [project.optional-dependencies]
 mongodb = ["pymongo>=4.6"]
-dev = ["pytest>=8", "mongomock>=4.1"]
+extraction = ["pydantic>=2.11"]
+dev = ["pytest>=8", "mongomock>=4.1", "pydantic>=2.11"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

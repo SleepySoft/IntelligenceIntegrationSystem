@@ -140,7 +140,7 @@ class CoreBoundaryTests(unittest.TestCase):
         from event_engine.domains.industry import PACK as INDUSTRY_PACK
         from event_engine.domains.financial import PACK as FINANCIAL_PACK
         registry = PredicateRegistry.from_packs(NEWS_PACK, INDUSTRY_PACK, FINANCIAL_PACK)
-        self.assertEqual({"news": "1.1", "industry": "1.1", "financial": "1.1"}, dict(registry.pack_versions))
+        self.assertEqual({"news": "1.2", "industry": "1.2", "financial": "1.2"}, dict(registry.pack_versions))
         for predicate in ("attack", "build_facility", "issue_bond"):
             self.assertIn(predicate, registry)
         self.assertEqual(SemanticRoleGroup.AGENT, registry["issue_bond"].role_groups["issuer"])

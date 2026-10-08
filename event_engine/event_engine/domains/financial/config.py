@@ -3,6 +3,7 @@ from datetime import timedelta
 from ...schema.specs import DomainPack
 from ...schema.specs import IdentitySpec
 from ..common import _arguments, _frame, frame_specs, make_specs
+from ..metadata import FINANCIAL_PREDICATE_METADATA
 
 PREDICATE_ARGUMENT_SPECS = {
     "default": _arguments("debtor", "obligation"),
@@ -45,5 +46,5 @@ FRAMES = frame_specs(
     ("insolvency", _frame("change", "intrinsic", "non_agentive")),
     ("rating_change declare_dividend", _frame("change", "targeted")),
 )
-PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES)
-PACK = DomainPack("financial", "1.1", PREDICATE_SPECS)
+PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, FINANCIAL_PREDICATE_METADATA)
+PACK = DomainPack("financial", "1.2", PREDICATE_SPECS)
