@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>人工情报分析调试</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f5f7fa; }
+        .page-shell { max-width: 1180px; margin: 28px auto; }
+        .card { border: 0; box-shadow: 0 4px 18px rgba(25, 40, 70, .08); }
+        textarea { min-height: 320px; resize: vertical; }
+        pre { max-height: 620px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+        .job-item { cursor: pointer; }
+        .job-item:hover { background: #f1f5ff; }
+        .status-dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; }
+        .status-queued, .status-running { background: #f0ad4e; }
+        .status-completed { background: #198754; }
+        .status-failed { background: #dc3545; }
+    </style>
+</head>
+<body>
+<main class="page-shell px-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h3 mb-1">人工情报分析调试</h1>
+            <div class="text-muted">仅运行 AI 分析，结果保存在当前进程内存中，不写入任何情报集合。</div>
+        </div>
+        <a class="btn btn-outline-secondary" href="/post/index">返回后台</a>
+    </div>
+
+    <div class="alert alert-warning py-2">
+        调试记录的 source 固定为 <code>__IIS_MANUAL_TEST__</code>；服务重启后列表会清空。
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <section class="card">
+                <div class="card-body">
+                    <form id="debug-form">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label" for="title">标题（可选）</label>
+                                <input class="form-control" id="title" maxlength="120"
+                                       placeholder="留空时取正文第一行">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="subsystem">子系统</label>
+                                <select class="form-select" id="subsystem">
+                                    {% for item in subsystems %}
+                                    <option value="{{ item.name }}" {% if item.name == default_subsystem %}selected{% endif %}>
+                                        {{ item.display_name|default(item.name) }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <label class="form-label" for="content">正文</label>
+                        <textarea class="form-control font-monospace" id="content" required minlength="10"
+                                  maxlength="200000" placeholder="粘贴待分析的新闻或情报正文……"></textarea>
+                        <div class="d-flex justify-content-between align-items-center mt-3">
+                            <span id="message" class="small text-muted"></span>
+                            <button id="submit-button" class="btn btn-primary" type="submit">提交分析</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <section class="card mt-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <strong>分析结果</strong>
+                    <span id="result-status" class="badge text-bg-secondary">未选择</span>
+                </div>
+                <div class="card-body">
+                    <pre id="result" class="bg-dark text-light rounded p-3 mb-0">等待提交。</pre>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-lg-5">
+            <section class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <strong>本进程最近结果</strong>
+                    <button id="refresh-button" class="btn btn-sm btn-outline-secondary" type="button">刷新</button>
+                </div>
+                <div id="job-list" class="list-group list-group-flush">
+                    <div class="p-3 text-muted">正在加载……</div>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+
+<script>
+    const form = document.getElementById('debug-form');
+    const message = document.getElementById('message');
+    const result = document.getElementById('result');
+    const resultStatus = document.getElementById('result-status');
+    const submitButton = document.getElementById('submit-button');
+    const jobList = document.getElementById('job-list');
+    let activeJobId = null;
+    let pollTimer = null;
+
+    function renderRecord(record) {
+        activeJobId = record.job_id;
+        resultStatus.textContent = record.status;
+        resultStatus.className = `badge ${record.status === 'completed' ? 'text-bg-success' : record.status === 'failed' ? 'text-bg-danger' : 'text-bg-warning'}`;
+        result.textContent = JSON.stringify(record, null, 2);
+        if (record.status === 'queued' || record.status === 'running') schedulePoll();
+    }
+
+    function schedulePoll() {
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(() => activeJobId && loadJob(activeJobId), 1200);
+    }
+
+    async function loadJob(jobId) {
+        const response = await fetch(`/api/debug/intelligence/${encodeURIComponent(jobId)}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        renderRecord(payload.data);
+        loadList();
+    }
+
+    async function loadList() {
+        try {
+            const response = await fetch('/api/debug/intelligence?limit=20');
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+            const rows = payload.results || [];
+            jobList.innerHTML = '';
+            if (!rows.length) {
+                jobList.innerHTML = '<div class="p-3 text-muted">暂无调试记录。</div>';
+                return;
+            }
+            rows.forEach(item => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'list-group-item list-group-item-action job-item';
+                const title = item.input?.title || item.job_id;
+                button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span class="text-truncate"></span><small><i class="status-dot status-${item.status}"></i> ${item.status}</small></div><small class="text-muted"></small>`;
+                button.querySelector('span').textContent = title;
+                button.querySelector('.text-muted').textContent = `${item.subsystem} · ${item.job_id}`;
+                button.addEventListener('click', () => loadJob(item.job_id).catch(showError));
+                jobList.appendChild(button);
+            });
+        } catch (error) {
+            jobList.innerHTML = `<div class="p-3 text-danger"></div>`;
+            jobList.firstElementChild.textContent = error.message;
+        }
+    }
+
+    function showError(error) {
+        message.textContent = error.message;
+        message.className = 'small text-danger';
+    }
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        submitButton.disabled = true;
+        message.textContent = '正在提交……';
+        message.className = 'small text-muted';
+        try {
+            const response = await fetch('/api/debug/intelligence', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    title: document.getElementById('title').value,
+                    subsystem: document.getElementById('subsystem').value,
+                    content: document.getElementById('content').value,
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+            message.textContent = '已进入内存调试队列。';
+            message.className = 'small text-success';
+            renderRecord(payload.data);
+            loadList();
+        } catch (error) {
+            showError(error);
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    document.getElementById('refresh-button').addEventListener('click', loadList);
+    loadList();
+</script>
+</body>
+</html>

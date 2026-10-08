@@ -28,6 +28,8 @@
 
 #### Maintenance
 
++ [Manual Intelligence Debug](/debug/intelligence)
+
 + [Log Viewer](/logger/log_viewer)
 
 + [Logger Config](/logger/logger_config)

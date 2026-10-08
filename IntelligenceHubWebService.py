@@ -823,6 +823,64 @@ class IntelligenceHubWebService:
                 logger.error(f'collect_api() fail: {str(e)}')
                 return jsonify({'resp': 'error', 'uuid': ''})
 
+        @app.route('/debug/intelligence', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def manual_debug_intelligence_page():
+            """人工输入正文并查看无持久化分析结果。"""
+            return render_template(
+                'manual_debug_intelligence.html',
+                subsystems=self.intelligence_hub.get_subsystems(),
+                default_subsystem=self.intelligence_hub.default_subsystem_name,
+            )
+
+        @app.route('/api/debug/intelligence', methods=['GET', 'POST'])
+        @WebServiceAccessManager.login_required
+        def manual_debug_intelligence_api():
+            service = self.intelligence_hub.get_service("manual_debug_analysis")
+            if service is None:
+                return jsonify({"error": "人工调试分析服务未启用"}), 503
+            if request.method == 'GET':
+                try:
+                    limit = int(request.args.get('limit', 20))
+                    return jsonify({
+                        "results": self._serialize_for_json(service.list(limit=limit))
+                    })
+                except (TypeError, ValueError) as exc:
+                    return jsonify({"error": str(exc)}), 400
+
+            data = request.get_json(silent=True) or request.form.to_dict()
+            try:
+                record = service.submit(
+                    content=data.get("content", ""),
+                    title=data.get("title", ""),
+                    subsystem=data.get("subsystem", ""),
+                )
+                return jsonify({
+                    "success": True,
+                    "data": self._serialize_for_json(record),
+                }), 202
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+            except RuntimeError as exc:
+                return jsonify({"error": str(exc)}), 503
+            except Exception as exc:
+                logger.exception("manual debug intelligence submit failed")
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route('/api/debug/intelligence/<string:job_id>', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def manual_debug_intelligence_result_api(job_id: str):
+            service = self.intelligence_hub.get_service("manual_debug_analysis")
+            if service is None:
+                return jsonify({"error": "人工调试分析服务未启用"}), 503
+            record = service.get(job_id)
+            if record is None:
+                return jsonify({"error": "调试任务不存在或已从内存列表淘汰"}), 404
+            return jsonify({
+                "success": True,
+                "data": self._serialize_for_json(record),
+            })
+
         @app.get("/api/prompts/<prompt_version>")
         def get_prompt(prompt_version):
             if not prompt_version:

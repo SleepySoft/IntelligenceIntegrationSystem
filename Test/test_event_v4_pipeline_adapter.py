@@ -3,6 +3,7 @@ from tenacity import wait_none
 from ServiceComponent.adapters import EventV4PipelinePorts
 from ServiceComponent.IntelligenceHubDefines_v4 import validate_analysis_result_v4
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
+from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.pipeline import ARCHIVE_REQUESTED
 from ServiceComponent.runtime import HubEvent
 
@@ -176,3 +177,50 @@ def test_v4_adapter_stores_non_intelligence_envelope_without_events():
 def test_v4_scorer_reads_nested_rate_with_chinese_aliases():
     analysis = validate_analysis_result_v4(_valuable())
     assert IntelligenceScoringEngine().calculate_v4(analysis) == 5.9
+
+
+def test_v4_transient_analysis_returns_events_without_archive_writes():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "news"))
+
+    assert result.accepted
+    assert result.metadata["transient"] is True
+    assert result.payload["events"][0]["local_event_id"] == "E1"
+    assert not repository.archives
+    assert not repository.events
+    assert not repository.low_values
+    assert not context.mongo_db_cache.updated
+
+
+def test_v4_transient_non_intelligence_is_not_saved():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        analyzer=lambda *_: {"kind": "non_intelligence", "reason": "测试广告"},
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "news"))
+
+    assert result.accepted
+    assert result.metadata["low_value"] is True
+    assert result.payload["analysis"]["kind"] == "non_intelligence"
+    assert not repository.low_values

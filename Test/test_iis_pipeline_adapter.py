@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tenacity import wait_none
 
 from ServiceComponent.adapters import IISPipelinePorts
+from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.pipeline import (
     ANALYSIS_FAILED,
     ARCHIVE_COMPLETED,
@@ -287,3 +288,79 @@ def test_iis_adapter_serializes_cache_duplicate_check_and_insert():
 
     assert sum(result.accepted for result in results) == 1
     assert len(ctx.mongo_db_cache.inserted) == 1
+
+
+def test_manual_test_source_is_rejected_from_persistent_intake():
+    ctx = FakeContext()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer())
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.accept(HubEvent(INTAKE_RECEIVED, original, "finance"))
+
+    assert not result.accepted
+    assert result.reason == "manual_test_requires_debug_route"
+    assert not ctx.mongo_db_cache.inserted
+
+
+def test_transient_analysis_returns_valuable_result_without_database_writes():
+    ctx = FakeContext()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(), analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "finance"))
+
+    assert result.accepted
+    assert result.payload["SUBMITTER"] == "Manual transient debug"
+    assert result.payload["APPENDIX"]["__TOTAL_SCORE__"] == 7.5
+    assert not ctx.mongo_db_cache.inserted
+    assert not ctx.mongo_db_cache.updated
+    assert not ctx.mongo_db_archive.inserted
+    assert not ctx.mongo_db_low_value.inserted
+    assert ctx.stats == {"archived": 0, "dropped": 0, "error": 0}
+
+
+def test_transient_low_value_result_is_displayed_without_persistence():
+    ctx = FakeContext()
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(),
+        analyzer=lambda *_: {"TAXONOMY": "无情报价值", "REASON": "测试内容"},
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "finance"))
+
+    assert result.accepted
+    assert result.metadata["low_value"] is True
+    assert result.payload["TAXONOMY"] == "无情报价值"
+    assert not ctx.mongo_db_low_value.inserted
+    assert not ctx.mongo_db_cache.updated
+
+
+def test_transient_analysis_uses_dedicated_non_recording_analyzer():
+    ctx = FakeContext()
+
+    def persistent_analyzer(*_):
+        raise AssertionError("persistent analyzer must not be used")
+
+    ports = IISPipelinePorts(
+        FakeRegistry(ctx), FakeClientManager(),
+        analyzer=persistent_analyzer,
+        transient_analyzer=_analyzer,
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "finance"))
+
+    assert result.accepted
+    assert result.payload["EVENT_TITLE"] == "Market event"

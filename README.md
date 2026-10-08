@@ -264,6 +264,11 @@ python CrawlerServiceEngine.py
 
 + 打开 [localhost:5000](localhost:5000) 则是无密码的公开页面。
 
++ 登录后台后可打开 [localhost:5000/debug/intelligence](http://localhost:5000/debug/intelligence)
+  人工粘贴正文并调试 AI 分析。该入口自动补齐 `CollectedData` 元数据，将 `source` 固定为
+  `__IIS_MANUAL_TEST__`，结果仅保存在当前进程的有界内存列表中，不写入 cache、archive、
+  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。
+
 
 ## 其它工具
 

@@ -23,6 +23,7 @@ from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
+from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
@@ -172,8 +173,17 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 f"list={subsystem_registry.describe()}")
 
     # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
+    pipeline_ports = IISPipelinePorts(subsystem_registry, client_manager)
     extensions = []
     services = {}
+    manual_debug_service = ManualDebugAnalysisService(
+        pipeline_ports,
+        subsystem_registry,
+        max_results=config.get('intelligence_hub.manual_debug.max_results', 50),
+        worker_count=config.get('intelligence_hub.manual_debug.worker_count', 1),
+    )
+    extensions.append(manual_debug_service)
+    services["manual_debug_analysis"] = manual_debug_service
     vector_search = None
     if config.get('intelligence_hub.replay_unarchived', True):
         replay_extension = IISUnarchivedReplayExtension(subsystem_registry)
@@ -330,7 +340,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         subsystem_registry=subsystem_registry,
         ai_client_manager=client_manager,
         worker_count=ai_analysis_thread,
-        pipeline_ports=IISPipelinePorts(subsystem_registry, client_manager),
+        pipeline_ports=pipeline_ports,
         extensions=extensions,
         vector_search=vector_search,
         services=services,

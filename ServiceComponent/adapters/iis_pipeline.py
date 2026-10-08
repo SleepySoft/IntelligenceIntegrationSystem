@@ -38,6 +38,7 @@ from ServiceComponent.IntelligenceHubDefines_v2 import (
 )
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
+from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from Tools.DateTimeUtility import get_aware_time, time_digit_list_to_datetime, time_str_to_datetime
 from MyPythonUtility.DictTools import check_sanitize_dict
 
@@ -58,6 +59,7 @@ class IISPipelinePorts:
             ai_client_manager: Any,
             *,
             analyzer: Optional[Callable[[Any, str, dict], dict]] = None,
+            transient_analyzer: Optional[Callable[[Any, str, dict], dict]] = None,
             scorer_factory: Callable[[Optional[dict]], Any] = None,
             retry_wait: Any = None,
             client_wait_interval: float = 1.0,
@@ -67,6 +69,10 @@ class IISPipelinePorts:
         self._registry = subsystem_registry
         self._ai_client_manager = ai_client_manager
         self._analyzer = analyzer or self._load_default_analyzer()
+        self._transient_analyzer = (
+            transient_analyzer
+            or (analyzer if analyzer is not None else self._load_default_transient_analyzer())
+        )
         self._scorer_factory = scorer_factory or self._load_default_scorer_factory()
         self._stop_event = threading.Event()
         self._dedupe_lock = threading.RLock()
@@ -89,11 +95,18 @@ class IISPipelinePorts:
         from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
         return analyze_with_ai
 
+    @staticmethod
+    def _load_default_transient_analyzer() -> Callable[[Any, str, dict], dict]:
+        from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai_transient
+        return analyze_with_ai_transient
+
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
         data, error = check_sanitize_dict(dict(event.payload), CollectedData)
         if error:
             return StageResult.reject(error)
+        if data.get("source") == MANUAL_TEST_SOURCE:
+            return StageResult.reject("manual_test_requires_debug_route")
         data.setdefault("subsystem", ctx.name)
         data.setdefault("collect_time", get_aware_time())
         data[APPENDIX_TIME_POST] = get_aware_time()
@@ -107,28 +120,40 @@ class IISPipelinePorts:
         return StageResult.allow(data, subsystem=ctx.name)
 
     def analyze(self, event: HubEvent) -> StageResult:
+        return self._analyze(event, persist=True)
+
+    def analyze_transient(self, event: HubEvent) -> StageResult:
+        """执行完整分析与校验，但不读写任何业务数据库或统计计数。"""
+        if dict(event.payload).get("source") != MANUAL_TEST_SOURCE:
+            return StageResult.reject("transient_analysis_requires_manual_test_source")
+        return self._analyze(event, persist=False)
+
+    def _analyze(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
-        if self._is_duplicated(original_data, "INFORMANT", ctx.archive_query_engine):
+        if persist and self._is_duplicated(original_data, "INFORMANT", ctx.archive_query_engine):
             self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         if not ctx.prompt_table:
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
-            self._increment_stat(ctx, "error")
+            if persist:
+                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+                self._increment_stat(ctx, "error")
             return StageResult.reject("prompt_not_configured")
 
         try:
             result, prompt_version, ai_service, ai_model = self._analyze_with_retry(
-                ctx, event, original_data)
+                ctx, event, original_data,
+                analyzer=self._analyzer if persist else self._transient_analyzer)
             if not isinstance(result, dict):
                 raise TypeError("analysis_result_not_dict")
             if result.get("error"):
                 state = (ARCHIVED_FLAG_SENSITIVE
                          if result.get("api_error_code") == "HTTP_400"
                          else ARCHIVED_FLAG_ERROR)
-                self._mark_cache(original_data.get("UUID", ""), state, ctx)
-                self._increment_stat(ctx, "error")
+                if persist:
+                    self._mark_cache(original_data.get("UUID", ""), state, ctx)
+                    self._increment_stat(ctx, "error")
                 return StageResult.reject(f"analysis_failed:{result['error']}")
 
             result["UUID"] = str(original_data.get("UUID", "")).strip()
@@ -148,11 +173,16 @@ class IISPipelinePorts:
                 low_value, error = check_sanitize_dict(result, ArchivedData)
                 if error:
                     raise ValueError(error)
-                if ctx.mongo_db_low_value:
-                    ctx.mongo_db_low_value.insert(low_value)
-                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
-                self._increment_stat(ctx, "dropped")
-                return StageResult.reject("low_value")
+                if persist:
+                    if ctx.mongo_db_low_value:
+                        ctx.mongo_db_low_value.insert(low_value)
+                    self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
+                    self._increment_stat(ctx, "dropped")
+                    return StageResult.reject("low_value")
+                low_value["RAW_DATA"] = original_data
+                low_value["SUBMITTER"] = "Manual transient debug"
+                return StageResult.allow(
+                    low_value, subsystem=ctx.name, transient=True, low_value=True)
 
             result["APPENDIX"][APPENDIX_TOTAL_SCORE] = self._scorer_factory(
                 getattr(ctx, "scoring_config", None)).calculate_single(result)
@@ -160,11 +190,15 @@ class IISPipelinePorts:
             if error:
                 raise ValueError(error)
             validated["RAW_DATA"] = original_data
-            validated["SUBMITTER"] = "HubRuntime analysis adapter"
-            return StageResult.allow(validated, subsystem=ctx.name)
+            validated["SUBMITTER"] = (
+                "Manual transient debug" if not persist else "HubRuntime analysis adapter"
+            )
+            return StageResult.allow(
+                validated, subsystem=ctx.name, transient=not persist, low_value=False)
         except Exception as exc:
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
-            self._increment_stat(ctx, "error")
+            if persist:
+                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+                self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
 
     def archive(self, event: HubEvent) -> StageResult:
@@ -206,7 +240,7 @@ class IISPipelinePorts:
         self._stop_event.set()
 
     def _analyze_with_retry(self, ctx: Any, event: HubEvent,
-                            original_data: dict) -> tuple[dict, int, str, str]:
+                            original_data: dict, *, analyzer=None) -> tuple[dict, int, str, str]:
         prompt_version = random.choice(list(ctx.prompt_table.keys()))
         client_metadata = {"service": "", "model": ""}
         user_name = f"HubRuntime-{event.correlation_id or event.event_id}"
@@ -216,7 +250,7 @@ class IISPipelinePorts:
             try:
                 client_metadata["service"] = ai_client.get_api_base_url()
                 client_metadata["model"] = ai_client.get_current_model()
-                return self._analyzer(
+                return (analyzer or self._analyzer)(
                     ai_client, ctx.prompt_table[prompt_version], original_data)
             finally:
                 self._ai_client_manager.release_client(ai_client)

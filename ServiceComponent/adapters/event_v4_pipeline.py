@@ -37,6 +37,7 @@ from ServiceComponent.event_v4_conversion import (
     EventConversionResult,
     convert_event_extraction,
 )
+from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
 
@@ -67,6 +68,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
         event_registry: Any = DEFAULT_EVENT_REGISTRY,
         prompt_table: Mapping[int, str] | None = None,
         analyzer: Callable[[Any, str, dict], dict] | None = None,
+        transient_analyzer: Callable[[Any, str, dict], dict] | None = None,
         scorer_factory: Callable[[dict | None], Any] | None = None,
         retry_wait: Any = None,
         client_wait_interval: float = 1.0,
@@ -75,6 +77,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             subsystem_registry,
             ai_client_manager,
             analyzer=analyzer,
+            transient_analyzer=transient_analyzer,
             scorer_factory=scorer_factory,
             retry_wait=retry_wait,
             client_wait_interval=client_wait_interval,
@@ -87,21 +90,30 @@ class EventV4PipelinePorts(IISPipelinePorts):
             raise ValueError("Event V4 prompt_table 不能为空")
 
     def analyze(self, event: HubEvent) -> StageResult:
+        return self._analyze_v4(event, persist=True)
+
+    def analyze_transient(self, event: HubEvent) -> StageResult:
+        if dict(event.payload).get("source") != MANUAL_TEST_SOURCE:
+            return StageResult.reject("transient_analysis_requires_manual_test_source")
+        return self._analyze_v4(event, persist=False)
+
+    def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
         intelligence_uuid = derive_intelligence_uuid(original_data)
         informant = str(original_data.get("informant", "")).strip()
-        if self._archive_repository.contains(intelligence_uuid, informant):
+        if persist and self._archive_repository.contains(intelligence_uuid, informant):
             self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         try:
             analysis, prompt_version, ai_service, ai_model = self._analyze_v4_with_retry(
-                ctx, event, original_data
+                ctx, event, original_data,
+                analyzer=self._analyzer if persist else self._transient_analyzer,
             )
             processed_at = datetime.now(timezone.utc)
             if isinstance(analysis, NonIntelligenceV4):
-                self._archive_repository.save_low_value(LowValueIntelligenceV4(
+                low_value = LowValueIntelligenceV4(
                     intelligence_uuid=intelligence_uuid,
                     informant=informant,
                     raw_data=original_data,
@@ -111,15 +123,22 @@ class EventV4PipelinePorts(IISPipelinePorts):
                     prompt_version=prompt_version,
                     processed_at=processed_at,
                     subsystem=ctx.name,
-                ))
-                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
-                self._increment_stat(ctx, "dropped")
-                return StageResult.reject("non_intelligence")
+                )
+                if persist:
+                    self._archive_repository.save_low_value(low_value)
+                    self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
+                    self._increment_stat(ctx, "dropped")
+                    return StageResult.reject("non_intelligence")
+                return StageResult.allow(
+                    low_value.model_dump(mode="json", by_alias=True),
+                    subsystem=ctx.name, transient=True, low_value=True,
+                )
 
             conversion = convert_event_extraction(
                 analysis.event_extraction,
                 intelligence_uuid=intelligence_uuid,
-                entity_resolver=self._entity_resolver,
+                entity_resolver=(self._entity_resolver if persist
+                                 else DeterministicEntityResolver()),
                 registry=self._event_registry,
                 observed_at=processed_at,
                 metadata={"informant": informant, "subsystem": ctx.name},
@@ -143,17 +162,27 @@ class EventV4PipelinePorts(IISPipelinePorts):
                 primary_event_uuid=conversion.primary_event_uuid,
                 subsystem=ctx.name,
             )
+            if not persist:
+                from event_engine.query.serialization import event_to_document
+
+                result = archive.model_dump(mode="json", by_alias=True)
+                result["events"] = [event_to_document(item) for item in conversion.events]
+                return StageResult.allow(
+                    result, subsystem=ctx.name, transient=True, low_value=False,
+                )
             return StageResult.allow(
                 PreparedValuableV4(archive=archive, conversion=conversion),
                 subsystem=ctx.name,
             )
         except _SensitiveAnalysisError as exc:
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_SENSITIVE, ctx)
-            self._increment_stat(ctx, "error")
+            if persist:
+                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_SENSITIVE, ctx)
+                self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_failed:{exc}")
         except Exception as exc:
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
-            self._increment_stat(ctx, "error")
+            if persist:
+                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+                self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
 
     def archive(self, event: HubEvent) -> StageResult:
@@ -181,7 +210,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
 
     def _analyze_v4_with_retry(
-        self, ctx: Any, event: HubEvent, original_data: dict
+        self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
     ) -> tuple[ValuableIntelligenceV4 | NonIntelligenceV4, int, str, str]:
         prompt_version = random.choice(list(self._prompt_table.keys()))
         base_prompt = self._prompt_table[prompt_version]
@@ -196,7 +225,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             try:
                 service = ai_client.get_api_base_url()
                 model = ai_client.get_current_model()
-                raw_result = self._analyzer(ai_client, prompt, original_data)
+                raw_result = (analyzer or self._analyzer)(ai_client, prompt, original_data)
             except Exception as exc:
                 last_error = exc
                 raw_result = None

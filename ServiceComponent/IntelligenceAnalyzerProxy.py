@@ -230,6 +230,29 @@ def analyze_with_ai(
     return conversation_common_process('analysis', messages, response)
 
 
+def analyze_with_ai_transient(
+        ai_client: BaseAIClient,
+        prompt: str,
+        structured_data: Dict[str, Any],
+        context: Optional[List[Dict[str, str]]] = None
+) -> Dict[str, Any]:
+    """执行一次不记录 conversation 文件/数据库的临时分析。"""
+    messages = build_analyze_message(prompt, structured_data, context)
+    start = time.time()
+    response = ai_client.chat(
+        messages=messages,
+        temperature=0,
+        max_tokens=MAX_OUTPUT_TOKEN
+    )
+    elapsed = time.time() - start
+    print(f"Transient AI response spends {elapsed} s")
+    if not isinstance(response, Dict):
+        return {'error': "Invalid AI response."}
+    if 'error' in response:
+        return response
+    return parse_ai_response(response)
+
+
 def aggressive_by_ai(
         ai_client: BaseAIClient,
         prompt: str,
