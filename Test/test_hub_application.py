@@ -30,6 +30,8 @@ class Registry:
 
 class Ports:
     def accept(self, event):
+        if event.payload.get("reject"):
+            return StageResult.reject("invalid")
         return StageResult.allow(event.payload)
 
     def analyze(self, event):
@@ -59,6 +61,39 @@ def test_application_rejects_unknown_subsystem_before_queueing():
         subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
 
     assert not app.submit_collected_data({"subsystem": "unknown"})
+
+
+def test_application_rejects_submission_before_startup():
+    app = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
+
+    assert not app.submit_collected_data({"subsystem": "news", "content": "not started"})
+
+
+def test_application_reports_intake_rejection_instead_of_queued():
+    app = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
+    app.startup()
+
+    assert not app.submit_collected_data({"subsystem": "news", "reject": True})
+
+    app.shutdown()
+
+
+def test_application_releases_backpressure_slot_after_terminal_event():
+    app = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports(),
+        max_inflight=1,
+    )
+    app.startup()
+
+    assert app.submit_collected_data({"content": "first", "subsystem": "news"})
+    assert app.runtime.wait_for_idle(timeout=1)
+    assert app.submit_collected_data({"content": "second", "subsystem": "news"})
+    assert app.runtime.wait_for_idle(timeout=1)
+    assert app.statistics["runtime"]["in_flight_submissions"] == 0
+
+    app.shutdown()
 
 
 def test_application_requires_pipeline_ports_from_composition_root():

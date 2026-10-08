@@ -83,6 +83,9 @@ intake.received
 `intelligence_hub.replay_unarchived` 默认为 `true`，控制启动时是否恢复 cache 中的
 未归档数据；`intelligence_hub.translation.enabled` 默认为 `true`，控制异步翻译扩展。
 `intelligence_hub.vectordb.enabled` 为 `false` 时，不会安装向量、聚合或图谱扩展。
+`intelligence_hub.max_inflight` 默认为 `2000`，限制从提交入口进入但尚未到达终态的
+记录数量；达到上限时提交端等待，以防 AI 处理变慢时无限积压。提交接口会等待 intake
+或 archive 阶段的接收结果，最长等待时间由 `submission_ack_timeout_sec` 控制。
 
 ## 测试边界
 

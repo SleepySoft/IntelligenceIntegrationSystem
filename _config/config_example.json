@@ -1,6 +1,8 @@
 {
   "intelligence_hub": {
     "ai_analysis_thread": 1,
+    "max_inflight": 2000,
+    "submission_ack_timeout_sec": 30,
     "replay_unarchived": true,
 
     "translation": {

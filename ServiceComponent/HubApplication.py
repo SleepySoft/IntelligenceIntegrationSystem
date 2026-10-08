@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from ServiceComponent.pipeline import ARCHIVE_REQUESTED, EventPipelinePlugin, INTAKE_RECEIVED
+from ServiceComponent.pipeline import (
+    ANALYSIS_FAILED,
+    ARCHIVE_COMPLETED,
+    ARCHIVE_FAILED,
+    ARCHIVE_REQUESTED,
+    EventPipelinePlugin,
+    INTAKE_ACCEPTED,
+    INTAKE_RECEIVED,
+    INTAKE_REJECTED,
+)
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
 
@@ -26,7 +36,13 @@ class HubApplication:
             extensions: Iterable[HubPlugin] = (),
             vector_search: Optional[Callable[..., List[Tuple[str, float, dict]]]] = None,
             services: Optional[Dict[str, Any]] = None,
+            max_inflight: int = 2000,
+            submission_ack_timeout: float = 30.0,
     ):
+        if max_inflight < 1:
+            raise ValueError("max_inflight 必须大于 0。")
+        if submission_ack_timeout <= 0:
+            raise ValueError("submission_ack_timeout 必须大于 0。")
         self.subsystem_registry = subsystem_registry
         self.ai_client_manager = ai_client_manager
         self.default_subsystem = subsystem_registry.default()
@@ -36,8 +52,23 @@ class HubApplication:
         self.runtime = runtime or HubRuntime(worker_count=worker_count)
         if pipeline_ports is None:
             raise ValueError("pipeline_ports 必须由组合根提供。")
-        ports = pipeline_ports
-        self.runtime.install(EventPipelinePlugin(ports, ports, ports))
+        self._pipeline_ports = pipeline_ports
+        self.runtime.install(EventPipelinePlugin(pipeline_ports, pipeline_ports, pipeline_ports))
+
+        # 提交端需要知道 intake/archive 是否真正接收，避免把校验失败或重复数据
+        # 回报为 queued。并发额度覆盖完整流水线，用于恢复旧队列的入口背压。
+        self._submission_ack_timeout = submission_ack_timeout
+        self._inflight_slots = threading.BoundedSemaphore(max_inflight)
+        self._submission_lock = threading.RLock()
+        self._started = threading.Event()
+        self._submission_waiters: Dict[str, Tuple[threading.Event, Dict[str, Any]]] = {}
+        self._active_submissions = set()
+        self.runtime.subscribe(INTAKE_ACCEPTED, self._on_submission_accepted)
+        self.runtime.subscribe(INTAKE_REJECTED, self._on_submission_rejected)
+        self.runtime.subscribe(ARCHIVE_COMPLETED, self._on_submission_accepted)
+        self.runtime.subscribe(ARCHIVE_FAILED, self._on_submission_rejected)
+        for terminal_event in (INTAKE_REJECTED, ANALYSIS_FAILED, ARCHIVE_FAILED, ARCHIVE_COMPLETED):
+            self.runtime.subscribe(terminal_event, self._on_submission_terminal)
         for extension in extensions:
             self.runtime.install(extension)
 
@@ -46,21 +77,30 @@ class HubApplication:
 
     def startup(self) -> None:
         self.runtime.start()
+        self._started.set()
 
     def shutdown(self, timeout: float = 10.0) -> None:
+        self._started.clear()
         self.runtime.stop(timeout=timeout, drain=True)
 
     @property
     def statistics(self) -> Dict[str, Any]:
         """运行时通用统计；领域/运维扩展可在 services 中提供额外统计。"""
-        return {"runtime": self.runtime.stats, "subsystems": self.subsystem_registry.describe()}
+        with self._submission_lock:
+            in_flight = len(self._active_submissions)
+        return {
+            "runtime": {**self.runtime.stats, "in_flight_submissions": in_flight},
+            "subsystems": self.subsystem_registry.describe(),
+        }
 
     def submit_collected_data(self, data: dict) -> bool:
         subsystem = str(data.get("subsystem") or "").strip() or self.default_subsystem_name
         if self.subsystem_registry.resolve(subsystem) is None:
             return False
-        self.runtime.emit(HubEvent(INTAKE_RECEIVED, dict(data), subsystem))
-        return True
+        return self._submit_and_wait(
+            HubEvent(INTAKE_RECEIVED, dict(data), subsystem),
+            accepted_event=INTAKE_ACCEPTED,
+        )
 
     def submit_archived_data(self, data: dict) -> bool:
         appendix = data.get("APPENDIX") or {}
@@ -68,8 +108,10 @@ class HubApplication:
         subsystem = subsystem or self.default_subsystem_name
         if self.subsystem_registry.resolve(subsystem) is None:
             return False
-        self.runtime.emit(HubEvent(ARCHIVE_REQUESTED, dict(data), subsystem))
-        return True
+        return self._submit_and_wait(
+            HubEvent(ARCHIVE_REQUESTED, dict(data), subsystem),
+            accepted_event=ARCHIVE_COMPLETED,
+        )
 
     def get_intelligence(self, intelligence_uuid, db: str = "archive",
                          light_weight: bool = False, subsystem: Optional[str] = None):
@@ -124,6 +166,61 @@ class HubApplication:
 
     def get_service(self, name: str, default: Any = None) -> Any:
         return self.services.get(name, default)
+
+    def _submit_and_wait(self, event: HubEvent, *, accepted_event: str) -> bool:
+        if not self._started.is_set():
+            return False
+        if not self._inflight_slots.acquire(timeout=self._submission_ack_timeout):
+            return False
+        waiter = threading.Event()
+        outcome: Dict[str, Any] = {}
+        with self._submission_lock:
+            self._submission_waiters[event.event_id] = (waiter, outcome)
+            self._active_submissions.add(event.event_id)
+        try:
+            self.runtime.emit(event)
+        except Exception:
+            with self._submission_lock:
+                self._submission_waiters.pop(event.event_id, None)
+                self._active_submissions.discard(event.event_id)
+            self._inflight_slots.release()
+            return False
+
+        acknowledged = waiter.wait(timeout=self._submission_ack_timeout)
+        with self._submission_lock:
+            self._submission_waiters.pop(event.event_id, None)
+        return acknowledged and outcome.get("event_type") == accepted_event
+
+    def _on_submission_accepted(self, event: HubEvent, runtime: HubRuntime) -> None:
+        self._acknowledge_submission(event, True)
+
+    def _on_submission_rejected(self, event: HubEvent, runtime: HubRuntime) -> None:
+        self._acknowledge_submission(event, False)
+
+    def _acknowledge_submission(self, event: HubEvent, accepted: bool) -> None:
+        correlation_id = event.correlation_id
+        if not correlation_id:
+            return
+        with self._submission_lock:
+            entry = self._submission_waiters.get(correlation_id)
+            if entry is None:
+                return
+            waiter, outcome = entry
+            if waiter.is_set():
+                return
+            outcome["accepted"] = accepted
+            outcome["event_type"] = event.event_type
+            waiter.set()
+
+    def _on_submission_terminal(self, event: HubEvent, runtime: HubRuntime) -> None:
+        correlation_id = event.correlation_id
+        if not correlation_id:
+            return
+        with self._submission_lock:
+            if correlation_id not in self._active_submissions:
+                return
+            self._active_submissions.remove(correlation_id)
+        self._inflight_slots.release()
 
     def _context(self, subsystem: Optional[str]) -> Any:
         ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem

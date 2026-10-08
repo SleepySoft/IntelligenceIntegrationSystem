@@ -208,6 +208,9 @@ python CrawlerServiceEngine.py
 > `intelligence_hub.replay_unarchived` 控制启动后是否从 cache 恢复未归档记录（默认开启）；
 > `intelligence_hub.translation.enabled` 控制异步翻译扩展（默认开启）。关闭
 > `intelligence_hub.vectordb.enabled` 时，向量索引、聚合和图谱扩展不会安装，主分析归档流程仍可运行。
+> `intelligence_hub.max_inflight` 限制尚未到达终态的提交数量（默认 2000），用于在 AI
+> 处理变慢时提供入口背压；`submission_ack_timeout_sec` 控制提交端等待 intake/archive
+> 接收结果的最长时间（默认 30 秒）。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。

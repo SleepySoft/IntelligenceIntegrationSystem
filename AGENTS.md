@@ -210,6 +210,8 @@ python VectorDB/VectorDBBService.py \
 - `HubRuntime` 使用事件队列和 worker：`intake.received → analysis.requested → archive.completed`。
   运行时不解析 payload；各子系统可使用各自的数据结构。
 - AI worker 数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量。
+- 入口在返回 `queued` 前等待 intake/archive 阶段确认；在途数量由
+  `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
 - 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
 
 ### 5.4 错误与重试

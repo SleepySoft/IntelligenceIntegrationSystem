@@ -149,6 +149,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     # ------------------------------- Core: IHub -------------------------------
 
     ai_analysis_thread = config.get('intelligence_hub.ai_analysis_thread', 1)
+    max_inflight = config.get('intelligence_hub.max_inflight', 2000)
+    submission_ack_timeout = config.get('intelligence_hub.submission_ack_timeout_sec', 30)
     mongodb_host = config.get('mongodb.host', 'localhost')
     mongodb_port = config.get('mongodb.port', 27017)
     mongodb_user = config.get('mongodb.user', '')
@@ -332,6 +334,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         extensions=extensions,
         vector_search=vector_search,
         services=services,
+        max_inflight=max_inflight,
+        submission_ack_timeout=submission_ack_timeout,
     )
     hub.startup()
 
