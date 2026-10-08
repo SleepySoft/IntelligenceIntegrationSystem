@@ -1,6 +1,7 @@
 ##############################
 ### Core Libraries & Frameworks
 ##############################
+-e ./event_engine              # Event V4 engine (local editable install)
 fastapi==0.115.12            # Async web framework (for building APIs)
 uvicorn==0.34.2              # ASGI server (for running FastAPI apps)
 Flask==3.1.1                 # Web framework (lightweight WSGI apps)

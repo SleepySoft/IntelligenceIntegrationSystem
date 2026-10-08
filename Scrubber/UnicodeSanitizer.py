@@ -4,7 +4,7 @@ from typing import Optional, Literal
 
 try:
     from typing import TypeAlias
-    print("Success: Using Python 3.10+")
+    print("Success: typing.TypeAlias is available")
 except ImportError:
     from typing_extensions import TypeAlias
     print("Success: Using typing_extensions")
