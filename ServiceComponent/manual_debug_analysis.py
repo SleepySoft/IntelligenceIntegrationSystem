@@ -8,7 +8,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Mapping
 from uuid import uuid4
 
 from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
@@ -18,6 +18,11 @@ from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
 MANUAL_TEST_SOURCE = "__IIS_MANUAL_TEST__"
 MANUAL_TEST_TOKEN = "manual-debug-internal"
+DEFAULT_ANALYSIS_MECHANISM = "v2"
+ANALYSIS_MECHANISM_LABELS = {
+    "v2": "V2（当前生产机制）",
+    "event_v4": "Event V4（最新机制）",
+}
 
 
 class ManualDebugAnalysisService(HubPlugin):
@@ -28,16 +33,20 @@ class ManualDebugAnalysisService(HubPlugin):
     """
 
     def __init__(self, analysis_port: Any, subsystem_registry: Any, *,
+                 analysis_ports: Mapping[str, Any] | None = None,
                  max_results: int = 50, worker_count: int = 1):
         if max_results < 1:
             raise ValueError("max_results 必须大于 0")
         if worker_count < 1:
             raise ValueError("worker_count 必须大于 0")
-        if not callable(getattr(analysis_port, "analyze_transient", None)):
-            raise TypeError("analysis_port 必须实现 analyze_transient()")
-        if not callable(getattr(analysis_port, "get_transient_prompt_table", None)):
-            raise TypeError("analysis_port 必须实现 get_transient_prompt_table()")
-        self._analysis_port = analysis_port
+        ports = {DEFAULT_ANALYSIS_MECHANISM: analysis_port}
+        ports.update(dict(analysis_ports or {}))
+        for mechanism, port in ports.items():
+            if not callable(getattr(port, "analyze_transient", None)):
+                raise TypeError(f"分析机制 {mechanism} 必须实现 analyze_transient()")
+            if not callable(getattr(port, "get_transient_prompt_table", None)):
+                raise TypeError(f"分析机制 {mechanism} 必须实现 get_transient_prompt_table()")
+        self._analysis_ports = ports
         self._registry = subsystem_registry
         self._max_results = max_results
         self._worker_count = worker_count
@@ -65,29 +74,51 @@ class ManualDebugAnalysisService(HubPlugin):
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
 
-    def prompt_catalog(self, subsystem: str = "") -> dict[str, Any]:
+    def mechanism_catalog(self) -> dict[str, Any]:
+        return {
+            "default": DEFAULT_ANALYSIS_MECHANISM,
+            "items": [
+                {
+                    "name": name,
+                    "display_name": ANALYSIS_MECHANISM_LABELS.get(name, name),
+                }
+                for name in self._analysis_ports
+            ],
+        }
+
+    def prompt_catalog(self, subsystem: str = "", mechanism: str = "") -> dict[str, Any]:
         subsystem = str(subsystem or "").strip() or self._registry.default_name
         if self._registry.resolve(subsystem) is None:
             raise ValueError(f"未知子系统: {subsystem}")
-        table = self._analysis_port.get_transient_prompt_table(subsystem)
+        mechanism, analysis_port = self._resolve_analysis_port(mechanism)
+        table = analysis_port.get_transient_prompt_table(subsystem)
         if not table:
             raise ValueError(f"子系统 {subsystem} 没有可用 Prompt")
         versions = sorted(int(version) for version in table)
-        return {"subsystem": subsystem, "versions": versions, "default_version": versions[-1]}
+        return {
+            "subsystem": subsystem,
+            "mechanism": mechanism,
+            "versions": versions,
+            "default_version": versions[-1],
+        }
 
-    def get_prompt(self, *, subsystem: str = "", version: int | str) -> dict[str, Any]:
-        catalog = self.prompt_catalog(subsystem)
+    def get_prompt(self, *, subsystem: str = "", mechanism: str = "",
+                   version: int | str) -> dict[str, Any]:
+        catalog = self.prompt_catalog(subsystem, mechanism)
         version = int(version)
-        table = self._analysis_port.get_transient_prompt_table(catalog["subsystem"])
+        _, analysis_port = self._resolve_analysis_port(catalog["mechanism"])
+        table = analysis_port.get_transient_prompt_table(catalog["subsystem"])
         if version not in table:
             raise ValueError(f"Prompt v{version} 未配置")
         return {
             "subsystem": catalog["subsystem"],
+            "mechanism": catalog["mechanism"],
             "version": version,
             "content": table[version],
         }
 
     def submit(self, *, content: str, title: str = "", subsystem: str = "",
+               mechanism: str = "",
                prompt_version: int | str | None = None,
                prompt_override: str | None = None) -> dict[str, Any]:
         content = str(content or "").strip()
@@ -98,7 +129,8 @@ class ManualDebugAnalysisService(HubPlugin):
         subsystem = str(subsystem or "").strip() or self._registry.default_name
         if self._registry.resolve(subsystem) is None:
             raise ValueError(f"未知子系统: {subsystem}")
-        catalog = self.prompt_catalog(subsystem)
+        mechanism, _ = self._resolve_analysis_port(mechanism)
+        catalog = self.prompt_catalog(subsystem, mechanism)
         if prompt_version in (None, ""):
             prompt_version = catalog["default_version"]
         prompt_version = int(prompt_version)
@@ -141,6 +173,7 @@ class ManualDebugAnalysisService(HubPlugin):
             "started_at": None,
             "finished_at": None,
             "subsystem": subsystem,
+            "mechanism": mechanism,
             "prompt": {
                 "version": prompt_version,
                 "overridden": prompt_override is not None,
@@ -179,8 +212,9 @@ class ManualDebugAnalysisService(HubPlugin):
             record["started_at"] = datetime.now(timezone.utc)
             payload = dict(record["input"])
             subsystem = record["subsystem"]
+            analysis_port = self._analysis_ports[record["mechanism"]]
         try:
-            result = self._analysis_port.analyze_transient(
+            result = analysis_port.analyze_transient(
                 HubEvent("debug.analysis.requested", payload, subsystem)
             )
             if not isinstance(result, StageResult):
@@ -225,6 +259,7 @@ class ManualDebugAnalysisService(HubPlugin):
             "started_at": record["started_at"],
             "finished_at": record["finished_at"],
             "subsystem": record["subsystem"],
+            "mechanism": record["mechanism"],
             "prompt": dict(record["prompt"]),
             "input": {
                 "UUID": source["UUID"],
@@ -235,6 +270,13 @@ class ManualDebugAnalysisService(HubPlugin):
             "has_result": record["result"] is not None,
             "error": record["error"],
         }
+
+    def _resolve_analysis_port(self, mechanism: str) -> tuple[str, Any]:
+        mechanism = str(mechanism or "").strip() or DEFAULT_ANALYSIS_MECHANISM
+        analysis_port = self._analysis_ports.get(mechanism)
+        if analysis_port is None:
+            raise ValueError(f"未知分析机制: {mechanism}")
+        return mechanism, analysis_port
 
 
 def _derive_title(title: str, content: str) -> str:

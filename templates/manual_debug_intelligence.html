@@ -41,12 +41,22 @@
                 <div class="card-body">
                     <form id="debug-form">
                         <div class="row g-3 mb-3">
-                            <div class="col-md-8">
+                            <div class="col-md-6">
                                 <label class="form-label" for="title">标题（可选）</label>
                                 <input class="form-control" id="title" maxlength="120"
                                        placeholder="留空时取正文第一行">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label class="form-label" for="mechanism">分析机制</label>
+                                <select class="form-select" id="mechanism">
+                                    {% for item in mechanisms %}
+                                    <option value="{{ item.name }}" {% if item.name == default_mechanism %}selected{% endif %}>
+                                        {{ item.display_name|default(item.name) }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
                                 <label class="form-label" for="subsystem">子系统</label>
                                 <select class="form-select" id="subsystem">
                                     {% for item in subsystems %}
@@ -120,6 +130,7 @@
     const resultStatus = document.getElementById('result-status');
     const submitButton = document.getElementById('submit-button');
     const jobList = document.getElementById('job-list');
+    const mechanismSelect = document.getElementById('mechanism');
     const subsystemSelect = document.getElementById('subsystem');
     const promptVersionSelect = document.getElementById('prompt-version');
     const promptEditor = document.getElementById('prompt-editor');
@@ -169,7 +180,7 @@
                 button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span class="text-truncate"></span><small><i class="status-dot status-${item.status}"></i> ${item.status}</small></div><small class="text-muted"></small>`;
                 button.querySelector('span').textContent = title;
                 const promptLabel = `Prompt v${item.prompt?.version ?? '?'}${item.prompt?.overridden ? ' · 已覆盖' : ''}`;
-                button.querySelector('.text-muted').textContent = `${item.subsystem} · ${promptLabel} · ${item.job_id}`;
+                button.querySelector('.text-muted').textContent = `${item.mechanism} · ${item.subsystem} · ${promptLabel} · ${item.job_id}`;
                 button.addEventListener('click', () => loadJob(item.job_id).catch(showError));
                 jobList.appendChild(button);
             });
@@ -195,7 +206,10 @@
         promptVersionSelect.disabled = true;
         promptEditor.disabled = true;
         try {
-            const catalog = await fetchPrompt({subsystem: subsystemSelect.value});
+            const catalog = await fetchPrompt({
+                subsystem: subsystemSelect.value,
+                mechanism: mechanismSelect.value,
+            });
             promptVersionSelect.innerHTML = '';
             catalog.versions.forEach(version => {
                 const option = document.createElement('option');
@@ -217,12 +231,13 @@
     async function loadSelectedPrompt() {
         const selected = await fetchPrompt({
             subsystem: subsystemSelect.value,
+            mechanism: mechanismSelect.value,
             version: promptVersionSelect.value,
         });
         loadedPromptText = selected.content;
         promptEditor.value = loadedPromptText;
         promptOverride.checked = false;
-        promptMessage.textContent = `已载入 ${selected.subsystem} / Prompt v${selected.version}。编辑文本会自动启用单次覆盖。`;
+        promptMessage.textContent = `已载入 ${selected.mechanism} / ${selected.subsystem} / Prompt v${selected.version}。编辑文本会自动启用单次覆盖。`;
         promptMessage.className = 'form-text';
     }
 
@@ -238,6 +253,7 @@
                 body: JSON.stringify({
                     title: document.getElementById('title').value,
                     subsystem: document.getElementById('subsystem').value,
+                    mechanism: mechanismSelect.value,
                     content: document.getElementById('content').value,
                     prompt_version: Number(promptVersionSelect.value),
                     prompt_override: promptOverride.checked ? promptEditor.value : null,
@@ -257,6 +273,7 @@
     });
 
     document.getElementById('refresh-button').addEventListener('click', loadList);
+    mechanismSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
     subsystemSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
     promptVersionSelect.addEventListener('change', () => loadSelectedPrompt().catch(showError));
     promptEditor.addEventListener('input', () => {

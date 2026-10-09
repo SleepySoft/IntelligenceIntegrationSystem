@@ -204,6 +204,24 @@ def test_v4_transient_analysis_returns_events_without_archive_writes():
     assert not context.mongo_db_cache.updated
 
 
+def test_v4_transient_analysis_does_not_require_archive_repository():
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    original["source"] = MANUAL_TEST_SOURCE
+
+    result = ports.analyze_transient(
+        HubEvent("debug.analysis.requested", original, "news"))
+
+    assert result.accepted
+    assert result.payload["events"][0]["local_event_id"] == "E1"
+
+
 def test_v4_transient_non_intelligence_is_not_saved():
     context = FakeContext()
     repository = FakeArchiveRepository()

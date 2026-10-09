@@ -827,10 +827,15 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def manual_debug_intelligence_page():
             """人工输入正文并查看无持久化分析结果。"""
+            service = self.intelligence_hub.get_service("manual_debug_analysis")
+            mechanism_catalog = service.mechanism_catalog() if service is not None else {
+                "default": "v2", "items": []}
             return render_template(
                 'manual_debug_intelligence.html',
                 subsystems=self.intelligence_hub.get_subsystems(),
                 default_subsystem=self.intelligence_hub.default_subsystem_name,
+                mechanisms=mechanism_catalog["items"],
+                default_mechanism=mechanism_catalog["default"],
             )
 
         @app.route('/api/debug/intelligence', methods=['GET', 'POST'])
@@ -854,6 +859,7 @@ class IntelligenceHubWebService:
                     content=data.get("content", ""),
                     title=data.get("title", ""),
                     subsystem=data.get("subsystem", ""),
+                    mechanism=data.get("mechanism", ""),
                     prompt_version=data.get("prompt_version"),
                     prompt_override=data.get("prompt_override"),
                 )
@@ -876,12 +882,14 @@ class IntelligenceHubWebService:
             if service is None:
                 return jsonify({"error": "人工调试分析服务未启用"}), 503
             subsystem = request.args.get("subsystem", "")
+            mechanism = request.args.get("mechanism", "")
             version = request.args.get("version")
             try:
                 data = (
-                    service.get_prompt(subsystem=subsystem, version=version)
+                    service.get_prompt(
+                        subsystem=subsystem, mechanism=mechanism, version=version)
                     if version not in (None, "")
-                    else service.prompt_catalog(subsystem)
+                    else service.prompt_catalog(subsystem, mechanism)
                 )
                 return jsonify({"success": True, "data": data})
             except (TypeError, ValueError) as exc:

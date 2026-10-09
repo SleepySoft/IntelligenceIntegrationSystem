@@ -63,7 +63,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
         subsystem_registry: Any,
         ai_client_manager: Any,
         *,
-        archive_repository: EventV4ArchiveRepository,
+        archive_repository: EventV4ArchiveRepository | None = None,
         entity_resolver: EntityResolver | None = None,
         event_registry: Any = DEFAULT_EVENT_REGISTRY,
         prompt_table: Mapping[int, str] | None = None,
@@ -107,7 +107,8 @@ class EventV4PipelinePorts(IISPipelinePorts):
         original_data = dict(event.payload)
         intelligence_uuid = derive_intelligence_uuid(original_data)
         informant = str(original_data.get("informant", "")).strip()
-        if persist and self._archive_repository.contains(intelligence_uuid, informant):
+        repository = self._require_archive_repository() if persist else None
+        if persist and repository.contains(intelligence_uuid, informant):
             self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
@@ -135,7 +136,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
                     subsystem=ctx.name,
                 )
                 if persist:
-                    self._archive_repository.save_low_value(low_value)
+                    repository.save_low_value(low_value)
                     self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
                     self._increment_stat(ctx, "dropped")
                     return StageResult.reject("non_intelligence")
@@ -211,10 +212,11 @@ class EventV4PipelinePorts(IISPipelinePorts):
             self._increment_stat(ctx, "error")
             return StageResult.reject("invalid_v4_archive_payload")
         try:
+            repository = self._require_archive_repository()
             archive = prepared.archive.model_copy(
                 update={"archived_at": datetime.now(timezone.utc)}
             )
-            self._archive_repository.commit(archive, prepared.conversion.events)
+            repository.commit(archive, prepared.conversion.events)
             source_uuid = str(archive.raw_data.get("UUID", ""))
             self._mark_cache(source_uuid, ARCHIVED_FLAG_ARCHIVED, ctx)
             self._increment_stat(ctx, "archived")
@@ -227,6 +229,11 @@ class EventV4PipelinePorts(IISPipelinePorts):
             self._mark_cache(source_uuid, ARCHIVED_FLAG_ERROR, ctx)
             self._increment_stat(ctx, "error")
             return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
+
+    def _require_archive_repository(self) -> EventV4ArchiveRepository:
+        if self._archive_repository is None:
+            raise RuntimeError("Event V4 端口仅配置为无持久化调试模式")
+        return self._archive_repository
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

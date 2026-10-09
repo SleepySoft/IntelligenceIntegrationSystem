@@ -14,7 +14,8 @@ from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import (
-    IISAsyncTranslationExtension, IISPipelinePorts, IISUnarchivedReplayExtension, IISVectorExtension)
+    EventV4PipelinePorts, IISAsyncTranslationExtension, IISPipelinePorts,
+    IISUnarchivedReplayExtension, IISVectorExtension)
 from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
@@ -174,11 +175,13 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
     pipeline_ports = IISPipelinePorts(subsystem_registry, client_manager)
+    event_v4_debug_ports = EventV4PipelinePorts(subsystem_registry, client_manager)
     extensions = []
     services = {}
     manual_debug_service = ManualDebugAnalysisService(
         pipeline_ports,
         subsystem_registry,
+        analysis_ports={"event_v4": event_v4_debug_ports},
         max_results=config.get('intelligence_hub.manual_debug.max_results', 50),
         worker_count=config.get('intelligence_hub.manual_debug.worker_count', 1),
     )
