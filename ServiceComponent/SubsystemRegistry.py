@@ -33,6 +33,7 @@ from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
+from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
 from ServiceComponent.event_v4_conversion import DeterministicEntityResolver
 from ServiceComponent.event_v4_repositories import (
     MongoEntityRepository,
@@ -171,6 +172,7 @@ class SubsystemContext:
     event_v4_event_collection: Any = None
     event_v4_entity_collection: Any = None
     event_v4_outbox_collection: Any = None
+    event_v4_query_engine: Optional[EventV4QueryEngine] = None
 
     prompt_table: Dict[int, str] = field(default_factory=dict)   # version -> prompt text
     prompt_files: List[str] = field(default_factory=list)        # 用于 mtime 热重载
@@ -411,6 +413,11 @@ class SubsystemRegistry:
                     name, recovered)
             ctx.event_v4_archive_repository = archive_repository
             ctx.event_v4_entity_resolver = DeterministicEntityResolver(entity_repository)
+            ctx.event_v4_query_engine = EventV4QueryEngine(
+                ctx.event_v4_intelligence_collection,
+                ctx.event_v4_event_collection,
+                ctx.event_v4_entity_collection,
+            )
 
             # -------- prompt 表 --------
             if prompt_files:
