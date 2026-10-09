@@ -29,6 +29,9 @@ class RecordingCollection:
         identifiers = query.get("_id", {}).get("$in") if isinstance(query.get("_id"), dict) else None
         if identifiers is not None:
             values = [item for item in values if item["_id"] in identifiers]
+        if "intelligence_uuid" in query:
+            values = [item for item in values
+                      if item.get("intelligence_uuid") == query["intelligence_uuid"]]
         if projection:
             included = [key for key, enabled in projection.items() if enabled]
             if included:
@@ -82,3 +85,22 @@ def test_v4_query_engine_builds_native_nested_field_filters():
     }
     assert "analysis.message.title" in keyword_fields
     assert "raw_data.content" in keyword_fields
+
+
+def test_v4_query_engine_enriches_detail_with_events_and_entities():
+    engine = EventV4QueryEngine(
+        RecordingCollection([{"_id": "intel-1"}]),
+        RecordingCollection([{
+            "_id": "event-1",
+            "intelligence_uuid": "intel-1",
+            "role_bindings": [{"entity_uuid": "entity-1"}],
+        }]),
+        RecordingCollection([{
+            "_id": "entity-1", "canonical_name": "示例实体", "entity_type": "organization",
+        }]),
+    )
+
+    result = engine.get_intelligence("intel-1")
+
+    assert result["events"][0]["_id"] == "event-1"
+    assert result["entities"][0]["canonical_name"] == "示例实体"

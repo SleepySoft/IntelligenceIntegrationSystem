@@ -36,11 +36,13 @@ class EventV4QueryEngine:
             documents = list(self.intelligence_collection.find(
                 {"_id": {"$in": identifiers}}, projection))
             by_id = {str(item["_id"]): item for item in documents}
-            return [by_id[value] for value in identifiers if value in by_id]
+            ordered = [by_id[value] for value in identifiers if value in by_id]
+            return ordered if light_weight else [self._enrich(item) for item in ordered]
         if not intelligence_uuid:
             return None
-        return self.intelligence_collection.find_one(
+        document = self.intelligence_collection.find_one(
             {"_id": str(intelligence_uuid)}, projection)
+        return self._enrich(document) if document and not light_weight else document
 
     def get_intelligence_summary(self) -> dict[str, Any]:
         newest = self.intelligence_collection.find_one(
@@ -166,6 +168,26 @@ class EventV4QueryEngine:
         result = matched_groups[0]
         for values in matched_groups[1:]:
             result &= values
+        return result
+
+    def _enrich(self, document: dict) -> dict:
+        result = dict(document)
+        events = list(self.event_collection.find(
+            {"intelligence_uuid": str(document["_id"])}))
+        entity_ids = set()
+        for event in events:
+            entity_ids.update(
+                str(binding["entity_uuid"])
+                for binding in event.get("role_bindings", [])
+                if binding.get("entity_uuid"))
+            entity_ids.update(str(value) for value in event.get(
+                "location_entity_uuids", []) if value)
+            for qualifier in event.get("qualifiers", []):
+                entity_ids.update(str(value) for value in qualifier.get("by", []) if value)
+        entities = list(self.entity_collection.find(
+            {"_id": {"$in": sorted(entity_ids)}})) if entity_ids else []
+        result["events"] = events
+        result["entities"] = entities
         return result
 
     @staticmethod
