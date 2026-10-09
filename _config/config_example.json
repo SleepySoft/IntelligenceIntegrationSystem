@@ -31,7 +31,7 @@
         {
           "name": "industry",
           "display_name": "行业情报",
-          "enabled": false,
+          "enabled": true,
           "config_file": "_config/subsystems/industry.json"
         }
       ]
