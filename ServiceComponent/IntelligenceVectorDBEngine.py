@@ -4,19 +4,14 @@ from functools import lru_cache
 from typing import Optional, Tuple, List, Dict, Any
 
 from VectorDB.VectorDBClient import RemoteCollection
-from ServiceComponent.IntelligenceHubDefines_v2 import (
-    ArchivedData,
-    APPENDIX_TOTAL_SCORE,
-    APPENDIX_TIME_ARCHIVED,
-    APPENDIX_TIME_PUB,  # Added for v2 compatibility
-)
+from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
 
 logger = logging.getLogger(__name__)
 
 
 class IntelligenceVectorDBEngine:
     """
-    Business logic wrapper for VectorDB, compatible with both v1 and v2 schemas.
+    Event V4 intelligence vectorization and search wrapper.
     """
 
     def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50,
@@ -44,77 +39,54 @@ class IntelligenceVectorDBEngine:
                 return None
         return None
 
-    def _prepare_document(self, intelligence: ArchivedData, data_type: str) -> Optional[Dict]:
-        """
-        Transforms ArchivedData to VectorDB dict with v1/v2 compatibility.
-        """
-        # 1. Text Construction
+    def _prepare_document(self, intelligence: ArchivedIntelligenceV4,
+                          data_type: str) -> Optional[Dict]:
         if data_type == 'summary':
             text_parts = [
-                intelligence.EVENT_TITLE,
-                intelligence.EVENT_BRIEF,
-                intelligence.EVENT_TEXT
+                intelligence.analysis.message.title,
+                intelligence.analysis.message.brief,
+                intelligence.analysis.message.text,
             ]
             full_text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
         else:
-            # Compatibility: v2 uses RAW_DATA['content'], v1 might have content elsewhere or raw
-            raw = intelligence.RAW_DATA or {}
-            full_text = raw.get('content', '') or getattr(intelligence, 'content', '')
+            full_text = str(intelligence.raw_data.get('content', '') or '')
 
         if not full_text:
-            logger.warning(f"Empty text for UUID {intelligence.UUID}, skipping vectorization.")
+            logger.warning(
+                "Empty text for intelligence %s, skipping vectorization.",
+                intelligence.intelligence_uuid)
             return None
 
-        # 2. Advanced Time Compatibility (v1 vs v2)
-        appendix = intelligence.APPENDIX or {}
-
-        # Determine Publish Time (v1: root.PUB_TIME | v2: appendix.__TIME_PUB__)
-        raw_pub_time = getattr(intelligence, 'PUB_TIME', None)  # Try v1 root field
-        if raw_pub_time is None:
-            raw_pub_time = appendix.get(APPENDIX_TIME_PUB)  # Try v2 appendix field
-
-        pub_ts = self._parse_timestamp_safe(raw_pub_time)
-
-        # Determine Archive Time
-        raw_archived_time = appendix.get(APPENDIX_TIME_ARCHIVED)
-        archived_ts = self._parse_timestamp_safe(raw_archived_time) or datetime.datetime.now().timestamp()
-
-        # 3. Score Compatibility (v1: MAX_RATE_SCORE | v2: TOTAL_SCORE)
-        # We try v2 key first, then fallback to v1 specific key if present in appendix
-        total_score = appendix.get(APPENDIX_TOTAL_SCORE)
-        if total_score is None:
-            total_score = appendix.get('__MAX_RATE_SCORE__', 0.0)  # Fallback to v1 string key
-
-        # 4. Metadata Construction
+        pub_ts = self._parse_timestamp_safe(intelligence.raw_data.get('pub_time'))
+        archived_ts = self._parse_timestamp_safe(intelligence.archived_at)
+        identifier = str(intelligence.intelligence_uuid)
         metadata = {
-            "uuid": intelligence.UUID,
-            "informant": intelligence.INFORMANT,
+            "uuid": identifier,
+            "informant": intelligence.informant,
             "archived_timestamp": archived_ts,
-            "total_score": float(total_score) if total_score else 0.0,
-            # 'timestamp' is the primary key for temporal analysis in the DB engine
+            "total_score": float(intelligence.total_score),
+            "subsystem": intelligence.subsystem,
+            "schema_version": intelligence.schema_version,
             "timestamp": pub_ts if pub_ts is not None else archived_ts
         }
 
         if pub_ts is not None:
             metadata["pub_timestamp"] = pub_ts
 
-        # Optional: v1 Rate Class compatibility
-        rate_class = appendix.get('__MAX_RATE_CLASS__')
-        if rate_class:
-            metadata["max_rate_class"] = str(rate_class)
-
         return {
-            "doc_id": intelligence.UUID,
+            "doc_id": identifier,
             "text": full_text,
             "metadata": metadata
         }
 
-    def upsert(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
+    def upsert(self, intelligence: ArchivedIntelligenceV4, data_type: str,
+               timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             self.collection.upsert(**doc, timeout=timeout)
 
-    def add_to_batch(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
+    def add_to_batch(self, intelligence: ArchivedIntelligenceV4, data_type: str,
+                     timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             self._buffer.append(doc)
@@ -137,7 +109,6 @@ class IntelligenceVectorDBEngine:
                    score_threshold: float = 0.0,
                    event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
                    archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
-                   rate_class: Optional[str] = None,
                    rate_threshold: Optional[float] = None,
                    timeout: int = 30,
                    force_db_filter: bool = False,
@@ -161,11 +132,7 @@ class IntelligenceVectorDBEngine:
             filters.append({"archived_timestamp": {"$gte": archive_period[0].timestamp()}})
             filters.append({"archived_timestamp": {"$lte": archive_period[1].timestamp()}})
 
-        if rate_class:
-            filters.append({"max_rate_class": rate_class})
-
         if rate_threshold is not None:
-            # Query against total_score (v2) or fallback logic in DB
             filters.append({"total_score": {"$gte": rate_threshold}})
 
         where_clause = None
@@ -190,7 +157,6 @@ class IntelligenceVectorDBEngine:
               score_threshold: float = 0.0,
               event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
               archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
-              rate_class: Optional[str] = None,
               rate_threshold: Optional[float] = None,
               timeout: int = 30,
               force_db_filter: bool = False,
@@ -207,7 +173,6 @@ class IntelligenceVectorDBEngine:
             score_threshold,
             event_period,
             archive_period,
-            rate_class,
             rate_threshold,
             timeout,
             force_db_filter,
@@ -216,18 +181,17 @@ class IntelligenceVectorDBEngine:
 
     @staticmethod
     def build_search_text(intelligence_dict: Dict[str, Any], data_type: str = 'summary') -> str:
-        """
-        统一的特征文本构建器：将外部字典转换为向量引擎所需的标准文本。
-        """
+        """Build search text from a serialized Event V4 archive envelope."""
         if data_type == 'summary':
+            message = (intelligence_dict.get('analysis') or {}).get('message') or {}
             text_parts = [
-                intelligence_dict.get('EVENT_TITLE', ''),
-                intelligence_dict.get('EVENT_BRIEF', ''),
-                intelligence_dict.get('EVENT_TEXT', '')
+                message.get('title', ''),
+                message.get('brief', ''),
+                message.get('text', ''),
             ]
             full_text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
         else:
-            raw = intelligence_dict.get('RAW_DATA') or {}
-            full_text = raw.get('content', '') or intelligence_dict.get('content', '')
+            raw = intelligence_dict.get('raw_data') or {}
+            full_text = raw.get('content', '')
 
         return full_text
