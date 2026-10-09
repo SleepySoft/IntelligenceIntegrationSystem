@@ -9,7 +9,6 @@ from pydantic import BaseModel, ValidationError
 
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
-from MyPythonUtility.DictTools import dict_list_to_markdown
 
 
 logger = logging.getLogger(__name__)
@@ -252,60 +251,3 @@ def analyze_with_ai_transient(
         return response
     return parse_ai_response(response)
 
-
-def aggressive_by_ai(
-        ai_client: BaseAIClient,
-        prompt: str,
-        new_data: Dict[str, Any],
-        history_data: List[Dict[str, str]]
-) -> Dict:
-    new_data_text = \
-        f"{new_data['EVENT_TITLE']}\n\n"\
-        f"{new_data['EVENT_BRIEF']}\n\n"
-    history_data_md_table = dict_list_to_markdown(history_data)
-
-    user_message = \
-        f"# 新情报\n {new_data_text}"\
-        f"# 历史情报\n {history_data_md_table}"
-
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": user_message}]
-
-    start = time.time()
-
-    response = ai_client.chat(
-        messages=messages,
-        temperature=0,
-        max_tokens=MAX_OUTPUT_TOKEN
-    )
-
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
-
-    return conversation_common_process('aggressive', messages, response)
-
-
-def generate_recommendation_by_ai(
-        ai_client: BaseAIClient,
-        prompt: str,
-        intelligence_list: List[Dict[str, str]]
-) -> List[str] or Dict:
-
-    intelligence_table = dict_list_to_markdown(intelligence_list)
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": intelligence_table}]
-
-    start = time.time()
-
-    response = ai_client.chat(
-        messages=messages,
-        temperature=0,
-        max_tokens=MAX_OUTPUT_TOKEN
-    )
-
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
-
-    return conversation_common_process('recommendation', messages, response)

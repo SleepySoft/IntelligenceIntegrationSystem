@@ -46,7 +46,13 @@ def test_translation_extension_defers_translated_records_and_emits_completion_ev
     assert holder["translator"].started
     assert holder["translator"].enqueued == [("one", "new_archived")]
 
-    holder["translator"].on_patched({"UUID": "one", "EVENT_TEXT": "中文"})
+    holder["translator"].on_patched({
+        "intelligence_uuid": "one",
+        "analysis": {"message": {"text": "中文"}},
+    })
     assert runtime.wait_for_idle(timeout=1)
-    assert completed == [{"UUID": "one", "EVENT_TEXT": "中文"}]
+    assert completed == [{
+        "intelligence_uuid": "one",
+        "analysis": {"message": {"text": "中文"}},
+    }]
     runtime.stop()

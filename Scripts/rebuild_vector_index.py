@@ -12,11 +12,10 @@ consistency with the main service.
 """
 
 import sys
-import copy
 import argparse
 
 # --- New Architecture Imports ---
-from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
+from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
 from VectorDB.VectorDBClient import VectorDBClient, RemoteCollection
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 
@@ -24,7 +23,7 @@ from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngi
 # MongoDB (Source)
 MONGO_URI = "mongodb://localhost:27017/"
 MONGO_DB_NAME = "IntelligenceIntegrationSystem"
-MONGO_COLLECTION_NAME = "intelligence_archived"
+MONGO_COLLECTION_NAME = "intelligence_v4_archived"
 
 # VectorDB Service (Destination)
 VECTOR_SERVICE_URL = "http://localhost:8001"
@@ -145,7 +144,7 @@ def func_rebuild(
             # Extract UUIDs for existence checking (only in incremental mode)
             batch_uuids = []
             for doc in batch_docs:
-                uuid = doc.get('UUID')
+                uuid = str(doc.get('intelligence_uuid') or doc.get('_id') or '')
                 if uuid:
                     batch_uuids.append(uuid)
 
@@ -175,24 +174,17 @@ def func_rebuild(
             # Process Batch
             for doc in batch_docs:
                 try:
-                    # 1. Convert Mongo Dict -> ArchivedData Pydantic Model
-                    # We remove _id because Pydantic usually doesn't expect the Mongo ObjectId
-                    # unless explicitly defined.
+                    # 1. Convert Mongo document -> Event V4 archive model.
                     doc_clean = {k: v for k, v in doc.items() if k != '_id'}
 
                     try:
-                        # Validation might fail if data is corrupt
-                        archived_data = ArchivedData(**doc_clean)
+                        archived_data = ArchivedIntelligenceV4.model_validate(doc_clean)
                     except Exception as validation_e:
-                        # print(f"Validation error for doc {doc.get('UUID')}: {validation_e}")
+                        # print(f"Validation error for doc {doc.get('_id')}: {validation_e}")
                         skipped_error_count += 1
                         continue
 
-                    if not archived_data.UUID:
-                        skipped_error_count += 1
-                        continue
-
-                    uuid = archived_data.UUID
+                    uuid = str(archived_data.intelligence_uuid)
 
                     # 2. Process 'intelligence_summary'
                     # Skip if already exists in incremental mode
@@ -203,23 +195,15 @@ def func_rebuild(
 
                     # 3. Process 'intelligence_full_text'
                     # Skip if already exists in incremental mode
-                    raw_content = None
-                    if archived_data.RAW_DATA:
-                        raw_content = archived_data.RAW_DATA.get('content')
+                    raw_content = archived_data.raw_data.get('content')
 
                     if raw_content and isinstance(raw_content, str):
                         if mode == "incremental" and full_text_exists_map.get(uuid, False):
                             # Already exists, skip
                             pass
                         else:
-                            # Create a shallow copy to avoid modifying the original used above
-                            data_for_full = copy.copy(archived_data)
-                            # Override fields so Engine uses Raw Data as the embedding text
-                            data_for_full.EVENT_TITLE = ""
-                            data_for_full.EVENT_BRIEF = ""
-                            data_for_full.EVENT_TEXT = raw_content
-
-                            engine_full_text.add_to_batch(data_for_full, data_type='full', timeout=10000000)
+                            engine_full_text.add_to_batch(
+                                archived_data, data_type='full', timeout=10000000)
                     else:
                         # No raw content, skip full text processing
                         pass
@@ -228,7 +212,7 @@ def func_rebuild(
 
                 except Exception as e:
                     skipped_error_count += 1
-                    print(f"Error processing document {doc.get('UUID', 'N/A')}: {e}")
+                    print(f"Error processing document {doc.get('_id', 'N/A')}: {e}")
 
                 finally:
                     pbar.update(1)
