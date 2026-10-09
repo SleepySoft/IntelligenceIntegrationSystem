@@ -211,7 +211,7 @@
         try {
             const article = await fetchArticle(uuid);
 
-            state.titleEl.textContent = article?.EVENT_TITLE || titleFallback || 'Detail';
+            state.titleEl.textContent = article?.analysis?.message?.title || titleFallback || 'Detail';
             state.bodyEl.innerHTML = window.ArticleDetailRenderer.generateHTML(article);
             window.ArticleDetailRenderer.bindEvents(state.bodyEl, uuid, state.options.toastContainerId);
 
@@ -272,7 +272,7 @@
             const helpers = window.SubsystemUI.makeHelpers
                 ? window.SubsystemUI.makeHelpers(null, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
                 : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
-            nav = window.SubsystemUI.navFromPlugin(plugin, { UUID: uuid }, helpers);
+            nav = window.SubsystemUI.navFromPlugin(plugin, { intelligence_uuid: uuid }, helpers);
         }
 
         if (nav) {
@@ -281,8 +281,11 @@
                 return;
             }
             if (nav.mode === 'custom' && typeof plugin.onCardClick === 'function') {
-                plugin.onCardClick({ UUID: uuid }, helpers, {
-                    openModal: (doc, url) => open(url || `${state.options.pageBase}/${encodeURIComponent(doc?.UUID || uuid)}`, doc?.UUID || uuid, 'Detail', { updateHistory: state.options.history }),
+                plugin.onCardClick({ intelligence_uuid: uuid }, helpers, {
+                    openModal: (doc, url) => {
+                        const documentId = doc?.intelligence_uuid || doc?._id || uuid;
+                        return open(url || `${state.options.pageBase}/${encodeURIComponent(documentId)}`, documentId, 'Detail', { updateHistory: state.options.history });
+                    },
                     navigate: (url, opts) => { if (opts && opts.newTab) window.open(url, '_blank', 'noopener'); else window.open(url, '_self'); },
                 });
                 return;

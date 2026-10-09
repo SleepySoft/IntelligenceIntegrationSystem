@@ -38,8 +38,8 @@ window.ArticleDetailRenderer = {
     },
 
     renderRatingTable: function(article) {
-        const rates = article?.RATE || {};
-        const manualRatings = (article?.APPENDIX && (article.APPENDIX['__MANUAL_RATING__'] || article.APPENDIX['APPENDIX_MANUAL_RATING'])) || {};
+        const rates = article?.analysis?.assessment?.rate || {};
+        const manualRatings = article?.manual_rating || {};
         const keys = Object.keys(rates);
         if (!keys.length) return '';
 
@@ -89,21 +89,24 @@ window.ArticleDetailRenderer = {
             if (built && built.html) return built.html;
         }
 
-        const uuid = this.escapeHTML(article?.UUID || '');
-        const informant = article?.INFORMANT ? this.escapeHTML(article.INFORMANT) : '';
-        const pubTime = this.anyTimeToTimeStr(article?.PUB_TIME || 'N/A');
-        const title = this.escapeHTML(article?.EVENT_TITLE || 'No Title');
-        const brief = this.escapeHTML(article?.EVENT_BRIEF || 'No Brief');
+        const uuid = this.escapeHTML(article?.intelligence_uuid || article?._id || '');
+        const informant = article?.informant ? this.escapeHTML(article.informant) : '';
+        const pubTime = this.anyTimeToTimeStr(article?.raw_data?.pub_time || 'N/A');
+        const title = this.escapeHTML(article?.analysis?.message?.title || 'No Title');
+        const brief = this.escapeHTML(article?.analysis?.message?.brief || 'No Brief');
 
         // 正文保持原文渲染，不做强制转义以支持排版。若需纯文本展示请加上 this.escapeHTML()
-        const content = article?.EVENT_TEXT || 'No Content';
-
-        const locations = Array.isArray(article?.LOCATION) ? article.LOCATION.map(i => this.escapeHTML(i)) : [];
-        const people = Array.isArray(article?.PEOPLE) ? article.PEOPLE.map(i => this.escapeHTML(i)) : [];
-        const orgs = Array.isArray(article?.ORGANIZATION) ? article.ORGANIZATION.map(i => this.escapeHTML(i)) : [];
-        const times = Array.isArray(article?.TIME) ? article.TIME.map(this.anyTimeToTimeStr) : [];
-        const impact = this.escapeHTML(article?.IMPACT || 'No Impact');
-        const tips = this.escapeHTML(article?.TIPS || 'No Tips');
+        const content = this.escapeHTML(article?.analysis?.message?.text || 'No Content');
+        const entities = Array.isArray(article?.entities) ? article.entities : [];
+        const namesOf = types => entities.filter(item => types.includes(item.entity_type))
+            .map(item => this.escapeHTML(item.canonical_name));
+        const locations = namesOf(['location', 'country', 'region', 'city', 'facility']);
+        const people = namesOf(['person']);
+        const orgs = namesOf(['organization', 'agency', 'company']);
+        const times = (article?.events || []).flatMap(event => Object.values(event.time || {}))
+            .map(value => this.anyTimeToTimeStr(value.normalized || value.surface || value));
+        const impact = this.escapeHTML(article?.analysis?.assessment?.impact || 'No Impact');
+        const tips = this.escapeHTML(article?.analysis?.assessment?.tips || 'No Tips');
 
         // [修复] 补全了 <a> 标签
         return `

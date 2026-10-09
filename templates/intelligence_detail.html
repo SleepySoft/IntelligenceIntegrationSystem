@@ -75,7 +75,7 @@
 
                 // 1. 渲染 HTML
                 container.innerHTML = ArticleDetailRenderer.generateHTML(article);
-                document.title = article?.EVENT_TITLE || 'Intelligence Detail';
+                document.title = article?.analysis?.message?.title || 'Intelligence Detail';
 
                 // 2. 绑定评分事件
                 ArticleDetailRenderer.bindEvents(container, uuid, 'standalone-toast-container');

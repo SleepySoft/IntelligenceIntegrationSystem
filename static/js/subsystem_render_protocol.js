@@ -57,22 +57,26 @@
     // doc: ?????????????????? ctx ???helpers ??????
 
     function buildDefaultCardFragments(doc, ctx, helpers) {
-        const uuid = ctx.escapeHTML(doc.UUID || 'Unknown-UUID');
+        const documentId = doc.intelligence_uuid || doc._id || 'Unknown-UUID';
+        const uuid = ctx.escapeHTML(documentId);
         const base = helpers.base || '';
-        const intelUrl = base + '/intelligence/' + (doc.UUID || 'Unknown-UUID');
-        const appendix = doc.APPENDIX || {};
+        const intelUrl = base + '/intelligence/' + encodeURIComponent(documentId);
+        const analysis = doc.analysis || {};
+        const message = analysis.message || {};
+        const classification = analysis.classification || {};
+        const rawData = doc.raw_data || {};
 
-        // ---- meta/time????? + ???????????? ----
-        const raw_archived = appendix['__TIME_ARCHIVED__'] || '';
+        // ---- meta/time ----
+        const raw_archived = doc.archived_at || '';
         let archived_html = '';
         if (raw_archived) {
             archived_html = `<span class="article-time archived-time" data-archived="${ctx.escapeHTML(raw_archived)}">Archived: ${ctx.formatLocalTime(raw_archived)}</span>`;
         }
-        const pub_time_raw = appendix['__TIME_PUB__'] || doc.PUB_TIME || doc.pub_time || doc.collect_time;
+        const pub_time_raw = rawData.pub_time || rawData.collect_time;
         const time_block = `                ${archived_html}\n                <span class="article-time">Publish: ${ctx.formatLocalTime(pub_time_raw)}</span>`;
 
         // ---- meta/vector ----
-        const vector_score = appendix['__VECTOR_SCORE__'];
+        const vector_score = doc.vector_score;
         let vector_block = '                ';
         if (vector_score !== undefined && vector_score !== null) {
             const formattedScore = parseFloat(vector_score).toFixed(3);
@@ -83,7 +87,7 @@
         }
 
         // ---- meta/source ----
-        const informant_val = doc.INFORMANT || doc.informant || doc.source || '';
+        const informant_val = doc.informant || rawData.informant || rawData.source || '';
         const informant = ctx.escapeHTML(informant_val);
         const informant_html = ctx.isValidUrl(informant)
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
@@ -91,49 +95,36 @@
         const source_block = `                <span class="article-source">Source: ${informant_html}</span>`;
 
         // ---- title ----
-        const title_text = ctx.escapeHTML(doc.EVENT_TITLE || doc.title || 'No Title');
+        const title_text = ctx.escapeHTML(message.title || 'No Title');
         const title_block = `              <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">\n                ${title_text}\n              </a>`;
 
         // ---- summary ----
-        const summary_block = `            <p class="article-summary">${ctx.escapeHTML(doc.EVENT_BRIEF || 'No Brief')}</p>`;
+        const summary_block = `            <p class="article-summary">${ctx.escapeHTML(message.brief || 'No Brief')}</p>`;
 
-        // ---- debug/left (v1/v2 ??) ----
-        const prompt_version = appendix['__PROMPT_VERSION__'];
-        const is_v2 = prompt_version && !isNaN(Number(prompt_version)) && Number(prompt_version) >= 20;
-        let left_content = '';
-        if (is_v2) {
-            const taxonomy = ctx.escapeHTML(doc.TAXONOMY || 'Unclassified');
-            const sub_categories = doc.SUB_CATEGORY || [];
-            const total_score = appendix['__TOTAL_SCORE__'];
-            let tags_html = '';
-            if (Array.isArray(sub_categories) && sub_categories.length > 0) {
-                tags_html = sub_categories.map(tag => `<span class="v2-category-tag">${ctx.escapeHTML(tag)}</span>`).join('');
-            }
-            const category_line = `<div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">\n                <span class="debug-label" style="color:#1a73e8; font-size:0.95rem;">${taxonomy}</span>\n                ${tags_html}\n            </div>`;
-            let total_score_html = '';
-            if (total_score !== undefined && total_score !== null) {
-                total_score_html = `\n                <div class="article-rating" style="margin: 6px 0 4px 0;">\n                    <span class="debug-label">\u603b\u5206:</span>\n                    ${ctx.createRatingStars(total_score)}\n                </div>`;
-            }
-            left_content = `\n            ${category_line}\n            ${total_score_html}\n            <div>\n                <span class="debug-label">UUID:</span> ${uuid}\n            </div>`;
-        } else {
-            const max_rate_class = ctx.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
-            const max_rate_score = appendix['__MAX_RATE_SCORE__'];
-            if (max_rate_class && max_rate_score !== null) {
-                left_content += `\n                <div class="article-rating" style="margin-bottom: 4px;">\n                    <span class="debug-label">${max_rate_class}:</span>\n                    ${ctx.createRatingStars(max_rate_score)}\n                </div>`;
-            }
-            left_content += `\n            <div>\n                <span class="debug-label">UUID:</span> ${uuid}\n            </div>`;
-        }
+        // ---- debug/left ----
+        const prompt_version = doc.prompt_version;
+        const taxonomy = ctx.escapeHTML(classification.taxonomy || 'Unclassified');
+        const sub_categories = classification.subcategories || [];
+        const total_score = doc.total_score;
+        const tags_html = Array.isArray(sub_categories)
+            ? sub_categories.map(tag => `<span class="category-tag">${ctx.escapeHTML(tag)}</span>`).join('')
+            : '';
+        const category_line = `<div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">\n                <span class="debug-label" style="color:#1a73e8; font-size:0.95rem;">${taxonomy}</span>\n                ${tags_html}\n            </div>`;
+        const total_score_html = total_score !== undefined && total_score !== null
+            ? `\n                <div class="article-rating" style="margin: 6px 0 4px 0;">\n                    <span class="debug-label">\u603b\u5206:</span>\n                    ${ctx.createRatingStars(total_score)}\n                </div>`
+            : '';
+        const left_content = `\n            ${category_line}\n            ${total_score_html}\n            <div>\n                <span class="debug-label">UUID:</span> ${uuid}\n            </div>`;
         const debug_left_block = left_content;
 
         // ---- debug/right ----
         let right_content = '';
-        const ai_service = ctx.escapeHTML(appendix['__AI_SERVICE__'] || '');
-        const ai_model = ctx.escapeHTML(appendix['__AI_MODEL__'] || '');
+        const ai_service = ctx.escapeHTML(doc.ai_service || '');
+        const ai_model = ctx.escapeHTML(doc.ai_model || '');
         if (ai_service || ai_model) {
             if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
             if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
         }
-        if (is_v2 && prompt_version) {
+        if (prompt_version) {
             const pvEscaped = ctx.escapeHTML(prompt_version);
             right_content += `\n              <div>\n                <span class="debug-label">Prompt:</span>\n                <button\n                  type="button"\n                  class="prompt-link-btn"\n                  data-prompt-version="${pvEscaped}"\n                  title="Click to view prompt v${pvEscaped}"\n                >v${pvEscaped}</button>\n              </div>`;
         }
@@ -205,7 +196,6 @@ function buildCard(plugin, doc, ctx, helpers) {
             fragments[id] = override ? String(override(doc, helpers)) : defaultFragments[id];
         });
 
-        const uuid = ctx.escapeHTML(doc.UUID || 'Unknown-UUID');
         const html = composeCard(fragments);
         return { html: html || '', nav: navFromPlugin(plugin, doc, helpers) };
     }
