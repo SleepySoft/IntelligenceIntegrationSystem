@@ -11,17 +11,16 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import uuid4
 
-from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
 
 MANUAL_TEST_SOURCE = "__IIS_MANUAL_TEST__"
 MANUAL_TEST_TOKEN = "manual-debug-internal"
-DEFAULT_ANALYSIS_MECHANISM = "v2"
+DEFAULT_ANALYSIS_MECHANISM = "event_v4"
 ANALYSIS_MECHANISM_LABELS = {
-    "v2": "V2（当前生产机制）",
-    "event_v4": "Event V4（最新机制）",
+    "event_v4": "Event V4",
 }
 
 
@@ -145,7 +144,7 @@ class ManualDebugAnalysisService(HubPlugin):
 
         job_id = str(uuid4())
         now = datetime.now(timezone.utc)
-        collected = CollectedData(
+        collected = CollectedDataV4(
             UUID=job_id,
             token=MANUAL_TEST_TOKEN,
             source=MANUAL_TEST_SOURCE,

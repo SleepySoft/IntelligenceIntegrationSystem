@@ -10,7 +10,6 @@ from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngi
 from Tools.MongoDBAccess import MongoDBStorage
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.DictTools import dict_list_to_markdown
-from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TIME_ARCHIVED
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +227,7 @@ class DynamicGraphEngine:
                     continue
 
                 cand_docs_list = self.query_engine.get_intelligence(cand_uuids, light_weight=True)
-                cand_docs_dict = {doc['UUID']: doc for doc in cand_docs_list if doc}
+                cand_docs_dict = {self._document_id(doc): doc for doc in cand_docs_list if doc}
 
                 # --- C. 内存精算与多维软打分 ---
                 current_round_passed = []
@@ -300,7 +299,7 @@ class DynamicGraphEngine:
                         # 【防御 2】UI 级去重保险：防范数据库里本来就存在的重复脏数据
                         existing_uuids = {sub.uuid for sub in matched_node.related_docs}
                         # 截取前15个字符作为标题去重依据，防止微小的末尾差异
-                        short_title = cand_doc.get("EVENT_TITLE", "")[:15]
+                        short_title = self._message(cand_doc).get("title", "")[:15]
                         existing_titles = {sub.title[:15] for sub in matched_node.related_docs}
 
                         if cand_uuid not in existing_uuids and short_title not in existing_titles:
@@ -309,7 +308,7 @@ class DynamicGraphEngine:
 
                             matched_node.related_docs.append(SubNode(
                                 uuid=cand_uuid,
-                                title=cand_doc.get("EVENT_TITLE", "")[:20] + "...",
+                                title=self._message(cand_doc).get("title", "")[:20] + "...",
                                 time=datetime.datetime.fromtimestamp(cand_time, tz=datetime.timezone.utc).strftime(
                                     '%Y-%m-%d %H:%M')
                             ))
@@ -321,7 +320,7 @@ class DynamicGraphEngine:
                         continue
 
                     # 安检通过，真正拉入图谱！
-                    title = cand_doc.get("EVENT_TITLE", "")[:15] + "..."
+                    title = self._message(cand_doc).get("title", "")[:15] + "..."
                     logger.info(f"[LINKED] [{cand_time_str}] {title} | 总分: {score:.2f} | 依据: {reason}")
 
                     visited_uuids.add(cand_uuid)
@@ -391,24 +390,19 @@ class DynamicGraphEngine:
         return total_score, " | ".join(reason_parts)
 
     def _extract_rare_entities(self, doc: dict, stop_entities: Set[str]) -> Set[str]:
-        """提取实体并过滤动态高频词"""
-        entities = set()
-        people = doc.get("PEOPLE") or []
-        orgs = doc.get("ORGANIZATION") or []
-        locs = doc.get("LOCATION") or []
-
-        for e in (people + orgs + locs):
-            if isinstance(e, str) and e.strip() and e not in stop_entities:
-                entities.add(e)
-        return entities
+        """从 Event V4 抽取结果提取实体并过滤动态高频词。"""
+        names = {
+            str(entity.get("name", "")).strip()
+            for entity in self._extracted_entities(doc)
+            if isinstance(entity, dict)
+        }
+        return {name for name in names if name and name not in stop_entities}
 
     def _get_timestamp(self, doc: dict) -> float:
-        appendix = doc.get("APPENDIX") or {}
-        # 注意：这里直接使用你指定的字段名，或者使用你定义的 APPENDIX_TIME_ARCHIVED 变量
-        arch_time = appendix.get("__TIME_ARCHIVED__")
+        arch_time = doc.get("archived_at")
 
         if arch_time is None:
-            logger.warning(f"[Time Missing] UUID {doc.get('UUID', 'Unknown')} 缺失归档时间，使用当前时间兜底！")
+            logger.warning(f"[Time Missing] intelligence {self._document_id(doc)} 缺失归档时间，使用当前时间兜底！")
             return time.time()
 
         if isinstance(arch_time, datetime.datetime):
@@ -422,26 +416,54 @@ class DynamicGraphEngine:
             try:
                 return datetime.datetime.fromisoformat(arch_time.replace('Z', '+00:00')).timestamp()
             except ValueError:
-                logger.warning(f"[Time Parse Failed] UUID {doc.get('UUID')} 的归档时间格式异常: {arch_time}")
+                logger.warning(f"[Time Parse Failed] intelligence {self._document_id(doc)} 的归档时间格式异常: {arch_time}")
                 pass
 
-        logger.warning(f"[Time Missing] UUID {doc.get('UUID')} 缺失归档时间，使用当前系统时间兜底！")
+        logger.warning(f"[Time Missing] intelligence {self._document_id(doc)} 缺失归档时间，使用当前系统时间兜底！")
 
         return time.time()  # 兜底策略
 
     def _create_graph_node(self, doc: dict, is_seed: bool = False) -> GraphNode:
         timestamp = self._get_timestamp(doc)
         dt_str = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).strftime('%Y-%m-%d %H:%M')
+        message = self._message(doc)
+        extracted_entities = self._extracted_entities(doc)
+        actors = []
+        locations = []
+        for entity in extracted_entities:
+            name = str(entity.get("name", "")).strip()
+            entity_type = str(entity.get("entity_type", "")).lower()
+            if not name:
+                continue
+            if entity_type in {"person", "organization", "agency", "company"}:
+                actors.append(name)
+            if entity_type in {"location", "country", "region", "city", "facility"}:
+                locations.append(name)
 
         return GraphNode(
-            uuid=doc.get("UUID", "Unknown"),
+            uuid=self._document_id(doc),
             incident_time=dt_str,  # 统一使用格式化后的归档时间
-            title=doc.get("EVENT_TITLE") or "无标题",
-            brief=doc.get("EVENT_BRIEF") or "",
+            title=message.get("title") or "无标题",
+            brief=message.get("brief") or "",
             is_seed=is_seed,
-            key_actors=(doc.get("PEOPLE") or []) + (doc.get("ORGANIZATION") or []),
-            location=doc.get("LOCATION") or []
+            key_actors=list(dict.fromkeys(actors)),
+            location=list(dict.fromkeys(locations)),
         )
+
+    @staticmethod
+    def _document_id(doc: dict) -> str:
+        return str(doc.get("intelligence_uuid") or doc.get("_id") or "Unknown")
+
+    @staticmethod
+    def _message(doc: dict) -> dict:
+        analysis = doc.get("analysis") or {}
+        return analysis.get("message") or {}
+
+    @staticmethod
+    def _extracted_entities(doc: dict) -> list[dict]:
+        analysis = doc.get("analysis") or {}
+        extraction = analysis.get("event_extraction") or {}
+        return extraction.get("entities") or []
 
     def _update_snapshot_status(self, thread_id: str, nodes: List[GraphNode], edges: List[GraphEdge], status: str):
         self.snapshots_collection.update_one(
@@ -539,20 +561,12 @@ class DynamicGraphEngine:
         pipeline = [
             {
                 "$match": {
-                    # 匹配发生在那个时间段内的数据
-                    f"APPENDIX.{APPENDIX_TIME_ARCHIVED}": {"$gte": cutoff_date, "$lte": end_date}
+                    "archived_at": {"$gte": cutoff_date, "$lte": end_date}
                 }
             },
-            # Step 2: 将三个实体数组合并成一个统一的数组池
             {
                 "$project": {
-                    "all_entities": {
-                        "$concatArrays": [
-                            {"$ifNull": ["$PEOPLE", []]},
-                            {"$ifNull": ["$ORGANIZATION", []]},
-                            {"$ifNull": ["$LOCATION", []]}
-                        ]
-                    }
+                    "all_entities": {"$ifNull": ["$analysis.event_extraction.entities", []]}
                 }
             },
             # Step 3: 将数组打散为一条条独立的记录 (Unwind)
@@ -562,13 +576,13 @@ class DynamicGraphEngine:
             # Step 4: 清洗空字符串或无效格式
             {
                 "$match": {
-                    "all_entities": {"$type": "string", "$ne": "", "$regex": "^\\s*\\S+"}
+                    "all_entities.name": {"$type": "string", "$ne": "", "$regex": "^\\s*\\S+"}
                 }
             },
             # Step 5: 按实体名称分组，统计出现次数
             {
                 "$group": {
-                    "_id": "$all_entities",
+                    "_id": "$all_entities.name",
                     "count": {"$sum": 1}
                 }
             },

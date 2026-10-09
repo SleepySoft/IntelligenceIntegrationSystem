@@ -14,7 +14,7 @@ from AIClientCenter.web.dashboard import AIDashboardService
 from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import (
-    EventV4PipelinePorts, IISAsyncTranslationExtension, IISPipelinePorts,
+    EventV4PipelinePorts, IISAsyncTranslationExtension,
     IISUnarchivedReplayExtension, IISVectorExtension)
 from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
 from Tools.SystemMonitorService import MonitorAPI
@@ -174,14 +174,12 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 f"list={subsystem_registry.describe()}")
 
     # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
-    pipeline_ports = IISPipelinePorts(subsystem_registry, client_manager)
-    event_v4_debug_ports = EventV4PipelinePorts(subsystem_registry, client_manager)
+    pipeline_ports = EventV4PipelinePorts(subsystem_registry, client_manager)
     extensions = []
     services = {}
     manual_debug_service = ManualDebugAnalysisService(
         pipeline_ports,
         subsystem_registry,
-        analysis_ports={"event_v4": event_v4_debug_ports},
         max_results=config.get('intelligence_hub.manual_debug.max_results', 50),
         worker_count=config.get('intelligence_hub.manual_debug.worker_count', 1),
     )
@@ -199,8 +197,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
         def create_translation_patch(shutdown_flag, on_patched):
             return AsyncTranslationPatch(
-                mongo_db_archive=subsystem_registry.default().mongo_db_archive,
-                query_engine=subsystem_registry.default().archive_query_engine,
+                mongo_db_archive=subsystem_registry.default().event_v4_intelligence_collection,
+                query_engine=subsystem_registry.default().event_v4_query_engine,
                 ai_client_manager=client_manager,
                 shutdown_flag=shutdown_flag,
                 on_patched=on_patched,
@@ -222,14 +220,21 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     aggregation_extension = None
     graph_extension = None
     if vector_db_client is not None:
-        from ServiceComponent.IntelligenceHubDefines_v2 import ArchivedData
         from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
+        from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
+
+        def event_v4_record_factory(payload):
+            document = dict(payload)
+            document.pop("_id", None)
+            document.pop("events", None)
+            document.pop("entities", None)
+            return ArchivedIntelligenceV4.model_validate(document)
 
         vector_extension = IISVectorExtension(
             vector_db_client,
             default_subsystem=subsystem_registry.default_name,
             engine_factory=IntelligenceVectorDBEngine,
-            record_factory=ArchivedData,
+            record_factory=event_v4_record_factory,
             skip_archive_predicate=(translation_extension.should_defer_index
                                     if translation_extension else None),
         )
@@ -256,8 +261,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         graph_extension = DeferredServicePlugin(
             lambda: vector_extension.ready,
             lambda: DynamicGraphEngine(
-                mongo_db=subsystem_registry.default().mongo_db_archive,
-                query_engine=subsystem_registry.default().archive_query_engine,
+                mongo_db=subsystem_registry.default().event_v4_intelligence_storage,
+                query_engine=subsystem_registry.default().event_v4_query_engine,
                 vector_engine=vector_extension.summary_engine,
                 ai_client=None,
             ),
@@ -282,10 +287,10 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         now = datetime.datetime.now()
         year, week, _ = now.isocalendar()
         context = subsystem_registry.default()
-        if context.mongo_db_archive:
-            context.mongo_db_archive.export_by_week(
+        if context.event_v4_intelligence_storage:
+            context.event_v4_intelligence_storage.export_by_week(
                 year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
-                time_field="APPENDIX.__TIME_ARCHIVED__", add_timestamp=True)
+                time_field="archived_at", add_timestamp=True)
         if context.mongo_db_cache:
             context.mongo_db_cache.export_by_week(
                 year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),
@@ -294,10 +299,10 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     def export_monthly():
         target = datetime.datetime.now().replace(day=1) - datetime.timedelta(days=1)
         context = subsystem_registry.default()
-        if context.mongo_db_archive:
-            context.mongo_db_archive.export_by_month(
+        if context.event_v4_intelligence_storage:
+            context.event_v4_intelligence_storage.export_by_month(
                 year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
-                time_field="APPENDIX.__TIME_ARCHIVED__", add_timestamp=True)
+                time_field="archived_at", add_timestamp=True)
         if context.mongo_db_cache:
             context.mongo_db_cache.export_by_month(
                 year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),
@@ -309,7 +314,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         service = aggregation_extension.service
         if service is None:
             return
-        query_engine = subsystem_registry.default().archive_query_engine
+        query_engine = subsystem_registry.default().event_v4_query_engine
         latest = query_engine.get_latest_archive_timestamp()
         period = None
         if latest and datetime.datetime.now().timestamp() - latest >= 24 * 3600:

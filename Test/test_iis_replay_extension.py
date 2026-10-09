@@ -7,7 +7,7 @@ from ServiceComponent.runtime import HubRuntime
 
 class Collection:
     def find(self, query):
-        assert "APPENDIX.__ARCHIVED__" in str(query)
+        assert query == {"processing.status": {"$exists": False}}
         return [{"UUID": "old-1"}, {"UUID": "old-2"}]
 
 

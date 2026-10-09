@@ -35,6 +35,7 @@ class ArchivedIntelligenceV4(ArchiveModel):
     primary_event_uuid: UUID
     subsystem: str
     translation_revision: str | None = None
+    manual_rating: dict[str, float] = Field(default_factory=dict)
 
 
 class LowValueIntelligenceV4(ArchiveModel):

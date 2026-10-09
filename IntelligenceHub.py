@@ -5,7 +5,8 @@
 """
 
 from ServiceComponent.HubApplication import HubApplication
-from ServiceComponent.IntelligenceHubDefines_v2 import *  # noqa: F401,F403
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
 
 
 IntelligenceHub = HubApplication
+CollectedData = CollectedDataV4

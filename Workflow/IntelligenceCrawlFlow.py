@@ -15,7 +15,7 @@ from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
 from IntelligenceCrawler.Extractor import ExtractionResult
-from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4 as CollectedData
 from Workflow.RssFeedsBasedCrawlFlow import build_crawl_ctx_by_service_ctx
 from IntelligenceCrawler.CrawlPipeline import CrawlPipeline, build_pipeline, drive_pipeline_batch
 

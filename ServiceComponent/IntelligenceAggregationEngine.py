@@ -248,8 +248,8 @@ class IntelligenceAggregationEngine:
                 if isinstance(docs, dict): docs = [docs]
                 for d in docs:
                     if not isinstance(d, dict): continue
-                    uid = d.get("UUID")
-                    title = d.get("EVENT_TITLE") or d.get("title") or "(No Title)"
+                    uid = self._document_id(d)
+                    title = self._message(d).get("title") or "(No Title)"
                     if uid:
                         uuid_to_title[uid] = title
 
@@ -303,7 +303,7 @@ class IntelligenceAggregationEngine:
     ) -> Dict[str, Any]:
         """
         组合业务逻辑：获取簇的摘要。
-        外层列表永远按代表性文档的总评分 (__TOTAL_SCORE__) 排列。
+        外层列表永远按代表性文档的 ``total_score`` 排列。
         """
         # 注意：这里 limit=0 表示拉取全部簇，或者你可以设一个较大的安全值(比如1000)，
         # 绝对不能在这里用 200 截断，否则高分但体积小的簇会被提前丢弃！
@@ -332,18 +332,19 @@ class IntelligenceAggregationEngine:
         fetched_docs = doc_fetcher(fetch_ids) if fetch_ids else []
         if isinstance(fetched_docs, dict):
             fetched_docs = [fetched_docs]
-        doc_map = {d.get("UUID"): d for d in (fetched_docs or []) if isinstance(d, dict)}
+        doc_map = {self._document_id(d): d for d in (fetched_docs or []) if isinstance(d, dict)}
 
         out_clusters = []
         for c in clusters:
             cid = c.get("cluster_id")
             member_docs = [doc_map[mid] for mid in cluster_members.get(cid, []) if mid in doc_map]
             doc = max(member_docs, key=self._get_archived_sort_value) if member_docs else {}
-            uuid = doc.get("UUID") or c.get("repr_doc_id")
-            title = doc.get("EVENT_TITLE") or doc.get("title") or "(No Title)"
-            brief = doc.get("EVENT_BRIEF") or ""
+            uuid = self._document_id(doc) if doc else c.get("repr_doc_id")
+            message = self._message(doc)
+            title = message.get("title") or "(No Title)"
+            brief = message.get("brief") or ""
 
-            cleaned_docs = doc_cleaner([doc]) if doc.get('UUID') else []
+            cleaned_docs = doc_cleaner([doc]) if doc else []
             cleaned_doc = cleaned_docs[0] if cleaned_docs else {}
 
             out_clusters.append({
@@ -361,7 +362,7 @@ class IntelligenceAggregationEngine:
 
         # 外层强制执行：永远按评分排序
         out_clusters.sort(
-            key=lambda x: float(x.get("repr_doc", {}).get("APPENDIX", {}).get("__TOTAL_SCORE__", 0.0) or 0.0),
+            key=lambda x: float(x.get("repr_doc", {}).get("total_score", 0.0) or 0.0),
             reverse=descending
         )
 
@@ -373,8 +374,7 @@ class IntelligenceAggregationEngine:
         return summary
 
     def _get_archived_sort_value(self, doc: Dict[str, Any]) -> float:
-        appendix = doc.get("APPENDIX") or {}
-        raw = appendix.get("__TIME_ARCHIVED__")
+        raw = doc.get("archived_at")
         if raw is None:
             return 0.0
         if isinstance(raw, (int, float)):
@@ -430,14 +430,14 @@ class IntelligenceAggregationEngine:
         rank = {u: i for i, u in enumerate(fetch_members)}
 
         cleaned_docs = doc_cleaner([d for d in docs if isinstance(d, dict)])
-        cleaned_map = {d.get("UUID"): d for d in cleaned_docs}
+        cleaned_map = {self._document_id(d): d for d in cleaned_docs}
 
         items = []
         for uid in fetch_members:
             if uid not in rank:
                 continue
             cleaned_doc = cleaned_map.get(uid, {})
-            title = cleaned_doc.get("EVENT_TITLE") or cleaned_doc.get("title") or "(No Title)"
+            title = self._message(cleaned_doc).get("title") or "(No Title)"
 
             items.append({
                 "uuid": uid,
@@ -449,7 +449,7 @@ class IntelligenceAggregationEngine:
         # 针对全量拿到的 items 重新排序
         if sort_by == "score":
             items.sort(
-                key=lambda x: float(x["doc"].get("APPENDIX", {}).get("__TOTAL_SCORE__", 0.0) or 0.0),
+                key=lambda x: float(x["doc"].get("total_score", 0.0) or 0.0),
                 reverse=descending
             )
         elif sort_by == "time":
@@ -472,6 +472,14 @@ class IntelligenceAggregationEngine:
             "limit": limit,
             "items": items
         }
+
+    @staticmethod
+    def _document_id(doc: Dict[str, Any]) -> str:
+        return str(doc.get("intelligence_uuid") or doc.get("_id") or "")
+
+    @staticmethod
+    def _message(doc: Dict[str, Any]) -> Dict[str, Any]:
+        return (doc.get("analysis") or {}).get("message") or {}
 
     def get_job(self, job_id: str) -> Dict[str, Any]:
         return self.client.get_aggregation_job(job_id)

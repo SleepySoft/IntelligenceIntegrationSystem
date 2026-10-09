@@ -103,8 +103,7 @@ class HubApplication:
         )
 
     def submit_archived_data(self, data: dict) -> bool:
-        appendix = data.get("APPENDIX") or {}
-        subsystem = str(appendix.get("__SUBSYSTEM__") or data.get("subsystem") or "").strip()
+        subsystem = str(data.get("subsystem") or "").strip()
         subsystem = subsystem or self.default_subsystem_name
         if self.subsystem_registry.resolve(subsystem) is None:
             return False
@@ -113,52 +112,49 @@ class HubApplication:
             accepted_event=ARCHIVE_COMPLETED,
         )
 
-    def get_intelligence(self, intelligence_uuid, db: str = "archive",
-                         light_weight: bool = False, subsystem: Optional[str] = None):
+    def get_intelligence(self, intelligence_uuid, light_weight: bool = False,
+                         subsystem: Optional[str] = None):
         ctx = self._context(subsystem)
-        engine = ctx.cache_query_engine if db == "cache" else ctx.archive_query_engine
-        return engine.get_intelligence(intelligence_uuid, light_weight=light_weight)
+        return ctx.event_v4_query_engine.get_intelligence(
+            intelligence_uuid, light_weight=light_weight)
 
-    def query_intelligence(self, *, db: str = "archive", subsystem: Optional[str] = None,
-                           **kwargs):
+    def query_intelligence(self, *, subsystem: Optional[str] = None, **kwargs):
         ctx = self._context(subsystem)
-        engine = ctx.cache_query_engine if db == "cache" else ctx.archive_query_engine
-        return engine.query_intelligence(**kwargs)
+        return ctx.event_v4_query_engine.query_intelligence(**kwargs)
 
     def get_intelligence_summary(self, subsystem: Optional[str] = None):
-        summary = self._context(subsystem).archive_query_engine.get_intelligence_summary()
+        summary = self._context(subsystem).event_v4_query_engine.get_intelligence_summary()
         return summary["total_count"], summary["base_uuid"]
 
     def aggregate(self, pipeline: list, subsystem: Optional[str] = None):
-        return self._context(subsystem).archive_query_engine.aggregate(pipeline)
+        return self._context(subsystem).event_v4_query_engine.aggregate(pipeline)
 
     def count_documents(self, query: dict, subsystem: Optional[str] = None) -> int:
-        return self._context(subsystem).archive_query_engine.count_documents(query)
+        return self._context(subsystem).event_v4_query_engine.count_documents(query)
 
     def get_statistics_engine(self, subsystem: Optional[str] = None):
         return self._context(subsystem).statistics_engine
 
     def get_query_engine(self, subsystem: Optional[str] = None):
-        return self._context(subsystem).archive_query_engine
+        return self._context(subsystem).event_v4_query_engine
 
     def get_subsystems(self) -> List[Dict[str, Any]]:
         return self.subsystem_registry.describe()
 
     def get_prompt(self, subsystem: Optional[str] = None, version: Optional[int] = None) -> str:
-        ctx = self._context(subsystem)
-        self.subsystem_registry.refresh_prompts(ctx)
-        if not ctx.prompt_table:
-            return "[Prompt] Not configured."
+        self._context(subsystem)
+        from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
         if version is not None:
-            return ctx.prompt_table.get(int(version), f"[Prompt v{version}] Not configured.")
-        return ctx.prompt_table[max(ctx.prompt_table)]
+            return EVENT_ANALYSIS_PROMPT_TABLE.get(
+                int(version), f"[Prompt v{version}] Not configured.")
+        return EVENT_ANALYSIS_PROMPT_TABLE[max(EVENT_ANALYSIS_PROMPT_TABLE)]
 
     def submit_intelligence_manual_rating(self, intelligence_uuid: str, rating: dict,
                                           subsystem: Optional[str] = None) -> bool:
         if not isinstance(rating, dict):
             return False
-        self._context(subsystem).mongo_db_archive.update(
-            {"UUID": intelligence_uuid}, {"APPENDIX.__MANUAL_RATING__": rating})
+        self._context(subsystem).event_v4_intelligence_collection.update_one(
+            {"_id": intelligence_uuid}, {"$set": {"manual_rating": rating}})
         return True
 
     def vector_search_intelligence(self, **kwargs) -> List[Tuple[str, float, dict]]:

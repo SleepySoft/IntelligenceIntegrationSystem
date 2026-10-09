@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Dict, Any, Optional, Tuple
 
-def writeback_cluster_appendix_placeholder(
+def writeback_cluster_metadata_placeholder(
     *,
     plan_id: str,
     version: str,
@@ -20,9 +20,8 @@ def writeback_cluster_appendix_placeholder(
     """
     Placeholder ONLY. No implementation now.
 
-    Future: write cluster membership into MongoDB ArchivedData.APPENDIX
-    in versioned manner:
-      APPENDIX.__CLUSTER_CURRENT__ and APPENDIX.__CLUSTER_HISTORY__
+    Future: write versioned cluster membership into Event V4 top-level fields
+    ``cluster_current`` and ``cluster_history``.
     """
     # TODO: implement later
     return

@@ -12,20 +12,14 @@ from uuid import UUID, uuid5
 from pydantic import ValidationError
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 
-from ServiceComponent.IntelligenceHubDefines_v2 import (
-    ARCHIVED_FLAG_ARCHIVED,
-    ARCHIVED_FLAG_DROP,
-    ARCHIVED_FLAG_DUPLICATED,
-    ARCHIVED_FLAG_ERROR,
-    ARCHIVED_FLAG_SENSITIVE,
-)
 from ServiceComponent.IntelligenceHubDefines_v4 import (
+    CollectedDataV4,
     DEFAULT_EVENT_REGISTRY,
     NonIntelligenceV4,
     ValuableIntelligenceV4,
     validate_analysis_result_v4,
 )
-from ServiceComponent.adapters.iis_pipeline import IISPipelinePorts
+from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
 from ServiceComponent.event_v4_archive import (
     ArchivedIntelligenceV4,
     EventV4ArchiveRepository,
@@ -43,6 +37,11 @@ from ServiceComponent.runtime.events import HubEvent
 
 
 INTELLIGENCE_NAMESPACE = UUID("55672c83-cdd8-5754-a724-8a2ae8874fb7")
+ARCHIVED_FLAG_DROP = "D"
+ARCHIVED_FLAG_ERROR = "E"
+ARCHIVED_FLAG_ARCHIVED = "A"
+ARCHIVED_FLAG_SENSITIVE = "S"
+ARCHIVED_FLAG_DUPLICATED = "U"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,11 +50,10 @@ class PreparedValuableV4:
     conversion: EventConversionResult
 
 
-class EventV4PipelinePorts(IISPipelinePorts):
+class EventV4PipelinePorts(BasePipelinePorts):
     """Event V4 的 intake、analysis、archive 三端口实现。
 
-    仅复用旧适配器中与版本无关的 intake、客户端等待、缓存状态和统计辅助逻辑；
-    分析结果、评分、事件转换和归档均使用独立的 V4 契约。
+    分析结果、评分、事件转换和归档全部使用 V4 契约。
     """
 
     def __init__(
@@ -88,6 +86,25 @@ class EventV4PipelinePorts(IISPipelinePorts):
         self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
         if not self._prompt_table:
             raise ValueError("Event V4 prompt_table 不能为空")
+
+    def accept(self, event: HubEvent) -> StageResult:
+        ctx = self._resolve_context(event)
+        try:
+            data = CollectedDataV4.model_validate(dict(event.payload)).model_dump()
+        except ValidationError as exc:
+            return StageResult.reject(str(exc))
+        if data.get("source") == MANUAL_TEST_SOURCE:
+            return StageResult.reject("manual_test_requires_debug_route")
+        data["subsystem"] = ctx.name
+        with self._dedupe_lock:
+            collection = ctx.mongo_db_cache.collection if ctx.mongo_db_cache else None
+            if collection is not None and collection.find_one({"$or": [
+                {"UUID": data["UUID"]}, {"informant": data["informant"]},
+            ]}, {"_id": 1}):
+                return StageResult.reject("collected_data_duplicated")
+            if ctx.mongo_db_cache:
+                ctx.mongo_db_cache.insert(data)
+        return StageResult.allow(data, subsystem=ctx.name)
 
     def analyze(self, event: HubEvent) -> StageResult:
         return self._analyze_v4(event, persist=True)
@@ -245,6 +262,12 @@ class EventV4PipelinePorts(IISPipelinePorts):
             or getattr(ctx, "event_v4_entity_resolver", None)
             or DeterministicEntityResolver()
         )
+
+    @staticmethod
+    def _mark_cache(uuid: str, state: str, ctx: Any) -> None:
+        if not uuid or not ctx.mongo_db_cache:
+            return
+        ctx.mongo_db_cache.update({"UUID": uuid}, {"processing.status": state})
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

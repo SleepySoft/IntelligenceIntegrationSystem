@@ -17,7 +17,7 @@ from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for
 
 from GlobalConfig import *
 from MyPythonUtility.DictTools import DictPrinter
-from prompts_v2x import ANALYSIS_PROMPT_TABLE as PROMPT_TABLE_V2
+from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 from Tools.CommonPost import common_post
 from Tools.RequestTracer import RequestTracer
 from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware, time_str_to_datetime
@@ -26,10 +26,10 @@ from MyPythonUtility.ArbitraryRPC import RPCService
 from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
 from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
-from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE, APPENDIX_TOTAL_SCORE
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
-from IntelligenceHub import CollectedData, IntelligenceHub, ProcessedData, APPENDIX_TIME_ARCHIVED
+from IntelligenceHub import IntelligenceHub
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
 from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
 from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
 
@@ -91,54 +91,20 @@ def to_bool(value, default=False):
         return default
 
 
-# def exclude_raw_data(result: List[dict]):
-#     summary_result = []
-#     for data in result:
-#         # In v2, we extract those fields to ArchivedDataExtraFields
-#         _uuid = data.pop('UUID', None)
-#         appendix = data.pop('APPENDIX', None)
-#         informant = data.pop('INFORMANT', None)
-#
-#         # Compatible with v1 analysis result
-#         if 'TAXONOMY' not in data:
-#             data['TAXONOMY'] = 'N/A'
-#
-#         clean_data = ProcessedData.model_validate(data).model_dump(exclude_unset=True, exclude_none=True)
-#
-#         if _uuid: clean_data['UUID'] = _uuid
-#         if appendix: clean_data['APPENDIX'] = appendix
-#         if informant: clean_data['INFORMANT'] = informant
-#
-#         summary_result.append(clean_data)
-#     return summary_result
-
-
-# 获取模型中定义的所有合法字段名集合
-VALID_FIELDS = set(ProcessedData.model_fields.keys())
-
 def exclude_raw_data(result: List[dict]):
+    """Remove V4 raw/full text fields from list responses without mutating query results."""
     summary_result = []
-    for data in result:
-        _uuid = data.pop('UUID', None)
-        appendix = data.pop('APPENDIX', None)
-        informant = data.pop('INFORMANT', None)
-
-        if 'TAXONOMY' not in data:
-            data['TAXONOMY'] = 'N/A'
-
-        # 核心清洗逻辑：只保留定义在 VALID_FIELDS 中，并且值不为 None 的数据
-        # 这一步完全等价于 model_dump(exclude_unset=True, exclude_none=True) 的清洗效果，且0报错风险
-        clean_data = {
-            k: v for k, v in data.items()
-            if k in VALID_FIELDS and v is not None
-        }
-
-        # 补回前面抽出的特殊字段
-        if _uuid: clean_data['UUID'] = _uuid
-        if appendix: clean_data['APPENDIX'] = appendix
-        if informant: clean_data['INFORMANT'] = informant
-
-        summary_result.append(clean_data)
+    for source in result:
+        data = dict(source)
+        data.pop("raw_data", None)
+        analysis = dict(data.get("analysis") or {})
+        message = dict(analysis.get("message") or {})
+        message.pop("text", None)
+        analysis["message"] = message
+        data["analysis"] = analysis
+        data.pop("events", None)
+        data.pop("entities", None)
+        summary_result.append(data)
     return summary_result
 
 
@@ -157,7 +123,7 @@ def normalize_prompt_version(raw: str) -> int:
     return int(m.group(1))
 
 
-def post_collected_intelligence(url: str, data: CollectedData, timeout=10) -> dict:
+def post_collected_intelligence(url: str, data: CollectedDataV4, timeout=10) -> dict:
     """
     Post collected intelligence to IntelligenceHub (/collect).
     :param url: IntelligenceHub url (without '/collect' path).
@@ -165,22 +131,9 @@ def post_collected_intelligence(url: str, data: CollectedData, timeout=10) -> di
     :param timeout: Timeout in second
     :return: Requests response or {'status': 'error', 'reason': 'error description'}
     """
-    if not isinstance(data, CollectedData):
-        return {'status': 'error', 'reason': 'Data must be CollectedData format.'}
+    if not isinstance(data, CollectedDataV4):
+        return {'status': 'error', 'reason': 'Data must be CollectedDataV4 format.'}
     return common_post(f'{url}/collect', data.model_dump(exclude_unset=True), timeout)
-
-
-def post_processed_intelligence(url: str, data: ProcessedData, timeout=10) -> dict:
-    """
-    Post processed data to IntelligenceHub (/processed).
-    :param url: IntelligenceHub url (without '/processed' path).
-    :param data: Processed data.
-    :param timeout: Timeout in second
-    :return: Requests response or {'status': 'error', 'reason': 'error description'}
-    """
-    if not isinstance(data, ProcessedData):
-        return {'status': 'error', 'reason': 'Data must be ProcessedData format.'}
-    return common_post(f'{url}/processed', data.model_dump(exclude_unset=True), timeout)
 
 
 class WebServiceAccessManager:
@@ -499,10 +452,10 @@ class IntelligenceHubWebService:
         articles = self.intelligence_hub.get_intelligence(uuids, subsystem=subsystem_name)
 
         for article in articles:
-            doc_id = article.get('UUID')
-            article['APPENDIX'][APPENDIX_VECTOR_SCORE] = score_map.get(doc_id, 0.0)
+            doc_id = str(article.get('intelligence_uuid') or article.get('_id') or '')
+            article['vector_score'] = score_map.get(doc_id, 0.0)
 
-        articles.sort(key=lambda x: x['APPENDIX'][APPENDIX_VECTOR_SCORE], reverse=True)
+        articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
 
         return articles, len(raw)
 
@@ -829,7 +782,7 @@ class IntelligenceHubWebService:
             """人工输入正文并查看无持久化分析结果。"""
             service = self.intelligence_hub.get_service("manual_debug_analysis")
             mechanism_catalog = service.mechanism_catalog() if service is not None else {
-                "default": "v2", "items": []}
+                "default": "event_v4", "items": []}
             return render_template(
                 'manual_debug_intelligence.html',
                 subsystems=self.intelligence_hub.get_subsystems(),
@@ -919,7 +872,7 @@ class IntelligenceHubWebService:
             except ValueError as e:
                 abort(400, str(e))
 
-            prompt_text = PROMPT_TABLE_V2.get(version_digit)
+            prompt_text = EVENT_ANALYSIS_PROMPT_TABLE.get(version_digit)
             if prompt_text is None:
                 prompt_text = f"[Prompt v{version_digit}] Not configured."
 
@@ -1391,10 +1344,10 @@ class IntelligenceHubWebService:
             articles = self.intelligence_hub.get_intelligence(uuids)
 
             for article in articles:
-                doc_id = article.get('UUID')
-                article['APPENDIX'][APPENDIX_VECTOR_SCORE] = score_map.get(doc_id, 0.0)
+                doc_id = str(article.get('intelligence_uuid') or article.get('_id') or '')
+                article['vector_score'] = score_map.get(doc_id, 0.0)
 
-            articles.sort(key=lambda x: x['APPENDIX'][APPENDIX_VECTOR_SCORE], reverse=True)
+            articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
 
             return articles, len(raw)
 
@@ -1733,7 +1686,7 @@ class IntelligenceHubWebService:
         def api_sources():
             """获取所有数据源域名列表及文章数量。"""
             try:
-                engine = self.intelligence_hub.default_subsystem.archive_query_engine
+                engine = self.intelligence_hub.default_subsystem.event_v4_query_engine
                 domains = engine.get_source_domains(limit=500)
                 return jsonify({"domains": domains})
             except Exception as e:
@@ -2110,17 +2063,16 @@ class IntelligenceHubWebService:
 
                 # --- Export Archive DB ---
                 if target in ['archive', 'all']:
-                    time_field = f"APPENDIX.{APPENDIX_TIME_ARCHIVED}"
                     run_export(
-                        db_instance=self.intelligence_hub.default_subsystem.mongo_db_archive,
+                        db_instance=self.intelligence_hub.default_subsystem.event_v4_intelligence_storage,
                         sub_dir='mongo_db_archive',
-                        time_field=time_field,
+                        time_field='archived_at',
                         prefix='intelligence_archived'
                     )
 
                 # --- Export Cache DB ---
                 if target in ['cache', 'all']:
-                    cache_time_field = '__TIME_GOT__'
+                    cache_time_field = 'collect_time'
                     run_export(
                         db_instance=self.intelligence_hub.default_subsystem.mongo_db_cache,
                         sub_dir='mongo_db_cache',
@@ -2203,13 +2155,15 @@ class IntelligenceHubWebService:
         try:
             rss_items = []
             for doc in articles:
-                if 'EVENT_BRIEF' in doc and 'UUID' in doc:
+                message = (doc.get('analysis') or {}).get('message') or {}
+                identifier = str(doc.get('intelligence_uuid') or doc.get('_id') or '')
+                if message.get('brief') and identifier:
                     rss_item = FeedItem(
-                        guid=doc['UUID'],
-                        title=doc.get('EVENT_TITLE', doc['EVENT_BRIEF']),
-                        link=f"/intelligence/{doc['UUID']}",
-                        description=doc['EVENT_BRIEF'],
-                        pub_date=doc.get('APPENDIX', {}).get(APPENDIX_TIME_ARCHIVED, default_date))
+                        guid=identifier,
+                        title=message.get('title', message['brief']),
+                        link=f"/intelligence/{identifier}",
+                        description=message['brief'],
+                        pub_date=doc.get('archived_at', default_date))
                     rss_items.append(rss_item)
                 else:
                     logger.warning(f'Warning: archived data field missing.')

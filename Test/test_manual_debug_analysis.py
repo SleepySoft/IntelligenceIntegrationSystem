@@ -70,7 +70,7 @@ def test_manual_debug_service_selects_and_overrides_prompt_for_one_job():
     runtime.start()
     try:
         assert service.prompt_catalog("news") == {
-            "subsystem": "news", "mechanism": "v2",
+            "subsystem": "news", "mechanism": "event_v4",
             "versions": [1, 2], "default_version": 2,
         }
         assert service.get_prompt(subsystem="news", version=1)["content"] == "Prompt v1"
@@ -87,24 +87,18 @@ def test_manual_debug_service_selects_and_overrides_prompt_for_one_job():
         runtime.stop()
 
 
-def test_manual_debug_service_routes_event_v4_as_analysis_mechanism():
-    v2_port = TransientPort()
+def test_manual_debug_service_exposes_only_event_v4_mechanism():
     v4_port = TransientPort()
     v4_port.get_transient_prompt_table = lambda subsystem: {40: "Event V4 Prompt"}
-    service = ManualDebugAnalysisService(
-        v2_port,
-        Registry(),
-        analysis_ports={"event_v4": v4_port},
-    )
+    service = ManualDebugAnalysisService(v4_port, Registry())
     runtime = HubRuntime()
     runtime.install(service)
     runtime.start()
     try:
         assert service.mechanism_catalog() == {
-            "default": "v2",
+            "default": "event_v4",
             "items": [
-                {"name": "v2", "display_name": "V2（当前生产机制）"},
-                {"name": "event_v4", "display_name": "Event V4（最新机制）"},
+                {"name": "event_v4", "display_name": "Event V4"},
             ],
         }
         assert service.prompt_catalog("news", "event_v4")["versions"] == [40]
@@ -115,7 +109,6 @@ def test_manual_debug_service_routes_event_v4_as_analysis_mechanism():
         finished = _wait_finished(service, submitted["job_id"])
         assert finished["mechanism"] == "event_v4"
         assert finished["prompt"]["version"] == 40
-        assert not v2_port.events
         assert len(v4_port.events) == 1
     finally:
         runtime.stop()

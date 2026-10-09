@@ -163,7 +163,7 @@ class IntelligenceVectorDBEngine:
               post_filter_multiplier: int = 10,
               ) -> List[Dict]:
         """
-        Query with support for both v1 and v2 metadata fields.
+        Query Event V4 metadata fields.
         Caches results by (text, top_n, score_threshold, periods, rate filters,
         force_db_filter, post_filter_multiplier).
         """

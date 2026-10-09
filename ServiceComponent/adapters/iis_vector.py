@@ -1,4 +1,4 @@
-"""IIS v2 数据到向量服务的事件订阅适配器。"""
+"""Event V4 intelligence indexing extension."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class IISVectorExtension(HubPlugin):
     """订阅 IIS 归档事件并异步维护两套向量索引。
 
-    VectorDB 的连接、集合、Pydantic 数据模型都封装在此适配器；Hub runtime
+    VectorDB 的连接、集合、V4 数据模型都封装在此适配器；Hub runtime
     只看见 ``archive.completed`` 事件。构造函数允许替换工厂，因此没有外部
     服务时也可完整测试生命周期、筛选和检索合并逻辑。
     """

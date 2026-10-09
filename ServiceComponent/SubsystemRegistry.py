@@ -21,17 +21,14 @@
 """
 
 import os
-import re
 import json
-import time
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
-from prompts_v2x import ANALYSIS_PROMPT_TABLE
+from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
-from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
 from ServiceComponent.event_v4_conversion import DeterministicEntityResolver
@@ -45,19 +42,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# 每个子系统使用的 Mongo collection 后缀
-COLLECTION_SUFFIXES = ('cached', 'archived', 'low_value', 'recommendation')
-
-# 默认（news）子系统沿用历史 collection 前缀，保证向前兼容
+# 默认（news）子系统沿用既有命名空间前缀。
 LEGACY_COLLECTION_PREFIX = 'intelligence_'
 
 # 内置测试子系统名：未显式配置时自动登记。测试数据经统一 /collect 流程进入
 # （沿用 collector token 鉴权），归档到独立集合（dry_run_intelligence_*），
 # 与正式数据完全隔离，可直接清空集合复位。
 DRY_RUN_SUBSYSTEM_NAME = 'dry_run'
-
-_PROMPT_VERSION_RE = re.compile(r'_v(\d+)', re.IGNORECASE)
-
 
 def _resolve_path(path: str, config_root: Optional[str] = None) -> str:
     """解析相对路径：依次尝试 原样 / 项目 _config 目录 / 项目根目录。"""
@@ -73,21 +64,6 @@ def _resolve_path(path: str, config_root: Optional[str] = None) -> str:
         if os.path.exists(candidate):
             return candidate
     return candidates[0]
-
-
-def _discover_prompt_files(name: str) -> List[str]:
-    """约定目录自动发现 prompt 文件：_config/subsystems/{name}/prompt_v*.md（按版本号排序）。"""
-    prompt_dir = os.path.join(CONFIG_PATH, 'subsystems', name)
-    if not os.path.isdir(prompt_dir):
-        return []
-    found = []
-    for fname in os.listdir(prompt_dir):
-        match = _PROMPT_VERSION_RE.search(fname)
-        if match and fname.lower().endswith('.md'):
-            found.append((int(match.group(1)), os.path.join(prompt_dir, fname)))
-    found.sort(key=lambda item: item[0])
-    return [path for _, path in found]
-
 
 
 def _resolve_subsystem_dir(name: str) -> Optional[str]:
@@ -125,23 +101,6 @@ def _load_schema_meta(config_dir: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
-def _load_prompt_table(prompt_files: List[str]) -> Dict[int, str]:
-
-    """从 prompt 文件中加载版本表。版本号优先取文件名中的 _vNN，否则按列表顺序 1..N。"""
-    table: Dict[int, str] = {}
-    for index, prompt_file in enumerate(prompt_files, start=1):
-        try:
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except OSError as e:
-            logger.warning(f"Load prompt file failed: {prompt_file} ({e})")
-            continue
-        match = _PROMPT_VERSION_RE.search(os.path.basename(prompt_file))
-        version = int(match.group(1)) if match else index
-        table[version] = content
-    return table
-
-
 @dataclass
 class SubsystemContext:
     """
@@ -156,18 +115,13 @@ class SubsystemContext:
     collection_prefix: str = LEGACY_COLLECTION_PREFIX
 
     mongo_db_cache: Optional[MongoDBStorage] = None
-    mongo_db_archive: Optional[MongoDBStorage] = None
-    mongo_db_low_value: Optional[MongoDBStorage] = None
-    mongo_db_recommendation: Optional[MongoDBStorage] = None
-
-    cache_query_engine: Optional[IntelligenceQueryEngine] = None
-    archive_query_engine: Optional[IntelligenceQueryEngine] = None
     statistics_engine: Optional[IntelligenceStatisticsEngine] = None
 
     # Event V4 正式存储端口。V4 使用独立集合，避免与历史文档混合 schema。
     event_v4_archive_repository: Any = None
     event_v4_entity_resolver: Any = None
     event_v4_intelligence_collection: Any = None
+    event_v4_intelligence_storage: Optional[MongoDBStorage] = None
     event_v4_low_value_collection: Any = None
     event_v4_event_collection: Any = None
     event_v4_entity_collection: Any = None
@@ -175,9 +129,6 @@ class SubsystemContext:
     event_v4_query_engine: Optional[EventV4QueryEngine] = None
 
     prompt_table: Dict[int, str] = field(default_factory=dict)   # version -> prompt text
-    prompt_files: List[str] = field(default_factory=list)        # 用于 mtime 热重载
-    _prompt_mtimes: Dict[str, float] = field(default_factory=dict, repr=False)
-    _prompt_last_check: float = field(default=0.0, repr=False)
 
     ai_client_group: Optional[str] = None
     scoring_config: Optional[Dict[str, Any]] = None
@@ -238,31 +189,6 @@ class SubsystemRegistry:
             'enabled': ctx.enabled,
         } for ctx in self.enabled_subsystems()]
 
-    # ------------------------------------------------------------- Prompts
-
-    def refresh_prompts(self, ctx: SubsystemContext, force: bool = False) -> Dict[int, str]:
-        """基于 mtime 的 prompt 热重载（默认子系统走代码内版本表，不重载）。"""
-        if not ctx.prompt_files:
-            return ctx.prompt_table
-        now = time.time()
-        if not force and now - ctx._prompt_last_check < 5.0:
-            return ctx.prompt_table
-        ctx._prompt_last_check = now
-
-        changed = False
-        for path in ctx.prompt_files:
-            try:
-                mtime = os.path.getmtime(path)
-            except OSError:
-                continue
-            if ctx._prompt_mtimes.get(path) != mtime:
-                ctx._prompt_mtimes[path] = mtime
-                changed = True
-        if changed:
-            ctx.prompt_table = _load_prompt_table(ctx.prompt_files)
-            logger.info(f"Subsystem '{ctx.name}' prompts reloaded: versions {sorted(ctx.prompt_table)}")
-        return ctx.prompt_table
-
     # ------------------------------------------------------------- Build
 
     @classmethod
@@ -318,13 +244,6 @@ class SubsystemRegistry:
                 or (LEGACY_COLLECTION_PREFIX if is_default else f"{name}_intelligence_"))
             url_prefix = str(detail.get('url_prefix') or ('' if is_default else f"/{name}")).strip()
 
-            configured_prompt_files = detail.get('prompt_files') or []
-            if configured_prompt_files:
-                prompt_files = [_resolve_path(str(pf), config_root) for pf in configured_prompt_files]
-            else:
-                # 未配置时按约定目录自动发现 _config/subsystems/{name}/prompt_v*.md
-                prompt_files = _discover_prompt_files(name)
-
             # ?????????? UI ?? / schema ???????????????
             config_dir = _resolve_subsystem_dir(name)
             plugin_files = _discover_plugin_files(config_dir)
@@ -339,7 +258,7 @@ class SubsystemRegistry:
                 enabled=True,
                 url_prefix=url_prefix,
                 collection_prefix=collection_prefix,
-                prompt_files=prompt_files,
+                prompt_table=dict(EVENT_ANALYSIS_PROMPT_TABLE),
                 ai_client_group=detail.get('ai_client_group'),
                 scoring_config=detail.get('scoring'),
                 config_dir=config_dir,
@@ -358,35 +277,12 @@ class SubsystemRegistry:
                 username=mongodb_params.get('username'),
                 password=mongodb_params.get('password'),
                 collection_name=ctx.collection_name('cached'))
-            ctx.mongo_db_archive = MongoDBStorage(
-                host=mongodb_params.get('host', 'localhost'),
-                port=mongodb_params.get('port', 27017),
-                db_name=db_name,
-                username=mongodb_params.get('username'),
-                password=mongodb_params.get('password'),
-                collection_name=ctx.collection_name('archived'))
-            ctx.mongo_db_low_value = MongoDBStorage(
-                host=mongodb_params.get('host', 'localhost'),
-                port=mongodb_params.get('port', 27017),
-                db_name=db_name,
-                username=mongodb_params.get('username'),
-                password=mongodb_params.get('password'),
-                collection_name=ctx.collection_name('low_value'))
-            ctx.mongo_db_recommendation = MongoDBStorage(
-                host=mongodb_params.get('host', 'localhost'),
-                port=mongodb_params.get('port', 27017),
-                db_name=db_name,
-                username=mongodb_params.get('username'),
-                password=mongodb_params.get('password'),
-                collection_name=ctx.collection_name('recommendation'))
-
-            ctx.cache_query_engine = IntelligenceQueryEngine(ctx.mongo_db_cache)
-            ctx.archive_query_engine = IntelligenceQueryEngine(ctx.mongo_db_archive)
-
             # -------- Event V4 存储 --------
             database = ctx.mongo_db_cache.db
             ctx.event_v4_intelligence_collection = database[
                 ctx.collection_name('v4_archived')]
+            ctx.event_v4_intelligence_storage = MongoDBStorage.from_collection(
+                ctx.event_v4_intelligence_collection)
             ctx.event_v4_low_value_collection = database[
                 ctx.collection_name('v4_low_value')]
             ctx.event_v4_event_collection = database[
@@ -419,18 +315,6 @@ class SubsystemRegistry:
             )
             ctx.statistics_engine = IntelligenceStatisticsEngine(
                 ctx.event_v4_intelligence_collection)
-
-            # -------- prompt 表 --------
-            if prompt_files:
-                ctx.prompt_table = _load_prompt_table(prompt_files)
-            else:
-                # 未配置 prompt 文件时：默认子系统沿用代码内版本表；
-                # 新子系统临时沿用默认表并告警，等待配置专属 prompt。
-                ctx.prompt_table = dict(ANALYSIS_PROMPT_TABLE)
-                if not is_default:
-                    logger.warning(
-                        f"Subsystem '{name}' has no prompt_files configured, "
-                        f"falling back to default prompt table temporarily.")
 
             registry.add(ctx)
             logger.info(

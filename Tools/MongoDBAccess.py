@@ -72,6 +72,16 @@ class MongoDBStorage:
         - The '_id' field of returned documents is converted from ObjectId to string.
     """
 
+    @classmethod
+    def from_collection(cls, collection: Collection) -> "MongoDBStorage":
+        """Wrap an existing PyMongo collection without opening another client."""
+        instance = cls.__new__(cls)
+        instance.collection = collection
+        instance.db = collection.database
+        instance.client = collection.database.client
+        instance.connection_uri = ""
+        return instance
+
     def __init__(self,
                  host: str = 'localhost',
                  port: int = 27017,
