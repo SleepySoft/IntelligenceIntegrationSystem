@@ -83,7 +83,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             client_wait_interval=client_wait_interval,
         )
         self._archive_repository = archive_repository
-        self._entity_resolver = entity_resolver or DeterministicEntityResolver()
+        self._entity_resolver = entity_resolver
         self._event_registry = event_registry
         self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
         if not self._prompt_table:
@@ -107,7 +107,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
         original_data = dict(event.payload)
         intelligence_uuid = derive_intelligence_uuid(original_data)
         informant = str(original_data.get("informant", "")).strip()
-        repository = self._require_archive_repository() if persist else None
+        repository = self._require_archive_repository(ctx) if persist else None
         if persist and repository.contains(intelligence_uuid, informant):
             self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
@@ -153,7 +153,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             conversion = convert_event_extraction(
                 analysis.event_extraction,
                 intelligence_uuid=intelligence_uuid,
-                entity_resolver=(self._entity_resolver if persist
+                entity_resolver=(self._resolve_entity_resolver(ctx) if persist
                                  else DeterministicEntityResolver()),
                 registry=self._event_registry,
                 observed_at=processed_at,
@@ -212,7 +212,7 @@ class EventV4PipelinePorts(IISPipelinePorts):
             self._increment_stat(ctx, "error")
             return StageResult.reject("invalid_v4_archive_payload")
         try:
-            repository = self._require_archive_repository()
+            repository = self._require_archive_repository(ctx)
             archive = prepared.archive.model_copy(
                 update={"archived_at": datetime.now(timezone.utc)}
             )
@@ -230,10 +230,21 @@ class EventV4PipelinePorts(IISPipelinePorts):
             self._increment_stat(ctx, "error")
             return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
 
-    def _require_archive_repository(self) -> EventV4ArchiveRepository:
-        if self._archive_repository is None:
+    def _require_archive_repository(self, ctx: Any) -> EventV4ArchiveRepository:
+        repository = (
+            self._archive_repository
+            or getattr(ctx, "event_v4_archive_repository", None)
+        )
+        if repository is None:
             raise RuntimeError("Event V4 端口仅配置为无持久化调试模式")
-        return self._archive_repository
+        return repository
+
+    def _resolve_entity_resolver(self, ctx: Any) -> EntityResolver:
+        return (
+            self._entity_resolver
+            or getattr(ctx, "event_v4_entity_resolver", None)
+            or DeterministicEntityResolver()
+        )
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

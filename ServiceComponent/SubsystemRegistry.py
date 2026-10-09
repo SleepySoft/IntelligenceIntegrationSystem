@@ -33,6 +33,11 @@ from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
+from ServiceComponent.event_v4_conversion import DeterministicEntityResolver
+from ServiceComponent.event_v4_repositories import (
+    MongoEntityRepository,
+    MongoEventV4ArchiveRepository,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -157,6 +162,15 @@ class SubsystemContext:
     cache_query_engine: Optional[IntelligenceQueryEngine] = None
     archive_query_engine: Optional[IntelligenceQueryEngine] = None
     statistics_engine: Optional[IntelligenceStatisticsEngine] = None
+
+    # Event V4 正式存储端口。V4 使用独立集合，避免与历史文档混合 schema。
+    event_v4_archive_repository: Any = None
+    event_v4_entity_resolver: Any = None
+    event_v4_intelligence_collection: Any = None
+    event_v4_low_value_collection: Any = None
+    event_v4_event_collection: Any = None
+    event_v4_entity_collection: Any = None
+    event_v4_outbox_collection: Any = None
 
     prompt_table: Dict[int, str] = field(default_factory=dict)   # version -> prompt text
     prompt_files: List[str] = field(default_factory=list)        # 用于 mtime 热重载
@@ -367,6 +381,36 @@ class SubsystemRegistry:
             ctx.cache_query_engine = IntelligenceQueryEngine(ctx.mongo_db_cache)
             ctx.archive_query_engine = IntelligenceQueryEngine(ctx.mongo_db_archive)
             ctx.statistics_engine = IntelligenceStatisticsEngine(ctx.mongo_db_archive)
+
+            # -------- Event V4 存储 --------
+            database = ctx.mongo_db_cache.db
+            ctx.event_v4_intelligence_collection = database[
+                ctx.collection_name('v4_archived')]
+            ctx.event_v4_low_value_collection = database[
+                ctx.collection_name('v4_low_value')]
+            ctx.event_v4_event_collection = database[
+                ctx.collection_name('v4_events')]
+            ctx.event_v4_entity_collection = database[
+                ctx.collection_name('v4_entities')]
+            ctx.event_v4_outbox_collection = database[
+                ctx.collection_name('v4_outbox')]
+
+            entity_repository = MongoEntityRepository(ctx.event_v4_entity_collection)
+            archive_repository = MongoEventV4ArchiveRepository(
+                intelligence_collection=ctx.event_v4_intelligence_collection,
+                low_value_collection=ctx.event_v4_low_value_collection,
+                event_collection=ctx.event_v4_event_collection,
+                outbox_collection=ctx.event_v4_outbox_collection,
+            )
+            entity_repository.ensure_indexes()
+            archive_repository.ensure_indexes()
+            recovered = archive_repository.recover_pending()
+            if recovered:
+                logger.warning(
+                    "Subsystem '%s' recovered %s pending Event V4 commits.",
+                    name, recovered)
+            ctx.event_v4_archive_repository = archive_repository
+            ctx.event_v4_entity_resolver = DeterministicEntityResolver(entity_repository)
 
             # -------- prompt 表 --------
             if prompt_files:

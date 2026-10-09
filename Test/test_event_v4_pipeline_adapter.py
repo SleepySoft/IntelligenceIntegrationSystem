@@ -155,6 +155,25 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert context.stats["archived"] == 1
 
 
+def test_v4_adapter_resolves_repository_from_subsystem_context():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    context.event_v4_archive_repository = repository
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
+
+    assert analyzed.accepted
+    assert archived.accepted
+    assert len(repository.archives) == 1
+
+
 def test_v4_adapter_stores_non_intelligence_envelope_without_events():
     context = FakeContext()
     repository = FakeArchiveRepository()
