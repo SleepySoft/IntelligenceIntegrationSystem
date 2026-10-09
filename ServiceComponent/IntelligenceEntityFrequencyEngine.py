@@ -7,9 +7,7 @@ import datetime
 import threading
 from typing import Optional, List, Dict, Any, Iterator
 
-from Tools.MongoDBAccess import MongoDBStorage
 from Tools.DateTimeUtility import ensure_timezone_aware
-from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TIME_ARCHIVED
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -27,20 +25,24 @@ ALL_ENTITY_TYPES = [
     ENTITY_TYPE_ORGANIZATION,
 ]
 
+# Event V4 entity types -> dashboard categories.
+V4_ENTITY_CATEGORY = {
+    "person": ENTITY_TYPE_PEOPLE,
+    "organization": ENTITY_TYPE_ORGANIZATION,
+    "agency": ENTITY_TYPE_ORGANIZATION,
+    "company": ENTITY_TYPE_ORGANIZATION,
+    "facility": ENTITY_TYPE_LOCATION,
+    "location": ENTITY_TYPE_LOCATION,
+    "city": ENTITY_TYPE_LOCATION,
+    "country": ENTITY_TYPE_GEOGRAPHY,
+    "region": ENTITY_TYPE_GEOGRAPHY,
+}
+
 # 支持的查询粒度
 GRANULARITY_DAY = "day"
 GRANULARITY_WEEK = "week"
 GRANULARITY_MONTH = "month"
 ALL_GRANULARITIES = [GRANULARITY_DAY, GRANULARITY_WEEK, GRANULARITY_MONTH]
-
-# 统计字段映射（MongoDB中的字段名）
-ENTITY_MONGO_FIELD = {
-    ENTITY_TYPE_LOCATION: "LOCATION",
-    ENTITY_TYPE_GEOGRAPHY: "GEOGRAPHY",
-    ENTITY_TYPE_PEOPLE: "PEOPLE",
-    ENTITY_TYPE_ORGANIZATION: "ORGANIZATION",
-}
-
 
 class EntityFrequencyEngine:
     """
@@ -53,12 +55,12 @@ class EntityFrequencyEngine:
     def __init__(
         self,
         db_path: str,
-        mongo_db_archive: MongoDBStorage,
-        time_field: str = APPENDIX_TIME_ARCHIVED,
+        event_collection: Any,
+        entity_collection: Any,
     ):
         self.db_path = db_path
-        self.mongo_db_archive = mongo_db_archive
-        self.time_field = time_field
+        self.event_collection = event_collection
+        self.entity_collection = entity_collection
         self.write_lock = threading.Lock()
         self._cancel_event = threading.Event()
         # 后台缓存构建的状态管理（防重复触发 + 异步化）
@@ -266,92 +268,38 @@ class EntityFrequencyEngine:
             ENTITY_TYPE_ORGANIZATION: {},
         }
 
-        for entity_type in ALL_ENTITY_TYPES:
-            field_name = ENTITY_MONGO_FIELD[entity_type]
-
-            if entity_type == ENTITY_TYPE_GEOGRAPHY:
-                pipeline = self._build_single_field_pipeline(
-                    field_name, day_start, day_end
-                )
-            else:
-                pipeline = self._build_array_field_pipeline(
-                    field_name, day_start, day_end
-                )
-
-            try:
-                rows = self.mongo_db_archive.aggregate(pipeline)
-                for row in rows:
-                    entity_name = str(row.get("_id", "")).strip()
-                    count = int(row.get("count", 0))
-                    if entity_name and count > 0:
-                        results[entity_type][entity_name] = count
-            except Exception as e:
-                logger.error(
-                    f"MongoDB aggregate failed for {entity_type} at {slot.isoformat()}: {e}",
-                    exc_info=True,
-                )
+        pipeline = [
+            {"$match": {"observed_at": {
+                "$gte": ensure_timezone_aware(day_start),
+                "$lt": ensure_timezone_aware(day_end),
+            }}},
+            {"$unwind": "$role_bindings"},
+            {"$group": {
+                "_id": "$role_bindings.entity_uuid",
+                "count": {"$sum": 1},
+            }},
+        ]
+        try:
+            rows = list(self.event_collection.aggregate(pipeline))
+            counts = {str(row["_id"]): int(row.get("count", 0)) for row in rows}
+            if not counts:
+                return results
+            entities = self.entity_collection.find(
+                {"_id": {"$in": list(counts)}},
+                {"canonical_name": 1, "entity_type": 1},
+            )
+            for entity in entities:
+                category = V4_ENTITY_CATEGORY.get(entity.get("entity_type"))
+                name = str(entity.get("canonical_name", "")).strip()
+                count = counts.get(str(entity.get("_id")), 0)
+                if category and name and count > 0:
+                    results[category][name] = results[category].get(name, 0) + count
+        except Exception as e:
+            logger.error(
+                "Event V4 entity aggregation failed at %s: %s",
+                slot.isoformat(), e, exc_info=True)
 
         return results
-
-    def _build_array_field_pipeline(
-        self, field_name: str, day_start: datetime.datetime, day_end: datetime.datetime
-    ) -> List[Dict[str, Any]]:
-        return [
-            {
-                "$match": {
-                    f"APPENDIX.{self.time_field}": {
-                        "$gte": ensure_timezone_aware(day_start),
-                        "$lt": ensure_timezone_aware(day_end),
-                    }
-                }
-            },
-            {"$project": {"entities": {"$ifNull": [f"${field_name}", []]}}},
-            {"$unwind": "$entities"},
-            {
-                "$match": {
-                    "entities": {
-                        "$type": "string",
-                        "$ne": "",
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$entities",
-                    "count": {"$sum": 1},
-                }
-            },
-            {"$sort": {"count": -1}},
-        ]
-
-    def _build_single_field_pipeline(
-        self, field_name: str, day_start: datetime.datetime, day_end: datetime.datetime
-    ) -> List[Dict[str, Any]]:
-        return [
-            {
-                "$match": {
-                    f"APPENDIX.{self.time_field}": {
-                        "$gte": ensure_timezone_aware(day_start),
-                        "$lt": ensure_timezone_aware(day_end),
-                    }
-                }
-            },
-            {
-                "$match": {
-                    field_name: {
-                        "$type": "string",
-                        "$ne": "",
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": f"${field_name}",
-                    "count": {"$sum": 1},
-                }
-            },
-            {"$sort": {"count": -1}},
-        ]
 
     # -------------------------------------------------- 查询接口 --------------------------------------------------
 

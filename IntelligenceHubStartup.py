@@ -273,7 +273,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     entity_frequency_engine = EntityFrequencyEngine(
         db_path=os.path.join(DATA_PATH, "entity_frequency.db"),
-        mongo_db_archive=subsystem_registry.default().mongo_db_archive,
+        event_collection=subsystem_registry.default().event_v4_event_collection,
+        entity_collection=subsystem_registry.default().event_v4_entity_collection,
     )
     services["entity_frequency"] = entity_frequency_engine
 
