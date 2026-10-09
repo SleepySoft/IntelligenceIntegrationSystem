@@ -362,7 +362,6 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     rpc_api_tokens = config.get('intelligence_hub_web_service.rpc_api.tokens', [])
     collector_tokens = config.get('intelligence_hub_web_service.collector.tokens', [])
-    processor_tokens = config.get('intelligence_hub_web_service.processor.tokens', [])
 
     rss_base_url = config.get('intelligence_hub_web_service.rss.host_prefix', 'http://127.0.0.1:5000')
     public_search_limits = config.get('intelligence_hub_web_service.public_search', None)
@@ -370,7 +369,6 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     access_manager = WebServiceAccessManager(
         rpc_api_tokens=rpc_api_tokens,
         collector_tokens=collector_tokens,
-        processor_tokens=processor_tokens,
         user_manager=UserManager(DEFAULT_USER_DB_PATH),
         deny_on_empty_config=True)
 

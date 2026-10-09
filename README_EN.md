@@ -19,10 +19,14 @@ The Hub uses an event runtime rather than a monolithic queue manager:
 intake.received -> analysis.requested -> archive.completed
 ```
 
-`HubRuntime` only delivers opaque payloads. IIS-specific validation, prompt
-selection, scoring and storage live in `IISPipelinePorts`; recovery, translation,
+`HubRuntime` only delivers opaque payloads. Event V4 validation, prompt
+selection, scoring and storage live in `EventV4PipelinePorts`; recovery, translation,
 vector indexing, aggregation, graphing and scheduled maintenance are optional
 extensions assembled by `IntelligenceHubStartup.py`.
+
+All enabled subsystems use the Event V4 contract. Legacy V1/V2 code and data-model
+materials are retained only under `recycled/legacy_intelligence/` and are not loaded
+by the production runtime.
 
 This separation lets future subsystems use different data structures or custom
 pages without changing the core runtime. See

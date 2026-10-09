@@ -1,6 +1,6 @@
 # IntelligenceIntegrationSystem — Agent Guide
 
-> 本文档供 AI 编码助手阅读。如果你第一次接触本项目，请先阅读本文件，再阅读 `README.md` 和 `doc/IntelligenceDesign.md`。
+> 本文档供 AI 编码助手阅读。如果你第一次接触本项目，请先阅读本文件、`README.md` 和 `doc/event_v4_integration_handoff.md`。
 
 ---
 
@@ -14,7 +14,7 @@
 
 系统从全球主流媒体抓取公开新闻（RSS 或列表页），通过 AI（LLM）进行结构化分析、评分、去重，最终将高价值情报归档到数据库，并通过 Web 提供检索、聚合、态势推演等功能。
 
-当前主分支为 **v2**（2026-02-15 起切换），兼容 v1 数据，无需数据库升级。
+当前生产主链为 **Event V4**。不兼容、不双读 V1/V2 数据；历史实现统一位于 `recycled/legacy_intelligence/`。
 
 ---
 
@@ -47,7 +47,7 @@
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_v2x.py` | AI 分析 Prompt 定义表 |
+| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 定义表 |
 
 ### 3.2 主要子目录
 
@@ -68,9 +68,10 @@
   - `CrawlPipeline.py` / `Discoverer.py` / `Extractor.py` / `Fetcher.py`：流水线组件
 
 - **`ServiceComponent/`** — 业务组件层
-  - `IntelligenceHubDefines_v2.py`：Pydantic 数据模型（`CollectedData`, `ArchivedData`, `ProcessedData` 等）
+  - `IntelligenceHubDefines_v4.py`：V4 采集输入和 AI 分析结果模型
+  - `event_v4_archive.py`：`ArchivedIntelligenceV4` 与低价值信封
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
-  - `IntelligenceQueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
+  - `EventV4QueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
   - `IntelligenceVectorDBEngine.py`：向量检索封装
   - `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py`：情报聚合与态势图谱推演
   - `IntelligenceScoringEngine.py`：评分引擎
@@ -195,15 +196,15 @@ python VectorDB/VectorDBBService.py \
 ## 5. 代码风格与开发约定
 
 ### 5.1 语言与注释
-- 代码中注释以 **中文** 为主，部分关键模块（如 `IntelligenceHubDefines_v2.py`）使用英文 docstring
+- 代码中注释以 **中文** 为主，部分关键模块（如 `IntelligenceHubDefines_v4.py`）使用英文 docstring
 - 日志输出以中文为主，便于运维阅读
 - 类名/函数名使用英文，遵循 PEP 8
 
 ### 5.2 数据模型
-- v1/v2 主链跨模块数据使用 `ServiceComponent.IntelligenceHubDefines_v2` 中的 Pydantic 模型；Event V4 接入使用 `ServiceComponent.IntelligenceHubDefines_v4` 与 `event_engine.extraction`，不得复制事件字段或 Registry 规则
-- `CollectedData`：采集端提交的原始数据
-- `ArchivedData`：AI 分析后归档的数据（含 `APPENDIX` 元数据）
-- `ProcessedData`：中间处理数据，用于清洗和校验
+- 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
+- `CollectedDataV4`：采集端提交的原始数据
+- `ValuableIntelligenceV4` / `NonIntelligenceV4`：AI 分析结果
+- `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`，归档时间位于 `archived_at`
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验
 
 ### 5.3 并发模型
@@ -242,7 +243,7 @@ python VectorDB/VectorDBBService.py \
 - 没有 CI/CD 流水线，也没有自动化测试套件
 - 如果需要添加测试，建议：
   1. 在 `Test/` 目录下新增 `test_*.py` 文件
-  2. 对 `ServiceComponent` 中的引擎类（如 `IntelligenceQueryEngine`, `IntelligenceScoringEngine`）编写单元测试
+  2. 对 `ServiceComponent` 中的引擎类（如 `EventV4QueryEngine`, `IntelligenceScoringEngine`）编写单元测试
   3. 对 Pydantic 模型进行边界值测试
 
 运行测试：
@@ -255,8 +256,8 @@ pytest Test/
 ## 7. 安全注意事项
 
 1. **Token 鉴权**
-   - `/collect`（采集提交）、`/api`（RPC）、`/processed`（处理端）分别使用不同的 Token
-   - Token 配置在 `_config/config.json` 的 `collector.tokens`、`rpc_api.tokens`、`processor.tokens` 中
+   - `/collect`（采集提交）和 `/api`（RPC）分别使用独立 Token
+   - Token 配置在 `_config/config.json` 的 `collector.tokens`、`rpc_api.tokens` 中
    - 生产环境建议设置 `deny_on_empty_config: true`，禁止空配置时放行
 
 2. **用户认证**
@@ -308,12 +309,9 @@ pytest Test/
 | 文档 | 内容 |
 |------|------|
 | `README.md` | 中文项目介绍、部署教程、已接入媒体列表 |
-| `doc/IntelligenceDesign.md` | v1 设计理念与情报分类评分标准 |
-| `doc/IntelligenceDesign_v2.md` | v2 设计理念与改进点 |
-| `doc/iis_v2_concept.md` | v2 概念说明（与 v1 的区别） |
+| `doc/event_v4_integration_handoff.md` | Event V4 架构、存储契约与切换状态 |
 | `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
-| `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展的未实现设计提案 |
-| `doc/IIS_Diagram.drawio` | 系统架构图（可用 draw.io 打开） |
+| `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |
 | `VectorDB/README.md` | 向量数据库说明 |

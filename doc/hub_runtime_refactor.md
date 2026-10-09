@@ -69,8 +69,8 @@ intake.received
 
 - `HubApplication` 只接受已构造的 `pipeline_ports`、运行时和插件；它不选择
   IIS 的 schema、AI 分析器或存储实现。
-- `IISPipelinePorts` 是当前新闻情报领域的适配器。未来子系统可提供完全不同的
-  输入、分析、校验与归档端口，不需要修改运行时。
+- `EventV4PipelinePorts` 是所有情报子系统的生产适配器，负责 V4 输入校验、分析、
+  事件转换、评分和幂等归档；运行时本身仍不解析 payload。
 - `IISUnarchivedReplayExtension` 从 cache 恢复未归档记录，并从分析阶段续接，避免
   被 intake 去重规则拦截。
 - 翻译补丁发布 `extension.translation.completed`；向量扩展订阅归档和翻译完成事件。

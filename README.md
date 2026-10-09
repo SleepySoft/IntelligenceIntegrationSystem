@@ -5,23 +5,15 @@
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
 
-## v2版本的说明
+## Event V4 版本说明
 
-从2026年2月15日开始，main分支将正式切换到v2版本。
+当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。所有子系统共享
+`CollectedDataV4 → AnalysisResultV4 → ArchivedIntelligenceV4` 契约，事件与实体分别写入
+MongoDB 索引集合。查询、翻译、向量化、聚合、图谱和 Web 展示均读取 V4 字段。
 
-同时v1版本归档到 [这个分支](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/iis-v1)。
-
-v2版本兼容v1版本的数据，数据库不需要额外的升级操作。
-最新导出的数据在 [这里下载](https://pan.baidu.com/s/18PpJPCkIkB9EB2ea5zOA5Q?pwd=djts)
-
-关于v2版本的设计理念，以及与v1版本的区别，请阅读 [这篇文章]((doc/iis_v2_concept.md)) 。
-
-除了情报数据结构及评分机制改变外，v2版本还对爬虫框架进行了进一步的改进。
-一方面通过界面“所见即所得”的方式生成爬虫配置，另一方面增加了监控及调度功能，今后接入网站会非常方便。
-
-另外向量数据库存储的格式也进行了调整，即将部分内容直接置入metadata中。借助向量数据库，IIS系统支持相似情报跳转及关联情报推演功能。
-
-经过调整后的向量数据库对关联情报的查询表现优异，接下来我会重点研究情报的聚合以及关联推演。
+历史 V1/V2 实现、Prompt、测试、训练资料和设计文档已归档到
+[`recycled/legacy_intelligence/`](recycled/legacy_intelligence/)，不会被生产代码加载。
+V4 当前结构与完成情况见 [Event V4 集成记录](doc/event_v4_integration_handoff.md)。
 
 
 ## 更新与通知
@@ -338,13 +330,14 @@ python CrawlerServiceEngine.py
 
 ### 分析
 
-+ [prompts_v2x.py](prompts_v2x.py)
++ [prompts_event_v4.py](prompts_event_v4.py)
 
-+ [ServiceComponent/IntelligenceHubDefines_v2.py](ServiceComponent/IntelligenceHubDefines_v2.py)
++ [ServiceComponent/IntelligenceHubDefines_v4.py](ServiceComponent/IntelligenceHubDefines_v4.py)
 
   情报分析的prompt以及格式定义。程序中的dict校验和该prompt指示的输出格式紧密相关，prompt对AI的要求必须遵守校验规则。
   
-  已知的问题为：
+  Event V4 的事件谓词、角色和语义校验由 `event_engine` Registry 统一生成，IIS 不复制规则表。
+  当前已知问题为：
   
   1. 该prompt在小模型（甚至于65b）上表现不佳。
   > 

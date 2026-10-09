@@ -1,164 +1,65 @@
-# Event V4 集成交接记录
+# Event V4 生产状态
 
-更新时间：2026-10-08
+更新时间：2026-10-09
 
 ## 当前结论
 
-IIS 已具备开始集成 Event V4 的架构条件。Prompt 与事件结构此前存在的双份规则问题已经解决，
-但生产主链尚未切换到 v4。
+IIS 生产主链和所有已启用子系统已统一切换到 Event V4，不保留 V1/V2 兼容、双读或字段回退。
+旧实现、Prompt、测试、训练资料和设计文档位于 `recycled/legacy_intelligence/`，不会被生产代码加载。
 
-当前采用以下边界：
-
-- `event_engine` 拥有独立的事件抽取模型、Prompt 和语义规则。
-- Event Engine Registry 是谓词、Frame、角色和生命周期词值的唯一规则源。
-- event_engine 可通过 `build_event_extraction_prompt(registry)` 独立使用。
-- IIS 通过 `build_event_extraction_section(registry)` 组合事件抽取章节，只维护消息、分类、评分等外层要求。
-- IIS 的 `ValuableIntelligenceV4` 使用嵌套的 `event_extraction: EventExtractionResult`，不再复制事件字段和谓词表。
-
-## 已完成提交
-
-### `648629a Add registry-driven event extraction contract`
-
-- 新增 `event_engine.extraction`。
-- 新增 `EventExtractionResult` 及其实体、事件、时间、限定词和关系模型。
-- 新增独立 Prompt 与可组合 Prompt 章节构建器。
-- PredicateSpec 增加抽取名称和边界说明。
-- 三个领域包升级到 `1.2`。
-- Prompt、JSON Schema 和语义校验均从显式 Registry 生成。
-- 增加源码检出目录下的 event_engine 包路径桥接。
-
-### `9e72edd Compose IIS v4 analysis with event extraction`
-
-- 删除 IIS 内原有的第二份 `PREDICATE_SPECS`。
-- `prompts_event_v4.py` 改为组合 Event Engine 抽取章节与 IIS 外层要求。
-- v4 valuable 输出调整为：
+## 主链契约
 
 ```text
-kind
-message
-classification
-assessment
-event_extraction
+CollectedDataV4
+→ EventV4PipelinePorts
+→ ValuableIntelligenceV4 | NonIntelligenceV4
+→ EventRecord 转换与实体解析
+→ ArchivedIntelligenceV4 + events + entities
 ```
 
-- `validate_analysis_result_v4()` 在 IIS 外层校验后，继续使用同一 Registry 校验事件语义。
+- `prompts_event_v4.py` 组合 IIS 外层分析要求与 `event_engine` Registry 生成的事件抽取章节。
+- `event_engine` Registry 是谓词、Frame、角色和语义校验的唯一规则源。
+- 情报、事件、实体和 outbox 使用每个子系统独立的 MongoDB 集合。
+- 多集合提交采用可重放 outbox；启动时执行 `recover_pending()`。
+- 人工调试使用同一个 `EventV4PipelinePorts`，可选择版本、查看 Prompt、覆盖 Prompt，并保持无业务库写入。
 
-## 当前验证结果
+## V4 字段约定
 
-- Event Engine：58 项测试通过。
-- IIS runtime、pipeline、extension 和 v4 schema：36 项测试通过。
-- Registry、Prompt 谓词目录和 JSON Schema 均包含相同的 76 个谓词。
-- 当前领域包版本：`news=1.2`、`industry=1.2`、`financial=1.2`。
-- 独立事件 Prompt 约 15,281 字符；IIS 组合 Prompt 约 16,632 字符。
+- 标识：`intelligence_uuid`（Mongo `_id` 使用同值）
+- 标题/摘要/正文：`analysis.message.title|brief|text`
+- 分类：`analysis.classification.taxonomy|subcategories`
+- 评估：`analysis.assessment`
+- 事件抽取：`analysis.event_extraction`
+- 总分：`total_score`
+- 原始数据：`raw_data`
+- 归档时间：`archived_at`
+- 翻译修订：`translation_revision`
+- 人工评分：`manual_rating`
 
-## 下一阶段实施顺序
+查询、统计、实体频率、翻译、向量化、聚合、动态图谱、RSS、导出和 Web 卡片均使用上述字段。
 
-### 1. 统一运行环境和安装方式
+## MongoDB 集合
 
-- 将 IIS 的最低 Python 版本统一为 3.11。
-- 把 event_engine 纳入根项目正式安装流程，避免只依赖源码路径桥接。
-- 在项目根目录运行 Event Engine 与 IIS 的联合测试。
+每个子系统以 `collection_prefix` 为前缀创建：
 
-### 2. 新增 Event V4 主链适配器
+- `v4_archived`
+- `v4_low_value`
+- `v4_events`
+- `v4_entities`
+- `v4_outbox`
+- `cached`（采集输入及 `processing.status`）
 
-实现 `EventV4PipelinePorts`，不要继续在旧 `IISPipelinePorts` 中增加 v4 分支。适配器负责：
+## 尚未纳入本次切换
 
-- 使用组合后的 v4 Prompt。
-- 调用 `validate_analysis_result_v4()`。
-- 区分 `valuable` 和 `non_intelligence`。
-- 保留现有 AI 客户端获取、重试、背压、缓存状态和错误分类能力。
-- 校验失败时将精简错误反馈给修正重试，而不是只重试相同请求。
+- CanonicalEvent 自动归并仍保持关闭，待实体消歧、候选召回和并发 CAS 完成后启用。
+- 复杂实体别名以及人工合并/拆分入口仍需单独实现。
 
-### 3. 实现抽取结果到事件观察的转换
+## 验证
 
-新增生产用转换服务，将 `EventExtractionResult` 转为 `EventRecord`：
+根项目活动测试集：
 
-- 为情报分配全局 UUID。
-- 将 ENT 局部 ID 解析为全局实体 UUID。
-- 预先为所有 E 局部事件分配全局 UUID。
-- 转换 roles、event_location、qualifier.by 和事件关系。
-- 保留 local entity/event ID 供来源追溯。
-- 使用 `uuid5(intelligence_uuid, local_event_id)` 等稳定规则保证重试幂等。
-
-`event_engine/examples/file_ingestion.py` 只可作为字段转换参考，不能直接作为生产适配器。
-
-### 4. 增加实体解析与存储信封
-
-需要新增：
-
-- `EntityRepository` 和基础实体解析策略。
-- 名称规范化、别名、国家代码及人工合并/拆分入口。
-- `ArchivedIntelligenceV4` 存储模型。
-- 低价值结果的存储信封。
-
-归档信封至少保留 intelligence UUID、informant、raw data、AI 服务/模型、处理时间、评分、
-event UUID 列表和 primary event UUID。
-
-### 5. 保证多集合写入一致性
-
-- 为实体、EventRecord 和情报文档建立唯一索引。
-- 增加批量事件写入。
-- 明确 MongoDB 事务或 outbox/补偿策略。
-- 所有写入必须可重复执行，避免重试产生重复事件。
-- 防止出现情报已归档但事件缺失，或事件已写入但情报归档失败。
-
-### 6. 改造下游
-
-- 评分器改为读取嵌套 `assessment.rate`；若使用 Pydantic dump，应保留中文 alias。
-- 查询层改为组合 intelligence、events 和 entities。
-- 向量层继续使用 message.title/brief/text，但解除对 v2 `ArchivedData` 的绑定。
-- 翻译、统计、实体频率、动态图谱和前端渲染改用 v4 DTO。
-- 不再维护 v1/v2 字段回退和双读分支。
-
-### 7. 延后启用 CanonicalEvent 自动归并
-
-第一阶段只登记和查询 EventRecord。以下能力完成后再启用自动归并：
-
-- 全局实体解析稳定。
-- MongoDB `CanonicalEventRepository` 完成。
-- 候选召回索引完成。
-- 多 worker 更新具备版本 CAS 或等价并发控制。
-- 时间表达能够携带时区，或明确统一转换为 UTC。
-
-## 第一里程碑完成标准
-
-一条采集数据能够经过以下完整链路：
-
-```text
-collect
-→ 组合 v4 Prompt
-→ AnalysisResultV4 严格校验
-→ 全局实体解析
-→ EventRecord 转换
-→ 情报与事件幂等写入 MongoDB
-→ API 查询并返回 v4 展示 DTO
+```bash
+pytest -q Test
 ```
 
-这一阶段不要求 CanonicalEvent 自动合并，也不需要兼容历史 v1/v2 数据。
-
-## 工作区说明
-
-记录本文件时，主仓库分支为 `SubSystem`。`IntelligenceCrawler` 和 `PyLoggingBackend` 子模块内
-各有一个原有的未跟踪 `pyproject.toml`，本轮未修改、未提交。
-
-## 2026-10-08 接续进展
-
-本次已从上述交接点继续完成以下可独立验证的基础设施：
-
-- 根 `requirements.txt` 已通过 editable 本地依赖正式安装 `event_engine`，项目最低版本文档统一为 Python 3.11。
-- 新增独立 `EventV4PipelinePorts`，旧 `IISPipelinePorts` 未增加 v4 条件分支。
-- V4 分析严格调用 `validate_analysis_result_v4()`，区分 valuable/non_intelligence，并保留既有客户端等待、释放、缓存状态、错误分类和三次重试行为。
-- 结构/语义校验失败后的下一次请求会携带精简校验错误，不再原样重试同一 Prompt。
-- 新增生产转换服务：全局情报 UUID、全局实体 UUID、事件 UUID、roles、location、qualifier.by 和事件关系均完成转换；事件 UUID 使用 `uuid5(intelligence_uuid, local_event_id)` 稳定派生。
-- 新增 `ArchivedIntelligenceV4` 与 `LowValueIntelligenceV4` 存储信封，评分器可直接读取嵌套的 `assessment.rate` 并保留中文 alias。
-- 新增基础确定性实体解析器与 Mongo 实体仓库。当前只自动合并“规范名称 + 类型 + 国家代码”完全一致的实体，复杂别名及人工合并/拆分入口仍待实现。
-- 新增 Mongo V4 归档仓库；实体、情报和事件使用稳定唯一键，事件采用批量 upsert。跨集合提交使用可重放 outbox，写入顺序为 pending outbox → events → intelligence → committed outbox，避免出现情报已归档但事件缺失；`recover_pending()` 可恢复中断提交。
-- Event Engine 与 IIS `Test/` 联合测试目前为 101 项通过。
-- 已验证 `pip install --no-deps -e ./event_engine` 后可在仓库外正常导入 `event_engine.extraction`，不依赖源码路径桥接。
-
-尚未完成：
-
-- 尚未在 `IntelligenceHubStartup.py` 切换生产组合根；当前 V4 端口和仓库需要先完成查询/展示与外围扩展适配再启用。
-- 尚未提供实体人工合并/拆分入口。
-- 尚未把查询层、Web API、向量、翻译、统计、实体频率、动态图谱和模板改为 V4 DTO。
-- CanonicalEvent 自动归并继续按原计划延后。
+V1/V2 历史测试不属于活动测试集。

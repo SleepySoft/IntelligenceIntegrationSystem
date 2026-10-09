@@ -64,7 +64,7 @@
           "collection_name": "intelligence_summary",
           "chunk_size": 256,
           "chunk_overlap": 30,
-          "description": "Index of processed data 'EVENT_TITLE' + 'EVENT_BRIEF' + 'EVENT_TEXT'."
+          "description": "Index of Event V4 analysis.message.title + brief + text."
         }
       ]
     }
@@ -87,12 +87,6 @@
     "collector": {
       "tokens": [
       "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
-      ]
-    },
-
-    "processor": {
-      "tokens": [
-        "dd698933-2824-4181-8d50-af4a5f385864"
       ]
     },
 
@@ -121,9 +115,5 @@
     "sqlite_db_file": "ai_client_state_log.db",
     "heartbeat_interval_sec": 30,
     "heartbeat_grace_sec": 120
-  },
-
-  "processor": {
-    "default_token": "dd698933-2824-4181-8d50-af4a5f385864"
   }
 }

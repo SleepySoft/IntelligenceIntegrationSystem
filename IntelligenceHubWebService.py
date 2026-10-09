@@ -140,12 +140,10 @@ class WebServiceAccessManager:
     def __init__(self,
                  rpc_api_tokens: List[str],
                  collector_tokens: List[str],
-                 processor_tokens: List[str],
                  user_manager: UserManager,
                  deny_on_empty_config: bool = False):
         self.rpc_api_tokens = rpc_api_tokens
         self.collector_tokens = collector_tokens
-        self.processor_tokens = processor_tokens
         self.user_manager = user_manager
         self.deny_on_empty_config = deny_on_empty_config
 
@@ -153,10 +151,7 @@ class WebServiceAccessManager:
         return (not self.deny_on_empty_config) if not self.rpc_api_tokens else (token in self.rpc_api_tokens)
 
     def check_collector_token(self, token: str) -> bool:
-        return (not self.deny_on_empty_config) if not self.rpc_api_tokens else (token in self.collector_tokens)
-
-    def check_processor_token(self, token: str) -> bool:
-        return (not self.deny_on_empty_config) if not self.rpc_api_tokens else (token in self.processor_tokens)
+        return (not self.deny_on_empty_config) if not self.collector_tokens else (token in self.collector_tokens)
 
     def check_user_credential(self, username: str, password: str, client_ip) -> int or None:
         if self.user_manager:
