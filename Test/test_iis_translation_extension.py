@@ -34,10 +34,14 @@ def test_translation_extension_defers_translated_records_and_emits_completion_ev
     runtime.subscribe(TRANSLATION_COMPLETED, lambda event, _: completed.append(event.payload))
     runtime.start()
 
-    source = HubEvent(ARCHIVE_COMPLETED, {"UUID": "one", "translate": True}, subsystem="news")
+    source = HubEvent(
+        ARCHIVE_COMPLETED,
+        {"intelligence_uuid": "one", "translate": True},
+        subsystem="news")
     assert extension.should_defer_index(source)
     runtime.emit(source)
-    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "two"}, subsystem="news"))
+    runtime.emit(HubEvent(
+        ARCHIVE_COMPLETED, {"intelligence_uuid": "two"}, subsystem="news"))
     assert runtime.wait_for_idle(timeout=1)
     assert holder["translator"].started
     assert holder["translator"].enqueued == [("one", "new_archived")]

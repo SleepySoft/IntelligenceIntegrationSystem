@@ -50,7 +50,11 @@ class IISAsyncTranslationExtension(HubPlugin):
     def _on_archived(self, event: HubEvent, runtime: HubRuntime) -> None:
         if not self.should_defer_index(event):
             return
-        identifier = str(event.payload.get("UUID") or "").strip()
+        identifier = str(
+            event.payload.get("intelligence_uuid")
+            or event.payload.get("_id")
+            or ""
+        ).strip()
         if identifier:
             self.translator.enqueue_new(identifier, reason="new_archived")
 

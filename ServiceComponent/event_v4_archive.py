@@ -34,6 +34,7 @@ class ArchivedIntelligenceV4(ArchiveModel):
     event_uuids: list[UUID] = Field(..., min_length=1)
     primary_event_uuid: UUID
     subsystem: str
+    translation_revision: str | None = None
 
 
 class LowValueIntelligenceV4(ArchiveModel):

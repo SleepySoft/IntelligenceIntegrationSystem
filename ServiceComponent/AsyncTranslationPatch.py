@@ -10,13 +10,11 @@ import pymongo
 import datetime
 import itertools
 import threading
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional, Callable, Dict, Any, Tuple, List
 
-from Tools.MongoDBAccess import MongoDBStorage
 from AIClientCenter.core.manager import AIClientManager
-from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TRANSLATED_REV
-from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ TRANSLATION_SYSTEM_PROMPT = (
     "你是一个严格的翻译器。只做翻译，不要总结/扩写/改写事实。"
     "不要输出任何推理过程（例如 <think>...</think> 或 <analysis>...</analysis>）。"
     "不要输出 Markdown。"
-    "输出必须是严格 JSON，且只包含三个字段：EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT。"
+    "输出必须是严格 JSON，且只包含三个字段：title, brief, text。"
 )
 
 def strip_think_tags(text: str) -> str:
@@ -156,8 +154,9 @@ def needs_translation(doc: Dict[str, Any]) -> bool:
     """
     Decide if any of title/brief/text looks non-zh.
     """
-    for k in ("EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT"):
-        v = doc.get(k)
+    message = (doc.get("analysis") or {}).get("message") or {}
+    for k in ("title", "brief", "text"):
+        v = message.get(k)
         if v and looks_non_zh(v):
             return True
     return False
@@ -174,7 +173,7 @@ class AsyncTranslationPatch:
     """
     Unified pipeline for BOTH new and historical data:
       - Everything is INSERTED first (archived)
-      - Then an async patch updates 3 fields + APPENDIX.__TRANSLATED_REVISION__
+      - Then an async patch updates analysis.message + translation_revision
 
     Features:
       - Priority queue (new items first)
@@ -188,8 +187,8 @@ class AsyncTranslationPatch:
     translation_user_name = "AsyncTranslationPatch"
 
     def __init__(self,
-                 mongo_db_archive: MongoDBStorage,
-                 query_engine: IntelligenceQueryEngine,
+                 mongo_db_archive: Any,
+                 query_engine: Any,
                  ai_client_manager: AIClientManager,
                  shutdown_flag: threading.Event,
                  on_patched: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -296,8 +295,7 @@ class AsyncTranslationPatch:
             return
 
         # 2) Skip if already translated
-        app = doc.get("APPENDIX", {}) or {}
-        if app.get(APPENDIX_TRANSLATED_REV):
+        if doc.get("translation_revision"):
             return
 
         # 3) Check if needs translation
@@ -314,26 +312,25 @@ class AsyncTranslationPatch:
 
         # 5) Update with $set only: 3 fields + revision flag
         update_data = {}
-        if new_title: update_data["EVENT_TITLE"] = new_title
-        if new_brief: update_data["EVENT_BRIEF"] = new_brief
-        if new_text:  update_data["EVENT_TEXT"]  = new_text
+        if new_title: update_data["analysis.message.title"] = new_title
+        if new_brief: update_data["analysis.message.brief"] = new_brief
+        if new_text:  update_data["analysis.message.text"] = new_text
 
         trans_revision = f"{self.rev}@{datetime.datetime.now().strftime('%Y%m%d')}"
 
         # dot-path key is OK; MongoDBStorage.update will wrap to $set if needed
-        update_data[f"APPENDIX.{APPENDIX_TRANSLATED_REV}"] = trans_revision
-
-        # Use MongoDBStorage.update (it wraps $set, timezone-safe)
-        # Filter UUID should be lowercase to match QueryEngine behavior
-        self.mongo_db_archive.update({"UUID": task.uuid}, update_data)
+        update_data["translation_revision"] = trans_revision
+        collection = getattr(self.mongo_db_archive, "collection", self.mongo_db_archive)
+        collection.update_one({"_id": task.uuid}, {"$set": update_data})
 
         # 6) Re-vectorize with patched content (best-effort)
         if self.on_patched:
-            patched_doc = dict(doc)
-            if new_title: patched_doc["EVENT_TITLE"] = new_title
-            if new_brief: patched_doc["EVENT_BRIEF"] = new_brief
-            if new_text:  patched_doc["EVENT_TEXT"]  = new_text
-            patched_doc.setdefault("APPENDIX", {})[APPENDIX_TRANSLATED_REV] = trans_revision
+            patched_doc = deepcopy(doc)
+            message = patched_doc["analysis"]["message"]
+            if new_title: message["title"] = new_title
+            if new_brief: message["brief"] = new_brief
+            if new_text: message["text"] = new_text
+            patched_doc["translation_revision"] = trans_revision
             self.on_patched(patched_doc)
 
         logger.info("AsyncTranslationPatch updated uuid=%s reason=%s", task.uuid, task.reason)
@@ -341,19 +338,20 @@ class AsyncTranslationPatch:
 
     def _translate_via_ai(self, doc: Dict[str, Any]) -> Tuple[str, str, str]:
         """
-        Translate EVENT_TITLE / EVENT_BRIEF / EVENT_TEXT into zh-CN via a targeted AI client pool.
+        Translate Event V4 message fields into zh-CN via a targeted AI client pool.
 
         Returns:
             (title_zh, brief_zh, text_zh)
             Empty string means "keep original".
         """
         # ---------- Build messages ----------
+        message = (doc.get("analysis") or {}).get("message") or {}
         user_prompt = (
             "请将以下内容翻译为简体中文：\n"
-            f"EVENT_TITLE: {doc.get('EVENT_TITLE','')}\n"
-            f"EVENT_BRIEF: {doc.get('EVENT_BRIEF','')}\n"
-            f"EVENT_TEXT: {doc.get('EVENT_TEXT','')}\n"
-            "\n要求：输出严格 JSON，key 为 EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT。"
+            f"title: {message.get('title', '')}\n"
+            f"brief: {message.get('brief', '')}\n"
+            f"text: {message.get('text', '')}\n"
+            "\n要求：输出严格 JSON，key 为 title, brief, text。"
         )
         messages = [
             {"role": "system", "content": TRANSLATION_SYSTEM_PROMPT},
@@ -446,18 +444,15 @@ class AsyncTranslationPatch:
                     continue
 
                 # 4) Extract fields and sanity-check
-                title_zh = _safe_str(obj.get("EVENT_TITLE", "")).strip()
-                brief_zh = _safe_str(obj.get("EVENT_BRIEF", "")).strip()
-                text_zh  = _safe_str(obj.get("EVENT_TEXT", "")).strip()
+                title_zh = _safe_str(obj.get("title", "")).strip()
+                brief_zh = _safe_str(obj.get("brief", "")).strip()
+                text_zh  = _safe_str(obj.get("text", "")).strip()
 
                 # 必须至少有一个字段有效，否则认为失败（避免模型返回空 JSON）
                 if not (title_zh or brief_zh or text_zh):
                     last_err = {"error": "json_all_empty"}
                     time.sleep(0.6 + 0.4 * i)
                     continue
-
-                # 可选：如果模型把 key 写错（如 EVENT_TITLE_ZH），你也可以做兼容映射
-                # 这里按你要求严格 key，暂不做映射。
 
                 return title_zh, brief_zh, text_zh
 
@@ -499,20 +494,21 @@ class AsyncTranslationPatch:
         logger.info("AsyncTranslationPatch backfill loop stopped.")
 
     def _scan_and_enqueue_backfill(self, limit: int):
-        if self.mongo_db_archive is None or self.mongo_db_archive.collection is None:
+        collection = getattr(self.mongo_db_archive, "collection", self.mongo_db_archive)
+        if collection is None:
             return
 
-        # newest -> older: sort by archived time desc (your system uses APPENDIX.__TIME_ARCHIVED__)
-        cursor = self.mongo_db_archive.collection.find(
-            {f"APPENDIX.{APPENDIX_TRANSLATED_REV}": {"$exists": False}},
-            projection={"UUID": 1, "EVENT_TITLE": 1, "EVENT_BRIEF": 1, "EVENT_TEXT": 1, "APPENDIX": 1}
-        ).sort(f"APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING).limit(limit)
+        # newest -> older by the native V4 archive timestamp
+        cursor = collection.find(
+            {"translation_revision": {"$exists": False}},
+            projection={"_id": 1, "analysis.message": 1}
+        ).sort("archived_at", pymongo.DESCENDING).limit(limit)
 
         count = 0
         for doc in cursor:
             if self.shutdown_flag.is_set():
                 break
-            uuid = str(doc.get("UUID", "")).strip().lower()
+            uuid = str(doc.get("_id", "")).strip().lower()
             if not uuid:
                 continue
             if needs_translation(doc):
