@@ -382,7 +382,6 @@ class SubsystemRegistry:
 
             ctx.cache_query_engine = IntelligenceQueryEngine(ctx.mongo_db_cache)
             ctx.archive_query_engine = IntelligenceQueryEngine(ctx.mongo_db_archive)
-            ctx.statistics_engine = IntelligenceStatisticsEngine(ctx.mongo_db_archive)
 
             # -------- Event V4 存储 --------
             database = ctx.mongo_db_cache.db
@@ -418,6 +417,8 @@ class SubsystemRegistry:
                 ctx.event_v4_event_collection,
                 ctx.event_v4_entity_collection,
             )
+            ctx.statistics_engine = IntelligenceStatisticsEngine(
+                ctx.event_v4_intelligence_collection)
 
             # -------- prompt 表 --------
             if prompt_files:

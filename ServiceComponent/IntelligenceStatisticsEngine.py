@@ -1,20 +1,10 @@
-import re
-import logging
-import pymongo
 import datetime
-from flask import jsonify
-from typing import Optional, List, Tuple, Union, Dict, Any
+from typing import Any, Tuple
 
 from Tools.DateTimeUtility import ensure_timezone_aware
-from Tools.MongoDBAccess import MongoDBStorage
-from ServiceComponent.IntelligenceHubDefines import APPENDIX_TIME_ARCHIVED, APPENDIX_MAX_RATE_SCORE
-
-logger = logging.getLogger(__name__)
-
-
 class IntelligenceStatisticsEngine:
-    def __init__(self, db: MongoDBStorage):
-        self.__mongo_db = db
+    def __init__(self, db: Any):
+        self.__collection = getattr(db, "collection", db)
         try:
             from tzlocal import get_localzone_name
             self.__local_timezone = get_localzone_name()
@@ -36,11 +26,11 @@ class IntelligenceStatisticsEngine:
         pipeline = [
             {
                 "$match": {
-                    f"APPENDIX.{APPENDIX_TIME_ARCHIVED}": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     },
-                    f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}": {
+                    "total_score": {
                         "$gte": 1,
                         "$lte": 10
                     }
@@ -48,7 +38,7 @@ class IntelligenceStatisticsEngine:
             },
             {
                 "$group": {
-                    "_id": f"$APPENDIX.{APPENDIX_MAX_RATE_SCORE}",
+                    "_id": "$total_score",
                     "count": {"$sum": 1}
                 }
             },
@@ -58,8 +48,7 @@ class IntelligenceStatisticsEngine:
         ]
 
         # Execute aggregation query[4](@ref)
-        collection = self.__mongo_db.collection
-        results = collection.aggregate(pipeline)
+        results = self.__collection.aggregate(pipeline)
 
         # Format results for frontend
         score_distribution = {str(i): 0 for i in range(1, 11)}  # Initialize all scores 1-10 with count 0
@@ -76,14 +65,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for hourly statistics
 
         date_in_local_tz = {
-            "date": "$APPENDIX.__TIME_ARCHIVED__",
+            "date": "$archived_at",
             "timezone": self.__local_timezone  # <-- 在这里使用本地时区
         }
 
         pipeline = [
             {
                 "$match": {
-                    "APPENDIX.__TIME_ARCHIVED__": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -110,22 +99,21 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        collection = self.__mongo_db.collection
-        return list(collection.aggregate(pipeline))
+        return list(self.__collection.aggregate(pipeline))
 
     def get_daily_stats(self, start_time: datetime.datetime, end_time: datetime.datetime):
         """Get record counts grouped by day for the specified time range"""
         # MongoDB aggregation pipeline for daily statistics
 
         date_in_local_tz = {
-            "date": "$APPENDIX.__TIME_ARCHIVED__",
+            "date": "$archived_at",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "APPENDIX.__TIME_ARCHIVED__": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -150,8 +138,7 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        collection = self.__mongo_db.collection
-        return list(collection.aggregate(pipeline))
+        return list(self.__collection.aggregate(pipeline))
 
         # return jsonify(result)
 
@@ -160,14 +147,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for weekly statistics
 
         date_in_local_tz = {
-            "date": "$APPENDIX.__TIME_ARCHIVED__",
+            "date": "$archived_at",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "APPENDIX.__TIME_ARCHIVED__": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -190,22 +177,21 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        collection = self.__mongo_db.collection
-        return list(collection.aggregate(pipeline))
+        return list(self.__collection.aggregate(pipeline))
 
     def get_monthly_stats(self, start_time: datetime.datetime, end_time: datetime.datetime):
         """Get record counts grouped by month for the specified time range"""
         # MongoDB aggregation pipeline for monthly statistics
 
         date_in_local_tz = {
-            "date": "$APPENDIX.__TIME_ARCHIVED__",
+            "date": "$archived_at",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "APPENDIX.__TIME_ARCHIVED__": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -228,16 +214,13 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        collection = self.__mongo_db.collection
-        return list(collection.aggregate(pipeline))
+        return list(self.__collection.aggregate(pipeline))
 
     def get_stats_summary(self, start_time: datetime.datetime, end_time: datetime.datetime) -> Tuple[int, list]:
         """Get overall statistics for the specified time range"""
-        collection = self.__mongo_db.collection
-
         # Total count in time range
-        total_count = self.__mongo_db.collection.count_documents({
-            "APPENDIX.__TIME_ARCHIVED__": {
+        total_count = self.__collection.count_documents({
+            "archived_at": {
                 "$gte": ensure_timezone_aware(start_time),
                 "$lte": ensure_timezone_aware(end_time)
             }
@@ -247,7 +230,7 @@ class IntelligenceStatisticsEngine:
         informant_pipeline = [
             {
                 "$match": {
-                    "APPENDIX.__TIME_ARCHIVED__": {
+                    "archived_at": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -255,7 +238,7 @@ class IntelligenceStatisticsEngine:
             },
             {
                 "$group": {
-                    "_id": "$INFORMANT",
+                    "_id": "$informant",
                     "count": {"$sum": 1}
                 }
             },
@@ -267,6 +250,6 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        informant_stats = list(collection.aggregate(informant_pipeline))
+        informant_stats = list(self.__collection.aggregate(informant_pipeline))
 
         return total_count, informant_stats
