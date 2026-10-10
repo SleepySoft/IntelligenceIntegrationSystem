@@ -216,6 +216,9 @@ python CrawlerServiceEngine.py
 > 配置请参阅 [AIClientCenter/README.md](AIClientCenter/README.md)。
 > 免费 API 服务的当前额度、使用边界，以及针对 Event V4 的 Client 能力/性能基准方案见
 > [免费 LLM API 资源池与 Client 基准验证方案](doc/free_llm_api_and_client_benchmark.md)。
+> 准备组合多个免费服务时，可直接复制
+> [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
+> 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。
 > 
 
 #### 启动
