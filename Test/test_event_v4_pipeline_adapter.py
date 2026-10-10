@@ -261,6 +261,21 @@ def test_v4_scorer_reads_nested_rate_with_chinese_aliases():
     assert IntelligenceScoringEngine().calculate_v4(analysis) == 5.9
 
 
+def test_v4_validation_reports_only_the_selected_result_kind():
+    invalid = _valuable()
+    invalid["record_file"] = "internal.txt"
+
+    try:
+        validate_analysis_result_v4(invalid)
+    except Exception as exc:
+        locations = [tuple(item["loc"]) for item in exc.errors(include_url=False)]
+    else:
+        raise AssertionError("validation should fail")
+
+    assert ("valuable", "record_file") in locations
+    assert not any(location[0] == "non_intelligence" for location in locations)
+
+
 def test_v4_transient_analysis_returns_events_without_archive_writes():
     context = FakeContext()
     repository = FakeArchiveRepository()

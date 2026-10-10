@@ -97,6 +97,10 @@ def build_event_extraction_section(registry) -> str:
 - 时间包含 normalized、precision、approximate、surface；precision 使用 year、month、day、hour、minute，不能可靠标准化时 normalized 为 null。
 - `core.context` 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。
 - `core.attributes` 只使用 amount、quantity、ratio、value_before、value_after、delta、duration、level。
+- amount 使用 `{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}`。
+- quantity、value_before、value_after、delta、level 使用 `{{"type":"number","value":5000,"unit":"人","surface":"5000人"}}`。
+- ratio 使用 `{{"type":"ratio","value":0.25,"surface":"25%"}}`，value 范围为 0 至 1。
+- duration 使用 `{{"type":"duration","value":3,"unit":"年","surface":"三年"}}`。
 
 ## 限定词
 

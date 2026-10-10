@@ -5,7 +5,7 @@
 
 import datetime
 import time
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
@@ -126,7 +126,10 @@ class NonIntelligenceV4(StrictModel):
     reason: str = Field(..., min_length=1, max_length=100)
 
 
-AnalysisResultV4 = ValuableIntelligenceV4 | NonIntelligenceV4
+AnalysisResultV4 = Annotated[
+    ValuableIntelligenceV4 | NonIntelligenceV4,
+    Field(discriminator="kind"),
+]
 ANALYSIS_RESULT_V4_ADAPTER = TypeAdapter(AnalysisResultV4)
 
 
