@@ -22,7 +22,7 @@ from ServiceComponent.pipeline.events import (
     INTAKE_RECEIVED,
     INTAKE_REJECTED,
 )
-from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
+from ServiceComponent.runtime import EventPriority, HubEvent, HubPlugin, HubRuntime
 
 
 class EventPipelinePlugin(HubPlugin):
@@ -38,6 +38,11 @@ class EventPipelinePlugin(HubPlugin):
         self._archive = archive
 
     def register(self, runtime: HubRuntime) -> None:
+        # AI 分析与 post-process 使用各自的队列和 worker。事件运行时只认识
+        # worker group 名称，不理解 payload 或领域模型。
+        runtime.route_event(ANALYSIS_REQUESTED, "analysis")
+        runtime.route_event(ANALYSIS_COMPLETED, "postprocess")
+        runtime.route_event(ARCHIVE_REQUESTED, "postprocess")
         runtime.subscribe(INTAKE_RECEIVED, self._on_intake_received)
         runtime.subscribe(INTAKE_ACCEPTED, self._on_intake_accepted)
         runtime.subscribe(ANALYSIS_REQUESTED, self._on_analysis_requested)
@@ -69,7 +74,10 @@ class EventPipelinePlugin(HubPlugin):
 
     @staticmethod
     def _on_intake_accepted(event: HubEvent, runtime: HubRuntime) -> None:
-        runtime.emit(event.derive(ANALYSIS_REQUESTED, event.payload))
+        runtime.emit(
+            event.derive(ANALYSIS_REQUESTED, event.payload),
+            priority=EventPriority.LIVE,
+        )
 
     @staticmethod
     def _on_analysis_completed(event: HubEvent, runtime: HubRuntime) -> None:

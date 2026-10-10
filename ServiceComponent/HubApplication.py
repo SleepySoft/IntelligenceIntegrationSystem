@@ -49,7 +49,13 @@ class HubApplication:
         if self.default_subsystem is None:
             raise ValueError("subsystem_registry 必须提供默认子系统。")
         self.default_subsystem_name = self.default_subsystem.name
-        self.runtime = runtime or HubRuntime(worker_count=worker_count)
+        self.runtime = runtime or HubRuntime(
+            worker_count=1,
+            worker_groups={
+                "analysis": worker_count,
+                "postprocess": 1,
+            },
+        )
         if pipeline_ports is None:
             raise ValueError("pipeline_ports 必须由组合根提供。")
         self._pipeline_ports = pipeline_ports

@@ -26,7 +26,7 @@ IntelligenceHubStartup
 
 | 层 | 职责 | 禁止依赖 |
 | --- | --- | --- |
-| runtime | 事件、队列、并发、停止、失败隔离 | 业务组件、数据库、AI、Web |
+| runtime | 事件、独立 worker 队列、并发、停止、失败隔离 | 业务组件、数据库、AI、Web |
 | pipeline | 收集、分析、归档阶段编排 | Flask、VectorDB、页面 |
 | domain | 输入/输出校验、Prompt、评分、领域路由 | runtime 内部实现 |
 | extensions | 向量、翻译、聚合、图谱、导出、实体频率 | pipeline 私有状态 |
@@ -47,6 +47,15 @@ intake.received
 
 每个插件只能订阅事件并投递后续事件；插件之间不得直接调用。可选扩展订阅
 `archive.completed`，因此关闭某项扩展不会影响主链路。
+
+主链按执行资源分为互不争抢 worker 的队列组：
+
+- `analysis`：AI 分析 worker；组内实时输入与启动回放使用独立 lane，实时优先。
+- `postprocess`：分析结果转换、数据库归档 worker，不受 AI 调用阻塞。
+- `default`：轻量 intake、终态通知和扩展事件分发。
+
+向量化不属于 post-process worker：`IISVectorExtension` 仅在收到归档或翻译完成
+事件后，将记录投入自身 `_pending` 队列，由 `IISVectorIndexer` 独立线程执行索引。
 
 ## 子系统与页面
 

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import itertools
-import queue
 import threading
+import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, deque
 from enum import IntEnum
-from typing import Callable, DefaultDict, Dict, List, Optional
+from typing import Callable, DefaultDict, Dict, List, Mapping, Optional
 
 from ServiceComponent.runtime.events import HandlerFailure, HubEvent
 
@@ -36,6 +35,66 @@ _PRIORITY_LANES = {
 }
 
 
+class _LaneQueue:
+    """一个 worker 组内的独立 FIFO lane 集合。
+
+    live 与 replay 分别保存，避免启动恢复把实时输入淹没；continuation 用于同一
+    执行域内的后续事件。跨执行域的隔离由 HubRuntime 的 worker group 提供。
+    """
+
+    def __init__(self, maxsize: int = 0):
+        self.maxsize = maxsize
+        self._lanes = {
+            "continuation": deque(),
+            "live": deque(),
+            "replay": deque(),
+        }
+        self._condition = threading.Condition()
+
+    def put(self, item: tuple[HubEvent | object, str], *, block: bool = True,
+            timeout: Optional[float] = None) -> None:
+        _, lane = item
+        if lane not in self._lanes:
+            self._lanes[lane] = deque()
+        deadline = None if timeout is None else time.monotonic() + timeout
+        with self._condition:
+            while self.maxsize and self.qsize_unlocked() >= self.maxsize:
+                if not block:
+                    raise RuntimeError("HubRuntime queue is full")
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    raise RuntimeError("HubRuntime queue put timed out")
+                self._condition.wait(remaining)
+            self._lanes[lane].append(item)
+            self._condition.notify_all()
+
+    def get(self) -> tuple[HubEvent | object, str]:
+        with self._condition:
+            while not self.qsize_unlocked():
+                self._condition.wait()
+            for lane in ("continuation", "live", "replay"):
+                values = self._lanes.get(lane)
+                if values:
+                    item = values.popleft()
+                    self._condition.notify_all()
+                    return item
+            raise RuntimeError("HubRuntime queue state is inconsistent")
+
+    def qsize(self) -> int:
+        with self._condition:
+            return self.qsize_unlocked()
+
+    def qsize_unlocked(self) -> int:
+        return sum(len(values) for values in self._lanes.values())
+
+    def empty(self) -> bool:
+        return self.qsize() == 0
+
+    @staticmethod
+    def task_done() -> None:
+        return None
+
+
 class HubPlugin(ABC):
     """运行时扩展的最小生命周期协议。"""
 
@@ -54,7 +113,8 @@ class HubRuntime:
     """不感知业务数据、存储、AI 或 Web 框架的事件运行时。"""
 
     def __init__(self, worker_count: int = 1, queue_size: int = 0,
-                 max_failures: int = 100):
+                 max_failures: int = 100,
+                 worker_groups: Mapping[str, int] | None = None):
         if worker_count < 1:
             raise ValueError("worker_count 必须大于 0。")
         if queue_size < 0:
@@ -62,14 +122,19 @@ class HubRuntime:
         if max_failures < 1:
             raise ValueError("max_failures 必须大于 0。")
 
-        self._worker_count = worker_count
-        self._queue: queue.PriorityQueue[tuple[int, int, HubEvent | object, str]] = (
-            queue.PriorityQueue(maxsize=queue_size)
-        )
-        self._queue_sequence = itertools.count()
+        self._queue_size = queue_size
+        self._worker_counts = {"default": worker_count}
+        for name, count in (worker_groups or {}).items():
+            if not str(name).strip() or int(count) < 1:
+                raise ValueError("worker group 名称不能为空且 worker 数必须大于 0。")
+            self._worker_counts[str(name)] = int(count)
+        self._queues = {
+            name: _LaneQueue(maxsize=queue_size) for name in self._worker_counts
+        }
+        self._event_worker_groups: Dict[str, str] = {}
         self._handlers: DefaultDict[str, List[EventHandler]] = defaultdict(list)
         self._plugins: List[HubPlugin] = []
-        self._workers: List[threading.Thread] = []
+        self._workers: Dict[str, List[threading.Thread]] = defaultdict(list)
         self._failures: List[HandlerFailure] = []
         self._max_failures = max_failures
 
@@ -89,6 +154,8 @@ class HubRuntime:
         }
         self._queued_by_type: DefaultDict[str, int] = defaultdict(int)
         self._queued_by_lane: DefaultDict[str, int] = defaultdict(int)
+        self._queued_by_worker_group: DefaultDict[str, int] = defaultdict(int)
+        self._queued_by_worker_group_lane: DefaultDict[str, int] = defaultdict(int)
         self._active_by_type: DefaultDict[str, int] = defaultdict(int)
         self._processed_by_type: DefaultDict[str, int] = defaultdict(int)
 
@@ -101,6 +168,24 @@ class HubRuntime:
         with self._lock:
             if handler not in self._handlers[event_type]:
                 self._handlers[event_type].append(handler)
+
+    def route_event(self, event_type: str, worker_group: str,
+                    *, worker_count: int = 1) -> None:
+        """把一种事件固定路由到独立队列及 worker 组。"""
+        if not event_type or not worker_group:
+            raise ValueError("event_type 和 worker_group 不能为空。")
+        if worker_count < 1:
+            raise ValueError("worker_count 必须大于 0。")
+        with self._lock:
+            if self._running:
+                raise RuntimeError("运行时启动后不能修改 worker 路由。")
+            existing = self._event_worker_groups.get(event_type)
+            if existing and existing != worker_group:
+                raise ValueError(f"事件 {event_type!r} 已路由到 {existing!r}。")
+            self._event_worker_groups[event_type] = worker_group
+            if worker_group not in self._queues:
+                self._worker_counts[worker_group] = worker_count
+                self._queues[worker_group] = _LaneQueue(maxsize=self._queue_size)
 
     def install(self, plugin: HubPlugin) -> None:
         """安装插件。运行时已启动时，插件立即进入 start 生命周期。"""
@@ -135,7 +220,10 @@ class HubRuntime:
                 else EventPriority.LIVE
             )
         priority_value = int(priority)
-        lane = _PRIORITY_LANES.get(priority_value, f"priority_{priority_value}")
+        try:
+            lane = _PRIORITY_LANES[EventPriority(priority_value)]
+        except (ValueError, KeyError) as exc:
+            raise ValueError(f"不支持的事件优先级: {priority_value}") from exc
         with self._lock:
             if self._stopped or (self._stopping and not getattr(
                     self._dispatch_context, "active", False)):
@@ -144,9 +232,13 @@ class HubRuntime:
             self._stats["emitted"] += 1
             self._queued_by_type[event.event_type] += 1
             self._queued_by_lane[lane] += 1
+            worker_group = self._event_worker_groups.get(event.event_type, "default")
+            worker_queue = self._queues[worker_group]
+            self._queued_by_worker_group[worker_group] += 1
+            self._queued_by_worker_group_lane[f"{worker_group}:{lane}"] += 1
         try:
-            self._queue.put(
-                (priority_value, next(self._queue_sequence), event, lane),
+            worker_queue.put(
+                (event, lane),
                 block=block,
                 timeout=timeout,
             )
@@ -155,6 +247,8 @@ class HubRuntime:
                 self._stats["emitted"] -= 1
                 self._queued_by_type[event.event_type] -= 1
                 self._queued_by_lane[lane] -= 1
+                self._queued_by_worker_group[worker_group] -= 1
+                self._queued_by_worker_group_lane[f"{worker_group}:{lane}"] -= 1
                 if not any(self._queued_by_type.values()) and self._active_count == 0:
                     self._idle.set()
             raise
@@ -167,19 +261,23 @@ class HubRuntime:
             if self._stopped:
                 raise RuntimeError("HubRuntime 已停止，不能重新启动。")
             self._running = True
-            self._workers = [
-                threading.Thread(
-                    target=self._worker_loop,
-                    name=f"HubRuntimeWorker-{index + 1}",
-                    daemon=True,
-                )
-                for index in range(self._worker_count)
-            ]
+            self._workers = defaultdict(list)
+            for group, count in self._worker_counts.items():
+                self._workers[group] = [
+                    threading.Thread(
+                        target=self._worker_loop,
+                        args=(group,),
+                        name=f"HubRuntime-{group}-{index + 1}",
+                        daemon=True,
+                    )
+                    for index in range(count)
+                ]
             plugins = list(self._plugins)
         for plugin in plugins:
             plugin.start(self)
-        for worker in self._workers:
-            worker.start()
+        for workers in self._workers.values():
+            for worker in workers:
+                worker.start()
 
     def stop(self, timeout: float = 5.0, *, drain: bool = True) -> None:
         """停止插件和 worker。默认先处理已入队事件，避免静默丢失。"""
@@ -192,7 +290,9 @@ class HubRuntime:
                 return
             self._stopping = True
             plugins = list(reversed(self._plugins))
-            workers = list(self._workers)
+            workers = {
+                group: list(values) for group, values in self._workers.items()
+            }
             self._running = False
         if drain:
             self.wait_for_idle(timeout=timeout)
@@ -201,10 +301,12 @@ class HubRuntime:
                 plugin.stop(self)
             except Exception:
                 logger.exception("Hub plugin stop failed: %s", type(plugin).__name__)
-        for _ in workers:
-            self._queue.put((-1, next(self._queue_sequence), _STOP, "stop"))
-        for worker in workers:
-            worker.join(timeout=timeout)
+        for group, group_workers in workers.items():
+            for _ in group_workers:
+                self._queues[group].put((_STOP, "continuation"))
+        for group_workers in workers.values():
+            for worker in group_workers:
+                worker.join(timeout=timeout)
         with self._lock:
             self._stopped = True
 
@@ -222,13 +324,22 @@ class HubRuntime:
         with self._lock:
             return {
                 **self._stats,
-                "pending_events": self._queue.qsize(),
+                "pending_events": sum(item.qsize() for item in self._queues.values()),
                 "active_handlers": self._active_count,
                 "queued_by_type": {
                     key: value for key, value in self._queued_by_type.items() if value
                 },
                 "queued_by_lane": {
                     key: value for key, value in self._queued_by_lane.items() if value
+                },
+                "queued_by_worker_group": {
+                    key: value for key, value in self._queued_by_worker_group.items()
+                    if value
+                },
+                "queued_by_worker_group_lane": {
+                    key: value
+                    for key, value in self._queued_by_worker_group_lane.items()
+                    if value
                 },
                 "active_by_type": {
                     key: value for key, value in self._active_by_type.items() if value
@@ -238,9 +349,10 @@ class HubRuntime:
                 },
             }
 
-    def _worker_loop(self) -> None:
+    def _worker_loop(self, worker_group: str) -> None:
+        worker_queue = self._queues[worker_group]
         while True:
-            _, _, item, lane = self._queue.get()
+            item, lane = worker_queue.get()
             try:
                 if item is _STOP:
                     return
@@ -248,6 +360,8 @@ class HubRuntime:
                 with self._lock:
                     self._queued_by_type[item.event_type] -= 1
                     self._queued_by_lane[lane] -= 1
+                    self._queued_by_worker_group[worker_group] -= 1
+                    self._queued_by_worker_group_lane[f"{worker_group}:{lane}"] -= 1
                     self._active_count += 1
                     self._active_by_type[item.event_type] += 1
                 self._dispatch(item)
@@ -258,9 +372,10 @@ class HubRuntime:
                         self._active_by_type[item.event_type] -= 1
                         self._stats["processed"] += 1
                         self._processed_by_type[item.event_type] += 1
-                    if self._queue.empty() and self._active_count == 0:
+                    if (all(item.empty() for item in self._queues.values())
+                            and self._active_count == 0):
                         self._idle.set()
-                self._queue.task_done()
+                worker_queue.task_done()
 
     def _dispatch(self, event: HubEvent) -> None:
         with self._lock:

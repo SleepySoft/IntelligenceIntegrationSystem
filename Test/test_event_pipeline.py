@@ -1,3 +1,5 @@
+import threading
+
 from ServiceComponent.pipeline import (
     ANALYSIS_COMPLETED,
     ANALYSIS_REQUESTED,
@@ -68,3 +70,44 @@ def test_pipeline_rejection_stops_the_following_stages():
     assert isinstance(rejected[0], PipelineStageFailure)
     assert rejected[0].reason == "duplicate"
     assert runtime.stats["handler_failures"] == 0
+
+
+def test_postprocess_worker_runs_while_analysis_worker_is_blocked():
+    analysis_entered = threading.Event()
+    release_analysis = threading.Event()
+    archive_finished = threading.Event()
+    worker_names = {}
+
+    class BlockingAnalysis(FakeAnalysis):
+        def analyze(self, event):
+            worker_names["analysis"] = threading.current_thread().name
+            analysis_entered.set()
+            release_analysis.wait(timeout=1)
+            return super().analyze(event)
+
+    class RecordingArchive(FakeArchive):
+        def archive(self, event):
+            worker_names["postprocess"] = threading.current_thread().name
+            archive_finished.set()
+            return super().archive(event)
+
+    runtime = HubRuntime(
+        worker_count=1,
+        worker_groups={"analysis": 1, "postprocess": 1},
+    )
+    runtime.install(EventPipelinePlugin(FakeIntake(), BlockingAnalysis(), RecordingArchive()))
+    runtime.start()
+    try:
+        runtime.emit(HubEvent(ANALYSIS_REQUESTED, {"slow": True}, "news"))
+        assert analysis_entered.wait(timeout=1)
+
+        # analysis worker 仍被占用时，独立 post-process worker 必须可以完成归档。
+        runtime.emit(HubEvent(ARCHIVE_REQUESTED, {"ready": True}, "news"))
+        assert archive_finished.wait(timeout=1)
+    finally:
+        release_analysis.set()
+        runtime.wait_for_idle(timeout=1)
+        runtime.stop()
+
+    assert worker_names["analysis"].startswith("HubRuntime-analysis-")
+    assert worker_names["postprocess"].startswith("HubRuntime-postprocess-")

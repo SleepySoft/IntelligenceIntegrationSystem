@@ -45,7 +45,8 @@ def format_hub_status(statistics: Mapping[str, Any]) -> str:
     done = _group_event_counts(runtime.get("processed_by_type"))
     attempts = int(analysis.get("attempts", 0))
     average_call_ms = int(analysis.get("call_ms_total", 0)) // attempts if attempts else 0
-    lanes = runtime.get("queued_by_lane", {})
+    worker_groups = runtime.get("queued_by_worker_group", {})
+    group_lanes = runtime.get("queued_by_worker_group_lane", {})
 
     def group_text(values: Mapping[str, int]) -> str:
         return "/".join(f"{key}={values[key]}" for key in _GROUP_ORDER)
@@ -55,8 +56,12 @@ def format_hub_status(statistics: Mapping[str, Any]) -> str:
         f"events emitted={runtime.get('emitted', 0)} processed={runtime.get('processed', 0)} "
         f"handler_failed={runtime.get('handler_failures', 0)} | "
         f"queued total={runtime.get('pending_events', 0)} [{group_text(queued)}] | "
-        f"lanes next={lanes.get('continuation', 0)}/live={lanes.get('live', 0)}/"
-        f"replay={lanes.get('replay', 0)} | "
+        "queues "
+        f"general={worker_groups.get('default', 0)}/"
+        f"analysis={worker_groups.get('analysis', 0)}"
+        f"(live={group_lanes.get('analysis:live', 0)}/"
+        f"replay={group_lanes.get('analysis:replay', 0)})/"
+        f"post={worker_groups.get('postprocess', 0)} | "
         f"active total={runtime.get('active_handlers', 0)} [{group_text(active)}] | "
         "ai "
         f"wait={analysis.get('waiting_client', 0)}/run={analysis.get('ai_running', 0)}/"
