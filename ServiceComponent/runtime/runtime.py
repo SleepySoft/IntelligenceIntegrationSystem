@@ -67,6 +67,9 @@ class HubRuntime:
             "handler_calls": 0,
             "handler_failures": 0,
         }
+        self._queued_by_type: DefaultDict[str, int] = defaultdict(int)
+        self._active_by_type: DefaultDict[str, int] = defaultdict(int)
+        self._processed_by_type: DefaultDict[str, int] = defaultdict(int)
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
         """注册一个事件处理器；相同处理器不会重复注册。"""
@@ -104,7 +107,16 @@ class HubRuntime:
                 raise RuntimeError("HubRuntime 已停止，不能再投递事件。")
             self._idle.clear()
             self._stats["emitted"] += 1
-        self._queue.put(event, block=block, timeout=timeout)
+            self._queued_by_type[event.event_type] += 1
+        try:
+            self._queue.put(event, block=block, timeout=timeout)
+        except Exception:
+            with self._lock:
+                self._stats["emitted"] -= 1
+                self._queued_by_type[event.event_type] -= 1
+                if not any(self._queued_by_type.values()) and self._active_count == 0:
+                    self._idle.set()
+            raise
 
     def start(self) -> None:
         """先启动已安装插件，再启动 worker 消费已排队事件。"""
@@ -171,6 +183,15 @@ class HubRuntime:
                 **self._stats,
                 "pending_events": self._queue.qsize(),
                 "active_handlers": self._active_count,
+                "queued_by_type": {
+                    key: value for key, value in self._queued_by_type.items() if value
+                },
+                "active_by_type": {
+                    key: value for key, value in self._active_by_type.items() if value
+                },
+                "processed_by_type": {
+                    key: value for key, value in self._processed_by_type.items() if value
+                },
             }
 
     def _worker_loop(self) -> None:
@@ -181,13 +202,17 @@ class HubRuntime:
                     return
                 assert isinstance(item, HubEvent)
                 with self._lock:
+                    self._queued_by_type[item.event_type] -= 1
                     self._active_count += 1
+                    self._active_by_type[item.event_type] += 1
                 self._dispatch(item)
             finally:
                 with self._lock:
                     if item is not _STOP:
                         self._active_count -= 1
+                        self._active_by_type[item.event_type] -= 1
                         self._stats["processed"] += 1
+                        self._processed_by_type[item.event_type] += 1
                     if self._queue.empty() and self._active_count == 0:
                         self._idle.set()
                 self._queue.task_done()

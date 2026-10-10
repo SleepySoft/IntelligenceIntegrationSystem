@@ -17,6 +17,7 @@ from ServiceComponent.adapters import (
     EventV4PipelinePorts, IISAsyncTranslationExtension,
     IISUnarchivedReplayExtension, IISVectorExtension)
 from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
+from ServiceComponent.runtime.status import HubStatusLogGate, format_hub_status
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from VectorDB.VectorDBClient import VectorDBClient
@@ -47,13 +48,16 @@ logger = logging.getLogger(__name__)
 self_path = os.path.dirname(os.path.abspath(__file__))
 
 
-def show_intelligence_hub_statistics_forever(hub: HubApplication):
-    prev_statistics = {}
+def show_intelligence_hub_statistics_forever(
+        hub: HubApplication, *, poll_interval: float = 2.0,
+        unchanged_log_interval: float = 60.0):
+    gate = HubStatusLogGate(unchanged_log_interval)
     while True:
-        if hub.statistics != prev_statistics:
-            logger.info(f'Hub queue size: {hub.statistics}')
-            prev_statistics = hub.statistics
-        time.sleep(2)
+        statistics = hub.statistics
+        now = time.monotonic()
+        if gate.should_log(statistics, now):
+            logger.info(format_hub_status(statistics))
+        time.sleep(poll_interval)
 
 
 def build_ai_client_manager(config: EasyConfig):

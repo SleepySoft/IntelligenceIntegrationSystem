@@ -100,3 +100,35 @@ def test_stop_with_drain_allows_a_handler_to_emit_its_next_stage():
 
     runtime.stop(drain=True)
     assert archived == ["kept"]
+
+
+def test_runtime_stats_break_down_queued_active_and_processed_event_types():
+    runtime = HubRuntime(worker_count=1)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def hold(event, _):
+        entered.set()
+        release.wait(timeout=1)
+
+    runtime.subscribe("analysis.requested", hold)
+    runtime.start()
+    runtime.emit(HubEvent("analysis.requested"))
+    assert entered.wait(timeout=1)
+    runtime.emit(HubEvent("archive.requested"))
+
+    active_stats = runtime.stats
+    assert active_stats["active_by_type"] == {"analysis.requested": 1}
+    assert active_stats["queued_by_type"] == {"archive.requested": 1}
+
+    release.set()
+    assert runtime.wait_for_idle(timeout=1)
+    final_stats = runtime.stats
+    runtime.stop()
+
+    assert final_stats["queued_by_type"] == {}
+    assert final_stats["active_by_type"] == {}
+    assert final_stats["processed_by_type"] == {
+        "analysis.requested": 1,
+        "archive.requested": 1,
+    }
