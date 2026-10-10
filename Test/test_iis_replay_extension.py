@@ -13,7 +13,10 @@ class Collection:
                 {"APPENDIX.__ARCHIVED__": {"$exists": False}},
             ]
         }
-        return [{"UUID": "old-1"}, {"UUID": "old-2"}]
+        return [
+            {"_id": "mongo-id-1", "UUID": "old-1"},
+            {"_id": "mongo-id-2", "UUID": "old-2"},
+        ]
 
 
 class Cache:
@@ -35,12 +38,12 @@ def test_replay_extension_resumes_unarchived_cache_at_analysis_stage():
     extension = IISUnarchivedReplayExtension(Registry())
     received = []
     runtime.install(extension)
-    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload["UUID"]))
+    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload))
     runtime.start()
 
     assert _wait_until(lambda: len(received) == 2)
     runtime.stop()
-    assert received == ["old-1", "old-2"]
+    assert received == [{"UUID": "old-1"}, {"UUID": "old-2"}]
     assert extension.replayed == 2
 
 

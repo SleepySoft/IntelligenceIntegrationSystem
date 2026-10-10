@@ -9,8 +9,10 @@ import time
 import dateutil
 import threading
 import traceback
+from uuid import UUID
 from functools import wraps
 from typing import List, Tuple, Any, Dict, Optional
+from bson import ObjectId
 from dateutil import parser as date_parser
 from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
     make_response, Response, send_from_directory
@@ -229,6 +231,8 @@ class IntelligenceHubWebService:
         from enum import Enum
         if isinstance(obj, Enum):
             return obj.value
+        if isinstance(obj, (ObjectId, UUID)):
+            return str(obj)
         if isinstance(obj, dict):
             return {k: IntelligenceHubWebService._serialize_for_json(v) for k, v in obj.items()}
         if isinstance(obj, (list, tuple)):
@@ -236,6 +240,26 @@ class IntelligenceHubWebService:
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
         return obj
+
+    def _intelligence_detail_json(self, intelligence_uuid: str,
+                                  subsystem: Optional[str] = None):
+        """返回可 JSON 序列化的完整情报详情，包括 Mongo 嵌套 BSON 值。"""
+        try:
+            intelligence = self.intelligence_hub.get_intelligence(
+                intelligence_uuid, subsystem=subsystem)
+            if not intelligence:
+                return jsonify({"error": "Intelligence not found"}), 404
+            return jsonify({
+                "success": True,
+                "data": self._serialize_for_json(intelligence),
+            }), 200
+        except Exception:
+            logger.exception(
+                "intelligence detail query failed: uuid=%s subsystem=%s",
+                intelligence_uuid,
+                subsystem,
+            )
+            return jsonify({"error": "Server error"}), 500
 
     # ============================================ Subsystem Query Helpers ============================================
     # 说明：根路径（默认子系统）的查询逻辑保留在 register_routers 内（历史实现，行为不变）；
@@ -606,16 +630,8 @@ class IntelligenceHubWebService:
 
         @bp.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_json(intelligence_uuid: str):
-            try:
-                intelligence = self.intelligence_hub.get_intelligence(
-                    intelligence_uuid, subsystem=subsystem_name)
-                if not intelligence:
-                    return jsonify({"error": "Intelligence not found"}), 404
-                return jsonify({"success": True, "data": intelligence}), 200
-            except Exception as e:
-                print(str(e))
-                traceback.print_exc()
-                return jsonify({"error": "Server error"}), 500
+            return self._intelligence_detail_json(
+                intelligence_uuid, subsystem=subsystem_name)
 
         @bp.route('/assets/<path:filename>', methods=['GET'])
         def subsystem_assets(filename: str):
@@ -887,19 +903,7 @@ class IntelligenceHubWebService:
 
         @app.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_json(intelligence_uuid: str):
-            try:
-                intelligence = self.intelligence_hub.get_intelligence(intelligence_uuid)
-                if not intelligence:
-                    return jsonify({"error": "Intelligence not found"}), 404
-
-                return jsonify({
-                    "success": True,
-                    "data": intelligence
-                }), 200
-            except Exception as e:
-                print(str(e))
-                traceback.print_exc()
-                return jsonify({"error": "Server error"}), 500
+            return self._intelligence_detail_json(intelligence_uuid)
 
         @app.route('/manual_rate', methods=['POST'])
         def submit_rating():

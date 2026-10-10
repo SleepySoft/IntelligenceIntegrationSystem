@@ -54,8 +54,12 @@ class IISUnarchivedReplayExtension(HubPlugin):
                     if self._stop.is_set():
                         return
                     try:
+                        payload = dict(record)
+                        # Mongo cache 的内部主键不是 CollectedDataV4 领域字段，不能进入
+                        # raw_data，否则详情 JSON 会携带不可序列化的 ObjectId。
+                        payload.pop("_id", None)
                         runtime.emit(
-                            HubEvent(ANALYSIS_REQUESTED, dict(record), context.name),
+                            HubEvent(ANALYSIS_REQUESTED, payload, context.name),
                             priority=EventPriority.REPLAY,
                         )
                         self.replayed += 1
