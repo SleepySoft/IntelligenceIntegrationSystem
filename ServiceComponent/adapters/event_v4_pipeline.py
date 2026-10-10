@@ -42,6 +42,7 @@ ARCHIVED_FLAG_ERROR = "E"
 ARCHIVED_FLAG_ARCHIVED = "A"
 ARCHIVED_FLAG_SENSITIVE = "S"
 ARCHIVED_FLAG_DUPLICATED = "U"
+CACHE_ARCHIVED_FLAG_FIELD = "APPENDIX.__ARCHIVED__"
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,7 +268,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def _mark_cache(uuid: str, state: str, ctx: Any) -> None:
         if not uuid or not ctx.mongo_db_cache:
             return
-        ctx.mongo_db_cache.update({"UUID": uuid}, {"processing.status": state})
+        ctx.mongo_db_cache.update({"UUID": uuid}, {CACHE_ARCHIVED_FLAG_FIELD: state})
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

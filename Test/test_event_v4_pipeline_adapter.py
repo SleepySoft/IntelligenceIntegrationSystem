@@ -153,6 +153,10 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert len(repository.events) == 1
     assert repository.archives[0].total_score == 6.5
     assert context.stats["archived"] == 1
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": _original()["UUID"]},
+        {"APPENDIX.__ARCHIVED__": "A"},
+    )
 
 
 def test_v4_adapter_resolves_repository_from_subsystem_context():
@@ -191,6 +195,10 @@ def test_v4_adapter_stores_non_intelligence_envelope_without_events():
     assert len(repository.low_values) == 1
     assert not repository.events
     assert context.stats["dropped"] == 1
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": _original()["UUID"]},
+        {"APPENDIX.__ARCHIVED__": "D"},
+    )
 
 
 def test_v4_scorer_reads_nested_rate_with_chinese_aliases():

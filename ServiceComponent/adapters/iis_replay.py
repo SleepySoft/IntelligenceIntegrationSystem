@@ -40,7 +40,12 @@ class IISUnarchivedReplayExtension(HubPlugin):
             self._thread.join(timeout=2.0)
 
     def _replay(self, runtime: HubRuntime) -> None:
-        query = {"processing.status": {"$exists": False}}
+        query = {
+            "$and": [
+                {"__ARCHIVED__": {"$exists": False}},
+                {"APPENDIX.__ARCHIVED__": {"$exists": False}},
+            ]
+        }
         for context in self.subsystem_registry.enabled_subsystems():
             if self._stop.is_set() or not context.mongo_db_cache:
                 continue

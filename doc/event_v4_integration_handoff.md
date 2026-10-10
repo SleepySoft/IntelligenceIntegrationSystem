@@ -47,7 +47,7 @@ CollectedDataV4
 - `v4_events`
 - `v4_entities`
 - `v4_outbox`
-- `cached`（采集输入及 `processing.status`）
+- `cached`（采集输入；处理终态沿用运行协议 `APPENDIX.__ARCHIVED__`）
 
 ## 尚未纳入本次切换
 

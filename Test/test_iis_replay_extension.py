@@ -7,7 +7,12 @@ from ServiceComponent.runtime import HubRuntime
 
 class Collection:
     def find(self, query):
-        assert query == {"processing.status": {"$exists": False}}
+        assert query == {
+            "$and": [
+                {"__ARCHIVED__": {"$exists": False}},
+                {"APPENDIX.__ARCHIVED__": {"$exists": False}},
+            ]
+        }
         return [{"UUID": "old-1"}, {"UUID": "old-2"}]
 
 
