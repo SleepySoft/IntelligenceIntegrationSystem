@@ -111,8 +111,8 @@ def build_ai_clients() -> dict[str, BaseAIClient]:
             group_id="gemini_free",
             api_factory=create_gemini_client,
             models=_models("GEMINI_MODELS", (
-                "gemini-2.5-flash-lite",
-                "gemini-2.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.5-flash",
             )),
         )
 

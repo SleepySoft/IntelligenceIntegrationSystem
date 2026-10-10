@@ -52,3 +52,14 @@ def test_recommended_config_builds_rotating_provider_pools(monkeypatch):
     )
     assert all(limits[client.group_id] == 1 for client in clients.values())
     assert validate_config(clients, limits)[0] == []
+
+
+def test_recommended_config_uses_current_gemini_free_models(monkeypatch):
+    _clear_provider_environment(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test")
+    clients, _limits = load_config(CONFIG_PATH)
+
+    assert [clients["gemini_free"].model_rotator.get_next() for _ in range(2)] == [
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+    ]
