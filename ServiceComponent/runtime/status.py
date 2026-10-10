@@ -39,6 +39,7 @@ def _numeric_snapshot(value: Any):
 
 def format_hub_status(statistics: Mapping[str, Any]) -> str:
     runtime = statistics.get("runtime", {})
+    analysis = statistics.get("analysis", {})
     queued = _group_event_counts(runtime.get("queued_by_type"))
     active = _group_event_counts(runtime.get("active_by_type"))
     done = _group_event_counts(runtime.get("processed_by_type"))
@@ -52,6 +53,14 @@ def format_hub_status(statistics: Mapping[str, Any]) -> str:
         f"handler_failed={runtime.get('handler_failures', 0)} | "
         f"queued total={runtime.get('pending_events', 0)} [{group_text(queued)}] | "
         f"active total={runtime.get('active_handlers', 0)} [{group_text(active)}] | "
+        "ai "
+        f"wait={analysis.get('waiting_client', 0)}/run={analysis.get('ai_running', 0)}/"
+        f"validate={analysis.get('validation_running', 0)} "
+        f"attempt={analysis.get('attempts', 0)}/response={analysis.get('responses', 0)}/"
+        f"retry={analysis.get('retries', 0)}/valid={analysis.get('validated', 0)}/"
+        f"fail={analysis.get('failed', 0)} "
+        f"errors(call={analysis.get('call_errors', 0)}/api={analysis.get('api_errors', 0)}/"
+        f"validation={analysis.get('validation_errors', 0)}) | "
         f"done [{group_text(done)}] | "
         f"submissions={runtime.get('in_flight_submissions', 0)}"
     )

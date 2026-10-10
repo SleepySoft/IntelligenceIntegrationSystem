@@ -90,6 +90,7 @@ class HubApplication:
             in_flight = len(self._active_submissions)
         return {
             "runtime": {**self.runtime.stats, "in_flight_submissions": in_flight},
+            "analysis": dict(getattr(self._pipeline_ports, "statistics", {}) or {}),
             "subsystems": self.subsystem_registry.describe(),
         }
 

@@ -215,11 +215,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 subsystem=ctx.name,
             )
         except _SensitiveAnalysisError as exc:
+            self._change_runtime_stat("failed")
             if persist:
                 self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_SENSITIVE, ctx)
                 self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_failed:{exc}")
         except Exception as exc:
+            self._change_runtime_stat("failed")
             if persist:
                 self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
                 self._increment_stat(ctx, "error")
@@ -292,29 +294,39 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
         for attempt in range(1, 4):
             ai_client = self._wait_for_ai_client(ctx, user_name)
+            self._change_runtime_stat("attempts")
+            self._change_runtime_stat("ai_running", 1)
             try:
                 service = ai_client.get_api_base_url()
                 model = ai_client.get_current_model()
                 raw_result = (analyzer or self._analyzer)(ai_client, prompt, original_data)
+                self._change_runtime_stat("responses")
             except Exception as exc:
+                self._change_runtime_stat("call_errors")
                 last_error = exc
                 raw_result = None
             finally:
+                self._change_runtime_stat("ai_running", -1)
                 self._ai_client_manager.release_client(ai_client)
 
             if isinstance(raw_result, dict) and raw_result.get("error"):
+                self._change_runtime_stat("api_errors")
                 if raw_result.get("api_error_code") == "HTTP_400":
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
                 last_error = RuntimeError(str(raw_result["error"]))
             elif raw_result is not None:
+                self._change_runtime_stat("validation_running", 1)
                 try:
+                    validated = validate_analysis_result_v4(raw_result)
+                    self._change_runtime_stat("validated")
                     return (
-                        validate_analysis_result_v4(raw_result),
+                        validated,
                         prompt_version,
                         service,
                         model,
                     )
                 except (ValidationError, ValueError, TypeError) as exc:
+                    self._change_runtime_stat("validation_errors")
                     last_error = exc
                     feedback = _compact_validation_error(exc)
                     prompt = (
@@ -323,8 +335,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         + "上一次 JSON 未通过服务端校验。请重新生成完整 JSON，不要解释。错误："
                         + feedback
                     )
+                finally:
+                    self._change_runtime_stat("validation_running", -1)
             if attempt == 3:
                 break
+            self._change_runtime_stat("retries")
             if callable(self._retry_wait):
                 delay = float(self._retry_wait(self._retry_state(attempt)) or 0)
                 if delay > 0:

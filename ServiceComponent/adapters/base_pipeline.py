@@ -47,6 +47,29 @@ class BasePipelinePorts:
         self._analysis_worker_count = analysis_worker_count
         self._wait_warning_lock = threading.Lock()
         self._last_wait_warning = 0.0
+        self._runtime_stats_lock = threading.RLock()
+        self._runtime_stats = {
+            "waiting_client": 0,
+            "ai_running": 0,
+            "validation_running": 0,
+            "attempts": 0,
+            "responses": 0,
+            "retries": 0,
+            "validated": 0,
+            "failed": 0,
+            "call_errors": 0,
+            "api_errors": 0,
+            "validation_errors": 0,
+        }
+
+    @property
+    def statistics(self) -> dict[str, int]:
+        with self._runtime_stats_lock:
+            return dict(self._runtime_stats)
+
+    def _change_runtime_stat(self, name: str, amount: int = 1) -> None:
+        with self._runtime_stats_lock:
+            self._runtime_stats[name] += amount
 
     @staticmethod
     def _load_default_scorer_factory() -> Callable[[Optional[dict]], Any]:
@@ -86,26 +109,30 @@ class BasePipelinePorts:
         return version, override
 
     def _wait_for_ai_client(self, ctx: Any, user_name: str) -> Any:
-        while not self._stop_event.is_set():
-            kwargs = {}
-            if getattr(ctx, "ai_client_group", None):
-                kwargs["target_group_id"] = ctx.ai_client_group
-            client = self._ai_client_manager.wait_for_available_client(
-                user_name,
-                timeout=self._client_wait_timeout,
-                cancel_event=self._stop_event,
-                **kwargs,
-            )
-            if client is not None:
-                return client
-            if self._stop_event.is_set():
-                break
+        self._change_runtime_stat("waiting_client", 1)
+        try:
+            while not self._stop_event.is_set():
+                kwargs = {}
+                if getattr(ctx, "ai_client_group", None):
+                    kwargs["target_group_id"] = ctx.ai_client_group
+                client = self._ai_client_manager.wait_for_available_client(
+                    user_name,
+                    timeout=self._client_wait_timeout,
+                    cancel_event=self._stop_event,
+                    **kwargs,
+                )
+                if client is not None:
+                    return client
+                if self._stop_event.is_set():
+                    break
 
-            capacity = self._ai_client_manager.get_scheduling_capacity(
-                target_group_id=kwargs.get("target_group_id"),
-            )
-            self._warn_client_wait_timeout(capacity, kwargs.get("target_group_id"))
-        raise RuntimeError("hub_stopping_while_waiting_for_ai_client")
+                capacity = self._ai_client_manager.get_scheduling_capacity(
+                    target_group_id=kwargs.get("target_group_id"),
+                )
+                self._warn_client_wait_timeout(capacity, kwargs.get("target_group_id"))
+            raise RuntimeError("hub_stopping_while_waiting_for_ai_client")
+        finally:
+            self._change_runtime_stat("waiting_client", -1)
 
     def _warn_client_wait_timeout(self, capacity: int, target_group_id: str | None) -> None:
         """多个 worker 共用限频窗口，避免同一轮超时同时刷出多条告警。"""
