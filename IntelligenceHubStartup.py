@@ -26,6 +26,7 @@ from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
+from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
@@ -190,11 +191,23 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         )
 
     # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
+    failure_dump_directory = config.get(
+        'intelligence_hub.analysis_failure_dump.directory',
+        os.path.join(DATA_PATH, 'analysis_failures'),
+    )
+    if not os.path.isabs(failure_dump_directory):
+        failure_dump_directory = os.path.join(self_path, failure_dump_directory)
+    failure_recorder = AnalysisFailureRecorder(
+        failure_dump_directory,
+        enabled=config.get('intelligence_hub.analysis_failure_dump.enabled', True),
+        max_files=config.get('intelligence_hub.analysis_failure_dump.max_files', 500),
+    )
     pipeline_ports = EventV4PipelinePorts(
         subsystem_registry,
         client_manager,
         client_wait_timeout=ai_client_wait_timeout,
         analysis_worker_count=ai_analysis_thread,
+        failure_recorder=failure_recorder,
     )
     extensions = []
     services = {}

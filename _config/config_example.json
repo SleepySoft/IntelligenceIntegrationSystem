@@ -6,6 +6,12 @@
     "submission_ack_timeout_sec": 30,
     "replay_unarchived": true,
 
+    "analysis_failure_dump": {
+      "enabled": true,
+      "directory": "_data/analysis_failures",
+      "max_files": 500
+    },
+
     "manual_debug": {
       "max_results": 50,
       "worker_count": 1

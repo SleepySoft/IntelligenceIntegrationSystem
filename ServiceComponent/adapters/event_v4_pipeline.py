@@ -73,6 +73,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         retry_wait: Any = None,
         client_wait_timeout: float = 60.0,
         analysis_worker_count: int = 1,
+        failure_recorder: Any = None,
     ):
         super().__init__(
             subsystem_registry,
@@ -87,6 +88,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._archive_repository = archive_repository
         self._entity_resolver = entity_resolver
         self._event_registry = event_registry
+        self._failure_recorder = failure_recorder
         self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
         if not self._prompt_table:
             raise ValueError("Event V4 prompt_table 不能为空")
@@ -305,6 +307,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 self._change_runtime_stat("responses")
             except Exception as exc:
                 self._change_runtime_stat("call_errors")
+                self._record_failure_sample(
+                    category="call", error=exc, raw_response=None,
+                    original_data=original_data, ctx=ctx, event=event,
+                    attempt=attempt, prompt_version=prompt_version, prompt=prompt,
+                    ai_service=service, ai_model=model,
+                )
                 last_error = exc
                 raw_result = None
             finally:
@@ -317,9 +325,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
             if isinstance(raw_result, dict) and raw_result.get("error"):
                 self._change_runtime_stat("api_errors")
+                api_error = RuntimeError(str(raw_result["error"]))
+                self._record_failure_sample(
+                    category="api", error=api_error, raw_response=raw_result,
+                    original_data=original_data, ctx=ctx, event=event,
+                    attempt=attempt, prompt_version=prompt_version, prompt=prompt,
+                    ai_service=service, ai_model=model,
+                )
                 if raw_result.get("api_error_code") == "HTTP_400":
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
-                last_error = RuntimeError(str(raw_result["error"]))
+                last_error = api_error
             elif raw_result is not None:
                 self._change_runtime_stat("validation_running", 1)
                 try:
@@ -333,6 +348,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     )
                 except (ValidationError, ValueError, TypeError) as exc:
                     self._change_runtime_stat("validation_errors")
+                    self._record_failure_sample(
+                        category="validation", error=exc, raw_response=raw_result,
+                        original_data=original_data, ctx=ctx, event=event,
+                        attempt=attempt, prompt_version=prompt_version, prompt=prompt,
+                        ai_service=service, ai_model=model,
+                    )
                     last_error = exc
                     feedback = _compact_validation_error(exc)
                     prompt = (
@@ -352,6 +373,28 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._stop_event.wait(delay)
         assert last_error is not None
         raise last_error
+
+    def _record_failure_sample(
+        self, *, category: str, error: Exception, raw_response: Any,
+        original_data: dict, ctx: Any, event: HubEvent, attempt: int,
+        prompt_version: int, prompt: str, ai_service: str, ai_model: str,
+    ) -> None:
+        if self._failure_recorder is None:
+            return
+        self._failure_recorder.record(
+            category=category,
+            error=error,
+            raw_response=raw_response,
+            original_data=original_data,
+            subsystem=ctx.name,
+            trace_id=event.correlation_id or event.event_id,
+            attempt=attempt,
+            prompt_version=prompt_version,
+            prompt=prompt,
+            ai_service=ai_service,
+            ai_model=ai_model,
+            transient=(original_data.get("source") == MANUAL_TEST_SOURCE),
+        )
 
     @staticmethod
     def _retry_state(attempt: int):

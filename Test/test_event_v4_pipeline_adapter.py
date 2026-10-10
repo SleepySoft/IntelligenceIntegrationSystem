@@ -66,6 +66,14 @@ class FakeClientManager:
         return 1
 
 
+class FakeFailureRecorder:
+    def __init__(self):
+        self.records = []
+
+    def record(self, **kwargs):
+        self.records.append(kwargs)
+
+
 class FakeArchiveRepository:
     def __init__(self):
         self.archives = []
@@ -135,12 +143,14 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     context = FakeContext()
     repository = FakeArchiveRepository()
     manager = FakeClientManager()
+    failure_recorder = FakeFailureRecorder()
     ports = EventV4PipelinePorts(
         FakeRegistry(context), manager,
         archive_repository=repository,
         analyzer=analyzer,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
+        failure_recorder=failure_recorder,
     )
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
 
@@ -169,6 +179,10 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     }
     assert timing_stats["last_call_ms"] >= 0
     assert timing_stats["call_ms_total"] >= timing_stats["last_call_ms"]
+    assert len(failure_recorder.records) == 1
+    assert failure_recorder.records[0]["category"] == "validation"
+    assert failure_recorder.records[0]["attempt"] == 1
+    assert failure_recorder.records[0]["raw_response"] == {"kind": "valuable"}
 
     archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
     assert archived.accepted
