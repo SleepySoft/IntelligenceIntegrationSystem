@@ -151,6 +151,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     # ------------------------------- Core: IHub -------------------------------
 
     ai_analysis_thread = config.get('intelligence_hub.ai_analysis_thread', 1)
+    ai_client_wait_timeout = config.get('intelligence_hub.ai_client_wait_timeout_sec', 60)
     max_inflight = config.get('intelligence_hub.max_inflight', 2000)
     submission_ack_timeout = config.get('intelligence_hub.submission_ack_timeout_sec', 30)
     mongodb_host = config.get('mongodb.host', 'localhost')
@@ -173,8 +174,24 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
                 f"list={subsystem_registry.describe()}")
 
+    scheduling_capacity = client_manager.get_scheduling_capacity()
+    if ai_analysis_thread > scheduling_capacity:
+        logger.warning(
+            "AI analysis worker count (%d) exceeds schedulable client capacity (%d). "
+            "建议将 intelligence_hub.ai_analysis_thread 调整为不大于 %d，"
+            "或增加启用的 AI 客户端/分组并发上限。",
+            ai_analysis_thread,
+            scheduling_capacity,
+            scheduling_capacity,
+        )
+
     # 可选能力在组合根创建并注入；HubApplication 不知道翻译、VectorDB、集合或索引线程。
-    pipeline_ports = EventV4PipelinePorts(subsystem_registry, client_manager)
+    pipeline_ports = EventV4PipelinePorts(
+        subsystem_registry,
+        client_manager,
+        client_wait_timeout=ai_client_wait_timeout,
+        analysis_worker_count=ai_analysis_thread,
+    )
     extensions = []
     services = {}
     manual_debug_service = ManualDebugAnalysisService(

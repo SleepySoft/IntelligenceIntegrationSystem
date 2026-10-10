@@ -70,7 +70,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         transient_analyzer: Callable[[Any, str, dict], dict] | None = None,
         scorer_factory: Callable[[dict | None], Any] | None = None,
         retry_wait: Any = None,
-        client_wait_interval: float = 1.0,
+        client_wait_timeout: float = 60.0,
+        analysis_worker_count: int = 1,
     ):
         super().__init__(
             subsystem_registry,
@@ -79,7 +80,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
             transient_analyzer=transient_analyzer,
             scorer_factory=scorer_factory,
             retry_wait=retry_wait,
-            client_wait_interval=client_wait_interval,
+            client_wait_timeout=client_wait_timeout,
+            analysis_worker_count=analysis_worker_count,
         )
         self._archive_repository = archive_repository
         self._entity_resolver = entity_resolver

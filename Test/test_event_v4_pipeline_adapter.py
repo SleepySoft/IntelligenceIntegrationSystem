@@ -56,11 +56,14 @@ class FakeClientManager:
         self.client = FakeClient()
         self.released = []
 
-    def get_available_client(self, user, **kwargs):
+    def wait_for_available_client(self, user, **kwargs):
         return self.client
 
     def release_client(self, client):
         self.released.append(client)
+
+    def get_scheduling_capacity(self, target_group_id=None):
+        return 1
 
 
 class FakeArchiveRepository:

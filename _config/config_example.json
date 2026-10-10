@@ -1,6 +1,7 @@
 {
   "intelligence_hub": {
     "ai_analysis_thread": 1,
+    "ai_client_wait_timeout_sec": 60,
     "max_inflight": 2000,
     "submission_ack_timeout_sec": 30,
     "replay_unarchived": true,

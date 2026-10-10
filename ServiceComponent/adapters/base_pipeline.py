@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any, Callable, Optional
 
 from tenacity import wait_exponential
@@ -24,10 +25,13 @@ class BasePipelinePorts:
         transient_analyzer: Optional[Callable[[Any, str, dict], dict]] = None,
         scorer_factory: Callable[[Optional[dict]], Any] | None = None,
         retry_wait: Any = None,
-        client_wait_interval: float = 1.0,
+        client_wait_timeout: float = 60.0,
+        analysis_worker_count: int = 1,
     ):
-        if client_wait_interval <= 0:
-            raise ValueError("client_wait_interval 必须大于 0。")
+        if client_wait_timeout <= 0:
+            raise ValueError("client_wait_timeout 必须大于 0。")
+        if analysis_worker_count < 1:
+            raise ValueError("analysis_worker_count 必须大于 0。")
         self._registry = subsystem_registry
         self._ai_client_manager = ai_client_manager
         self._analyzer = analyzer or self._load_default_analyzer()
@@ -39,7 +43,10 @@ class BasePipelinePorts:
         self._stop_event = threading.Event()
         self._dedupe_lock = threading.RLock()
         self._retry_wait = retry_wait or wait_exponential(multiplier=1, min=1, max=30)
-        self._client_wait_interval = client_wait_interval
+        self._client_wait_timeout = client_wait_timeout
+        self._analysis_worker_count = analysis_worker_count
+        self._wait_warning_lock = threading.Lock()
+        self._last_wait_warning = 0.0
 
     @staticmethod
     def _load_default_scorer_factory() -> Callable[[Optional[dict]], Any]:
@@ -62,6 +69,9 @@ class BasePipelinePorts:
 
     def stop(self) -> None:
         self._stop_event.set()
+        notify_waiters = getattr(self._ai_client_manager, "notify_waiters", None)
+        if callable(notify_waiters):
+            notify_waiters()
 
     @staticmethod
     def _transient_prompt_options(original_data: dict) -> tuple[int | None, str | None]:
@@ -76,20 +86,53 @@ class BasePipelinePorts:
         return version, override
 
     def _wait_for_ai_client(self, ctx: Any, user_name: str) -> Any:
-        attempts = 0
         while not self._stop_event.is_set():
             kwargs = {}
             if getattr(ctx, "ai_client_group", None):
                 kwargs["target_group_id"] = ctx.ai_client_group
-            client = self._ai_client_manager.get_available_client(user_name, **kwargs)
+            client = self._ai_client_manager.wait_for_available_client(
+                user_name,
+                timeout=self._client_wait_timeout,
+                cancel_event=self._stop_event,
+                **kwargs,
+            )
             if client is not None:
                 return client
-            attempts += 1
-            if attempts % 10 == 0:
-                logger.warning(
-                    "Hub analysis is waiting for an available AI client (%ss).", attempts)
-            self._stop_event.wait(self._client_wait_interval)
+            if self._stop_event.is_set():
+                break
+
+            capacity = self._ai_client_manager.get_scheduling_capacity(
+                target_group_id=kwargs.get("target_group_id"),
+            )
+            self._warn_client_wait_timeout(capacity, kwargs.get("target_group_id"))
         raise RuntimeError("hub_stopping_while_waiting_for_ai_client")
+
+    def _warn_client_wait_timeout(self, capacity: int, target_group_id: str | None) -> None:
+        """多个 worker 共用限频窗口，避免同一轮超时同时刷出多条告警。"""
+        now = time.monotonic()
+        with self._wait_warning_lock:
+            if now - self._last_wait_warning < self._client_wait_timeout:
+                return
+            self._last_wait_warning = now
+
+            if self._analysis_worker_count > capacity:
+                logger.warning(
+                    "AI client wait timed out after %.0fs: analysis workers=%d, "
+                    "schedulable client capacity=%d%s. 建议将 ai_analysis_thread 调整为不大于 %d，"
+                    "或增加客户端/分组并发上限。",
+                    self._client_wait_timeout,
+                    self._analysis_worker_count,
+                    capacity,
+                    f", target_group={target_group_id!r}" if target_group_id else "",
+                    capacity,
+                )
+            else:
+                logger.warning(
+                    "AI client wait timed out after %.0fs; all %d schedulable slots are busy%s.",
+                    self._client_wait_timeout,
+                    capacity,
+                    f" in group {target_group_id!r}" if target_group_id else "",
+                )
 
     def _resolve_context(self, event: Any) -> Any:
         ctx = self._registry.resolve(event.subsystem)
