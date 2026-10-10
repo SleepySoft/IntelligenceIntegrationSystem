@@ -18,8 +18,8 @@
       .article-card { background: #fbfcfe; border: 1px solid #dbe3ee; }
       .article-card:hover { border-color: #7aa2d6; }
       .v2-category-tag { background: #dfe9f8; color: #1f4e8c; }
-      .article-title { color: #173e63; }
-      .article-title:hover { color: #0b6bcb; }
+      .article-title { color: #1a73e8; }
+      .article-title:hover { color: #0d47a1; }
       .debug-label { color: #2c5f9a; }
       .article-card .article-meta { color: #4a6a8a; }
     `
