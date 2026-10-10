@@ -4,7 +4,7 @@
 
 [24小时情报聚合](/intelligences/clusters)
 
-[完整情报列表](/intelligences?offset=0&count=20&threshold=6)
+[完整情报列表](/intelligences?per_page=20)
 
 [实体趋势](/statistics/entity_frequency/page)
 

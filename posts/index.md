@@ -6,7 +6,7 @@
 
 #### Intelligence
 
-+ [Intelligence List](/intelligences?offset=0&count=50&threshold=6)
++ [Intelligence List](/intelligences?per_page=50)
 
 + [Aggregated Intelligence](/intelligences/clusters)
 
