@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
@@ -296,6 +297,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             ai_client = self._wait_for_ai_client(ctx, user_name)
             self._change_runtime_stat("attempts")
             self._change_runtime_stat("ai_running", 1)
+            call_started = time.perf_counter()
             try:
                 service = ai_client.get_api_base_url()
                 model = ai_client.get_current_model()
@@ -306,6 +308,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 last_error = exc
                 raw_result = None
             finally:
+                call_ms = max(0, int((time.perf_counter() - call_started) * 1000))
+                with self._runtime_stats_lock:
+                    self._runtime_stats["last_call_ms"] = call_ms
+                    self._runtime_stats["call_ms_total"] += call_ms
                 self._change_runtime_stat("ai_running", -1)
                 self._ai_client_manager.release_client(ai_client)
 

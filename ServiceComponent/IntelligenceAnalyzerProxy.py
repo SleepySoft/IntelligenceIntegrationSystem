@@ -1,5 +1,4 @@
 import json
-import time
 import logging
 import datetime
 import traceback
@@ -215,16 +214,11 @@ def analyze_with_ai(
     """
     messages = build_analyze_message(prompt, structured_data, context)
 
-    start = time.time()
-
     response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
     )
-
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
 
     return conversation_common_process('analysis', messages, response)
 
@@ -237,14 +231,11 @@ def analyze_with_ai_transient(
 ) -> Dict[str, Any]:
     """执行一次不记录 conversation 文件/数据库的临时分析。"""
     messages = build_analyze_message(prompt, structured_data, context)
-    start = time.time()
     response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
     )
-    elapsed = time.time() - start
-    print(f"Transient AI response spends {elapsed} s")
     if not isinstance(response, Dict):
         return {'error': "Invalid AI response."}
     if 'error' in response:

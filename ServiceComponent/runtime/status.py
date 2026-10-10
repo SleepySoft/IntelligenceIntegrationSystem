@@ -43,6 +43,8 @@ def format_hub_status(statistics: Mapping[str, Any]) -> str:
     queued = _group_event_counts(runtime.get("queued_by_type"))
     active = _group_event_counts(runtime.get("active_by_type"))
     done = _group_event_counts(runtime.get("processed_by_type"))
+    attempts = int(analysis.get("attempts", 0))
+    average_call_ms = int(analysis.get("call_ms_total", 0)) // attempts if attempts else 0
 
     def group_text(values: Mapping[str, int]) -> str:
         return "/".join(f"{key}={values[key]}" for key in _GROUP_ORDER)
@@ -59,6 +61,7 @@ def format_hub_status(statistics: Mapping[str, Any]) -> str:
         f"attempt={analysis.get('attempts', 0)}/response={analysis.get('responses', 0)}/"
         f"retry={analysis.get('retries', 0)}/valid={analysis.get('validated', 0)}/"
         f"fail={analysis.get('failed', 0)} "
+        f"latency_ms(last={analysis.get('last_call_ms', 0)}/avg={average_call_ms}) "
         f"errors(call={analysis.get('call_errors', 0)}/api={analysis.get('api_errors', 0)}/"
         f"validation={analysis.get('validation_errors', 0)}) | "
         f"done [{group_text(done)}] | "

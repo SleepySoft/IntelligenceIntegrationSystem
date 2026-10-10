@@ -149,7 +149,12 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert "IIS 情报分析要求" in prompts[0]
     assert "上一次输出的修正要求" in prompts[1]
     assert len(manager.released) == 2
-    assert ports.statistics == {
+    runtime_stats = ports.statistics
+    timing_stats = {
+        "last_call_ms": runtime_stats.pop("last_call_ms"),
+        "call_ms_total": runtime_stats.pop("call_ms_total"),
+    }
+    assert runtime_stats == {
         "waiting_client": 0,
         "ai_running": 0,
         "validation_running": 0,
@@ -162,6 +167,8 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
         "api_errors": 0,
         "validation_errors": 1,
     }
+    assert timing_stats["last_call_ms"] >= 0
+    assert timing_stats["call_ms_total"] >= timing_stats["last_call_ms"]
 
     archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
     assert archived.accepted

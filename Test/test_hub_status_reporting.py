@@ -32,6 +32,8 @@ def _statistics(*, emitted=1, subsystem_name="news"):
             "call_errors": 0,
             "api_errors": 0,
             "validation_errors": 2,
+            "last_call_ms": 35000,
+            "call_ms_total": 90000,
         },
         "subsystems": [{"name": subsystem_name}],
     }
@@ -44,6 +46,7 @@ def test_status_is_a_single_line_with_pipeline_stage_counts():
     assert "queued total=2 [intake=0/analysis=1/result=1/archive=0" in line
     assert "active total=1 [intake=0/analysis=0/result=0/archive=1" in line
     assert "ai wait=1/run=1/validate=0 attempt=3/response=2/retry=1/valid=0/fail=0" in line
+    assert "latency_ms(last=35000/avg=30000)" in line
     assert "errors(call=0/api=0/validation=2)" in line
     assert "done [intake=3/analysis=0" in line
     assert "subsystems" not in line

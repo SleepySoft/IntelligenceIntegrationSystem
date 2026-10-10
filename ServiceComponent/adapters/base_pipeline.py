@@ -60,6 +60,8 @@ class BasePipelinePorts:
             "call_errors": 0,
             "api_errors": 0,
             "validation_errors": 0,
+            "last_call_ms": 0,
+            "call_ms_total": 0,
         }
 
     @property
