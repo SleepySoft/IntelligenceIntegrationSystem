@@ -7,7 +7,7 @@ import threading
 from typing import Any
 
 from ServiceComponent.pipeline import ANALYSIS_REQUESTED
-from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
+from ServiceComponent.runtime import EventPriority, HubEvent, HubPlugin, HubRuntime
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,10 @@ class IISUnarchivedReplayExtension(HubPlugin):
                     if self._stop.is_set():
                         return
                     try:
-                        runtime.emit(HubEvent(ANALYSIS_REQUESTED, dict(record), context.name))
+                        runtime.emit(
+                            HubEvent(ANALYSIS_REQUESTED, dict(record), context.name),
+                            priority=EventPriority.REPLAY,
+                        )
                         self.replayed += 1
                     except RuntimeError:
                         return

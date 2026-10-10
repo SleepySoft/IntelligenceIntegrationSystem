@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import itertools
 import queue
 import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from enum import IntEnum
 from typing import Callable, DefaultDict, Dict, List, Optional
 
 from ServiceComponent.runtime.events import HandlerFailure, HubEvent
@@ -17,6 +19,21 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[HubEvent, "HubRuntime"], None]
 HANDLER_FAILED_EVENT = "runtime.handler_failed"
 _STOP = object()
+
+
+class EventPriority(IntEnum):
+    """运行时调度车道；数值越小越先处理。"""
+
+    CONTINUATION = 0
+    LIVE = 10
+    REPLAY = 20
+
+
+_PRIORITY_LANES = {
+    EventPriority.CONTINUATION: "continuation",
+    EventPriority.LIVE: "live",
+    EventPriority.REPLAY: "replay",
+}
 
 
 class HubPlugin(ABC):
@@ -46,7 +63,10 @@ class HubRuntime:
             raise ValueError("max_failures 必须大于 0。")
 
         self._worker_count = worker_count
-        self._queue: queue.Queue[HubEvent | object] = queue.Queue(maxsize=queue_size)
+        self._queue: queue.PriorityQueue[tuple[int, int, HubEvent | object, str]] = (
+            queue.PriorityQueue(maxsize=queue_size)
+        )
+        self._queue_sequence = itertools.count()
         self._handlers: DefaultDict[str, List[EventHandler]] = defaultdict(list)
         self._plugins: List[HubPlugin] = []
         self._workers: List[threading.Thread] = []
@@ -68,6 +88,7 @@ class HubRuntime:
             "handler_failures": 0,
         }
         self._queued_by_type: DefaultDict[str, int] = defaultdict(int)
+        self._queued_by_lane: DefaultDict[str, int] = defaultdict(int)
         self._active_by_type: DefaultDict[str, int] = defaultdict(int)
         self._processed_by_type: DefaultDict[str, int] = defaultdict(int)
 
@@ -97,10 +118,24 @@ class HubRuntime:
             plugin.start(self)
 
     def emit(self, event: HubEvent, *, block: bool = True,
-             timeout: Optional[float] = None) -> None:
-        """投递事件；调用方可在运行时启动前预先排队。"""
+             timeout: Optional[float] = None,
+             priority: int | EventPriority | None = None) -> None:
+        """投递事件；派生阶段、新数据和回放数据使用独立优先级车道。
+
+        处理器内部产生的后续事件默认进入 ``continuation``，保证一条已开始的
+        流程尽快走到终态；外部提交默认进入 ``live``。批量恢复必须显式指定
+        ``EventPriority.REPLAY``，仅在前两条车道暂时为空时才会被消费。
+        """
         if not isinstance(event, HubEvent):
             raise TypeError("event 必须是 HubEvent。")
+        if priority is None:
+            priority = (
+                EventPriority.CONTINUATION
+                if getattr(self._dispatch_context, "active", False)
+                else EventPriority.LIVE
+            )
+        priority_value = int(priority)
+        lane = _PRIORITY_LANES.get(priority_value, f"priority_{priority_value}")
         with self._lock:
             if self._stopped or (self._stopping and not getattr(
                     self._dispatch_context, "active", False)):
@@ -108,12 +143,18 @@ class HubRuntime:
             self._idle.clear()
             self._stats["emitted"] += 1
             self._queued_by_type[event.event_type] += 1
+            self._queued_by_lane[lane] += 1
         try:
-            self._queue.put(event, block=block, timeout=timeout)
+            self._queue.put(
+                (priority_value, next(self._queue_sequence), event, lane),
+                block=block,
+                timeout=timeout,
+            )
         except Exception:
             with self._lock:
                 self._stats["emitted"] -= 1
                 self._queued_by_type[event.event_type] -= 1
+                self._queued_by_lane[lane] -= 1
                 if not any(self._queued_by_type.values()) and self._active_count == 0:
                     self._idle.set()
             raise
@@ -161,7 +202,7 @@ class HubRuntime:
             except Exception:
                 logger.exception("Hub plugin stop failed: %s", type(plugin).__name__)
         for _ in workers:
-            self._queue.put(_STOP)
+            self._queue.put((-1, next(self._queue_sequence), _STOP, "stop"))
         for worker in workers:
             worker.join(timeout=timeout)
         with self._lock:
@@ -186,6 +227,9 @@ class HubRuntime:
                 "queued_by_type": {
                     key: value for key, value in self._queued_by_type.items() if value
                 },
+                "queued_by_lane": {
+                    key: value for key, value in self._queued_by_lane.items() if value
+                },
                 "active_by_type": {
                     key: value for key, value in self._active_by_type.items() if value
                 },
@@ -196,13 +240,14 @@ class HubRuntime:
 
     def _worker_loop(self) -> None:
         while True:
-            item = self._queue.get()
+            _, _, item, lane = self._queue.get()
             try:
                 if item is _STOP:
                     return
                 assert isinstance(item, HubEvent)
                 with self._lock:
                     self._queued_by_type[item.event_type] -= 1
+                    self._queued_by_lane[lane] -= 1
                     self._active_count += 1
                     self._active_by_type[item.event_type] += 1
                 self._dispatch(item)

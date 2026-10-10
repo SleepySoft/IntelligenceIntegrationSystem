@@ -1,6 +1,12 @@
 import threading
 
-from ServiceComponent.runtime import HandlerFailure, HubEvent, HubPlugin, HubRuntime
+from ServiceComponent.runtime import (
+    EventPriority,
+    HandlerFailure,
+    HubEvent,
+    HubPlugin,
+    HubRuntime,
+)
 
 
 def test_runtime_routes_opaque_payload_and_preserves_subsystem():
@@ -120,6 +126,7 @@ def test_runtime_stats_break_down_queued_active_and_processed_event_types():
     active_stats = runtime.stats
     assert active_stats["active_by_type"] == {"analysis.requested": 1}
     assert active_stats["queued_by_type"] == {"archive.requested": 1}
+    assert active_stats["queued_by_lane"] == {"live": 1}
 
     release.set()
     assert runtime.wait_for_idle(timeout=1)
@@ -132,3 +139,40 @@ def test_runtime_stats_break_down_queued_active_and_processed_event_types():
         "analysis.requested": 1,
         "archive.requested": 1,
     }
+
+
+def test_runtime_prioritizes_live_events_over_replay_backlog():
+    runtime = HubRuntime(worker_count=1)
+    received = []
+    runtime.subscribe("work", lambda event, _: received.append(event.payload))
+    runtime.emit(HubEvent("work", "old-1"), priority=EventPriority.REPLAY)
+    runtime.emit(HubEvent("work", "old-2"), priority=EventPriority.REPLAY)
+    runtime.emit(HubEvent("work", "new"))
+
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+
+    assert received == ["new", "old-1", "old-2"]
+
+
+def test_runtime_prioritizes_derived_stage_over_replay_backlog():
+    runtime = HubRuntime(worker_count=1)
+    received = []
+
+    def analyze(event, hub):
+        received.append(f"analysis:{event.payload}")
+        hub.emit(event.derive("result", event.payload))
+
+    runtime.subscribe("analysis", analyze)
+    runtime.subscribe("result", lambda event, _: received.append(f"result:{event.payload}"))
+    runtime.emit(HubEvent("analysis", "old-1"), priority=EventPriority.REPLAY)
+    runtime.emit(HubEvent("analysis", "old-2"), priority=EventPriority.REPLAY)
+
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+
+    assert received == [
+        "analysis:old-1", "result:old-1", "analysis:old-2", "result:old-2",
+    ]
