@@ -219,6 +219,9 @@ python CrawlerServiceEngine.py
 > 准备组合多个免费服务时，可直接复制
 > [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
 > 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。
+> 不启动主程序即可预览 Event V4 Client 基准计划：
+> `python Scripts/benchmark_ai_clients.py`；确认 Client 和调用次数后增加 `--execute`
+> 才会发送真实请求，结果写入 `_data/ai_benchmarks/`。
 > 
 
 #### 启动

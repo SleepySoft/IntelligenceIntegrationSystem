@@ -1,13 +1,18 @@
 import json
 import logging
-import datetime
 import traceback
 import json_repair
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, ValidationError
 
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
+from ServiceComponent.analysis_messages import (
+    AIMessage,
+    build_analyze_message,
+    build_analyze_user_message,
+    extract_pure_json_text,
+    extract_pure_response,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -17,28 +22,6 @@ logger.setLevel(logging.INFO)
 MAX_OUTPUT_TOKEN = 8192         # The limit of Gemini
 CONVERSATION_PATH = 'conversation'
 conversation_db = HybridDB(CONVERSATION_PATH)
-
-
-class AIMessage(BaseModel):
-    UUID: str
-    content: str
-    title: str | None = None
-    authors: List[str] = []
-    pub_time: object | None = None
-    informant: str | None = None
-
-
-def extract_pure_response(text: str):
-    while '<think>' in text and '</think>' in text:
-        start_idx = text.find('<think>')
-        end_idx = text.find('</think>', start_idx) + len('</think>')
-        text = text[:start_idx] + text[end_idx:]
-    text = text.replace('<answer>', '').replace('</answer>', '')
-    return text.strip()
-
-
-def extract_pure_json_text(text: str):
-    return text.strip().removeprefix('```json').removesuffix('```').strip()
 
 
 def record_conversation(category: str, messages: list, response: dict) -> int:
@@ -140,58 +123,6 @@ def conversation_common_process(category, messages, response) -> dict:
         logger.debug(f'AI {category} conversation successful.', extra={'link_file': record_file_web_path})
 
     return ai_json
-
-
-def build_analyze_user_message(structured_data: Dict[str, Any]) -> str:
-    sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
-    metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
-    metadata_block = '## metadata\n' + "\n".join(metadata_items)
-    content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
-    user_message = metadata_block + content_block
-    return user_message
-
-
-def build_analyze_message(
-    prompt: str,
-    structured_data: Dict[str, Any],
-    context: Optional[List[Dict[str, str]]] = None
-):
-    has_content_placeholder = '{{CONTENT}}' in prompt
-
-    try:
-        user_message = build_analyze_user_message(structured_data)
-    except ValidationError as e:
-        logger.error(f'AI require data field missing: {e}')
-        raise
-    except Exception as e:
-        logger.error(f'Validate AI data fail: {e}')
-        raise
-
-    date_str = datetime.date.today().strftime("%Y-%m-%d")
-    # Similar messages is a reserved feature.
-    prepared_prompt = (prompt.
-                       replace('{{CURRENT_DATE}}', date_str).
-                       replace('{{SIMILAR_MESSAGES}}', ''))
-
-    messages = list(context) if context else []
-
-    if has_content_placeholder:
-        prepared_prompt = prepared_prompt.replace('{{CONTENT}}', user_message)
-        messages.append({
-            "role": "user",
-            "content": prepared_prompt
-        })
-    else:
-        messages.append({
-            "role": "system",
-            "content": prepared_prompt
-        })
-        messages.append({
-            "role": "user",
-            "content": user_message
-        })
-
-    return messages
 
 
 def analyze_with_ai(

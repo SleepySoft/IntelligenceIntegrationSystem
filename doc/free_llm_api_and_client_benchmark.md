@@ -70,7 +70,8 @@ NVIDIA NIM 免费端点只适合作为研发和测试资源。官方条款明确
 
 ### 2.3 Google Gemini API
 
-- `gemini-2.5-flash-lite`、`gemini-2.5-flash` 等模型的免费层输入、输出价格为 0。
+- 新项目默认轮换 `gemini-3.5-flash-lite`、`gemini-3.5-flash`；官方免费层输入、输出
+  价格为 0。2.5 系列仍在服务，但新项目的访问可能受限。
 - 免费层内容可能被 Google 用于改进产品，不应提交敏感或不允许外发的数据。
 - 限额按 Project 而不是 API Key 计算，维度通常包括 RPM、TPM 和 RPD。
 - 官方不再保证一张长期固定的免费限额表，应从 AI Studio 查看实际限额。
@@ -194,29 +195,39 @@ NVIDIA Developer Program 提供免费的托管 NIM API Endpoint，并使用
 
 因此，健康检查只能影响“现在能否调度”，不能作为“模型是否胜任情报分析”的依据。
 
-## 4. 建议新增：Client Benchmark Runner
+## 4. 已实现：Client Benchmark Runner
 
 ### 4.1 目标
 
-新增一个独立、显式触发、不会进入生产队列和业务数据库的基准运行器：
+`Scripts/benchmark_ai_clients.py` 是独立、显式触发、不会进入生产队列和业务数据库的
+基准运行器。它当前满足：
 
 1. 指定一个或多个 Client，而不是让正常调度器随机选择。
 2. 使用生产 Event V4 相同的 Prompt 获取、占位符拼接、响应解析和 Pydantic 校验。
 3. 使用固定测试集，对每个 Client/模型重复运行并横向比较。
 4. 结果写入独立目录，不写 cache、archive、low_value、事件、实体、outbox、翻译或向量库。
-5. 不把基准失败直接污染生产健康状态；网络、鉴权和限流故障单独统计。
+5. 基准运行在独立进程，不启动 Hub/Web；网络、鉴权、限流、JSON 和 V4 校验故障分阶段
+   统计。调用仍会更新该独立进程内的 Client 状态和配置的本地用量文件。
 
 建议命令入口：
 
 ```powershell
 python Scripts/benchmark_ai_clients.py `
   --config _config/ai_client_config.py `
-  --suite _config/ai_benchmark_suite.json `
-  --clients "SiliconFlow Free Qwen,Groq GPT OSS 120B" `
+  --suite _config/ai_benchmark_suite_example.json `
+  --clients "groq_free,gemini_free" `
   --repeat 3
 ```
 
-默认只显示执行计划；真实请求必须显式增加 `--execute`，避免误耗额度。
+默认只显示 Client、样本和真实调用次数，不发送请求。确认计划后增加 `--execute`：
+
+```powershell
+python Scripts/benchmark_ai_clients.py --clients "groq_free,gemini_free" --repeat 3 --execute
+```
+
+`--clients` 同时接受 `AI_CLIENTS` 字典键和 Client 的 `name`；省略时测试配置中的全部
+Client。每个服务内部配置的模型轮换会照常发生，因此逐次记录中的 `model` 可以用于比较
+同一服务的不同模型。
 
 ### 4.2 测试集
 
@@ -254,7 +265,7 @@ python Scripts/benchmark_ai_clients.py `
 
 - Client、服务地址、请求模型、响应模型；
 - Prompt 版本、Prompt 内容哈希、样本 ID、重复序号；
-- 排队时间、首 Token 时间（支持时）、总耗时；
+- 同步调用总耗时；
 - 输入、输出、推理、缓存 Token；
 - HTTP/API 成功，是否超时、限流、鉴权失败或服务端失败；
 - 是否能提取 JSON、是否需要 `json_repair`；
@@ -269,8 +280,8 @@ python Scripts/benchmark_ai_clients.py `
 | 可用性 | 请求成功率、429/5xx/超时率 |
 | 契约能力 | JSON 提取率、V4 校验通过率、无需修复通过率 |
 | 业务能力 | 路由准确率、事件召回率、禁止事实误报率 |
-| 性能 | P50/P95 总耗时、首 Token 时间、有效 Token/s |
-| 成本 | 每成功样本 Token、估算费用、每个 V4 合格结果的费用 |
+| 性能 | P50/P95 总耗时 |
+| 消耗 | 总 Token、每个 V4 合格结果的 Token |
 | 稳定性 | 多次重复结果一致率、连续失败次数 |
 
 核心排序指标应是“每个 V4 合格结果的成本和耗时”，而不是单纯 Token 单价或 HTTP
@@ -278,7 +289,7 @@ python Scripts/benchmark_ai_clients.py `
 
 ### 4.4 结果存储
 
-建议使用 JSONL 保存逐次结果，并生成 Markdown/JSON 汇总：
+运行器使用 JSONL 保存逐次结果，并生成 Markdown/JSON 汇总：
 
 ```text
 _data/ai_benchmarks/
@@ -287,11 +298,12 @@ _data/ai_benchmarks/
     results.jsonl
     summary.json
     summary.md
-    failures/
 ```
 
-失败样本只保存有界、脱敏的 Prompt、原始响应、解析阶段和校验错误。API Key、请求头和
-账号信息不得进入结果文件。目录属于运行时数据，不提交 Git。
+`results.jsonl` 保存有长度上限的原始响应、响应哈希、解析阶段、校验错误、Token usage
+和每条业务断言。`summary.json` 同时按 Client 和实际响应模型聚合，便于看出轮换池中哪个
+模型拖低成功率。API Key、请求头和账号信息不会进入结果文件。输入正文只存在测试集，不在
+每条结果中重复保存。目录属于运行时数据，不提交 Git。
 
 ### 4.5 与生产调度的关系
 
@@ -299,13 +311,13 @@ _data/ai_benchmarks/
 能力配置。生产调度可以在现有优先级、预算和 group limit 之外增加能力过滤，但一次临时
 基准结果不得自动改变生产配置；自动路由至少需要滚动窗口、最小样本量和人工确认。
 
-## 5. 推荐实施顺序
+## 5. 后续增强顺序
 
 1. 给 IIS 人工情报调试增加“固定 Client”选择，使同一正文和同一 Prompt 可以逐 Client
    对比；仍使用 transient V4 链路且不写业务库。
-2. 抽取无 Web 依赖的 benchmark runner，复用人工调试使用的 V4 分析组件。
-3. 建立一小套可提交的脱敏样本，并为 runner 编写完全离线的 fake-client 测试。
-4. 输出 JSONL 和 Markdown 汇总，验证 Token、错误分类和 P50/P95 计算。
+2. 扩充当前三条脱敏 smoke case，加入长正文、多事件和历史校验失败样本。
+3. Provider 支持流式接口后记录首 Token 时间与有效 Token/s。
+4. 增加按 Provider/模型配置的价格快照，计算每个 V4 合格结果的估算费用。
 5. 实测免费服务；样本量足够后再设计能力感知调度，避免提前耦合进主链。
 
 首版不应实现自动注册账号、跨账号规避额度、后台定时消耗免费额度或根据一次测试自动封禁
