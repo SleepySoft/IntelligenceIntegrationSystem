@@ -294,6 +294,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         service = ""
         model = ""
         last_error: Exception | None = None
+        validation_feedback: list[str] = []
 
         for attempt in range(1, 4):
             ai_client = self._wait_for_ai_client(ctx, user_name)
@@ -322,6 +323,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._runtime_stats["call_ms_total"] += call_ms
                 self._change_runtime_stat("ai_running", -1)
                 self._ai_client_manager.release_client(ai_client)
+
+            if isinstance(raw_result, dict) and "record_file" in raw_result:
+                # conversation_common_process 添加的本地诊断元数据不属于 Event V4 响应契约。
+                raw_result = dict(raw_result)
+                raw_result.pop("record_file", None)
 
             if isinstance(raw_result, dict) and raw_result.get("error"):
                 self._change_runtime_stat("api_errors")
@@ -356,11 +362,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     )
                     last_error = exc
                     feedback = _compact_validation_error(exc)
+                    validation_feedback.append(feedback)
                     prompt = (
                         base_prompt
                         + "\n\n# 上一次输出的修正要求\n"
-                        + "上一次 JSON 未通过服务端校验。请重新生成完整 JSON，不要解释。错误："
-                        + feedback
+                        + "此前 JSON 未通过服务端校验。请同时修正以下全部错误，"
+                        + "重新生成完整 JSON，不要解释：\n"
+                        + "\n".join(
+                            f"{index}. {item}"
+                            for index, item in enumerate(validation_feedback, start=1)
+                        )
                     )
                 finally:
                     self._change_runtime_stat("validation_running", -1)

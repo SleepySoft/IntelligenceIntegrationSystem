@@ -196,6 +196,24 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     )
 
 
+def test_v4_adapter_removes_conversation_record_file_before_validation():
+    response = _valuable()
+    response["record_file"] = "analysis/internal-record.txt"
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        analyzer=lambda *_: response,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted
+    assert ports.statistics["attempts"] == 1
+    assert ports.statistics["validation_errors"] == 0
+
+
 def test_v4_adapter_resolves_repository_from_subsystem_context():
     context = FakeContext()
     repository = FakeArchiveRepository()

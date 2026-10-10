@@ -53,7 +53,9 @@ def build_event_extraction_section(registry) -> str:
 - `entities`: 本次输出引用的局部实体，ID 使用 ENT1、ENT2……
 - `events`: 一至三项事件，ID 使用 E1、E2……
 
-每项事件包含 `core.frame`、`core.predicate`、`core.roles`，以及可选的 time、context、attributes、qualifiers、relations。
+每项事件根层只能包含 `id`、`core`、`qualifiers`、`relations`。
+`core` 必须包含 `frame`、`predicate`、`roles`，并可选包含 `time`、`context`、`attributes`；
+禁止把 `time`、`context`、`attributes` 放在事件根层。
 所有实体、事件和限定词引用必须指向本次输出内已声明的局部 ID。
 
 ```json
@@ -91,10 +93,10 @@ def build_event_extraction_section(registry) -> str:
 
 ## 时间、地点和属性
 
-- time 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。
+- `core.time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。
 - 时间包含 normalized、precision、approximate、surface；precision 使用 year、month、day、hour、minute，不能可靠标准化时 normalized 为 null。
-- context 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。
-- attributes 只使用 amount、quantity、ratio、value_before、value_after、delta、duration、level。
+- `core.context` 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。
+- `core.attributes` 只使用 amount、quantity、ratio、value_before、value_after、delta、duration、level。
 
 ## 限定词
 
@@ -105,7 +107,8 @@ def build_event_extraction_section(registry) -> str:
 
 ## 事件关系
 
-关系只允许 causes、promotes、prevents、aggravates、mitigates、precedes、follows、overlaps、condition_for、part_of。target_event_id 必须引用本次输出中的另一事件，禁止自指。
+每项关系使用 `predicate`、`target_event_id` 和可选的 `surface`；禁止使用 `type` 字段。
+`predicate` 只允许 causes、promotes、prevents、aggravates、mitigates、precedes、follows、overlaps、condition_for、part_of。`target_event_id` 必须引用本次输出中的另一事件，禁止自指。
 """
 
 
