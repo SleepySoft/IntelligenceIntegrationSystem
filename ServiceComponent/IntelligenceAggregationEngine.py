@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, List
 
 from GlobalConfig import EXPORT_PATH
+from ServiceComponent.intelligence_time import document_content_time
 from VectorDB.VectorDBClient import VectorDBClient
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class AggregationPlanSpec:
     enable_online: bool = True
     online_params: Dict[str, Any] = None
     persist: bool = True
-    time_field: str = "archived_timestamp"
+    time_field: str = "timestamp"
 
     def to_payload(self) -> Dict[str, Any]:
         return {
@@ -74,7 +75,7 @@ def generate_aggregation_plan(profile: str = "hdbscan_fine") -> AggregationPlanS
         "enable_online": True,
         "online_params": {"T_event": 0.85, "T_dup": 0.95},
         "persist": True,
-        "time_field": "archived_timestamp",
+        "time_field": "timestamp",
     }
 
     if profile == "hdbscan_balanced":
@@ -338,7 +339,7 @@ class IntelligenceAggregationEngine:
         for c in clusters:
             cid = c.get("cluster_id")
             member_docs = [doc_map[mid] for mid in cluster_members.get(cid, []) if mid in doc_map]
-            doc = max(member_docs, key=self._get_archived_sort_value) if member_docs else {}
+            doc = max(member_docs, key=self._get_content_sort_value) if member_docs else {}
             uuid = self._document_id(doc) if doc else c.get("repr_doc_id")
             message = self._message(doc)
             title = message.get("title") or "(No Title)"
@@ -353,7 +354,7 @@ class IntelligenceAggregationEngine:
                 "last_seen": c.get("last_seen"),
                 "repr_uuid": uuid,
                 "cluster_repr_uuid": c.get("repr_doc_id"),
-                "repr_strategy": "latest_archived",
+                "repr_strategy": "latest_content_time",
                 "repr_title": title,
                 "repr_brief": brief,
                 "href": f"/intelligence/{uuid}" if uuid else "#",
@@ -373,20 +374,9 @@ class IntelligenceAggregationEngine:
         summary["clusters"] = out_clusters
         return summary
 
-    def _get_archived_sort_value(self, doc: Dict[str, Any]) -> float:
-        raw = doc.get("archived_at")
-        if raw is None:
-            return 0.0
-        if isinstance(raw, (int, float)):
-            return float(raw)
-        if isinstance(raw, datetime.datetime):
-            return raw.timestamp()
-        if isinstance(raw, str):
-            try:
-                return datetime.datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
-            except ValueError:
-                return 0.0
-        return 0.0
+    def _get_content_sort_value(self, doc: Dict[str, Any]) -> float:
+        value = document_content_time(doc)
+        return value.timestamp() if value is not None else 0.0
 
     def build_rich_cluster_members(
             self,
@@ -401,7 +391,7 @@ class IntelligenceAggregationEngine:
     ) -> Dict[str, Any]:
         """
         组合业务逻辑：获取簇内成员切片。
-        内层支持按 relevance(默认簇内顺序)、score(文章评分) 或 time(归档时间) 排序。
+        内层支持按 relevance(默认簇内顺序)、score(文章评分) 或 time(内容主时间) 排序。
         """
         state = self.get_cluster_state(source=source) or {}
         clusters = state.get("clusters") or {}
@@ -454,7 +444,7 @@ class IntelligenceAggregationEngine:
             )
         elif sort_by == "time":
             items.sort(
-                key=lambda x: self._get_archived_sort_value(x["doc"]),
+                key=lambda x: self._get_content_sort_value(x["doc"]),
                 reverse=descending
             )
         else:

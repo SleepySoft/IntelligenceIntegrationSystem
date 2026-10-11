@@ -68,6 +68,8 @@ def test_vector_engine_consumes_v4_archive_fields():
     assert stored["text"] == "测试标题\n\n测试摘要\n\n测试正文"
     assert stored["metadata"]["total_score"] == 6.5
     assert stored["metadata"]["schema_version"] == "iis-intelligence/4.0"
+    assert stored["metadata"]["timestamp"] == _archive().content_time.timestamp()
+    assert stored["metadata"]["content_time_source"] == "published"
 
 
 def test_vector_search_text_reads_nested_v4_message():

@@ -11,12 +11,16 @@ RENDERER = ROOT / "static" / "js" / "article_detail_renderer.js"
 
 
 def _render_event_section(article: dict) -> str:
+    return _run_renderer("renderEventSection", article)
+
+
+def _run_renderer(method: str, article: dict) -> str:
     if shutil.which("node") is None:
         pytest.skip("Node.js is required for the frontend renderer test")
     script = (
         "global.window = {};\n"
         + RENDERER.read_text(encoding="utf-8")
-        + "\nprocess.stdout.write(window.ArticleDetailRenderer.renderEventSection("
+        + f"\nprocess.stdout.write(window.ArticleDetailRenderer.{method}("
         + json.dumps(article, ensure_ascii=False)
         + "));\n"
     )
@@ -123,3 +127,24 @@ def test_event_section_falls_back_to_extraction_and_escapes_content():
 
 def test_event_section_is_hidden_without_events():
     assert _render_event_section({"analysis": {}}) == ""
+
+
+def test_article_detail_labels_collection_fallback_time():
+    article = {
+        "_id": "intel-1",
+        "content_time": "2026-10-11T04:00:00Z",
+        "content_time_source": "collected",
+        "raw_data": {
+            "collect_time": "2026-10-11T04:00:00Z",
+            "pub_time": None,
+        },
+        "analysis": {
+            "message": {"title": "标题", "brief": "摘要", "text": "正文"},
+            "assessment": {},
+        },
+    }
+
+    html = _run_renderer("generateHTML", article)
+
+    assert "采集时间：" in html
+    assert "Publish:" not in html

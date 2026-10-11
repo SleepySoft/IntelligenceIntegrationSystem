@@ -33,10 +33,11 @@ def test_collected_data_keeps_the_original_input_contract():
         "UUID", "token", "title", "content", "informant",
     }
     assert fields["authors"].default_factory is list
-    assert fields["collect_time"].default_factory.__qualname__ == "datetime.now"
+    assert fields["collect_time"].default_factory.__name__ == "_utc_now"
     assert fields["temp_data"].default_factory is dict
     assert fields["subsystem"].default == ""
     assert CollectedData.model_config["extra"] == "ignore"
+    assert _collected().collect_time.tzinfo == datetime.timezone.utc
 
 
 def test_submission_serializes_rss_struct_time_as_iso8601(monkeypatch):

@@ -311,7 +311,7 @@ class IntelligenceHubWebService:
         return params
 
     def _apply_public_search_limits(self, p: Dict[str, Any], client_ip: str) -> Optional[str]:
-        """对未登录用户应用搜索限制。返回错误信息或 None。游客模式统一仅允许按 Archive Time 搜索。"""
+        """对未登录用户应用搜索限制；时间窗口统一使用内容主时间。"""
         limits = self.public_search_limits
         mode = p.get('search_mode', 'mongo')
 
@@ -323,9 +323,9 @@ class IntelligenceHubWebService:
                     f"\u6b21\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
                 )
 
-        # 游客模式禁止使用 Publish Time，统一使用 Archive Time
-        p['start_time'] = ''
-        p['end_time'] = ''
+        # 游客模式只使用内容主时间，避免与归档时间形成双重过滤。
+        p['archive_start_time'] = ''
+        p['archive_end_time'] = ''
 
         if mode == 'mongo':
             max_per_page = limits.get('mongo_max_per_page', 20)
@@ -337,12 +337,12 @@ class IntelligenceHubWebService:
                 return (f"\u672a\u767b\u5f55\u7528\u6237\u666e\u901a\u641c\u7d22\u4ec5\u652f\u6301\u524d "
                         f"{max_page} \u9875\uff0c\u8bf7\u767b\u5f55\u540e\u67e5\u770b\u66f4\u591a\u3002")
 
-            if not p.get('archive_start_time') or not p.get('archive_end_time'):
+            if not p.get('start_time') or not p.get('end_time'):
                 window_days = limits.get('mongo_default_window_days', 30)
                 now = get_aware_time()
                 start = now - datetime.timedelta(days=window_days)
-                p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+                p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
         if mode.startswith('vector'):
             if mode == 'vector_similar' and not limits.get('vector_allow_similar', False):
@@ -369,12 +369,12 @@ class IntelligenceHubWebService:
             requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
             p['_effective_top_n'] = min(requested_top_n, max_top_n)
 
-            if not p.get('archive_start_time') or not p.get('archive_end_time'):
+            if not p.get('start_time') or not p.get('end_time'):
                 window_days = limits.get('vector_default_window_days', 30)
                 now = get_aware_time()
                 start = now - datetime.timedelta(days=window_days)
-                p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+                p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
         return None
 
@@ -1062,8 +1062,7 @@ class IntelligenceHubWebService:
             """
             对未登录用户应用搜索限制。返回错误信息或 None。
 
-            游客模式统一仅允许按 Archive Time（归档时间）搜索，忽略 Publish Time，
-            避免 Publish Time 与 Archive Time 双重过滤导致结果为空。
+            游客模式统一按内容主时间搜索，忽略归档时间，避免双重过滤。
             """
             limits = self.public_search_limits
             mode = p.get('search_mode', 'mongo')
@@ -1076,9 +1075,8 @@ class IntelligenceHubWebService:
                         f"每分钟最多 {limits.get('requests_per_minute', 10)} 次，请稍后再试。"
                     )
 
-            # 游客模式禁止使用 Publish Time，统一使用 Archive Time
-            p['start_time'] = ''
-            p['end_time'] = ''
+            p['archive_start_time'] = ''
+            p['archive_end_time'] = ''
 
             # Mongo 模式限制
             if mode == 'mongo':
@@ -1090,13 +1088,13 @@ class IntelligenceHubWebService:
                 if p.get('page', 1) > max_page:
                     return f"未登录用户普通搜索仅支持前 {max_page} 页，请登录后查看更多。"
 
-                # 未登录用户强制最近 N 天归档数据
-                if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                # 未登录用户强制最近 N 天内容主时间
+                if not p.get('start_time') or not p.get('end_time'):
                     window_days = limits.get('mongo_default_window_days', 30)
                     now = get_aware_time()
                     start = now - datetime.timedelta(days=window_days)
-                    p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                    p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
             # 向量模式限制
             if mode.startswith('vector'):
@@ -1128,13 +1126,13 @@ class IntelligenceHubWebService:
                 requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
                 p['_effective_top_n'] = min(requested_top_n, max_top_n)
 
-                # 未登录用户强制最近 N 天归档数据
-                if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                # 未登录用户强制最近 N 天内容主时间
+                if not p.get('start_time') or not p.get('end_time'):
                     window_days = limits.get('vector_default_window_days', 30)
                     now = get_aware_time()
                     start = now - datetime.timedelta(days=window_days)
-                    p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                    p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
             return None
 
@@ -2147,7 +2145,10 @@ class IntelligenceHubWebService:
                         title=message.get('title', message['brief']),
                         link=f"/intelligence/{identifier}",
                         description=message['brief'],
-                        pub_date=doc.get('archived_at', default_date))
+                        pub_date=(doc.get('content_time') or
+                                  (doc.get('raw_data') or {}).get('pub_time') or
+                                  (doc.get('raw_data') or {}).get('collect_time') or
+                                  doc.get('archived_at', default_date)))
                     rss_items.append(rss_item)
                 else:
                     logger.warning(f'Warning: archived data field missing.')

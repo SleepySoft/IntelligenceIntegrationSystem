@@ -26,7 +26,7 @@ class IntelligenceStatisticsEngine:
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     },
@@ -65,14 +65,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for hourly statistics
 
         date_in_local_tz = {
-            "date": "$archived_at",
+            "date": "$content_time",
             "timezone": self.__local_timezone  # <-- 在这里使用本地时区
         }
 
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -106,14 +106,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for daily statistics
 
         date_in_local_tz = {
-            "date": "$archived_at",
+            "date": "$content_time",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -147,14 +147,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for weekly statistics
 
         date_in_local_tz = {
-            "date": "$archived_at",
+            "date": "$content_time",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -184,14 +184,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for monthly statistics
 
         date_in_local_tz = {
-            "date": "$archived_at",
+            "date": "$content_time",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -220,7 +220,7 @@ class IntelligenceStatisticsEngine:
         """Get overall statistics for the specified time range"""
         # Total count in time range
         total_count = self.__collection.count_documents({
-            "archived_at": {
+            "content_time": {
                 "$gte": ensure_timezone_aware(start_time),
                 "$lte": ensure_timezone_aware(end_time)
             }
@@ -230,7 +230,7 @@ class IntelligenceStatisticsEngine:
         informant_pipeline = [
             {
                 "$match": {
-                    "archived_at": {
+                    "content_time": {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }

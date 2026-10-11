@@ -125,13 +125,13 @@
             font-weight: 500;
         }
 
-        /* 游客模式下禁用的发布时间选择器 */
-        .disabled-publish-time .flatpickr-input,
-        .disabled-publish-time .clear-date-btn {
+        /* 游客模式下禁用的归档时间选择器 */
+        .disabled-archive-time .flatpickr-input,
+        .disabled-archive-time .clear-date-btn {
             background-color: #e9ecef;
             cursor: not-allowed;
         }
-        .disabled-publish-time label {
+        .disabled-archive-time label {
             text-decoration: line-through;
             opacity: 0.7;
         }
@@ -142,7 +142,7 @@
         {% if public_mode %}
         <div class="alert alert-warning alert-dismissible fade show py-2 mb-3" role="alert">
             <i class="bi bi-info-circle"></i>
-            <strong>游客模式</strong>：仅可搜索最近 {{ public_limits.get('vector_default_window_days', 30) }} 天归档的数据；向量搜索每页最多 {{ public_limits.get('vector_max_per_page', 10) }} 条、最多 {{ public_limits.get('vector_max_page', 2) }} 页、仅摘要库、最低相似度 {{ public_limits.get('vector_min_score_threshold', 0.6) }}。
+            <strong>游客模式</strong>：仅可搜索最近 {{ public_limits.get('vector_default_window_days', 30) }} 天的内容；内容时间优先取发布时间，否则取采集时间。向量搜索每页最多 {{ public_limits.get('vector_max_per_page', 10) }} 条、最多 {{ public_limits.get('vector_max_page', 2) }} 页、仅摘要库、最低相似度 {{ public_limits.get('vector_min_score_threshold', 0.6) }}。
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
         {% endif %}
@@ -175,7 +175,7 @@
 
                             <div class="row g-2">
                                 <div class="col-md-3 public-publish-time-group">
-                                    <label class="compact-label">Publish Time (UTC)</label>
+                                    <label class="compact-label">Content Time (Publish → Collect, UTC)</label>
                                     <div class="input-group input-group-sm">
                                         <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-mongo" placeholder="Pick date range...">
                                         <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-mongo" title="清空">
@@ -245,7 +245,7 @@
 
                             <div class="row g-2">
                                 <div class="col-md-3 public-publish-time-group">
-                                    <label class="compact-label">Publish Time (UTC)</label>
+                                    <label class="compact-label">Content Time (Publish → Collect, UTC)</label>
                                     <div class="input-group input-group-sm">
                                         <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-vector" placeholder="Pick date range...">
                                         <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-vector" title="清空">

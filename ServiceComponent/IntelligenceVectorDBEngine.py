@@ -58,6 +58,8 @@ class IntelligenceVectorDBEngine:
             return None
 
         pub_ts = self._parse_timestamp_safe(intelligence.raw_data.get('pub_time'))
+        collect_ts = self._parse_timestamp_safe(intelligence.raw_data.get('collect_time'))
+        content_ts = self._parse_timestamp_safe(intelligence.content_time)
         archived_ts = self._parse_timestamp_safe(intelligence.archived_at)
         identifier = str(intelligence.intelligence_uuid)
         metadata = {
@@ -67,11 +69,14 @@ class IntelligenceVectorDBEngine:
             "total_score": float(intelligence.total_score),
             "subsystem": intelligence.subsystem,
             "schema_version": intelligence.schema_version,
-            "timestamp": pub_ts if pub_ts is not None else archived_ts
+            "timestamp": content_ts if content_ts is not None else archived_ts,
+            "content_time_source": intelligence.content_time_source,
         }
 
         if pub_ts is not None:
             metadata["pub_timestamp"] = pub_ts
+        if collect_ts is not None:
+            metadata["collect_timestamp"] = collect_ts
 
         return {
             "doc_id": identifier,
@@ -119,7 +124,7 @@ class IntelligenceVectorDBEngine:
         """
         filters = []
 
-        # NOTE: The timestamp and pub_timestamp fields are int type. But archived_timestamp field is float.
+        # timestamp 是统一内容时间；archived_timestamp 仅供显式按归档时间检索。
         if event_period:
             filters.append({
                 "timestamp": {"$gte": int(event_period[0].timestamp())}

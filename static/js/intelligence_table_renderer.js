@@ -105,8 +105,14 @@ class ArticleRenderer {
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
             : (informant || 'Unknown Source');
 
-        const pub_time_raw = article.raw_data?.pub_time || article.raw_data?.collect_time;
-        const pub_time_display = this.formatLocalTime(pub_time_raw);
+        const content_time_raw = article.content_time || article.raw_data?.pub_time
+            || article.raw_data?.collect_time || article.archived_at;
+        const content_time_display = this.formatLocalTime(content_time_raw);
+        const content_time_source = article.content_time_source
+            || (article.raw_data?.pub_time ? 'published' : (article.raw_data?.collect_time ? 'collected' : 'archived'));
+        const content_time_label = {
+            published: 'Published', collected: 'Collected', archived: 'Archived fallback'
+        }[content_time_source] || 'Content time';
 
         // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
         const raw_archived_time = article.archived_at || '';
@@ -178,7 +184,7 @@ class ArticleRenderer {
             </h3>
             <div class="article-meta">
                 ${archived_html}
-                <span class="article-time">Publish: ${pub_time_display}</span>
+                <span class="article-time">${content_time_label}: ${content_time_display}</span>
                 ${vector_score_html}
                 <span class="article-source">Source: ${informant_html}</span>
             </div>

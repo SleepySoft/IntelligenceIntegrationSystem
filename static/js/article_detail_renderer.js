@@ -327,7 +327,15 @@ window.ArticleDetailRenderer = {
 
         const uuid = this.escapeHTML(article?.intelligence_uuid || article?._id || '');
         const informant = article?.informant ? this.escapeHTML(article.informant) : '';
-        const pubTime = this.anyTimeToTimeStr(article?.raw_data?.pub_time || 'N/A');
+        const contentTime = this.anyTimeToTimeStr(
+            article?.content_time || article?.raw_data?.pub_time
+            || article?.raw_data?.collect_time || article?.archived_at || 'N/A');
+        const contentTimeSource = article?.content_time_source
+            || (article?.raw_data?.pub_time ? 'published'
+                : (article?.raw_data?.collect_time ? 'collected' : 'archived'));
+        const contentTimeLabel = {
+            published: '发布时间', collected: '采集时间', archived: '归档时间（兜底）'
+        }[contentTimeSource] || '情报时间';
         const title = this.escapeHTML(article?.analysis?.message?.title || 'No Title');
         const brief = this.escapeHTML(article?.analysis?.message?.brief || 'No Brief');
 
@@ -351,7 +359,7 @@ window.ArticleDetailRenderer = {
                 <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">
                     <div style="min-width:0;">
                         <div style="font-size:12px; color:#555;">
-                            <i class="bi bi-calendar-event"></i> ${pubTime}
+                            <i class="bi bi-calendar-event"></i> ${contentTimeLabel}：${contentTime}
                             &nbsp;|&nbsp; <i class="bi bi-upc-scan"></i> ${uuid}
                         </div>
                         <h3 style="margin:6px 0 0; font-size:20px; line-height:1.35;">${title}</h3>

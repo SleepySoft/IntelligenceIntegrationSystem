@@ -9,6 +9,8 @@ def _document():
         "_id": "intel-1",
         "intelligence_uuid": "intel-1",
         "archived_at": datetime.datetime(2026, 10, 9, tzinfo=datetime.timezone.utc),
+        "content_time": datetime.datetime(2026, 10, 8, tzinfo=datetime.timezone.utc),
+        "content_time_source": "published",
         "analysis": {
             "message": {"title": "港口遇袭", "brief": "A组织袭击B港口。"},
             "event_extraction": {
@@ -41,4 +43,4 @@ def test_aggregation_helpers_read_event_v4_identity_message_and_time():
 
     assert engine._document_id(document) == "intel-1"
     assert engine._message(document)["title"] == "港口遇袭"
-    assert engine._get_archived_sort_value(document) == document["archived_at"].timestamp()
+    assert engine._get_content_sort_value(document) == document["content_time"].timestamp()

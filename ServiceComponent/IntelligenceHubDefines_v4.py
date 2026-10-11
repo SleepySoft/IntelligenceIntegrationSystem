@@ -16,9 +16,14 @@ from event_engine.extraction import (
     event_extraction_json_schema,
     validate_event_extraction,
 )
+from ServiceComponent.intelligence_time import normalize_intelligence_datetime
 
 
 DEFAULT_EVENT_REGISTRY = registry_for("news", "industry", "financial")
+
+
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 class CollectedData(BaseModel):
@@ -42,7 +47,7 @@ class CollectedData(BaseModel):
         ..., min_length=10, description="[MUST]: The main text body to be analyzed by LLM.")
     pub_time: Any | None = Field(None, description="(Optional): Original publish time.")
     collect_time: datetime.datetime | None = Field(
-        default_factory=datetime.datetime.now, description="(Optional): Content collect time.")
+        default_factory=_utc_now, description="(Optional): Content collect time in UTC.")
     informant: str = Field(
         ..., min_length=1, description="[MUST]: The specific source URL or informant ID.")
     subsystem: str = Field(
@@ -70,6 +75,13 @@ class CollectedData(BaseModel):
                     except ValueError:
                         continue
         return value
+
+    @field_validator("collect_time", mode="before")
+    @classmethod
+    def normalize_collect_time(cls, value):
+        if value is None:
+            return None
+        return normalize_intelligence_datetime(value) or value
 
 
 class StrictModel(BaseModel):

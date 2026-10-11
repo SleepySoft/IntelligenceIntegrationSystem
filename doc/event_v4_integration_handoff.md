@@ -32,6 +32,7 @@ CollectedData
 - 事件抽取：`analysis.event_extraction`
 - 总分：`total_score`
 - 原始数据：`raw_data`
+- 内容主时间：`content_time`；来源见 `content_time_source`，优先发布时间，其次采集时间，最后以归档时间兜底
 - 归档时间：`archived_at`
 - 翻译修订：`translation_revision`
 - 人工评分：`manual_rating`

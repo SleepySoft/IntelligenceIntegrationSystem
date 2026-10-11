@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Set, Tuple
 
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
+from ServiceComponent.intelligence_time import document_content_time
 from Tools.MongoDBAccess import MongoDBStorage
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.DictTools import dict_list_to_markdown
@@ -399,29 +400,14 @@ class DynamicGraphEngine:
         return {name for name in names if name and name not in stop_entities}
 
     def _get_timestamp(self, doc: dict) -> float:
-        arch_time = doc.get("archived_at")
-
-        if arch_time is None:
-            logger.warning(f"[Time Missing] intelligence {self._document_id(doc)} 缺失归档时间，使用当前时间兜底！")
-            return time.time()
-
-        if isinstance(arch_time, datetime.datetime):
-            # MongoDB 默认存的是 UTC，但 PyMongo 返回的可能是 naive (无时区) 的 datetime
-            # 我们需要强制附加上 UTC 时区，再转换为时间戳，防止服务器本地时区污染
-            if arch_time.tzinfo is None:
-                arch_time = arch_time.replace(tzinfo=datetime.timezone.utc)
-            return arch_time.timestamp()
-
-        if isinstance(arch_time, str):
-            try:
-                return datetime.datetime.fromisoformat(arch_time.replace('Z', '+00:00')).timestamp()
-            except ValueError:
-                logger.warning(f"[Time Parse Failed] intelligence {self._document_id(doc)} 的归档时间格式异常: {arch_time}")
-                pass
-
-        logger.warning(f"[Time Missing] intelligence {self._document_id(doc)} 缺失归档时间，使用当前系统时间兜底！")
-
-        return time.time()  # 兜底策略
+        content_time = document_content_time(doc)
+        if content_time is not None:
+            return content_time.timestamp()
+        logger.warning(
+            "[Time Missing] intelligence %s 缺少可解析的发布时间、采集时间和归档时间，使用当前时间兜底！",
+            self._document_id(doc),
+        )
+        return time.time()
 
     def _create_graph_node(self, doc: dict, is_seed: bool = False) -> GraphNode:
         timestamp = self._get_timestamp(doc)
@@ -442,7 +428,7 @@ class DynamicGraphEngine:
 
         return GraphNode(
             uuid=self._document_id(doc),
-            incident_time=dt_str,  # 统一使用格式化后的归档时间
+            incident_time=dt_str,
             title=message.get("title") or "无标题",
             brief=message.get("brief") or "",
             is_seed=is_seed,
@@ -561,7 +547,7 @@ class DynamicGraphEngine:
         pipeline = [
             {
                 "$match": {
-                    "archived_at": {"$gte": cutoff_date, "$lte": end_date}
+                    "content_time": {"$gte": cutoff_date, "$lte": end_date}
                 }
             },
             {

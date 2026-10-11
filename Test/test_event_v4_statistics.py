@@ -28,7 +28,7 @@ def test_statistics_engine_uses_v4_archive_fields():
     engine.get_stats_summary(start, end)
 
     score_match = collection.pipelines[0][0]["$match"]
-    assert set(score_match) == {"archived_at", "total_score"}
-    assert collection.pipelines[1][1]["$group"]["_id"]["day"]["$dayOfMonth"]["date"] == "$archived_at"
-    assert "archived_at" in collection.filters[0]
+    assert set(score_match) == {"content_time", "total_score"}
+    assert collection.pipelines[1][1]["$group"]["_id"]["day"]["$dayOfMonth"]["date"] == "$content_time"
+    assert "content_time" in collection.filters[0]
     assert collection.pipelines[2][1]["$group"]["_id"] == "$informant"
