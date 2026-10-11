@@ -23,20 +23,20 @@ Event V4 正确率高，模型新也不应自动获得更高生产优先级。
 
 | 模型系列 | RPM | 输入 TPM | RPD | 建议角色 |
 | --- | ---: | ---: | ---: | --- |
-| Gemini 3.5 Flash Lite | 4K | 4M | 150K | 首选主力候选 |
-| Gemini 3.1 Flash Lite | 4K | 4M | 150K | Lite 备用候选 |
-| Gemini 2.5 Flash Lite | 4K | 4M | 无限制 | 旧版大额度候选，需先实测 |
-| Gemini 3.8 Flash | 1K | 2M | 10K | 质量升级候选 |
-| Gemini 3.7 / 3.6 / 3.5 Flash | 各 1K | 各 2M | 各 10K | 独立质量备用池 |
-| Gemini 2.5 Flash | 1K | 1M | 10K | 旧版备用候选 |
+| Gemini 3.5 Flash Lite | 15 | 250K | 500 | 首选主力候选 |
+| Gemini 3.1 Flash Lite | 15 | 250K | 500 | 主力轮换候选 |
+| Gemini 2.5 Flash Lite | 10 | 250K | 20 | 旧版低日额度备用 |
+| Gemini 3.8 Flash | 5 | 250K | 20 | 质量对照候选 |
+| Gemini 3 / 3.5 / 3.6 / 3.7 Flash | 各 5 | 各 250K | 各 20 | 独立低日额度备用池 |
+| Gemini 2.5 Flash | 5 | 250K | 20 | 旧版备用候选 |
 
 页面把 TPM 标为“每分钟输入 token 数”。当前 Event V4 固定 Prompt 在拼接正文前约
 17,159 个字符、22,521 字节，实际 Token 必须使用每次响应的 `usage.prompt_tokens` 记录，
 不能用字符数直接当 Token 数。
 
-即使按每次 10K 输入 Token、35 秒响应估算，4M TPM 也允许约 400 请求/分钟；达到该
-速率约需 233 个持续并发请求。IIS 当前默认只有 1 个分析 worker，实际瓶颈首先是本地
-Client 并发模型和 worker 数，而不是 Gemini 的公开 RPM。
+按每次 10K 输入 Token 估算，250K TPM 理论上允许约 25 请求/分钟；主力 Lite 会先受
+15 RPM 限制，普通 Flash 会先受 5 RPM 限制。当前少量分析 worker 下，分钟额度通常仍
+不是瓶颈，长期吞吐主要受 RPD 和单请求延迟约束。
 
 ### 2.2 Batch API
 
@@ -82,9 +82,9 @@ Event V4 会把校验错误追加到 Prompt 后重试，但当前重新获取 Cl
 ```text
 GeminiProjectPool (一个 Project / API Key 集合)
 ├─ gemini-3.5-flash-lite  [primary, N 个实时槽]
-├─ gemini-3.1-flash-lite  [lite fallback, N 个实时槽]
-├─ gemini-3.8-flash       [quality, M 个实时槽]
-├─ gemini-3.7-flash       [quality fallback, M 个实时槽]
+├─ gemini-3.1-flash-lite  [primary, N 个实时槽]
+├─ gemini-3.8-flash       [reserve, M 个实时槽]
+├─ gemini-3.7-flash       [reserve, M 个实时槽]
 └─ Batch adapter          [独立异步任务状态机]
 ```
 
@@ -167,28 +167,26 @@ attempt 3: 未尝试过的普通 Flash / 其他高质量 Provider
 
 建议保留：
 
-- RPM/TPM 仅使用页面限额的 80%，吸收统计延迟和突发请求；
-- 普通 Flash 的 RPD 使用 70% 作为自动分析池，20% 留给校验升级，10% 留给人工调试；
-- Lite 的 RPD 使用 90%，保留 10% 作为突发和恢复余量。
+- RPM/TPM/RPD 均只使用页面限额的 80%，吸收统计延迟、人工调试和突发请求；
+- 3.1/3.5 Flash Lite 各使用 400 RPD，作为自动分析主力；
+- 其余模型各使用 16 RPD，只作为低日额度补充与对照池。
 
 限额值来自配置快照，但运行时以响应头、429 和本地观测修正；不能把 2026-10-11 的数字
 当作永久常量。
 
 ## 7. 配置建议
 
-用分层变量代替单一 `GEMINI_MODELS`：
+使用统一模型白名单和两级并发槽：
 
 ```text
-GEMINI_FLASH_LITE_MODELS=gemini-3.5-flash-lite,gemini-3.1-flash-lite
-GEMINI_FLASH_QUALITY_MODELS=gemini-3.8-flash,gemini-3.7-flash
-GEMINI_FLASH_LITE_SLOTS=4
-GEMINI_FLASH_QUALITY_SLOTS=2
+GEMINI_MODELS=gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.8-flash
+GEMINI_PRIMARY_SLOTS=2
+GEMINI_RESERVE_SLOTS=1
 GEMINI_QUOTA_SAFETY_RATIO=0.8
-GEMINI_QUALITY_AUTO_RPD_RATIO=0.7
-GEMINI_QUALITY_RETRY_RPD_RATIO=0.2
+GEMINI_RATE_LIMIT_DB=./_data/ai_rate_limits.sqlite3
 ```
 
-Slot 数应与 `intelligence_hub.ai_analysis_thread` 联动。首轮建议 4 个 Lite 槽、2 个质量槽，
+Slot 数应与 `intelligence_hub.ai_analysis_thread` 联动。首轮建议每个主力模型 2 个槽、每个备用模型 1 个槽，
 但先把 worker 保持在 2；验证无共享状态竞争后再提高到 4。启动日志应报告总 worker、可调度
 槽、每层槽数，而不是只显示 Client 数量。
 

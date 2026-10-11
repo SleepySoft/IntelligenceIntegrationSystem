@@ -14,7 +14,9 @@ Gemini Flash 80% quota pool:
 
 1. Copy ``ai_client_config_gemini_80_example.py`` to ``ai_client_config.py``.
 2. Set ``GEMINI_API_KEY`` (and optional ``GEMINI_PROXY``).
-3. The defaults create two slots per Flash Lite model and one per quality Flash model.
-   Use ``GEMINI_FLASH_LITE_SLOTS`` / ``GEMINI_FLASH_QUALITY_SLOTS`` to match Hub workers.
+3. The defaults create two slots per primary Flash Lite model and one per reserve model.
+   Use ``GEMINI_PRIMARY_SLOTS`` / ``GEMINI_RESERVE_SLOTS`` to match Hub workers.
 4. ``GEMINI_QUOTA_SAFETY_RATIO`` defaults to 0.8. ``GEMINI_MODELS`` can restrict the
    model list after the standalone benchmark confirms the model IDs and Event V4 quality.
+5. Rolling RPM/TPM/RPD usage is stored in ``_data/ai_rate_limits.sqlite3`` by default.
+   ``GEMINI_RATE_LIMIT_DB`` can override the path; expired rows are removed automatically.

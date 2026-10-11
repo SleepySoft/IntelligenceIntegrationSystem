@@ -1,14 +1,16 @@
 """Gemini Flash 专用 AI Client 配置（按项目限额的 80% 主动控流）。
 
 复制本文件为 ``_config/ai_client_config.py``，设置 ``GEMINI_API_KEY`` 后使用。
-配额来自 2026-10-11 AI Studio Tier 1 项目页面；Google 调整额度后应同步修改
-``MODEL_LIMITS``。多个 API Key 不会放大同一项目的额度。
+配额来自 2026-10-11 AI Studio 免费层项目页面；Google 调整额度后应同步修改
+``MODEL_LIMITS``。多个 API Key 不会放大同一项目的额度。请求记录持久化到 SQLite，
+程序重启后仍会继续遵守滚动 RPM/TPM/RPD 限额。
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from AIClientCenter.core.manager import (
     BaseAIClient,
@@ -32,16 +34,17 @@ class GeminiModelLimit:
     tier: str
 
 
-# TPM 是输入 token/minute；RPD=None 表示项目页面显示“不限”。
+# TPM 是输入 token/minute。这里登记服务商原始额度，由限额器统一使用 80%。
 MODEL_LIMITS: dict[str, GeminiModelLimit] = {
-    "gemini-3.5-flash-lite": GeminiModelLimit(4000, 4_000_000, 150_000, "lite"),
-    "gemini-3.1-flash-lite": GeminiModelLimit(4000, 4_000_000, 150_000, "lite"),
-    "gemini-2.5-flash-lite": GeminiModelLimit(4000, 4_000_000, None, "lite"),
-    "gemini-3.8-flash": GeminiModelLimit(1000, 2_000_000, 10_000, "quality"),
-    "gemini-3.7-flash": GeminiModelLimit(1000, 2_000_000, 10_000, "quality"),
-    "gemini-3.6-flash": GeminiModelLimit(1000, 2_000_000, 10_000, "quality"),
-    "gemini-3.5-flash": GeminiModelLimit(1000, 2_000_000, 10_000, "quality"),
-    "gemini-2.5-flash": GeminiModelLimit(1000, 1_000_000, 10_000, "quality"),
+    "gemini-3.5-flash-lite": GeminiModelLimit(15, 250_000, 500, "primary"),
+    "gemini-3.1-flash-lite": GeminiModelLimit(15, 250_000, 500, "primary"),
+    "gemini-2.5-flash-lite": GeminiModelLimit(10, 250_000, 20, "reserve"),
+    "gemini-3.8-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
+    "gemini-3.7-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
+    "gemini-3.6-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
+    "gemini-3.5-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
+    "gemini-3-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
+    "gemini-2.5-flash": GeminiModelLimit(5, 250_000, 20, "reserve"),
 }
 
 
@@ -69,6 +72,13 @@ def _selected_models() -> list[str]:
     return models
 
 
+def _rate_limit_db_path() -> Path:
+    configured = os.getenv("GEMINI_RATE_LIMIT_DB", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return Path(__file__).resolve().parents[1] / "_data" / "ai_rate_limits.sqlite3"
+
+
 def build_ai_clients() -> dict[str, BaseAIClient]:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
@@ -76,20 +86,23 @@ def build_ai_clients() -> dict[str, BaseAIClient]:
 
     ratio = _ratio()
     slots = {
-        "lite": _positive_int("GEMINI_FLASH_LITE_SLOTS", 2),
-        "quality": _positive_int("GEMINI_FLASH_QUALITY_SLOTS", 1),
+        "primary": _positive_int("GEMINI_PRIMARY_SLOTS", 2),
+        "reserve": _positive_int("GEMINI_RESERVE_SLOTS", 1),
     }
     priorities = {
-        "lite": CLIENT_PRIORITY_FREEBIE,
-        # 普通 Flash 默认只在 Lite 无可用槽/额度时接管；人工测试仍可按名称固定选择。
-        "quality": CLIENT_PRIORITY_CONSUMABLES,
+        "primary": CLIENT_PRIORITY_FREEBIE,
+        # 低 RPD 模型只在两个主力 Lite 暂时不可用或额度耗尽后接管。
+        "reserve": CLIENT_PRIORITY_CONSUMABLES,
     }
+    rate_limit_db = _rate_limit_db_path()
     limiters = {
         model: EstimatedRateLimiter(
             rpm=MODEL_LIMITS[model].rpm,
             tpm=MODEL_LIMITS[model].tpm,
             rpd=MODEL_LIMITS[model].rpd,
             utilization_ratio=ratio,
+            storage_path=rate_limit_db,
+            storage_namespace=f"google-generative-language:{model}",
         )
         for model in _selected_models()
     }

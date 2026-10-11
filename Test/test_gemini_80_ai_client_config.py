@@ -1,9 +1,16 @@
 from pathlib import Path
 
+import pytest
+
 from AIClientCenter.cli.launcher import load_config, validate_config
 
 
 CONFIG_PATH = Path(__file__).parents[1] / "_config" / "ai_client_config_gemini_80_example.py"
+
+
+@pytest.fixture(autouse=True)
+def isolated_rate_limit_database(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_RATE_LIMIT_DB", str(tmp_path / "gemini_rate_limits.sqlite3"))
 
 
 def test_config_registers_nothing_without_key(monkeypatch):
@@ -18,8 +25,8 @@ def test_config_registers_nothing_without_key(monkeypatch):
 def test_config_builds_shared_per_model_limiters_at_80_percent(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_MODELS", "gemini-3.5-flash-lite,gemini-3.5-flash")
-    monkeypatch.setenv("GEMINI_FLASH_LITE_SLOTS", "2")
-    monkeypatch.setenv("GEMINI_FLASH_QUALITY_SLOTS", "1")
+    monkeypatch.setenv("GEMINI_PRIMARY_SLOTS", "2")
+    monkeypatch.setenv("GEMINI_RESERVE_SLOTS", "1")
 
     clients, limits = load_config(CONFIG_PATH)
     errors, warnings = validate_config(clients, limits)
@@ -32,21 +39,47 @@ def test_config_builds_shared_per_model_limiters_at_80_percent(monkeypatch):
     quality = [client for client in clients.values() if "flash-lite" not in client.name]
     assert lite[0].rate_limiter is lite[1].rate_limiter
     assert lite[0].get_rate_limit_snapshot()["effective_limits"] == {
-        "rpm": 3200, "tpm": 3_200_000, "rpd": 120_000,
+        "rpm": 12, "tpm": 200_000, "rpd": 400,
     }
     assert quality[0].get_rate_limit_snapshot()["effective_limits"] == {
-        "rpm": 800, "tpm": 1_600_000, "rpd": 8000,
+        "rpm": 4, "tpm": 200_000, "rpd": 16,
     }
+    assert lite[0].get_rate_limit_snapshot()["persistent"] is True
+    assert lite[0].get_rate_limit_snapshot()["storage_namespace"] == (
+        "google-generative-language:gemini-3.5-flash-lite"
+    )
 
 
-def test_config_can_use_80_percent_of_unlimited_rpd_model(monkeypatch):
+def test_config_applies_free_quota_to_legacy_lite_model(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_MODELS", "gemini-2.5-flash-lite")
-    monkeypatch.setenv("GEMINI_FLASH_LITE_SLOTS", "1")
+    monkeypatch.setenv("GEMINI_RESERVE_SLOTS", "1")
 
     clients, _limits = load_config(CONFIG_PATH)
     snapshot = next(iter(clients.values())).get_rate_limit_snapshot()
 
     assert snapshot["effective_limits"] == {
-        "rpm": 3200, "tpm": 3_200_000, "rpd": None,
+        "rpm": 8, "tpm": 200_000, "rpd": 16,
     }
+
+
+def test_config_contains_all_confirmed_free_models(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_PRIMARY_SLOTS", "1")
+    monkeypatch.setenv("GEMINI_RESERVE_SLOTS", "1")
+
+    clients, limits = load_config(CONFIG_PATH)
+
+    models = {client.get_current_model() for client in clients.values()}
+    assert models == {
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-3-flash",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+    }
+    assert limits == {"gemini_flash_80": 9}
