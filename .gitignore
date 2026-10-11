@@ -199,6 +199,7 @@ _config/*
 !_config/collector_example.json
 !_config/ai_client_config_example.py
 !_config/ai_client_config_recommended_example.py
+!_config/ai_client_config_gemini_80_example.py
 !_config/ai_benchmark_suite_example.json
 !_config/subsystems/
 !_config/subsystems/**
