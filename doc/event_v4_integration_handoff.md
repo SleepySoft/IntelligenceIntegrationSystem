@@ -19,6 +19,7 @@ CollectedData
 
 - `prompts_event_v4.py` 组合 IIS 外层分析要求与 `event_engine` Registry 生成的事件抽取章节。
 - `event_engine` Registry 是谓词、Frame、角色和语义校验的唯一规则源。
+- `ServiceComponent.intelligence_contracts` 是 V4 跨组件 schema 版本、状态码、集合后缀、内容时间来源和稳定实体命名空间的唯一规则源。
 - 情报、事件、实体和 outbox 使用每个子系统独立的 MongoDB 集合。
 - 多集合提交采用可重放 outbox；启动时执行 `recover_pending()`。
 - 人工调试使用同一个 `EventV4PipelinePorts`，可选择版本、查看 Prompt、覆盖 Prompt，并保持无业务库写入。

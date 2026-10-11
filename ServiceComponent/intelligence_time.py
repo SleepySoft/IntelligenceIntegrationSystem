@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import datetime
 import time
-from typing import Any, Literal, Mapping
+from typing import Any, Mapping
 
 from Tools.DateTimeUtility import ensure_timezone_aware, time_str_to_datetime
-
-
-ContentTimeSource = Literal["published", "collected", "archived"]
+from ServiceComponent.intelligence_contracts import ContentTimeSource
 
 
 def publication_time_has_clock(value: Any) -> bool:
@@ -84,11 +82,11 @@ def resolve_content_time(
     raw_pub_time = raw.get("pub_time")
     if publication_time_has_clock(raw_pub_time):
         if value := normalize_intelligence_datetime(raw_pub_time):
-            return value, "published"
+            return value, ContentTimeSource.PUBLISHED
     if value := normalize_intelligence_datetime(raw.get("collect_time")):
-        return value, "collected"
+        return value, ContentTimeSource.COLLECTED
     if value := normalize_intelligence_datetime(archived_at):
-        return value, "archived"
+        return value, ContentTimeSource.ARCHIVED
     raise ValueError("情报缺少可解析的发布时间、采集时间和归档时间")
 
 
@@ -98,7 +96,7 @@ def document_content_time(document: Mapping[str, Any]) -> datetime.datetime | No
     raw_data = document.get("raw_data") or {}
     if value := normalize_intelligence_datetime(document.get("content_time")):
         raw_pub_time = raw_data.get("pub_time")
-        if document.get("content_time_source") != "published" \
+        if document.get("content_time_source") != ContentTimeSource.PUBLISHED \
                 or raw_pub_time is None \
                 or publication_time_has_clock(raw_pub_time):
             return value

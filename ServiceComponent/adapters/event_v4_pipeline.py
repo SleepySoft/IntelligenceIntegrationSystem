@@ -33,17 +33,15 @@ from ServiceComponent.event_v4_conversion import (
     convert_event_extraction,
 )
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
+from ServiceComponent.intelligence_contracts import (
+    CACHE_ARCHIVED_FLAG_FIELD,
+    CacheArchiveState,
+)
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
 
 
 INTELLIGENCE_NAMESPACE = UUID("55672c83-cdd8-5754-a724-8a2ae8874fb7")
-ARCHIVED_FLAG_DROP = "D"
-ARCHIVED_FLAG_ERROR = "E"
-ARCHIVED_FLAG_ARCHIVED = "A"
-ARCHIVED_FLAG_SENSITIVE = "S"
-ARCHIVED_FLAG_DUPLICATED = "U"
-CACHE_ARCHIVED_FLAG_FIELD = "APPENDIX.__ARCHIVED__"
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +130,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         informant = str(original_data.get("informant", "")).strip()
         repository = self._require_archive_repository(ctx) if persist else None
         if persist and repository.contains(intelligence_uuid, informant):
-            self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DUPLICATED, ctx)
+            self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         try:
@@ -160,7 +158,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 )
                 if persist:
                     repository.save_low_value(low_value)
-                    self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_DROP, ctx)
+                    self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DROP, ctx)
                     self._increment_stat(ctx, "dropped")
                     return StageResult.reject("non_intelligence")
                 debug_result = low_value.model_dump(mode="json", by_alias=True)
@@ -220,13 +218,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
         except _SensitiveAnalysisError as exc:
             self._change_runtime_stat("failed")
             if persist:
-                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_SENSITIVE, ctx)
+                self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.SENSITIVE, ctx)
                 self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_failed:{exc}")
         except Exception as exc:
             self._change_runtime_stat("failed")
             if persist:
-                self._mark_cache(original_data.get("UUID", ""), ARCHIVED_FLAG_ERROR, ctx)
+                self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.ERROR, ctx)
                 self._increment_stat(ctx, "error")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
 
@@ -243,7 +241,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             )
             repository.commit(archive, prepared.conversion.events)
             source_uuid = str(archive.raw_data.get("UUID", ""))
-            self._mark_cache(source_uuid, ARCHIVED_FLAG_ARCHIVED, ctx)
+            self._mark_cache(source_uuid, CacheArchiveState.ARCHIVED, ctx)
             self._increment_stat(ctx, "archived")
             return StageResult.allow(
                 archive.model_dump(mode="json", by_alias=True),
@@ -251,7 +249,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             )
         except Exception as exc:
             source_uuid = str(prepared.archive.raw_data.get("UUID", ""))
-            self._mark_cache(source_uuid, ARCHIVED_FLAG_ERROR, ctx)
+            self._mark_cache(source_uuid, CacheArchiveState.ERROR, ctx)
             self._increment_stat(ctx, "error")
             return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
 
@@ -272,10 +270,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
         )
 
     @staticmethod
-    def _mark_cache(uuid: str, state: str, ctx: Any) -> None:
+    def _mark_cache(uuid: str, state: CacheArchiveState, ctx: Any) -> None:
         if not uuid or not ctx.mongo_db_cache:
             return
-        ctx.mongo_db_cache.update({"UUID": uuid}, {CACHE_ARCHIVED_FLAG_FIELD: state})
+        ctx.mongo_db_cache.update({"UUID": uuid}, {CACHE_ARCHIVED_FLAG_FIELD: state.value})
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

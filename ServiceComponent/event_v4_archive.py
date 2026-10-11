@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, Protocol
+from enum import Enum
+from typing import Any, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,6 +14,11 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
     NonIntelligenceV4,
     ValuableIntelligenceV4,
 )
+from ServiceComponent.intelligence_contracts import (
+    ContentTimeSource,
+    INTELLIGENCE_ARCHIVE_SCHEMA_VERSION,
+    LOW_VALUE_ARCHIVE_SCHEMA_VERSION,
+)
 from ServiceComponent.intelligence_time import resolve_content_time
 
 
@@ -21,7 +27,7 @@ class ArchiveModel(BaseModel):
 
 
 class ArchivedIntelligenceV4(ArchiveModel):
-    schema_version: str = Field(default="iis-intelligence/4.0", frozen=True)
+    schema_version: str = Field(default=INTELLIGENCE_ARCHIVE_SCHEMA_VERSION, frozen=True)
     intelligence_uuid: UUID
     informant: str
     raw_data: dict[str, Any]
@@ -32,7 +38,7 @@ class ArchivedIntelligenceV4(ArchiveModel):
     processed_at: datetime
     archived_at: datetime
     content_time: datetime | None = None
-    content_time_source: Literal["published", "collected", "archived"] | None = None
+    content_time_source: ContentTimeSource | None = None
     total_score: float = Field(..., ge=0, le=10)
     event_uuids: list[UUID] = Field(..., min_length=1)
     primary_event_uuid: UUID
@@ -49,7 +55,7 @@ class ArchivedIntelligenceV4(ArchiveModel):
 
 
 class LowValueIntelligenceV4(ArchiveModel):
-    schema_version: str = Field(default="iis-non-intelligence/4.0", frozen=True)
+    schema_version: str = Field(default=LOW_VALUE_ARCHIVE_SCHEMA_VERSION, frozen=True)
     intelligence_uuid: UUID
     informant: str
     raw_data: dict[str, Any]
@@ -89,6 +95,8 @@ def archive_document(record: ArchiveModel) -> dict[str, Any]:
 def _bson_safe(value: Any) -> Any:
     if isinstance(value, UUID):
         return str(value)
+    if isinstance(value, Enum):
+        return value.value
     if isinstance(value, dict):
         return {key: _bson_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

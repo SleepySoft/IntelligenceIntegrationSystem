@@ -32,6 +32,7 @@ from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
 from ServiceComponent.event_v4_conversion import DeterministicEntityResolver
+from ServiceComponent.intelligence_contracts import EventV4CollectionSuffix
 from ServiceComponent.event_v4_repositories import (
     MongoEntityRepository,
     MongoEventV4ArchiveRepository,
@@ -280,17 +281,17 @@ class SubsystemRegistry:
             # -------- Event V4 存储 --------
             database = ctx.mongo_db_cache.db
             ctx.event_v4_intelligence_collection = database[
-                ctx.collection_name('v4_archived')]
+                ctx.collection_name(EventV4CollectionSuffix.ARCHIVED)]
             ctx.event_v4_intelligence_storage = MongoDBStorage.from_collection(
                 ctx.event_v4_intelligence_collection)
             ctx.event_v4_low_value_collection = database[
-                ctx.collection_name('v4_low_value')]
+                ctx.collection_name(EventV4CollectionSuffix.LOW_VALUE)]
             ctx.event_v4_event_collection = database[
-                ctx.collection_name('v4_events')]
+                ctx.collection_name(EventV4CollectionSuffix.EVENTS)]
             ctx.event_v4_entity_collection = database[
-                ctx.collection_name('v4_entities')]
+                ctx.collection_name(EventV4CollectionSuffix.ENTITIES)]
             ctx.event_v4_outbox_collection = database[
-                ctx.collection_name('v4_outbox')]
+                ctx.collection_name(EventV4CollectionSuffix.OUTBOX)]
 
             entity_repository = MongoEntityRepository(ctx.event_v4_entity_collection)
             archive_repository = MongoEventV4ArchiveRepository(

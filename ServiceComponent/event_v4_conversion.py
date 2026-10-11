@@ -23,9 +23,7 @@ from event_engine.schema import (
     TimeExpression,
     Topology,
 )
-
-
-ENTITY_NAMESPACE = UUID("e23ca3db-3477-5b81-a391-206f12dfb0af")
+from ServiceComponent.intelligence_contracts import ENTITY_ID_NAMESPACE
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +57,7 @@ class DeterministicEntityResolver:
         name = normalize_entity_name(entity.name)
         identity_key = "|".join((entity.type, entity.country_code or "", name.casefold()))
         resolved = ResolvedEntity(
-            uuid=uuid5(ENTITY_NAMESPACE, identity_key),
+            uuid=uuid5(ENTITY_ID_NAMESPACE, identity_key),
             identity_key=identity_key,
             canonical_name=name,
             entity_type=entity.type,
