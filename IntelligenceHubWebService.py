@@ -20,7 +20,6 @@ from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for
 from GlobalConfig import *
 from MyPythonUtility.DictTools import DictPrinter
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
-from Tools.CommonPost import common_post
 from Tools.RequestTracer import RequestTracer
 from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware, time_str_to_datetime
 from ServiceComponent.UserManager import UserManager
@@ -31,7 +30,6 @@ from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from IntelligenceHub import IntelligenceHub
-from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
 from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
 from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
 
@@ -123,21 +121,6 @@ def normalize_prompt_version(raw: str) -> int:
         raise ValueError(f"invalid prompt_version: {raw}")
 
     return int(m.group(1))
-
-
-def post_collected_intelligence(url: str, data: CollectedDataV4, timeout=10) -> dict:
-    """
-    Post collected intelligence to IntelligenceHub (/collect).
-    :param url: IntelligenceHub url (without '/collect' path).
-    :param data: Collector data.
-    :param timeout: Timeout in second
-    :return: Requests response or {'status': 'error', 'reason': 'error description'}
-    """
-    if not isinstance(data, CollectedDataV4):
-        return {'status': 'error', 'reason': 'Data must be CollectedDataV4 format.'}
-    # HTTP 边界必须使用 JSON 模式；Python 模式会保留 datetime，requests 无法编码。
-    payload = data.model_dump(mode="json", exclude_unset=True)
-    return common_post(f'{url}/collect', payload, timeout)
 
 
 class WebServiceAccessManager:

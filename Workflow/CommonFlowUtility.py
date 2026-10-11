@@ -11,7 +11,7 @@ from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceCrawler.CrawlPipeline import format_exception_with_traceback
 from IntelligenceHub import CollectedData
 from PyLoggingBackend.LogUtility import get_tls_logger
-from IntelligenceHubWebService import post_collected_intelligence
+from Workflow.CollectorSubmission import post_collected_intelligence
 from Tools.ProcessCotrolException import ProcessSkip, ProcessProblem, ProcessIgnore
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager, CrawlSession
 
