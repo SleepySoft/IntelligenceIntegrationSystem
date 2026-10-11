@@ -8,6 +8,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDERER = ROOT / "static" / "js" / "article_detail_renderer.js"
+CONTRACTS = ROOT / "static" / "js" / "intelligence_contracts.js"
 
 
 def _render_event_section(article: dict) -> str:
@@ -19,6 +20,8 @@ def _run_renderer(method: str, article: dict) -> str:
         pytest.skip("Node.js is required for the frontend renderer test")
     script = (
         "global.window = {};\n"
+        + CONTRACTS.read_text(encoding="utf-8")
+        + "\n"
         + RENDERER.read_text(encoding="utf-8")
         + f"\nprocess.stdout.write(window.ArticleDetailRenderer.{method}("
         + json.dumps(article, ensure_ascii=False)

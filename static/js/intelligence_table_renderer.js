@@ -105,14 +105,12 @@ class ArticleRenderer {
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
             : (informant || 'Unknown Source');
 
-        const content_time_raw = article.content_time || article.raw_data?.pub_time
-            || article.raw_data?.collect_time || article.archived_at;
+        const content_time_raw = article.content_time || article.archived_at;
         const content_time_display = this.formatLocalTime(content_time_raw);
         const content_time_source = article.content_time_source
-            || (article.raw_data?.pub_time ? 'published' : (article.raw_data?.collect_time ? 'collected' : 'archived'));
-        const content_time_label = {
-            published: 'Published', collected: 'Collected', archived: 'Archived fallback'
-        }[content_time_source] || 'Content time';
+            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
+        const content_time_label = window.IntelligenceContract.contentTimeLabel(
+            content_time_source, 'en');
 
         // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
         const raw_archived_time = article.archived_at || '';

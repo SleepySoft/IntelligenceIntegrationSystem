@@ -72,12 +72,11 @@
         if (raw_archived) {
             archived_html = `<span class="article-time archived-time" data-archived="${ctx.escapeHTML(raw_archived)}">Archived: ${ctx.formatLocalTime(raw_archived)}</span>`;
         }
-        const contentTime = doc.content_time || rawData.pub_time || rawData.collect_time || raw_archived;
+        const contentTime = doc.content_time || raw_archived;
         const contentTimeSource = doc.content_time_source
-            || (rawData.pub_time ? 'published' : (rawData.collect_time ? 'collected' : 'archived'));
-        const contentTimeLabel = {
-            published: 'Published', collected: 'Collected', archived: 'Archived fallback'
-        }[contentTimeSource] || 'Content time';
+            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
+        const contentTimeLabel = window.IntelligenceContract.contentTimeLabel(
+            contentTimeSource, 'en');
         const time_block = `                ${archived_html}\n                <span class="article-time">${contentTimeLabel}: ${ctx.formatLocalTime(contentTime)}</span>`;
 
         // ---- meta/vector ----

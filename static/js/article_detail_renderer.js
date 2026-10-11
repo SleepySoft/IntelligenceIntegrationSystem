@@ -328,14 +328,11 @@ window.ArticleDetailRenderer = {
         const uuid = this.escapeHTML(article?.intelligence_uuid || article?._id || '');
         const informant = article?.informant ? this.escapeHTML(article.informant) : '';
         const contentTime = this.anyTimeToTimeStr(
-            article?.content_time || article?.raw_data?.pub_time
-            || article?.raw_data?.collect_time || article?.archived_at || 'N/A');
+            article?.content_time || article?.archived_at || 'N/A');
         const contentTimeSource = article?.content_time_source
-            || (article?.raw_data?.pub_time ? 'published'
-                : (article?.raw_data?.collect_time ? 'collected' : 'archived'));
-        const contentTimeLabel = {
-            published: '发布时间', collected: '采集时间', archived: '归档时间（兜底）'
-        }[contentTimeSource] || '情报时间';
+            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
+        const contentTimeLabel = window.IntelligenceContract.contentTimeLabel(
+            contentTimeSource, 'zh');
         const title = this.escapeHTML(article?.analysis?.message?.title || 'No Title');
         const brief = this.escapeHTML(article?.analysis?.message?.brief || 'No Brief');
 
