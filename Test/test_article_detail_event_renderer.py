@@ -40,22 +40,17 @@ def _run_renderer(method: str, article: dict) -> str:
 
 def test_event_section_renders_normalized_v4_event_readably():
     article = {
-        "primary_event_uuid": "event-1",
-        "entities": [
-            {"_id": "entity-a", "canonical_name": "甲机构", "entity_type": "organization"},
-            {"_id": "entity-b", "canonical_name": "乙公司", "entity_type": "organization"},
-            {"_id": "entity-place", "canonical_name": "上海", "entity_type": "location"},
-        ],
         "events": [{
-            "_id": "event-1",
+            "event_uuid": "event-1",
             "local_event_id": "E1",
             "is_primary": True,
             "predicate": {"id": "investigate", "surface": "启动调查", "gloss": None},
             "frame": {"dynamics": "process", "topology": "targeted", "agency": "agentive"},
-            "role_bindings": [
-                {"role": "investigator", "entity_uuid": "entity-a", "semantic_group": "agent"},
-                {"role": "object", "entity_uuid": "entity-b", "semantic_group": "affected"},
-            ],
+            "roles": {
+                "investigator": [{"name": "甲机构", "type": "organization"}],
+                "object": [{"name": "乙公司", "type": "organization"}],
+            },
+            "role_semantics": {"investigator": "agent", "object": "affected"},
             "time": {
                 "event_time": {
                     "normalized": "2026-10-11",
@@ -64,20 +59,20 @@ def test_event_section_renders_normalized_v4_event_readably():
                     "surface": "周日",
                 }
             },
-            "location_entity_uuids": ["entity-place"],
+            "event_location": [{"name": "上海", "type": "location"}],
             "attributes": {"amount": {"type": "money", "value": 20, "currency": "CNY", "unit": "亿元"}},
             "qualifiers": [{
                 "type": "epistemic", "value": "asserted", "scope": "event",
-                "by": ["entity-a"], "surface": "甲机构表示",
+                "by": [{"name": "甲机构", "type": "organization"}], "surface": "甲机构表示",
             }],
             "relations": [{"predicate": "causes", "target_event_uuid": "event-2", "surface": "由此前事件导致"}],
             "observed_at": "2026-10-11T08:30:00+08:00",
         }, {
-            "_id": "event-2",
+            "event_uuid": "event-2",
             "local_event_id": "E2",
             "predicate": {"id": "restrict", "surface": "实施限制"},
             "frame": {"dynamics": "change", "topology": "targeted", "agency": "agentive"},
-            "role_bindings": [],
+            "roles": {},
         }],
     }
 
@@ -99,8 +94,7 @@ def test_event_section_renders_normalized_v4_event_readably():
 
 def test_event_section_falls_back_to_extraction_and_escapes_content():
     article = {
-        "analysis": {
-            "event_extraction": {
+        "EVENT_EXTRACTION": {
                 "primary_event_id": "E1",
                 "entities": [{
                     "id": "ENT1", "name": "<img src=x onerror=alert(1)>",
@@ -116,7 +110,6 @@ def test_event_section_falls_back_to_extraction_and_escapes_content():
                     "qualifiers": [],
                     "relations": [],
                 }],
-            }
         }
     }
 
@@ -129,22 +122,16 @@ def test_event_section_falls_back_to_extraction_and_escapes_content():
 
 
 def test_event_section_is_hidden_without_events():
-    assert _render_event_section({"analysis": {}}) == ""
+    assert _render_event_section({}) == ""
 
 
 def test_article_detail_labels_collection_fallback_time():
     article = {
-        "_id": "intel-1",
+        "UUID": "intel-1",
         "content_time": "2026-10-11T04:00:00Z",
         "content_time_source": "collected",
-        "raw_data": {
-            "collect_time": "2026-10-11T04:00:00Z",
-            "pub_time": None,
-        },
-        "analysis": {
-            "message": {"title": "标题", "brief": "摘要", "text": "正文"},
-            "assessment": {},
-        },
+        "EVENT_TITLE": "标题", "EVENT_BRIEF": "摘要", "EVENT_TEXT": "正文",
+        "RATE": {},
     }
 
     html = _run_renderer("generateHTML", article)

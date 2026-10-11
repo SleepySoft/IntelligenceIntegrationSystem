@@ -465,11 +465,15 @@ class IntelligenceAggregationEngine:
 
     @staticmethod
     def _document_id(doc: Dict[str, Any]) -> str:
-        return str(doc.get("intelligence_uuid") or doc.get("_id") or "")
+        return str(doc.get("UUID") or "")
 
     @staticmethod
     def _message(doc: Dict[str, Any]) -> Dict[str, Any]:
-        return (doc.get("analysis") or {}).get("message") or {}
+        return {
+            "title": doc.get("EVENT_TITLE"),
+            "brief": doc.get("EVENT_BRIEF"),
+            "text": doc.get("EVENT_TEXT"),
+        }
 
     def get_job(self, job_id: str) -> Dict[str, Any]:
         return self.client.get_aggregation_job(job_id)

@@ -91,15 +91,11 @@ class ArticleRenderer {
         }
 
 
-        const analysis = article.analysis || {};
-        const message = analysis.message || {};
-        const classification = analysis.classification || {};
-
         // 1.2 ID 获取
-        const uuid = this.escapeHTML(article.intelligence_uuid || article._id || "Unknown-UUID");
+        const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
         const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
 
-        const informant_val = article.informant || "";
+        const informant_val = article.INFORMANT || "";
         const informant = this.escapeHTML(informant_val);
         const informant_html = this.isValidUrl(informant)
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
@@ -138,8 +134,8 @@ class ArticleRenderer {
         const ai_model = this.escapeHTML(article.ai_model || '');
 
         const prompt_version = article.prompt_version;
-        const taxonomy = this.escapeHTML(classification.taxonomy || "Unclassified");
-        const sub_categories = classification.subcategories || [];
+        const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
+        const sub_categories = article.SUB_CATEGORY || [];
         const tags_html = sub_categories.map(
             tag => `<span class="category-tag">${this.escapeHTML(tag)}</span>`).join('');
         const left_content = `
@@ -177,7 +173,7 @@ class ArticleRenderer {
         <div class="article-card">
             <h3>
               <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">
-                ${this.escapeHTML(message.title || "No Title")}
+                ${this.escapeHTML(article.EVENT_TITLE || "No Title")}
               </a>
             </h3>
             <div class="article-meta">
@@ -186,7 +182,7 @@ class ArticleRenderer {
                 ${vector_score_html}
                 <span class="article-source">Source: ${informant_html}</span>
             </div>
-            <p class="article-summary">${this.escapeHTML(message.brief || "No Brief")}</p>
+            <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
 
             <div class="debug-info">
                 <div class="debug-left">

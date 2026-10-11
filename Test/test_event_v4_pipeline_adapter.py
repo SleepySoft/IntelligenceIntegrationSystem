@@ -123,14 +123,11 @@ def _original():
 
 def _valuable():
     return {
-        "kind": "valuable",
-        "message": {"title": "A军袭击B设施", "brief": "A军袭击B设施。", "text": "A军对B设施发动袭击。"},
-        "classification": {"taxonomy": "政治与安全", "subcategories": ["国防军事"]},
-        "assessment": {
-            "impact": "造成安全影响。", "reason": "存在明确军事行动。", "tips": "",
-            "rate": {"影响广度": 4, "影响深度": 5, "新颖性与异常性": 6, "演化与连锁潜力": 5, "舆情及认知影响": 3, "可行动性": 6},
-        },
-        "event_extraction": {
+        "TAXONOMY": "政治与安全", "SUB_CATEGORY": ["国防军事"],
+        "EVENT_TITLE": "A军袭击B设施", "EVENT_BRIEF": "A军袭击B设施。", "EVENT_TEXT": "A军对B设施发动袭击。",
+        "IMPACT": "造成安全影响。", "REASON": "存在明确军事行动。", "TIPS": "",
+        "RATE": {"影响广度": 4, "影响深度": 5, "新颖性与异常性": 6, "演化与连锁潜力": 5, "舆情及认知影响": 3, "可行动性": 6},
+        "EVENT_EXTRACTION": {
             "schema_version": "event-extraction/1.0", "primary_event_id": "E1",
             "entities": [
                 {"id": "ENT1", "name": "A军", "type": "organization"},
@@ -203,7 +200,7 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
 
     def analyzer(client, prompt, original):
         prompts.append(prompt)
-        return {"kind": "valuable"} if len(prompts) == 1 else _valuable()
+        return {"TAXONOMY": "政治与安全"} if len(prompts) == 1 else _valuable()
 
     context = FakeContext()
     repository = FakeArchiveRepository()
@@ -247,13 +244,13 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert len(failure_recorder.records) == 1
     assert failure_recorder.records[0]["category"] == "validation"
     assert failure_recorder.records[0]["attempt"] == 1
-    assert failure_recorder.records[0]["raw_response"] == {"kind": "valuable"}
+    assert failure_recorder.records[0]["raw_response"] == {"TAXONOMY": "政治与安全"}
 
     archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
     assert archived.accepted
     assert len(repository.archives) == 1
     assert len(repository.events) == 1
-    assert repository.archives[0].total_score == 6.5
+    assert repository.archives[0].APPENDIX["__TOTAL_SCORE__"] == 6.5
     assert context.stats["archived"] == 1
     assert context.mongo_db_cache.updated[-1] == (
         {"UUID": _original()["UUID"]},
@@ -336,10 +333,10 @@ def test_v4_analysis_reassigns_internal_uuid_collision_for_another_source():
     result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
 
     assert result.accepted
-    assert result.payload.archive.intelligence_uuid != original_id
+    assert UUID(result.payload.archive.UUID) != original_id
     assert context.mongo_db_cache.updated[-1] == (
         {"UUID": str(original_id)},
-        {"UUID": str(result.payload.archive.intelligence_uuid)},
+        {"UUID": result.payload.archive.UUID},
     )
 
 
@@ -349,7 +346,7 @@ def test_v4_adapter_stores_non_intelligence_envelope_without_events():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_: {"kind": "non_intelligence", "reason": "广告内容"},
+        analyzer=lambda *_: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "广告内容", "RATE": {}},
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -382,8 +379,7 @@ def test_v4_validation_reports_only_the_selected_result_kind():
     else:
         raise AssertionError("validation should fail")
 
-    assert ("valuable", "record_file") in locations
-    assert not any(location[0] == "non_intelligence" for location in locations)
+    assert ("record_file",) in locations
 
 
 def test_v4_transient_analysis_returns_events_without_archive_writes():
@@ -435,7 +431,7 @@ def test_v4_transient_non_intelligence_is_not_saved():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_: {"kind": "non_intelligence", "reason": "测试广告"},
+        analyzer=lambda *_: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "测试广告", "RATE": {}},
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -447,7 +443,7 @@ def test_v4_transient_non_intelligence_is_not_saved():
 
     assert result.accepted
     assert result.metadata["low_value"] is True
-    assert result.payload["analysis"]["kind"] == "non_intelligence"
+    assert result.payload["TAXONOMY"] == "NonIntelligence"
     assert not repository.low_values
 
 
@@ -472,7 +468,7 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
         "source": MANUAL_TEST_SOURCE,
         "prompt": "V4 覆盖版 {{CONTENT}} Prompt",
         "temp_data": {
-            "manual_debug": {"prompt_version": 40, "prompt_overridden": True}
+            "manual_debug": {"prompt_version": 41, "prompt_overridden": True}
         },
     })
 
@@ -481,4 +477,4 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
 
     assert result.accepted
     assert prompts == ["V4 覆盖版 {{CONTENT}} Prompt"]
-    assert result.payload["debug_prompt"] == {"version": 40, "overridden": True}
+    assert result.payload["debug_prompt"] == {"version": 41, "overridden": True}

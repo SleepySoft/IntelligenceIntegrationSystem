@@ -1,71 +1,26 @@
-"""Event V4 的 MongoDB 实体与幂等归档实现。"""
+"""Event V4 MongoDB 归档与派生事件索引。"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import Any
-from uuid import UUID
 
 from pymongo import ASCENDING, DESCENDING, ReplaceOne
 
-from event_engine.query.serialization import event_to_document
-from event_engine.schema import EventRecord
-from ServiceComponent.event_v4_archive import (
-    ArchivedIntelligenceV4,
-    LowValueIntelligenceV4,
-    archive_document,
+from ServiceComponent.event_v4_archive import ArchivedDataV4, archive_document
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME,
+    APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TOTAL_SCORE,
+    appendix_path,
 )
-from ServiceComponent.event_v4_conversion import ResolvedEntity
-from ServiceComponent.intelligence_time import resolve_content_time
 
-
-class MongoEntityRepository:
-    """以规范身份键 upsert 的基础实体仓库。"""
-
-    def __init__(self, collection: Any):
-        self.collection = collection
-
-    def ensure_indexes(self) -> None:
-        self.collection.create_index(
-            [("identity_key", ASCENDING)], unique=True, name="entity_identity_key_unique"
-        )
-
-    def upsert(self, entity: ResolvedEntity, *, alias: str) -> ResolvedEntity:
-        document = {
-            "_id": str(entity.uuid),
-            "identity_key": entity.identity_key,
-            "canonical_name": entity.canonical_name,
-            "entity_type": entity.entity_type,
-            "country_code": entity.country_code,
-        }
-        self.collection.update_one(
-            {"identity_key": entity.identity_key},
-            {
-                "$setOnInsert": document,
-                "$addToSet": {"aliases": alias},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
-            },
-            upsert=True,
-        )
-        stored = self.collection.find_one({"identity_key": entity.identity_key})
-        if stored is None:
-            raise RuntimeError("实体 upsert 后无法读取")
-        return ResolvedEntity(
-            uuid=UUID(str(stored["_id"])),
-            identity_key=stored["identity_key"],
-            canonical_name=stored["canonical_name"],
-            entity_type=stored["entity_type"],
-            country_code=stored.get("country_code"),
-        )
+logger = logging.getLogger(__name__)
 
 
 class MongoEventV4ArchiveRepository:
-    """使用 outbox 实现可恢复的多集合幂等提交。
-
-    写入顺序固定为 outbox(pending) -> events -> intelligence -> outbox(committed)。
-    因此对外可见的情报文档出现前，其引用的事件一定已经写入；中途失败留下的 pending
-    记录可由 ``recover_pending`` 重放。事件和情报均按稳定 UUID upsert。
-    """
+    """保存权威归档文档，并维护可从 EVENT_EXTRACTION 重建的事件查询索引。"""
 
     def __init__(
         self,
@@ -81,16 +36,32 @@ class MongoEventV4ArchiveRepository:
         self.outbox_collection = outbox_collection
 
     def ensure_indexes(self) -> None:
-        self._backfill_content_time()
         self.intelligence_collection.create_index(
-            [("informant", ASCENDING)], unique=True, name="intelligence_informant_unique"
+            [("UUID", ASCENDING)], unique=True, name="intelligence_uuid_unique"
         )
         self.intelligence_collection.create_index(
-            [("content_time", DESCENDING), ("_id", DESCENDING)],
+            [("INFORMANT", ASCENDING)], unique=True, name="intelligence_informant_unique"
+        )
+        self.intelligence_collection.create_index(
+            [(appendix_path(APPENDIX_CONTENT_TIME), DESCENDING), ("UUID", DESCENDING)],
             name="intelligence_content_time",
         )
+        self.intelligence_collection.create_index(
+            [(appendix_path(APPENDIX_TIME_ARCHIVED), DESCENDING)],
+            name="intelligence_archived_time",
+        )
+        self.intelligence_collection.create_index(
+            [(appendix_path(APPENDIX_TOTAL_SCORE), DESCENDING)],
+            name="intelligence_total_score",
+        )
         self.low_value_collection.create_index(
-            [("informant", ASCENDING)], name="low_value_informant"
+            [("UUID", ASCENDING)], unique=True, name="low_value_uuid_unique"
+        )
+        self.low_value_collection.create_index(
+            [("INFORMANT", ASCENDING)], name="low_value_informant"
+        )
+        self.event_collection.create_index(
+            [("event_uuid", ASCENDING)], unique=True, name="event_uuid_unique"
         )
         self.event_collection.create_index(
             [("intelligence_uuid", ASCENDING)], name="event_intelligence_uuid"
@@ -99,53 +70,59 @@ class MongoEventV4ArchiveRepository:
             [("predicate.id", ASCENDING)], name="event_predicate"
         )
         self.outbox_collection.create_index(
+            [("UUID", ASCENDING)], unique=True, name="outbox_uuid_unique"
+        )
+        self.outbox_collection.create_index(
             [("status", ASCENDING), ("updated_at", ASCENDING)], name="outbox_recovery"
         )
 
     def contains_source(self, informant: str) -> bool:
-        if not informant:
-            return False
-        return self.intelligence_collection.find_one(
-            {"informant": informant}, {"_id": 1}) is not None
+        return bool(informant) and self.intelligence_collection.find_one(
+            {"INFORMANT": informant}, {"_id": 1}
+        ) is not None
 
-    def contains_id(self, intelligence_uuid: UUID) -> bool:
+    def contains_id(self, intelligence_uuid) -> bool:
         return self.intelligence_collection.find_one(
-            {"_id": str(intelligence_uuid)}, {"_id": 1}) is not None
+            {"UUID": str(intelligence_uuid)}, {"_id": 1}
+        ) is not None
 
-    def save_low_value(self, record: LowValueIntelligenceV4) -> None:
+    def save_low_value(self, record: ArchivedDataV4) -> None:
         document = archive_document(record)
         self.low_value_collection.replace_one(
-            {"_id": document["_id"]}, document, upsert=True
+            {"UUID": document["UUID"]}, document, upsert=True
         )
 
-    def commit(
-        self,
-        record: ArchivedIntelligenceV4,
-        events: tuple[EventRecord, ...],
-    ) -> None:
-        intelligence_id = str(record.intelligence_uuid)
-        event_documents = [event_to_document(event) for event in events]
-        self._validate_batch(record, event_documents)
+    def commit(self, record: ArchivedDataV4, events: tuple[dict[str, Any], ...]) -> None:
         archive = archive_document(record)
+        event_documents = [dict(event) for event in events]
+        # ArchivedDataV4（含 EVENT_EXTRACTION）是权威记录，必须先独立完成。
+        self.intelligence_collection.replace_one(
+            {"UUID": archive["UUID"]}, archive, upsert=True
+        )
+        if not event_documents:
+            return
         now = datetime.now(timezone.utc)
-        self.outbox_collection.update_one(
-            {"_id": intelligence_id},
-            {
-                "$set": {
-                    "status": "pending",
-                    "archive": archive,
-                    "events": event_documents,
-                    "updated_at": now,
+        try:
+            self.outbox_collection.update_one(
+                {"UUID": record.UUID},
+                {
+                    "$set": {
+                        "status": "pending",
+                        "events": event_documents,
+                        "updated_at": now,
+                    },
+                    "$setOnInsert": {"created_at": now},
                 },
-                "$setOnInsert": {"created_at": now},
-            },
-            upsert=True,
-        )
-        self._write_documents(archive, event_documents)
-        self.outbox_collection.update_one(
-            {"_id": intelligence_id},
-            {"$set": {"status": "committed", "updated_at": datetime.now(timezone.utc)}},
-        )
+                upsert=True,
+            )
+            self._write_event_index(event_documents)
+            self._mark_outbox_committed(record.UUID)
+        except Exception:
+            logger.exception(
+                "派生事件 outbox/索引写入失败，文章 %s 已正常归档；索引可由归档重建。",
+                record.UUID,
+            )
+            return
 
     def recover_pending(self, *, limit: int = 100) -> int:
         recovered = 0
@@ -153,106 +130,28 @@ class MongoEventV4ArchiveRepository:
         if limit > 0:
             cursor = cursor.limit(limit)
         for item in cursor:
-            self._write_documents(item["archive"], item["events"])
-            self.outbox_collection.update_one(
-                {"_id": item["_id"], "status": "pending"},
-                {"$set": {"status": "committed", "updated_at": datetime.now(timezone.utc)}},
-            )
-            recovered += 1
+            try:
+                self._write_event_index(item["events"])
+                self.outbox_collection.update_one(
+                    {"_id": item["_id"], "status": "pending"},
+                    {"$set": {"status": "committed", "updated_at": datetime.now(timezone.utc)}},
+                )
+                recovered += 1
+            except Exception:
+                logger.exception("恢复文章 %s 的派生事件索引失败。", item.get("UUID"))
         return recovered
 
-    def _write_documents(self, archive: dict, events: list[dict]) -> None:
-        archive = self._with_content_time(archive)
-        if events:
-            self.event_collection.bulk_write(
-                [ReplaceOne({"_id": item["_id"]}, item, upsert=True) for item in events],
-                ordered=True,
-            )
-        self.intelligence_collection.replace_one(
-            {"_id": archive["_id"]}, archive, upsert=True
+    def _write_event_index(self, events: list[dict]) -> None:
+        self.event_collection.bulk_write(
+            [
+                ReplaceOne({"event_uuid": item["event_uuid"]}, item, upsert=True)
+                for item in events
+            ],
+            ordered=True,
         )
 
-    def _backfill_content_time(self) -> None:
-        """一次性为旧 V4 文档物化主时间，之后排序可直接使用索引。"""
-
-        convert_pub = {
-            "$convert": {
-                "input": "$raw_data.pub_time", "to": "date",
-                "onError": None, "onNull": None,
-            }
-        }
-        convert_collect = {
-            "$convert": {
-                "input": "$raw_data.collect_time", "to": "date",
-                "onError": None, "onNull": None,
-            }
-        }
-        pub_has_clock = {
-            "$and": [
-                {"$ne": [convert_pub, None]},
-                {"$ne": [
-                    {"$dateToString": {
-                        "format": "%H:%M:%S.%L", "date": convert_pub,
-                        "timezone": "UTC", "onNull": None,
-                    }},
-                    "00:00:00.000",
-                ]},
-            ]
-        }
-        self.intelligence_collection.update_many(
-            {"$or": [
-                {"content_time": {"$exists": False}},
-                {"content_time": None},
-                {"content_time_source": {"$exists": False}},
-                {"content_time_source": None},
-                {
-                    "content_time_source": "published",
-                    "$expr": {"$eq": [
-                        {"$dateToString": {
-                            "format": "%H:%M:%S.%L", "date": convert_pub,
-                            "timezone": "UTC", "onNull": None,
-                        }},
-                        "00:00:00.000",
-                    ]},
-                },
-            ]},
-            [{"$set": {
-                "content_time": {
-                    "$cond": [
-                        pub_has_clock,
-                        convert_pub,
-                        {"$ifNull": [convert_collect, "$archived_at"]},
-                    ]
-                },
-                "content_time_source": {
-                    "$switch": {
-                        "branches": [
-                            {"case": pub_has_clock, "then": "published"},
-                            {"case": {"$ne": [convert_collect, None]}, "then": "collected"},
-                        ],
-                        "default": "archived",
-                    }
-                },
-            }}],
+    def _mark_outbox_committed(self, intelligence_uuid: str) -> None:
+        self.outbox_collection.update_one(
+            {"UUID": intelligence_uuid},
+            {"$set": {"status": "committed", "updated_at": datetime.now(timezone.utc)}},
         )
-
-    @staticmethod
-    def _with_content_time(archive: dict) -> dict:
-        result = dict(archive)
-        value, source = resolve_content_time(
-            result.get("raw_data") or {}, result.get("archived_at"))
-        result["content_time"] = value
-        result["content_time_source"] = source
-        return result
-
-    @staticmethod
-    def _validate_batch(record: ArchivedIntelligenceV4, events: list[dict]) -> None:
-        expected = {str(value) for value in record.event_uuids}
-        actual = {str(value["_id"]) for value in events}
-        if not events or len(actual) != len(events) or actual != expected:
-            raise ValueError("归档信封与事件批次 UUID 不一致")
-        intelligence_id = str(record.intelligence_uuid)
-        if any(value.get("intelligence_uuid") != intelligence_id for value in events):
-            raise ValueError("事件批次包含其他情报的观察")
-        if str(record.primary_event_uuid) not in actual:
-            raise ValueError("主事件 UUID 不在事件批次中")

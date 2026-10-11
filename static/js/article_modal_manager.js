@@ -272,7 +272,7 @@
             const helpers = window.SubsystemUI.makeHelpers
                 ? window.SubsystemUI.makeHelpers(null, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
                 : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
-            nav = window.SubsystemUI.navFromPlugin(plugin, { intelligence_uuid: uuid }, helpers);
+            nav = window.SubsystemUI.navFromPlugin(plugin, { UUID: uuid }, helpers);
         }
 
         if (nav) {
@@ -281,9 +281,9 @@
                 return;
             }
             if (nav.mode === 'custom' && typeof plugin.onCardClick === 'function') {
-                plugin.onCardClick({ intelligence_uuid: uuid }, helpers, {
+                plugin.onCardClick({ UUID: uuid }, helpers, {
                     openModal: (doc, url) => {
-                        const documentId = doc?.intelligence_uuid || doc?._id || uuid;
+                        const documentId = doc?.UUID || uuid;
                         return open(url || `${state.options.pageBase}/${encodeURIComponent(documentId)}`, documentId, 'Detail', { updateHistory: state.options.history });
                     },
                     navigate: (url, opts) => { if (opts && opts.newTab) window.open(url, '_blank', 'noopener'); else window.open(url, '_self'); },

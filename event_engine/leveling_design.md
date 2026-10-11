@@ -55,7 +55,7 @@ attack、acquire、bond_issue 等具体谓词；
 加息如何影响银行净息差；
 某事件对股票是正面还是负面；
 MongoDB 的 $match、$unwind；
-ValuableIntelligenceV4 的摘要、分类和评分。
+AnalysisResultV4 的摘要、分类和评分。
 
 这些是领域扩展、业务逻辑或基础设施。
 
@@ -620,7 +620,7 @@ Impact Engine       ≈ 领域执行器
 
 1. Event 与来源分离
 
-Event 可以引用情报 UUID，但不依赖 ValuableIntelligenceV4 才能被理解和计算。
+Event 可以引用文章 UUID，但不依赖 AnalysisResultV4 才能被理解和计算。
 
 2. Event 与实体定义分离
 

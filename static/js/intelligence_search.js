@@ -462,11 +462,9 @@ document.addEventListener('DOMContentLoaded', () => {
             payload.threshold_max = Number(thMax);
 
             const loc = document.querySelector('#mongo-pane input[name="locations"]');
-            const geo = document.querySelector('#mongo-pane input[name="geography"]');
             const peo = document.querySelector('#mongo-pane input[name="peoples"]');
             const org = document.querySelector('#mongo-pane input[name="organizations"]');
             if (loc && loc.value.trim()) payload.locations = loc.value.trim();
-            if (geo && geo.value.trim()) payload.geography = geo.value.trim();
             if (peo && peo.value.trim()) payload.peoples = peo.value.trim();
             if (org && org.value.trim()) payload.organizations = org.value.trim();
 
@@ -530,8 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const entities = {
             'locations': 'locations',
             'peoples': 'peoples',
-            'organizations': 'organizations',
-            'geography': 'geography'
+            'organizations': 'organizations'
         };
         for (const [param, fieldName] of Object.entries(entities)) {
             const val = urlParams.get(param);

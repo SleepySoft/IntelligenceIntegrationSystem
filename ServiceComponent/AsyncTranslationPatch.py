@@ -7,6 +7,13 @@ import time
 import queue
 import logging
 import pymongo
+
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_FIELD,
+    APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TRANSLATED_REVISION,
+    appendix_path,
+)
 import datetime
 import itertools
 import threading
@@ -154,9 +161,8 @@ def needs_translation(doc: Dict[str, Any]) -> bool:
     """
     Decide if any of title/brief/text looks non-zh.
     """
-    message = (doc.get("analysis") or {}).get("message") or {}
-    for k in ("title", "brief", "text"):
-        v = message.get(k)
+    for k in ("EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT"):
+        v = doc.get(k)
         if v and looks_non_zh(v):
             return True
     return False
@@ -173,7 +179,7 @@ class AsyncTranslationPatch:
     """
     Unified pipeline for BOTH new and historical data:
       - Everything is INSERTED first (archived)
-      - Then an async patch updates analysis.message + translation_revision
+      - Then an async patch updates EVENT_TITLE/BRIEF/TEXT + APPENDIX revision
 
     Features:
       - Priority queue (new items first)
@@ -286,7 +292,8 @@ class AsyncTranslationPatch:
 
     def _process_task(self, task: TranslationTask):
         # 1) Pull latest doc from archive
-        doc = self.query_engine.get_intelligence(task.uuid, light_weight=False)
+        doc = self.query_engine.get_intelligence(
+            task.uuid, light_weight=False, include_appendix=True)
         if not doc:
             return
         if isinstance(doc, list):
@@ -295,7 +302,7 @@ class AsyncTranslationPatch:
             return
 
         # 2) Skip if already translated
-        if doc.get("translation_revision"):
+        if (doc.get(APPENDIX_FIELD) or {}).get(APPENDIX_TRANSLATED_REVISION):
             return
 
         # 3) Check if needs translation
@@ -312,25 +319,24 @@ class AsyncTranslationPatch:
 
         # 5) Update with $set only: 3 fields + revision flag
         update_data = {}
-        if new_title: update_data["analysis.message.title"] = new_title
-        if new_brief: update_data["analysis.message.brief"] = new_brief
-        if new_text:  update_data["analysis.message.text"] = new_text
+        if new_title: update_data["EVENT_TITLE"] = new_title
+        if new_brief: update_data["EVENT_BRIEF"] = new_brief
+        if new_text:  update_data["EVENT_TEXT"] = new_text
 
         trans_revision = f"{self.rev}@{datetime.datetime.now().strftime('%Y%m%d')}"
 
         # dot-path key is OK; MongoDBStorage.update will wrap to $set if needed
-        update_data["translation_revision"] = trans_revision
+        update_data[appendix_path(APPENDIX_TRANSLATED_REVISION)] = trans_revision
         collection = getattr(self.mongo_db_archive, "collection", self.mongo_db_archive)
-        collection.update_one({"_id": task.uuid}, {"$set": update_data})
+        collection.update_one({"UUID": task.uuid}, {"$set": update_data})
 
         # 6) Re-vectorize with patched content (best-effort)
         if self.on_patched:
             patched_doc = deepcopy(doc)
-            message = patched_doc["analysis"]["message"]
-            if new_title: message["title"] = new_title
-            if new_brief: message["brief"] = new_brief
-            if new_text: message["text"] = new_text
-            patched_doc["translation_revision"] = trans_revision
+            if new_title: patched_doc["EVENT_TITLE"] = new_title
+            if new_brief: patched_doc["EVENT_BRIEF"] = new_brief
+            if new_text: patched_doc["EVENT_TEXT"] = new_text
+            patched_doc.setdefault(APPENDIX_FIELD, {})[APPENDIX_TRANSLATED_REVISION] = trans_revision
             self.on_patched(patched_doc)
 
         logger.info("AsyncTranslationPatch updated uuid=%s reason=%s", task.uuid, task.reason)
@@ -345,12 +351,11 @@ class AsyncTranslationPatch:
             Empty string means "keep original".
         """
         # ---------- Build messages ----------
-        message = (doc.get("analysis") or {}).get("message") or {}
         user_prompt = (
             "请将以下内容翻译为简体中文：\n"
-            f"title: {message.get('title', '')}\n"
-            f"brief: {message.get('brief', '')}\n"
-            f"text: {message.get('text', '')}\n"
+            f"title: {doc.get('EVENT_TITLE', '')}\n"
+            f"brief: {doc.get('EVENT_BRIEF', '')}\n"
+            f"text: {doc.get('EVENT_TEXT', '')}\n"
             "\n要求：输出严格 JSON，key 为 title, brief, text。"
         )
         messages = [
@@ -500,15 +505,16 @@ class AsyncTranslationPatch:
 
         # newest -> older by the native V4 archive timestamp
         cursor = collection.find(
-            {"translation_revision": {"$exists": False}},
-            projection={"_id": 1, "analysis.message": 1}
-        ).sort("archived_at", pymongo.DESCENDING).limit(limit)
+            {appendix_path(APPENDIX_TRANSLATED_REVISION): {"$in": [None, ""]}},
+            projection={"_id": 0, "UUID": 1, "EVENT_TITLE": 1,
+                        "EVENT_BRIEF": 1, "EVENT_TEXT": 1}
+        ).sort(appendix_path(APPENDIX_TIME_ARCHIVED), pymongo.DESCENDING).limit(limit)
 
         count = 0
         for doc in cursor:
             if self.shutdown_flag.is_set():
                 break
-            uuid = str(doc.get("_id", "")).strip().lower()
+            uuid = str(doc.get("UUID", "")).strip().lower()
             if not uuid:
                 continue
             if needs_translation(doc):

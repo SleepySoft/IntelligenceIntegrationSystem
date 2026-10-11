@@ -359,7 +359,7 @@ intelligence_uuid
 local_event_id
 ```
 
-`local_event_id` 保留 AI 输出中的 `E1`、`E2`。它只在对应 ValuableIntelligenceV4 内有效。
+`local_event_id` 保留 AI 输出中的 `E1`、`E2`。它只在对应 AnalysisResultV4 内有效。
 
 联合来源定位为：
 
@@ -757,7 +757,7 @@ Event Core 不依赖任何扩展模块。
 Event Core -> Industry Engine
 Event Core -> Financial Engine
 Event Core -> Impact Engine
-Event Core -> IIS ValuableIntelligenceV4 model
+Event Core -> IIS AnalysisResultV4 model
 ```
 
 IIS 只负责将 AI 结果转换为独立 EventRecord 并保存 Event UUID 引用。
@@ -840,7 +840,7 @@ IdentitySpec 发生变化时，不直接修改既有 CanonicalEvent 成员关系
 
 ### 13.1 独立性
 
-- Event Engine 不导入 IIS 的 ValuableIntelligenceV4 类型。
+- Event Engine 不导入 IIS 的 AnalysisResultV4 类型。
 - 内存 Repository 下可独立运行全部分析功能。
 - MongoDB 仅作为适配器依赖。
 

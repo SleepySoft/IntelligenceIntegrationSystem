@@ -27,6 +27,7 @@ from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
+from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appendix_path
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
@@ -255,14 +256,14 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     graph_extension = None
     if vector_db_client is not None:
         from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
-        from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
+        from ServiceComponent.event_v4_archive import ArchivedDataV4
 
         def event_v4_record_factory(payload):
             document = dict(payload)
             document.pop("_id", None)
             document.pop("events", None)
             document.pop("entities", None)
-            return ArchivedIntelligenceV4.model_validate(document)
+            return ArchivedDataV4.model_validate(document)
 
         vector_extension = IISVectorExtension(
             vector_db_client,
@@ -313,7 +314,6 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     entity_frequency_engine = EntityFrequencyEngine(
         db_path=os.path.join(DATA_PATH, "entity_frequency.db"),
         event_collection=subsystem_registry.default().event_v4_event_collection,
-        entity_collection=subsystem_registry.default().event_v4_entity_collection,
     )
     services["entity_frequency"] = entity_frequency_engine
 
@@ -324,7 +324,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         if context.event_v4_intelligence_storage:
             context.event_v4_intelligence_storage.export_by_week(
                 year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
-                time_field="archived_at", add_timestamp=True)
+                time_field=appendix_path(APPENDIX_TIME_ARCHIVED), add_timestamp=True)
         if context.mongo_db_cache:
             context.mongo_db_cache.export_by_week(
                 year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),
@@ -336,7 +336,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         if context.event_v4_intelligence_storage:
             context.event_v4_intelligence_storage.export_by_month(
                 year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
-                time_field="archived_at", add_timestamp=True)
+                time_field=appendix_path(APPENDIX_TIME_ARCHIVED), add_timestamp=True)
         if context.mongo_db_cache:
             context.mongo_db_cache.export_by_month(
                 year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_cache"),

@@ -1,68 +1,75 @@
-# Event V4 生产状态
+# Event V4 生产契约
 
-更新时间：2026-10-09
+更新时间：2026-10-11
 
 ## 当前结论
 
-IIS 生产主链和所有已启用子系统已统一切换到 Event V4，不保留 V1/V2 兼容、双读或字段回退。
-旧实现、Prompt、测试、训练资料和设计文档位于 `recycled/legacy_intelligence/`，不会被生产代码加载。
-
-## 主链契约
+IIS 生产主链使用 Event V4，不兼容或双读 V1/V2 存量文档。V4 延续 V2 的扁平顶层，
+只在分析结果中加入 `EVENT_EXTRACTION`；没有 `analysis`、`message`、`classification`、
+`assessment` 或 `kind` 包装层。
 
 ```text
 CollectedData
-→ EventV4PipelinePorts
-→ ValuableIntelligenceV4 | NonIntelligenceV4
-→ EventRecord 转换与实体解析
-→ ArchivedIntelligenceV4 + events + entities
+→ AnalysisResultV4（V2 顶层字段 + EVENT_EXTRACTION）
+→ ArchivedDataV4（分析结果 + 身份 + 派生速查字段 + APPENDIX）
+→ 可选的 v4_events 派生查询索引
 ```
 
-- `prompts_event_v4.py` 组合 IIS 外层分析要求与 `event_engine` Registry 生成的事件抽取章节。
-- `event_engine` Registry 是谓词、Frame、角色和语义校验的唯一规则源。
-- `ServiceComponent.intelligence_contracts` 是 V4 跨组件 schema 版本、状态码、集合后缀、内容时间来源和稳定实体命名空间的唯一规则源。
-- 情报、事件、实体和 outbox 使用每个子系统独立的 MongoDB 集合。
-- `informant`（通常为 URL）负责来源去重且不能为空；采集 UUID 仅作为内部主键，非法或缺失时由 intake 分配 `uuid4` 并固化到 cache。
-- 多集合提交采用可重放 outbox；启动时执行 `recover_pending()`。
-- 人工调试使用同一个 `EventV4PipelinePorts`，可选择版本、查看 Prompt、覆盖 Prompt，并保持无业务库写入。
+## 分析结果
 
-## V4 字段约定
+`AnalysisResultV4` 的顶层字段为：
 
-- 标识：`intelligence_uuid`（Mongo `_id` 使用同值）
-- 标题/摘要/正文：`analysis.message.title|brief|text`
-- 分类：`analysis.classification.taxonomy|subcategories`
-- 评估：`analysis.assessment`
-- 事件抽取：`analysis.event_extraction`
-- 总分：`total_score`
-- 原始数据：`raw_data`
-- 内容主时间：`content_time`；来源见 `content_time_source`，优先带有效时刻的发布时间；发布时间为 `00:00:00` 时视为只有日期，改用采集时间；最后以归档时间兜底
-- 归档时间：`archived_at`
-- 翻译修订：`translation_revision`
-- 人工评分：`manual_rating`
+- `TAXONOMY`、`SUB_CATEGORY`、`REASON`
+- `EVENT_TITLE`、`EVENT_BRIEF`、`EVENT_TEXT`
+- `IMPACT`、`RATE`、`TIPS`
+- `EVENT_EXTRACTION`
 
-查询、统计、实体频率、翻译、向量化、聚合、动态图谱、RSS、导出和 Web 卡片均使用上述字段。
+低价值结果由 `TAXONOMY == "NonIntelligence"` 表示，不另设结果类型。模型不输出
+`TIME`、`LOCATION`、`PEOPLE`、`ORGANIZATION`；这些字段在归档时从
+`EVENT_EXTRACTION` 派生。`GEOGRAPHY` 已删除。
 
-## MongoDB 集合
+生产 Prompt 当前版本为 `v41`。它明确要求六维 `RATE`、V2 扁平顶层，并从
+Event Engine 的 Registry/Prompt 生成器注入事件字段、Frame、角色、时间和关系规则。
 
-每个子系统以 `collection_prefix` 为前缀创建：
+## 归档文档
 
-- `v4_archived`
-- `v4_low_value`
-- `v4_events`
-- `v4_entities`
-- `v4_outbox`
-- `cached`（采集输入；处理终态沿用运行协议 `APPENDIX.__ARCHIVED__`）
+`ArchivedDataV4` 直接继承/组合分析字段，额外包含：
 
-## 尚未纳入本次切换
+- `UUID`：文章业务 ID，与 MongoDB `_id` 无关。
+- `INFORMANT`：来源去重键。
+- `TIME`、`LOCATION`、`PEOPLE`、`ORGANIZATION`：可重建的速查字段。
+- `APPENDIX`：系统元数据容器。
 
-- CanonicalEvent 自动归并仍保持关闭，待实体消歧、候选召回和并发 CAS 完成后启用。
-- 复杂实体别名以及人工合并/拆分入口仍需单独实现。
+归档文档内嵌的 `EVENT_EXTRACTION` 是权威事件数据。Mongo `_id` 不进入业务模型，
+查询边界读取后必须清除。基本查询和前端响应默认移除 `APPENDIX`，只按需投影主时间、
+总分等显示字段。
 
-## 验证
+`APPENDIX` 的全部键名及 Mongo 路径统一定义于
+`ServiceComponent/intelligence_contracts.py`，不得在业务模块重复声明。其中
+`RAW_DATA` 保存清洗后的采集快照；主时间、归档时间、评分、模型、Prompt、翻译修订、
+人工评分和 schema 版本也全部位于该容器。
 
-根项目活动测试集：
+## 派生事件索引
+
+每个子系统使用以下集合：
+
+- `v4_archived`：权威高价值归档。
+- `v4_low_value`：低价值归档。
+- `v4_events`：可由 `EVENT_EXTRACTION` 重建的查询索引。
+- `v4_outbox`：派生事件索引的重试队列。
+- `cached`：采集输入；处理终态使用 `APPENDIX.__ARCHIVED__`。
+
+不创建 `v4_entities`。事件索引的角色、地点及 qualifier 来源直接保存
+`name`、`type`、可选 `country_code` 快照，不保存实体 UUID。文章归档先独立提交；
+派生事件索引失败只留下 pending outbox，不得回滚或阻塞权威归档。
+
+## 时间与查询
+
+内容主时间优先采用带有效时刻的发布时间；零点发布时间视为仅有日期，回退采集时间；
+最后回退归档时间。存储路径位于 `APPENDIX`，公共查询响应仅输出扁平显示字段。
+
+验证命令：
 
 ```bash
 pytest -q Test
 ```
-
-V1/V2 历史测试不属于活动测试集。

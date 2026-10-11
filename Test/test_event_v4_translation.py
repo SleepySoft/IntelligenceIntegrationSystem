@@ -5,14 +5,15 @@ from ServiceComponent.AsyncTranslationPatch import (
     TranslationTask,
     needs_translation,
 )
+from ServiceComponent.intelligence_contracts import APPENDIX_TRANSLATED_REVISION, appendix_path
 
 
 class FakeQueryEngine:
     def __init__(self, document):
         self.document = document
 
-    def get_intelligence(self, identifier, light_weight=False):
-        return self.document if identifier == self.document["_id"] else None
+    def get_intelligence(self, identifier, light_weight=False, include_appendix=False):
+        return self.document if identifier == self.document["UUID"] else None
 
 
 class FakeCollection:
@@ -25,12 +26,11 @@ class FakeCollection:
 
 def test_translation_patch_reads_and_updates_v4_message_fields():
     document = {
-        "_id": "item-1",
-        "analysis": {"message": {
-            "title": "Market shock",
-            "brief": "A material market shock happened today.",
-            "text": "The event changed prices across several markets.",
-        }},
+        "UUID": "item-1",
+        "EVENT_TITLE": "Market shock",
+        "EVENT_BRIEF": "A material market shock happened today.",
+        "EVENT_TEXT": "The event changed prices across several markets.",
+        "APPENDIX": {},
     }
     collection = FakeCollection()
     patched = []
@@ -48,7 +48,7 @@ def test_translation_patch_reads_and_updates_v4_message_fields():
     service._process_task(TranslationTask("item-1", 0, "test"))
 
     query, update = collection.updates[0]
-    assert query == {"_id": "item-1"}
-    assert update["$set"]["analysis.message.title"] == "市场冲击"
-    assert "translation_revision" in update["$set"]
-    assert patched[0]["analysis"]["message"]["brief"] == "市场发生显著冲击。"
+    assert query == {"UUID": "item-1"}
+    assert update["$set"]["EVENT_TITLE"] == "市场冲击"
+    assert appendix_path(APPENDIX_TRANSLATED_REVISION) in update["$set"]
+    assert patched[0]["EVENT_BRIEF"] == "市场发生显著冲击。"

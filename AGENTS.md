@@ -69,7 +69,7 @@
 
 - **`ServiceComponent/`** — 业务组件层
   - `IntelligenceHubDefines_v4.py`：V4 采集输入和 AI 分析结果模型
-  - `event_v4_archive.py`：`ArchivedIntelligenceV4` 与低价值信封
+  - `event_v4_archive.py`：`ArchivedDataV4`、APPENDIX 构造与归档投影
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
   - `EventV4QueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
   - `IntelligenceVectorDBEngine.py`：向量检索封装
@@ -205,8 +205,11 @@ python VectorDB/VectorDBBService.py \
 - 跨组件共享的 schema 版本、状态码、集合后缀、内容时间来源和 UUIDv5 命名空间统一定义在 `ServiceComponent.intelligence_contracts`；不得在业务模块重复声明
 - `CollectedData`：独立于分析版本的采集端原始数据契约
 - `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
-- `ValuableIntelligenceV4` / `NonIntelligenceV4`：AI 分析结果
-- `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`；主时间 `content_time` 优先采用非零时刻的发布时间，发布时间为零点时回退采集时间，最后才回退 `archived_at`
+- `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
+- `ArchivedDataV4`：分析结果加 `UUID`、`INFORMANT`、事件派生速查字段和 `APPENDIX`；`EVENT_EXTRACTION` 内嵌且是权威事件数据
+- Mongo `_id` 不是业务字段，读取后必须清除；`UUID` 始终表示文章 ID
+- `RAW_DATA`、评分、主时间、归档时间、翻译修订等系统元数据均位于 `APPENDIX`，键名只允许在 `intelligence_contracts.py` 定义；基本查询和前端输出默认移除 `APPENDIX`
+- 派生事件索引直接保存实体/地域名称快照，不使用实体 UUID；事件索引失败不得阻塞文章归档
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验
 
 ### 5.3 并发模型

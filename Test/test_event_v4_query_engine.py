@@ -1,23 +1,21 @@
 from datetime import datetime, timezone
 
 from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME, APPENDIX_RAW_DATA, APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TOTAL_SCORE, appendix_path,
+)
 
 
 class FakeCursor(list):
-    def sort(self, *args, **kwargs):
-        return self
-
-    def skip(self, count):
-        return FakeCursor(self[count:])
-
-    def limit(self, count):
-        return FakeCursor(self[:count])
+    def sort(self, *args, **kwargs): return self
+    def skip(self, count): return FakeCursor(self[count:])
+    def limit(self, count): return FakeCursor(self[:count])
 
 
 class RecordingCollection:
     def __init__(self, documents=()):
-        self.documents = list(documents)
-        self.queries = []
+        self.documents, self.queries = list(documents), []
 
     def find_one(self, query, projection=None, sort=None):
         values = list(self.find(query, projection))
@@ -25,17 +23,15 @@ class RecordingCollection:
 
     def find(self, query, projection=None):
         self.queries.append(query)
-        values = self.documents
-        identifiers = query.get("_id", {}).get("$in") if isinstance(query.get("_id"), dict) else None
-        if identifiers is not None:
-            values = [item for item in values if item["_id"] in identifiers]
+        values = list(self.documents)
+        if isinstance(query.get("UUID"), dict) and "$in" in query["UUID"]:
+            values = [item for item in values if item.get("UUID") in query["UUID"]["$in"]]
+        elif "UUID" in query:
+            values = [item for item in values if item.get("UUID") == query["UUID"]]
         if "intelligence_uuid" in query:
-            values = [item for item in values
-                      if item.get("intelligence_uuid") == query["intelligence_uuid"]]
-        if projection:
-            included = [key for key, enabled in projection.items() if enabled]
-            if included:
-                values = [{key: item[key] for key in included if key in item} for item in values]
+            values = [item for item in values if item.get("intelligence_uuid") == query["intelligence_uuid"]]
+        if projection and projection.get("_id") == 0:
+            values = [{key: value for key, value in item.items() if key != "_id"} for item in values]
         return FakeCursor(dict(item) for item in values)
 
     def count_documents(self, query):
@@ -43,69 +39,52 @@ class RecordingCollection:
         return len(self.documents)
 
     def aggregate(self, pipeline):
-        return []
+        return [{"_id": "group-key", "count": 1}]
 
 
-def test_v4_query_engine_preserves_requested_identifier_order():
-    intelligence = RecordingCollection([
-        {"_id": "b", "archived_at": datetime.now(timezone.utc)},
-        {"_id": "a", "archived_at": datetime.now(timezone.utc)},
-    ])
-    engine = EventV4QueryEngine(
-        intelligence, RecordingCollection(), RecordingCollection())
-
-    result = engine.get_intelligence(["a", "b"])
-
-    assert [item["_id"] for item in result] == ["a", "b"]
-
-
-def test_v4_query_engine_builds_native_nested_field_filters():
-    intelligence = RecordingCollection([{"_id": "a"}])
-    engine = EventV4QueryEngine(
-        intelligence, RecordingCollection(), RecordingCollection())
-
-    result, total = engine.query_intelligence(
-        keywords="能源 安全",
-        threshold=6,
-        period=(
-            datetime(2026, 1, 2, tzinfo=timezone.utc),
-            datetime(2026, 1, 31, tzinfo=timezone.utc),
-        ),
-        archive_period=(
-            datetime(2026, 1, 1, tzinfo=timezone.utc),
-            datetime(2026, 2, 1, tzinfo=timezone.utc),
-        ),
-    )
-
-    query = intelligence.queries[0]
-    assert total == 1
-    assert len(result) == 1
-    assert {"total_score": {"$gte": 6.0}} in query["$and"]
-    assert any("content_time" in clause for clause in query["$and"])
-    assert any("archived_at" in clause for clause in query["$and"])
-    keyword_fields = {
-        next(iter(item))
-        for clause in query["$and"] if "$or" in clause
-        for item in clause["$or"]
+def _archive(uuid):
+    now = datetime.now(timezone.utc)
+    return {
+        "_id": f"mongo-{uuid}", "UUID": uuid, "INFORMANT": "https://example.test/item",
+        "TAXONOMY": "政治与安全", "SUB_CATEGORY": ["国防军事"], "EVENT_TITLE": "示例事件",
+        "APPENDIX": {APPENDIX_CONTENT_TIME: now, APPENDIX_TIME_ARCHIVED: now,
+                     APPENDIX_TOTAL_SCORE: 6.0, APPENDIX_RAW_DATA: {"content": "原文"}},
     }
-    assert "analysis.message.title" in keyword_fields
-    assert "raw_data.content" in keyword_fields
 
 
-def test_v4_query_engine_enriches_detail_with_events_and_entities():
-    engine = EventV4QueryEngine(
-        RecordingCollection([{"_id": "intel-1"}]),
-        RecordingCollection([{
-            "_id": "event-1",
-            "intelligence_uuid": "intel-1",
-            "role_bindings": [{"entity_uuid": "entity-1"}],
-        }]),
-        RecordingCollection([{
-            "_id": "entity-1", "canonical_name": "示例实体", "entity_type": "organization",
-        }]),
+def test_v4_query_preserves_order_and_strips_mongo_id_and_appendix():
+    engine = EventV4QueryEngine(RecordingCollection([_archive("b"), _archive("a")]), RecordingCollection())
+    result = engine.get_intelligence(["a", "b"])
+    assert [item["UUID"] for item in result] == ["a", "b"]
+    assert all("_id" not in item and "APPENDIX" not in item for item in result)
+
+
+def test_v4_query_builds_top_level_and_appendix_filters():
+    intelligence = RecordingCollection([_archive("a")])
+    engine = EventV4QueryEngine(intelligence, RecordingCollection())
+    result, total = engine.query_intelligence(
+        keywords="能源 安全", threshold=6,
+        period=(datetime(2026, 1, 2, tzinfo=timezone.utc), datetime(2026, 1, 31, tzinfo=timezone.utc)),
+        archive_period=(datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 2, 1, tzinfo=timezone.utc)),
     )
+    query = intelligence.queries[0]
+    assert total == 1 and len(result) == 1
+    assert {appendix_path(APPENDIX_TOTAL_SCORE): {"$gte": 6.0}} in query["$and"]
+    assert any(appendix_path(APPENDIX_CONTENT_TIME) in clause for clause in query["$and"])
+    assert any(appendix_path(APPENDIX_TIME_ARCHIVED) in clause for clause in query["$and"])
+    fields = {next(iter(item)) for clause in query["$and"] if "$or" in clause for item in clause["$or"]}
+    assert {"EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT", appendix_path(APPENDIX_RAW_DATA) + ".content"} <= fields
 
+
+def test_detail_uses_embedded_names_without_entity_collection():
+    event = {"_id": "mongo-event", "event_uuid": "event-1", "intelligence_uuid": "intel-1",
+             "roles": {"actor": [{"name": "示例机构", "type": "organization"}]}}
+    engine = EventV4QueryEngine(RecordingCollection([_archive("intel-1")]), RecordingCollection([event]))
     result = engine.get_intelligence("intel-1")
+    assert result["events"][0]["roles"]["actor"][0]["name"] == "示例机构"
+    assert "_id" not in result["events"][0] and "entities" not in result
 
-    assert result["events"][0]["_id"] == "event-1"
-    assert result["entities"][0]["canonical_name"] == "示例实体"
+
+def test_aggregate_preserves_semantic_group_id():
+    engine = EventV4QueryEngine(RecordingCollection(), RecordingCollection())
+    assert engine.aggregate([]) == [{"_id": "group-key", "count": 1}]

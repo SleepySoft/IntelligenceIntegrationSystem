@@ -29,6 +29,7 @@ from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
+from ServiceComponent.intelligence_contracts import APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path
 from IntelligenceHub import IntelligenceHub
 from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
 from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
@@ -92,18 +93,13 @@ def to_bool(value, default=False):
 
 
 def exclude_raw_data(result: List[dict]):
-    """Remove V4 raw/full text fields from list responses without mutating query results."""
+    """Remove APPENDIX and full text from list responses without mutating results."""
     summary_result = []
     for source in result:
         data = dict(source)
-        data.pop("raw_data", None)
-        analysis = dict(data.get("analysis") or {})
-        message = dict(analysis.get("message") or {})
-        message.pop("text", None)
-        analysis["message"] = message
-        data["analysis"] = analysis
+        data.pop(APPENDIX_FIELD, None)
+        data.pop("EVENT_TEXT", None)
         data.pop("events", None)
-        data.pop("entities", None)
         summary_result.append(data)
     return summary_result
 
@@ -295,7 +291,6 @@ class IntelligenceHubWebService:
             'peoples': _split(combined.get('peoples', '')),
             'locations': _split(combined.get('locations', '')),
             'organizations': _split(combined.get('organizations', '')),
-            'geography': _split(combined.get('geography', '')),
             'informant_domains': _split(combined.get('informant_domains', '')),
             'threshold_min': threshold_min,
             'threshold_max': threshold_max,
@@ -391,7 +386,7 @@ class IntelligenceHubWebService:
                 datetime.datetime.fromisoformat(p['archive_start_time']),
                 datetime.datetime.fromisoformat(p['archive_end_time'])
             )
-        for field in ('locations', 'peoples', 'organizations', 'geography', 'keywords', 'informant_domains'):
+        for field in ('locations', 'peoples', 'organizations', 'keywords', 'informant_domains'):
             if p[field]:
                 query[field] = p[field]
 
@@ -456,7 +451,7 @@ class IntelligenceHubWebService:
         articles = self.intelligence_hub.get_intelligence(uuids, subsystem=subsystem_name)
 
         for article in articles:
-            doc_id = str(article.get('intelligence_uuid') or article.get('_id') or '')
+            doc_id = str(article.get('UUID') or '')
             article['vector_score'] = score_map.get(doc_id, 0.0)
 
         articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
@@ -1217,7 +1212,6 @@ class IntelligenceHubWebService:
                 'peoples': _split(combined.get('peoples', '')),
                 'locations': _split(combined.get('locations', '')),
                 'organizations': _split(combined.get('organizations', '')),
-                'geography': _split(combined.get('geography', '')),
                 'informant_domains': _split(combined.get('informant_domains', '')),
                 'threshold_min': threshold_min,
                 'threshold_max': threshold_max,
@@ -1263,7 +1257,7 @@ class IntelligenceHubWebService:
                     datetime.datetime.fromisoformat(p['archive_start_time']),
                     datetime.datetime.fromisoformat(p['archive_end_time'])
                 )
-            for field in ('locations', 'peoples', 'organizations', 'geography', 'keywords', 'informant_domains'):
+            for field in ('locations', 'peoples', 'organizations', 'keywords', 'informant_domains'):
                 if p[field]:
                     query[field] = p[field]
 
@@ -1326,7 +1320,7 @@ class IntelligenceHubWebService:
             articles = self.intelligence_hub.get_intelligence(uuids)
 
             for article in articles:
-                doc_id = str(article.get('intelligence_uuid') or article.get('_id') or '')
+                doc_id = str(article.get('UUID') or '')
                 article['vector_score'] = score_map.get(doc_id, 0.0)
 
             articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
@@ -1687,7 +1681,7 @@ class IntelligenceHubWebService:
             查询实体出现频率统计。
             未登录时固定返回最近30天数据，不可自定义时间范围。
             参数:
-                entity_type: LOCATION | GEOGRAPHY | PEOPLE | ORGANIZATION
+                entity_type: LOCATION | PEOPLE | ORGANIZATION
                 start_time: ISO 格式开始时间（登录后可自定义）
                 end_time: ISO 格式结束时间（登录后可自定义）
                 granularity: day | week | month（默认 day）
@@ -1701,7 +1695,7 @@ class IntelligenceHubWebService:
             top_n = request.args.get('top_n', '20')
             bottom_threshold = request.args.get('bottom_threshold', '5')
 
-            valid_types = {'LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'}
+            valid_types = {'LOCATION', 'PEOPLE', 'ORGANIZATION'}
             if entity_type not in valid_types:
                 return jsonify({"error": f"Invalid entity_type. Must be one of {valid_types}"}), 400
 
@@ -1772,7 +1766,7 @@ class IntelligenceHubWebService:
             if not entity_name:
                 return jsonify({"error": "entity_name is required"}), 400
 
-            valid_types = {'LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'}
+            valid_types = {'LOCATION', 'PEOPLE', 'ORGANIZATION'}
             if entity_type not in valid_types:
                 return jsonify({"error": f"Invalid entity_type"}), 400
 
@@ -2048,7 +2042,7 @@ class IntelligenceHubWebService:
                     run_export(
                         db_instance=self.intelligence_hub.default_subsystem.event_v4_intelligence_storage,
                         sub_dir='mongo_db_archive',
-                        time_field='archived_at',
+                        time_field=appendix_path(APPENDIX_TIME_ARCHIVED),
                         prefix='intelligence_archived'
                     )
 
@@ -2137,17 +2131,14 @@ class IntelligenceHubWebService:
         try:
             rss_items = []
             for doc in articles:
-                message = (doc.get('analysis') or {}).get('message') or {}
-                identifier = str(doc.get('intelligence_uuid') or doc.get('_id') or '')
-                if message.get('brief') and identifier:
+                identifier = str(doc.get('UUID') or '')
+                if doc.get('EVENT_BRIEF') and identifier:
                     rss_item = FeedItem(
                         guid=identifier,
-                        title=message.get('title', message['brief']),
+                        title=doc.get('EVENT_TITLE', doc['EVENT_BRIEF']),
                         link=f"/intelligence/{identifier}",
-                        description=message['brief'],
+                        description=doc['EVENT_BRIEF'],
                         pub_date=(doc.get('content_time') or
-                                  (doc.get('raw_data') or {}).get('pub_time') or
-                                  (doc.get('raw_data') or {}).get('collect_time') or
                                   doc.get('archived_at', default_date)))
                     rss_items.append(rss_item)
                 else:

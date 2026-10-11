@@ -2,6 +2,15 @@ import datetime
 from typing import Any, Tuple
 
 from Tools.DateTimeUtility import ensure_timezone_aware
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME,
+    APPENDIX_TOTAL_SCORE,
+    appendix_path,
+)
+
+CONTENT_TIME_FIELD = appendix_path(APPENDIX_CONTENT_TIME)
+TOTAL_SCORE_FIELD = appendix_path(APPENDIX_TOTAL_SCORE)
+
 class IntelligenceStatisticsEngine:
     def __init__(self, db: Any):
         self.__collection = getattr(db, "collection", db)
@@ -26,11 +35,11 @@ class IntelligenceStatisticsEngine:
         pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     },
-                    "total_score": {
+                    TOTAL_SCORE_FIELD: {
                         "$gte": 1,
                         "$lte": 10
                     }
@@ -38,7 +47,7 @@ class IntelligenceStatisticsEngine:
             },
             {
                 "$group": {
-                    "_id": "$total_score",
+                    "_id": f"${TOTAL_SCORE_FIELD}",
                     "count": {"$sum": 1}
                 }
             },
@@ -65,14 +74,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for hourly statistics
 
         date_in_local_tz = {
-            "date": "$content_time",
+            "date": f"${CONTENT_TIME_FIELD}",
             "timezone": self.__local_timezone  # <-- 在这里使用本地时区
         }
 
         pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -106,14 +115,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for daily statistics
 
         date_in_local_tz = {
-            "date": "$content_time",
+            "date": f"${CONTENT_TIME_FIELD}",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -147,14 +156,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for weekly statistics
 
         date_in_local_tz = {
-            "date": "$content_time",
+            "date": f"${CONTENT_TIME_FIELD}",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -184,14 +193,14 @@ class IntelligenceStatisticsEngine:
         # MongoDB aggregation pipeline for monthly statistics
 
         date_in_local_tz = {
-            "date": "$content_time",
+            "date": f"${CONTENT_TIME_FIELD}",
             "timezone": self.__local_timezone
         }
 
         pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -220,7 +229,7 @@ class IntelligenceStatisticsEngine:
         """Get overall statistics for the specified time range"""
         # Total count in time range
         total_count = self.__collection.count_documents({
-            "content_time": {
+            CONTENT_TIME_FIELD: {
                 "$gte": ensure_timezone_aware(start_time),
                 "$lte": ensure_timezone_aware(end_time)
             }
@@ -230,7 +239,7 @@ class IntelligenceStatisticsEngine:
         informant_pipeline = [
             {
                 "$match": {
-                    "content_time": {
+                    CONTENT_TIME_FIELD: {
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     }
@@ -238,7 +247,7 @@ class IntelligenceStatisticsEngine:
             },
             {
                 "$group": {
-                    "_id": "$informant",
+                    "_id": "$INFORMANT",
                     "count": {"$sum": 1}
                 }
             },

@@ -51,9 +51,7 @@ class IISAsyncTranslationExtension(HubPlugin):
         if not self.should_defer_index(event):
             return
         identifier = str(
-            event.payload.get("intelligence_uuid")
-            or event.payload.get("_id")
-            or ""
+            event.payload.get("UUID") or ""
         ).strip()
         if identifier:
             self.translator.enqueue_new(identifier, reason="new_archived")

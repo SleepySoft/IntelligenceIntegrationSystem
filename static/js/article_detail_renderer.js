@@ -38,7 +38,7 @@ window.ArticleDetailRenderer = {
     },
 
     renderRatingTable: function(article) {
-        const rates = article?.analysis?.assessment?.rate || {};
+        const rates = article?.RATE || {};
         const manualRatings = article?.manual_rating || {};
         const keys = Object.keys(rates);
         if (!keys.length) return '';
@@ -89,10 +89,7 @@ window.ArticleDetailRenderer = {
             if (!key || !entity) return;
             result[String(key)] = entity;
         };
-        (Array.isArray(article?.entities) ? article.entities : []).forEach(entity => {
-            add(entity?._id || entity?.uuid || entity?.id, entity);
-        });
-        (article?.analysis?.event_extraction?.entities || []).forEach(entity => add(entity?.id, {
+        (article?.EVENT_EXTRACTION?.entities || []).forEach(entity => add(entity?.id, {
             canonical_name: entity?.name,
             entity_type: entity?.type,
             country_code: entity?.country_code
@@ -102,29 +99,27 @@ window.ArticleDetailRenderer = {
 
     normalizedEvents: function(article) {
         if (Array.isArray(article?.events) && article.events.length) return article.events;
-        const extraction = article?.analysis?.event_extraction;
+        const extraction = article?.EVENT_EXTRACTION;
         if (!Array.isArray(extraction?.events)) return [];
         return extraction.events.map(event => {
             const core = event?.core || {};
-            const roleBindings = [];
-            Object.entries(core.roles || {}).forEach(([role, entityIds]) => {
-                (entityIds || []).forEach(entityId => roleBindings.push({
-                    role: role,
-                    entity_uuid: entityId,
-                    semantic_group: 'other'
-                }));
-            });
+            const entityMap = this.eventEntities(article);
+            const snapshot = entityId => entityMap[String(entityId)] || {name: entityId};
             return {
-                _id: event.id,
+                event_uuid: event.id,
                 local_event_id: event.id,
                 is_primary: event.id === extraction.primary_event_id,
                 frame: core.frame,
                 predicate: core.predicate,
-                role_bindings: roleBindings,
+                roles: Object.fromEntries(Object.entries(core.roles || {}).map(
+                    ([role, entityIds]) => [role, (entityIds || []).map(snapshot)])),
                 time: core.time || {},
-                location_entity_uuids: core.context?.event_location || [],
+                event_location: (core.context?.event_location || []).map(snapshot),
                 attributes: core.attributes || {},
-                qualifiers: event.qualifiers || [],
+                qualifiers: (event.qualifiers || []).map(value => ({
+                    ...value,
+                    by: (value.by || []).map(snapshot)
+                })),
                 relations: (event.relations || []).map(relation => ({
                     predicate: relation.predicate,
                     target_event_uuid: relation.target_event_id,
@@ -134,9 +129,10 @@ window.ArticleDetailRenderer = {
         });
     },
 
-    renderEntityChip: function(entityId, entityMap) {
-        const entity = entityMap[String(entityId)] || {};
-        const name = entity.canonical_name || entity.name || String(entityId || '未知实体');
+    renderEntityChip: function(entityValue, entityMap = {}) {
+        const entity = typeof entityValue === 'object'
+            ? entityValue : (entityMap[String(entityValue)] || {});
+        const name = entity.canonical_name || entity.name || String(entityValue || '未知实体');
         const extras = [entity.entity_type || entity.type, entity.country_code].filter(Boolean);
         const title = extras.length ? ` title="${this.escapeHTML(extras.join(' · '))}"` : '';
         return `<span class="event-entity-chip"${title}>${this.escapeHTML(name)}</span>`;
@@ -186,7 +182,6 @@ window.ArticleDetailRenderer = {
         if (!events.length) return '';
 
         const entityMap = this.eventEntities(article);
-        const primaryUuid = String(article?.primary_event_uuid || '');
         const roleLabels = {
             actor: '行动方', target: '目标', subject: '主体', counterpart: '关联方',
             agent: '执行方', affected: '受影响方', authority: '主管方', person: '人员',
@@ -231,30 +226,32 @@ window.ArticleDetailRenderer = {
         };
         const localIdByUuid = {};
         events.forEach(event => {
-            localIdByUuid[String(event?._id || event?.uuid || event?.local_event_id || '')] = event?.local_event_id || event?._id;
+            localIdByUuid[String(event?.event_uuid || event?.local_event_id || '')] = event?.local_event_id;
         });
 
         const cards = events.map((event, index) => {
-            const eventUuid = String(event?._id || event?.uuid || event?.local_event_id || '');
-            const isPrimary = Boolean(event?.is_primary) || (primaryUuid && eventUuid === primaryUuid);
+            const eventUuid = String(event?.event_uuid || event?.local_event_id || '');
+            const isPrimary = Boolean(event?.is_primary);
             const predicate = event?.predicate || {};
             const predicateTitle = predicate.surface || predicate.gloss || predicate.id || '未命名事件';
             const predicateId = predicate.id
                 ? `<span class="event-code-badge">${this.escapeHTML(predicate.id)}</span>` : '';
 
-            const roles = (event?.role_bindings || []).map(binding => {
-                const role = this.humanLabel(binding.role, roleLabels);
-                const semantic = binding.semantic_group && binding.semantic_group !== 'other'
-                    ? `<small>${this.escapeHTML(this.humanLabel(binding.semantic_group, semanticLabels))}</small>` : '';
-                return `<div class="event-role"><span class="event-role-label">${this.escapeHTML(role)}</span>${this.renderEntityChip(binding.entity_uuid, entityMap)}${semantic}</div>`;
-            }).join('');
+            const roles = Object.entries(event?.roles || {}).flatMap(([roleName, entities]) =>
+                (entities || []).map(entity => {
+                    const role = this.humanLabel(roleName, roleLabels);
+                    const semanticGroup = event?.role_semantics?.[roleName];
+                    const semantic = semanticGroup && semanticGroup !== 'other'
+                        ? `<small>${this.escapeHTML(this.humanLabel(semanticGroup, semanticLabels))}</small>` : '';
+                    return `<div class="event-role"><span class="event-role-label">${this.escapeHTML(role)}</span>${this.renderEntityChip(entity)}${semantic}</div>`;
+                })).join('');
 
             const times = this.renderEventTime(event?.time);
-            const locations = (event?.location_entity_uuids || [])
-                .map(value => this.renderEntityChip(value, entityMap)).join('');
+            const locations = (event?.event_location || [])
+                .map(value => this.renderEntityChip(value)).join('');
             const attributes = this.renderEventAttributes(event?.attributes);
             const qualifiers = (event?.qualifiers || []).map(qualifier => {
-                const by = (qualifier.by || []).map(value => this.renderEntityChip(value, entityMap)).join('');
+                const by = (qualifier.by || []).map(value => this.renderEntityChip(value)).join('');
                 const qualifierTime = qualifier.time
                     ? ` · ${this.escapeHTML(qualifier.time.normalized || qualifier.time.surface || '')}` : '';
                 const surface = qualifier.surface
@@ -325,29 +322,25 @@ window.ArticleDetailRenderer = {
             if (built && built.html) return built.html;
         }
 
-        const uuid = this.escapeHTML(article?.intelligence_uuid || article?._id || '');
-        const informant = article?.informant ? this.escapeHTML(article.informant) : '';
+        const uuid = this.escapeHTML(article?.UUID || '');
+        const informant = article?.INFORMANT ? this.escapeHTML(article.INFORMANT) : '';
         const contentTime = this.anyTimeToTimeStr(
             article?.content_time || article?.archived_at || 'N/A');
         const contentTimeSource = article?.content_time_source
             || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
         const contentTimeLabel = window.IntelligenceContract.contentTimeLabel(
             contentTimeSource, 'zh');
-        const title = this.escapeHTML(article?.analysis?.message?.title || 'No Title');
-        const brief = this.escapeHTML(article?.analysis?.message?.brief || 'No Brief');
+        const title = this.escapeHTML(article?.EVENT_TITLE || 'No Title');
+        const brief = this.escapeHTML(article?.EVENT_BRIEF || 'No Brief');
 
         // 正文保持原文渲染，不做强制转义以支持排版。若需纯文本展示请加上 this.escapeHTML()
-        const content = this.escapeHTML(article?.analysis?.message?.text || 'No Content');
-        const entities = Array.isArray(article?.entities) ? article.entities : [];
-        const namesOf = types => entities.filter(item => types.includes(item.entity_type))
-            .map(item => this.escapeHTML(item.canonical_name));
-        const locations = namesOf(['location', 'country', 'region', 'city', 'facility']);
-        const people = namesOf(['person']);
-        const orgs = namesOf(['organization', 'agency', 'company']);
-        const times = (article?.events || []).flatMap(event => Object.values(event.time || {}))
-            .map(value => this.anyTimeToTimeStr(value.normalized || value.surface || value));
-        const impact = this.escapeHTML(article?.analysis?.assessment?.impact || 'No Impact');
-        const tips = this.escapeHTML(article?.analysis?.assessment?.tips || 'No Tips');
+        const content = this.escapeHTML(article?.EVENT_TEXT || 'No Content');
+        const locations = (article?.LOCATION || []).map(value => this.escapeHTML(value));
+        const people = (article?.PEOPLE || []).map(value => this.escapeHTML(value));
+        const orgs = (article?.ORGANIZATION || []).map(value => this.escapeHTML(value));
+        const times = (article?.TIME || []).map(value => this.anyTimeToTimeStr(value));
+        const impact = this.escapeHTML(article?.IMPACT || 'No Impact');
+        const tips = this.escapeHTML(article?.TIPS || 'No Tips');
 
         // [修复] 补全了 <a> 标签
         return `

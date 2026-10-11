@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
+from ServiceComponent.intelligence_contracts import APPENDIX_CONTENT_TIME, APPENDIX_TOTAL_SCORE, appendix_path
 
 
 class FakeCollection:
@@ -28,7 +29,7 @@ def test_statistics_engine_uses_v4_archive_fields():
     engine.get_stats_summary(start, end)
 
     score_match = collection.pipelines[0][0]["$match"]
-    assert set(score_match) == {"content_time", "total_score"}
-    assert collection.pipelines[1][1]["$group"]["_id"]["day"]["$dayOfMonth"]["date"] == "$content_time"
-    assert "content_time" in collection.filters[0]
-    assert collection.pipelines[2][1]["$group"]["_id"] == "$informant"
+    assert set(score_match) == {appendix_path(APPENDIX_CONTENT_TIME), appendix_path(APPENDIX_TOTAL_SCORE)}
+    assert collection.pipelines[1][1]["$group"]["_id"]["day"]["$dayOfMonth"]["date"] == "$" + appendix_path(APPENDIX_CONTENT_TIME)
+    assert appendix_path(APPENDIX_CONTENT_TIME) in collection.filters[0]
+    assert collection.pipelines[2][1]["$group"]["_id"] == "$INFORMANT"

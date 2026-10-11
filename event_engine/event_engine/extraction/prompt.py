@@ -76,7 +76,7 @@ def build_event_extraction_section(registry) -> str:
 }}
 ```
 
-实体 type 只能是 person、organization、geopolitical_entity、location、facility、equipment、product、resource、asset、information、policy、agreement、position、capability、topic、phenomenon、case、event、other_object。country_code 可选，使用两位大写 ISO 代码。
+实体 type 只能是 person、organization、geopolitical_entity、location、facility、equipment、product、resource、asset、information、policy、agreement、position、capability、topic、phenomenon、case、event、other_object。country_code 可选，只能使用真实存在的两位大写 ISO 3166-1 代码；虚构国家、代称国家或无法确定时必须省略，禁止编造 XA、XB 等代码。
 
 ## 谓词目录
 
@@ -87,16 +87,16 @@ def build_event_extraction_section(registry) -> str:
 
 ## Frame 与角色
 
-- Frame 必须符合谓词目录；Registry 中 agency=unknown 时，可按正文输出 agentive、non_agentive 或 unknown。
+- Frame 必须逐项复制谓词目录允许的完整三元组，不能凭语感修改其中任何一项；例如 damage 只能使用目录所列 change/targeted/agentive。仅当目录写 agency=unknown 时，才可按正文输出 agentive、non_agentive 或 unknown。
 - 优先使用目录登记角色。所有角色值都是实体 ID 数组，且不能为空。
 - predicate.id 为 null 时：intrinsic 使用 subject；relational 使用 subject、counterpart；targeted 使用 actor、target 和可选 instrument；transfer 使用 theme、可选 source、destination、agent，并至少包含 source 或 destination。
 
 ## 时间、地点和属性
 
 - `core.time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。
-- 时间包含 normalized、precision、approximate、surface；precision 使用 year、month、day、hour、minute，不能可靠标准化时 normalized 为 null。
+- 时间包含 normalized、precision、approximate、surface；precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。
 - `core.context` 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。
-- `core.attributes` 只使用 amount、quantity、ratio、value_before、value_after、delta、duration、level。
+- `core.attributes` 必须是以 amount、quantity、ratio、value_before、value_after、delta、duration、level 为键的 JSON 对象，绝不能是数组；每种键最多出现一次。
 - amount 使用 `{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}`。
 - quantity、value_before、value_after、delta、level 使用 `{{"type":"number","value":5000,"unit":"人","surface":"5000人"}}`。
 - ratio 使用 `{{"type":"ratio","value":0.25,"surface":"25%"}}`，value 范围为 0 至 1。
@@ -113,6 +113,8 @@ def build_event_extraction_section(registry) -> str:
 
 每项关系使用 `predicate`、`target_event_id` 和可选的 `surface`；禁止使用 `type` 字段。
 `predicate` 只允许 causes、promotes、prevents、aggravates、mitigates、precedes、follows、overlaps、condition_for、part_of。`target_event_id` 必须引用本次输出中的另一事件，禁止自指。
+关系挂在关系起点事件上，例如 E1 导致 E2，应把 `{{"predicate":"causes","target_event_id":"E2"}}` 放入 E1 的 relations；不要放入 E2，也不要写成 E2 指向自身。
+主事件已经完整表达的直接结果（如袭击造成设施受损）通常写入 EVENT_TEXT/IMPACT 即可，不必为了结果重复拆出第二事件；只有结果本身需要独立检索或与其他事件建立关系时才拆分。
 """
 
 

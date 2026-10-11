@@ -5,6 +5,9 @@ from ServiceComponent.intelligence_time import (
     normalize_intelligence_datetime,
     resolve_content_time,
 )
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME, APPENDIX_CONTENT_TIME_SOURCE, APPENDIX_RAW_DATA,
+)
 
 
 def test_content_time_prefers_publication_over_collection_and_archive():
@@ -64,10 +67,10 @@ def test_content_time_uses_archive_as_last_resort():
     assert resolve_content_time({}, archived) == (archived, "archived")
 
 
-def test_document_content_time_supports_old_documents_without_materialized_field():
+def test_document_content_time_falls_back_to_appendix_raw_data():
     collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
 
-    assert document_content_time({"raw_data": {"collect_time": collected}}) == collected
+    assert document_content_time({"APPENDIX": {APPENDIX_RAW_DATA: {"collect_time": collected}}}) == collected
 
 
 def test_document_content_time_repairs_materialized_midnight_publication():
@@ -75,9 +78,11 @@ def test_document_content_time_repairs_materialized_midnight_publication():
     collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
 
     assert document_content_time({
-        "content_time": published,
-        "content_time_source": "published",
-        "raw_data": {"pub_time": published, "collect_time": collected},
+        "APPENDIX": {
+            APPENDIX_CONTENT_TIME: published,
+            APPENDIX_CONTENT_TIME_SOURCE: "published",
+            APPENDIX_RAW_DATA: {"pub_time": published, "collect_time": collected},
+        },
     }) == collected
 
 

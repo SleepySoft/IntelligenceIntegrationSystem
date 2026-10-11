@@ -57,14 +57,10 @@
     // doc: ?????????????????? ctx ???helpers ??????
 
     function buildDefaultCardFragments(doc, ctx, helpers) {
-        const documentId = doc.intelligence_uuid || doc._id || 'Unknown-UUID';
+        const documentId = doc.UUID || 'Unknown-UUID';
         const uuid = ctx.escapeHTML(documentId);
         const base = helpers.base || '';
         const intelUrl = base + '/intelligence/' + encodeURIComponent(documentId);
-        const analysis = doc.analysis || {};
-        const message = analysis.message || {};
-        const classification = analysis.classification || {};
-        const rawData = doc.raw_data || {};
 
         // ---- meta/time ----
         const raw_archived = doc.archived_at || '';
@@ -91,7 +87,7 @@
         }
 
         // ---- meta/source ----
-        const informant_val = doc.informant || rawData.informant || rawData.source || '';
+        const informant_val = doc.INFORMANT || '';
         const informant = ctx.escapeHTML(informant_val);
         const informant_html = ctx.isValidUrl(informant)
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
@@ -99,16 +95,16 @@
         const source_block = `                <span class="article-source">Source: ${informant_html}</span>`;
 
         // ---- title ----
-        const title_text = ctx.escapeHTML(message.title || 'No Title');
+        const title_text = ctx.escapeHTML(doc.EVENT_TITLE || 'No Title');
         const title_block = `              <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">\n                ${title_text}\n              </a>`;
 
         // ---- summary ----
-        const summary_block = `            <p class="article-summary">${ctx.escapeHTML(message.brief || 'No Brief')}</p>`;
+        const summary_block = `            <p class="article-summary">${ctx.escapeHTML(doc.EVENT_BRIEF || 'No Brief')}</p>`;
 
         // ---- debug/left ----
         const prompt_version = doc.prompt_version;
-        const taxonomy = ctx.escapeHTML(classification.taxonomy || 'Unclassified');
-        const sub_categories = classification.subcategories || [];
+        const taxonomy = ctx.escapeHTML(doc.TAXONOMY || 'Unclassified');
+        const sub_categories = doc.SUB_CATEGORY || [];
         const total_score = doc.total_score;
         const tags_html = Array.isArray(sub_categories)
             ? sub_categories.map(tag => `<span class="category-tag">${ctx.escapeHTML(tag)}</span>`).join('')

@@ -14,18 +14,16 @@ logger.setLevel(logging.INFO)
 
 # 实体类型常量
 ENTITY_TYPE_LOCATION = "LOCATION"
-ENTITY_TYPE_GEOGRAPHY = "GEOGRAPHY"
 ENTITY_TYPE_PEOPLE = "PEOPLE"
 ENTITY_TYPE_ORGANIZATION = "ORGANIZATION"
 
 ALL_ENTITY_TYPES = [
     ENTITY_TYPE_LOCATION,
-    ENTITY_TYPE_GEOGRAPHY,
     ENTITY_TYPE_PEOPLE,
     ENTITY_TYPE_ORGANIZATION,
 ]
 
-# Event V4 entity types -> dashboard categories.
+# Event V4 embedded entity types -> dashboard categories.
 V4_ENTITY_CATEGORY = {
     "person": ENTITY_TYPE_PEOPLE,
     "organization": ENTITY_TYPE_ORGANIZATION,
@@ -34,8 +32,7 @@ V4_ENTITY_CATEGORY = {
     "facility": ENTITY_TYPE_LOCATION,
     "location": ENTITY_TYPE_LOCATION,
     "city": ENTITY_TYPE_LOCATION,
-    "country": ENTITY_TYPE_GEOGRAPHY,
-    "region": ENTITY_TYPE_GEOGRAPHY,
+    "geopolitical_entity": ENTITY_TYPE_LOCATION,
 }
 
 # 支持的查询粒度
@@ -56,11 +53,9 @@ class EntityFrequencyEngine:
         self,
         db_path: str,
         event_collection: Any,
-        entity_collection: Any,
     ):
         self.db_path = db_path
         self.event_collection = event_collection
-        self.entity_collection = entity_collection
         self.write_lock = threading.Lock()
         self._cancel_event = threading.Event()
         # 后台缓存构建的状态管理（防重复触发 + 异步化）
@@ -263,37 +258,29 @@ class EntityFrequencyEngine:
 
         results = {
             ENTITY_TYPE_LOCATION: {},
-            ENTITY_TYPE_GEOGRAPHY: {},
             ENTITY_TYPE_PEOPLE: {},
             ENTITY_TYPE_ORGANIZATION: {},
         }
-
-        pipeline = [
-            {"$match": {"observed_at": {
+        try:
+            events = self.event_collection.find({"observed_at": {
                 "$gte": ensure_timezone_aware(day_start),
                 "$lt": ensure_timezone_aware(day_end),
-            }}},
-            {"$unwind": "$role_bindings"},
-            {"$group": {
-                "_id": "$role_bindings.entity_uuid",
-                "count": {"$sum": 1},
-            }},
-        ]
-        try:
-            rows = list(self.event_collection.aggregate(pipeline))
-            counts = {str(row["_id"]): int(row.get("count", 0)) for row in rows}
-            if not counts:
-                return results
-            entities = self.entity_collection.find(
-                {"_id": {"$in": list(counts)}},
-                {"canonical_name": 1, "entity_type": 1},
-            )
-            for entity in entities:
-                category = V4_ENTITY_CATEGORY.get(entity.get("entity_type"))
-                name = str(entity.get("canonical_name", "")).strip()
-                count = counts.get(str(entity.get("_id")), 0)
-                if category and name and count > 0:
-                    results[category][name] = results[category].get(name, 0) + count
+            }})
+            for event in events:
+                snapshots = [
+                    item
+                    for values in (event.get("roles") or {}).values()
+                    for item in values
+                ]
+                snapshots.extend(event.get("event_location") or [])
+                seen = set()
+                for entity in snapshots:
+                    category = V4_ENTITY_CATEGORY.get(entity.get("type"))
+                    name = str(entity.get("name", "")).strip()
+                    key = (category, name)
+                    if category and name and key not in seen:
+                        results[category][name] = results[category].get(name, 0) + 1
+                        seen.add(key)
         except Exception as e:
             logger.error(
                 "Event V4 entity aggregation failed at %s: %s",

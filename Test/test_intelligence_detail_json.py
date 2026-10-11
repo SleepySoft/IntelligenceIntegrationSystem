@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from bson import ObjectId
 from flask import Flask
 
 from IntelligenceHubWebService import IntelligenceHubWebService
@@ -24,15 +23,12 @@ class _Context:
     config_dir = None
 
 
-def test_intelligence_detail_api_serializes_nested_mongo_object_id():
-    mongo_id = ObjectId()
+def test_intelligence_detail_api_returns_public_v4_shape_without_storage_metadata():
     event_id = uuid4()
     hub = _Hub({
-        "_id": "intelligence-id",
-        "raw_data": {
-            "_id": mongo_id,
-            "nested": [{"event_uuid": event_id}],
-        },
+        "UUID": "intelligence-id",
+        "EVENT_TITLE": "示例事件",
+        "events": [{"event_uuid": event_id}],
         "archived_at": datetime(2026, 10, 10, tzinfo=timezone.utc),
     })
     service = IntelligenceHubWebService.__new__(IntelligenceHubWebService)
@@ -49,7 +45,9 @@ def test_intelligence_detail_api_serializes_nested_mongo_object_id():
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["success"] is True
-    assert payload["data"]["raw_data"]["_id"] == str(mongo_id)
-    assert payload["data"]["raw_data"]["nested"][0]["event_uuid"] == str(event_id)
+    assert payload["data"]["UUID"] == "intelligence-id"
+    assert payload["data"]["events"][0]["event_uuid"] == str(event_id)
+    assert "_id" not in payload["data"]
+    assert "APPENDIX" not in payload["data"]
     assert payload["data"]["archived_at"] == "2026-10-10T00:00:00+00:00"
     assert hub.calls == [("intelligence-id", "news")]

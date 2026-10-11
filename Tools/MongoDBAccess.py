@@ -589,7 +589,7 @@ class MongoDBStorage:
             return []
 
         # Note: process_document_output converts output to Local, which is what we want for iteration logic
-        # Use helper to access nested fields via dot notation (e.g. "analysis.message.title").
+        # Use helper to access nested fields via dot notation (e.g. "APPENDIX.__CONTENT_TIME__").
         raw_min = self._get_nested_value(min_doc, time_field)
         raw_max = self._get_nested_value(max_doc, time_field)
 

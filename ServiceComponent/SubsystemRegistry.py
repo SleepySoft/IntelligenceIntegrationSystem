@@ -31,12 +31,8 @@ from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
-from ServiceComponent.event_v4_conversion import DeterministicEntityResolver
 from ServiceComponent.intelligence_contracts import EventV4CollectionSuffix
-from ServiceComponent.event_v4_repositories import (
-    MongoEntityRepository,
-    MongoEventV4ArchiveRepository,
-)
+from ServiceComponent.event_v4_repositories import MongoEventV4ArchiveRepository
 
 
 logger = logging.getLogger(__name__)
@@ -120,12 +116,10 @@ class SubsystemContext:
 
     # Event V4 正式存储端口。V4 使用独立集合，避免与历史文档混合 schema。
     event_v4_archive_repository: Any = None
-    event_v4_entity_resolver: Any = None
     event_v4_intelligence_collection: Any = None
     event_v4_intelligence_storage: Optional[MongoDBStorage] = None
     event_v4_low_value_collection: Any = None
     event_v4_event_collection: Any = None
-    event_v4_entity_collection: Any = None
     event_v4_outbox_collection: Any = None
     event_v4_query_engine: Optional[EventV4QueryEngine] = None
 
@@ -288,19 +282,15 @@ class SubsystemRegistry:
                 ctx.collection_name(EventV4CollectionSuffix.LOW_VALUE)]
             ctx.event_v4_event_collection = database[
                 ctx.collection_name(EventV4CollectionSuffix.EVENTS)]
-            ctx.event_v4_entity_collection = database[
-                ctx.collection_name(EventV4CollectionSuffix.ENTITIES)]
             ctx.event_v4_outbox_collection = database[
                 ctx.collection_name(EventV4CollectionSuffix.OUTBOX)]
 
-            entity_repository = MongoEntityRepository(ctx.event_v4_entity_collection)
             archive_repository = MongoEventV4ArchiveRepository(
                 intelligence_collection=ctx.event_v4_intelligence_collection,
                 low_value_collection=ctx.event_v4_low_value_collection,
                 event_collection=ctx.event_v4_event_collection,
                 outbox_collection=ctx.event_v4_outbox_collection,
             )
-            entity_repository.ensure_indexes()
             archive_repository.ensure_indexes()
             recovered = archive_repository.recover_pending()
             if recovered:
@@ -308,11 +298,9 @@ class SubsystemRegistry:
                     "Subsystem '%s' recovered %s pending Event V4 commits.",
                     name, recovered)
             ctx.event_v4_archive_repository = archive_repository
-            ctx.event_v4_entity_resolver = DeterministicEntityResolver(entity_repository)
             ctx.event_v4_query_engine = EventV4QueryEngine(
                 ctx.event_v4_intelligence_collection,
                 ctx.event_v4_event_collection,
-                ctx.event_v4_entity_collection,
             )
             ctx.statistics_engine = IntelligenceStatisticsEngine(
                 ctx.event_v4_intelligence_collection)

@@ -12,18 +12,15 @@ from ServiceComponent.analysis_messages import build_analyze_message
 
 def _valuable_payload():
     return {
-        "kind": "valuable",
-        "message": {"title": "A军袭击B设施", "brief": "A军袭击B设施。", "text": "A军对B设施实施袭击。"},
-        "classification": {"taxonomy": "政治与安全", "subcategories": ["国防军事"]},
-        "assessment": {
-            "impact": "造成局部安全影响。", "reason": "正文包含明确军事行动。",
-            "rate": {
+        "TAXONOMY": "政治与安全", "SUB_CATEGORY": ["国防军事"],
+        "EVENT_TITLE": "A军袭击B设施", "EVENT_BRIEF": "A军袭击B设施。", "EVENT_TEXT": "A军对B设施实施袭击。",
+        "IMPACT": "造成局部安全影响。", "REASON": "正文包含明确军事行动。",
+        "RATE": {
                 "影响广度": 4, "影响深度": 5, "新颖性与异常性": 5,
                 "演化与连锁潜力": 4, "舆情及认知影响": 4, "可行动性": 5,
-            },
-            "tips": "",
         },
-        "event_extraction": {
+        "TIPS": "",
+        "EVENT_EXTRACTION": {
             "schema_version": "event-extraction/1.0", "primary_event_id": "E1",
             "entities": [
                 {"id": "ENT1", "name": "A军", "type": "organization"},
@@ -144,9 +141,9 @@ def test_benchmark_uses_production_message_builder_and_writes_detailed_reports(t
     valid = json.dumps(_valuable_payload(), ensure_ascii=False)
     runner = AIClientBenchmarkRunner({
         "valid": FakeBenchmarkClient("Valid Client", f"```json\n{valid}\n```"),
-        "invalid": FakeBenchmarkClient("Invalid Client", '{"kind":"valuable"}'),
+        "invalid": FakeBenchmarkClient("Invalid Client", '{"TAXONOMY":"政治与安全"}'),
         "repaired": FakeBenchmarkClient(
-            "Repaired Client", '{"kind":"non_intelligence","reason":"普通生活内容",}',
+            "Repaired Client", '{"TAXONOMY":"NonIntelligence","SUB_CATEGORY":[],"REASON":"普通生活内容","RATE":{},}',
         ),
     }, {40: "Today={{CURRENT_DATE}}\n{{CONTENT}}"})
 

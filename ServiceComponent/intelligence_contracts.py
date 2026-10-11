@@ -7,11 +7,37 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from uuid import UUID
 
 
 INTELLIGENCE_ARCHIVE_SCHEMA_VERSION = "iis-intelligence/4.0"
 LOW_VALUE_ARCHIVE_SCHEMA_VERSION = "iis-non-intelligence/4.0"
+
+# APPENDIX 是采集 cache 与归档记录共享的唯一系统元数据容器。键名及 Mongo
+# 字段路径必须集中定义在这里，业务模块不得重复字符串常量。
+APPENDIX_FIELD = "APPENDIX"
+APPENDIX_RAW_DATA = "RAW_DATA"
+APPENDIX_TIME_PUB = "__TIME_PUB__"
+APPENDIX_TIME_GOT = "__TIME_GOT__"
+APPENDIX_TIME_POST = "__TIME_POST__"
+APPENDIX_TIME_DONE = "__TIME_DONE__"
+APPENDIX_TIME_ARCHIVED = "__TIME_ARCHIVED__"
+APPENDIX_CONTENT_TIME = "__CONTENT_TIME__"
+APPENDIX_CONTENT_TIME_SOURCE = "__CONTENT_TIME_SOURCE__"
+APPENDIX_SUBSYSTEM = "__SUBSYSTEM__"
+APPENDIX_ARCHIVED_FLAG = "__ARCHIVED__"
+APPENDIX_TOTAL_SCORE = "__TOTAL_SCORE__"
+APPENDIX_MANUAL_RATING = "__MANUAL_RATING__"
+APPENDIX_PROMPT_VERSION = "__PROMPT_VERSION__"
+APPENDIX_PROMPT_OVERRIDE = "__PROMPT_OVERRIDE__"
+APPENDIX_AI_SERVICE = "__AI_SERVICE__"
+APPENDIX_AI_MODEL = "__AI_MODEL__"
+APPENDIX_TRANSLATED_REVISION = "__TRANSLATED_REVISION__"
+APPENDIX_SCHEMA_VERSION = "__SCHEMA_VERSION__"
+APPENDIX_VECTOR_SCORE = "__VECTOR_SCORE__"  # 查询时临时字段，不写回权威归档
+
+
+def appendix_path(key: str) -> str:
+    return f"{APPENDIX_FIELD}.{key}"
 
 
 class ContentTimeSource(StrEnum):
@@ -29,7 +55,7 @@ class CacheArchiveState(StrEnum):
     DUPLICATED = "U"
 
 
-CACHE_ARCHIVED_FLAG_FIELD = "APPENDIX.__ARCHIVED__"
+CACHE_ARCHIVED_FLAG_FIELD = appendix_path(APPENDIX_ARCHIVED_FLAG)
 CACHE_LEGACY_ARCHIVED_FLAG_FIELD = "__ARCHIVED__"
 
 
@@ -46,9 +72,4 @@ class EventV4CollectionSuffix(StrEnum):
     ARCHIVED = "v4_archived"
     LOW_VALUE = "v4_low_value"
     EVENTS = "v4_events"
-    ENTITIES = "v4_entities"
     OUTBOX = "v4_outbox"
-
-
-# UUIDv5 的命名空间属于持久化身份契约。修改它会为相同实体生成不同 UUID，必须配套迁移。
-ENTITY_ID_NAMESPACE = UUID("e23ca3db-3477-5b81-a391-206f12dfb0af")

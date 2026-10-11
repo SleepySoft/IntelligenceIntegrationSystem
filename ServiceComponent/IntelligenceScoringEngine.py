@@ -44,15 +44,12 @@ class IntelligenceScoringEngine:
         return min(10.0, max(0.0, value))
 
     def calculate_v4(self, intelligence_data) -> float:
-        """按 V4 嵌套结构评分，不要求调用方重新拼装 v2 归档字典。"""
+        """按 V2-compatible V4 顶层字段评分。"""
         if hasattr(intelligence_data, "model_dump"):
             data = intelligence_data.model_dump(by_alias=True)
         else:
             data = dict(intelligence_data)
-        message = data.get("message", {})
-        classification = data.get("classification", {})
-        assessment = data.get("assessment", {})
-        rates = assessment.get("rate", {})
+        rates = data.get("RATE", {})
 
         raw_score = 0.0
         max_score = 0.0
@@ -63,10 +60,10 @@ class IntelligenceScoringEngine:
             return 0.0
 
         score = raw_score / max_score * 10.0
-        score *= self.taxonomy_multipliers.get(classification.get("taxonomy", ""), 1.0)
+        score *= self.taxonomy_multipliers.get(data.get("TAXONOMY", ""), 1.0)
         joined_text = " ".join(str(value) for value in (
-            message.get("title", ""), message.get("brief", ""),
-            assessment.get("reason", ""), assessment.get("tips", ""),
+            data.get("EVENT_TITLE", ""), data.get("EVENT_BRIEF", ""),
+            data.get("REASON", ""), data.get("TIPS", ""),
         ) if value)
         is_recap_like = any(key in joined_text for key in self.config["recap_keywords"])
         is_low_novelty = any(key in joined_text for key in self.config["low_novelty_hints"])
@@ -78,7 +75,7 @@ class IntelligenceScoringEngine:
             score = min(score * 0.35, 3.0)
         if is_low_novelty:
             score = min(score * 0.50, 3.0)
-        sub_event_count = sum(str(message.get("text", "")).count(marker) for marker in (
+        sub_event_count = sum(str(data.get("EVENT_TEXT", "")).count(marker) for marker in (
             "；", "。此外", "同时", "另一方面", "其一", "其二", "第一", "第二", "第三",
         ))
         if sub_event_count >= 5 and novelty <= 4:

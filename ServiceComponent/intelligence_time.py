@@ -11,6 +11,14 @@ import datetime
 import time
 from typing import Any, Mapping
 
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME,
+    APPENDIX_CONTENT_TIME_SOURCE,
+    APPENDIX_FIELD,
+    APPENDIX_RAW_DATA,
+    APPENDIX_TIME_ARCHIVED,
+)
+
 from Tools.DateTimeUtility import ensure_timezone_aware, time_str_to_datetime
 from ServiceComponent.intelligence_contracts import ContentTimeSource
 
@@ -91,16 +99,17 @@ def resolve_content_time(
 
 
 def document_content_time(document: Mapping[str, Any]) -> datetime.datetime | None:
-    """读取已物化主时间；旧文档按相同规则回退。"""
+    """从集中 APPENDIX 读取已物化主时间，并按相同规则回退。"""
 
-    raw_data = document.get("raw_data") or {}
-    if value := normalize_intelligence_datetime(document.get("content_time")):
+    appendix = document.get(APPENDIX_FIELD) or {}
+    raw_data = appendix.get(APPENDIX_RAW_DATA) or {}
+    if value := normalize_intelligence_datetime(appendix.get(APPENDIX_CONTENT_TIME)):
         raw_pub_time = raw_data.get("pub_time")
-        if document.get("content_time_source") != ContentTimeSource.PUBLISHED \
+        if appendix.get(APPENDIX_CONTENT_TIME_SOURCE) != ContentTimeSource.PUBLISHED \
                 or raw_pub_time is None \
                 or publication_time_has_clock(raw_pub_time):
             return value
     try:
-        return resolve_content_time(raw_data, document.get("archived_at"))[0]
+        return resolve_content_time(raw_data, appendix.get(APPENDIX_TIME_ARCHIVED))[0]
     except ValueError:
         return None

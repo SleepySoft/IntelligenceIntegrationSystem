@@ -1,12 +1,12 @@
-from uuid import uuid5
-
 from ServiceComponent.intelligence_contracts import (
+    APPENDIX_ARCHIVED_FLAG,
+    APPENDIX_RAW_DATA,
     CACHE_ARCHIVED_FLAG_FIELD,
-    ENTITY_ID_NAMESPACE,
     INTELLIGENCE_ARCHIVE_SCHEMA_VERSION,
     CacheArchiveState,
     ContentTimeSource,
     EventV4CollectionSuffix,
+    appendix_path,
     unarchived_cache_query,
 )
 
@@ -25,7 +25,8 @@ def test_cache_replay_query_uses_the_canonical_archive_field():
     ]}
 
 
-def test_entity_namespace_keeps_existing_entity_ids_stable():
-    assert str(uuid5(ENTITY_ID_NAMESPACE, "organization|CN|示例机构")) == (
-        "9089da61-6fe2-5e33-8493-107c0716a8e5"
-    )
+def test_appendix_keys_and_paths_are_centralized():
+    assert APPENDIX_RAW_DATA == "RAW_DATA"
+    assert CACHE_ARCHIVED_FLAG_FIELD == appendix_path(APPENDIX_ARCHIVED_FLAG)
+    assert EventV4CollectionSuffix.EVENTS == "v4_events"
+    assert not hasattr(EventV4CollectionSuffix, "ENTITIES")

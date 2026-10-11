@@ -1,7 +1,7 @@
 """LLM 事件抽取的数据契约。
 
-这里仅描述来源内的局部实体和局部事件。转换为全局实体 UUID 和 ``EventRecord`` 属于
-接入用例层。谓词、Frame、角色与生命周期词值通过调用方传入的 Registry 校验。
+这里仅描述来源内的局部实体和局部事件。接入方可将其转换为自己的派生查询索引；
+谓词、Frame、角色与生命周期词值通过调用方传入的 Registry 校验。
 """
 
 from __future__ import annotations

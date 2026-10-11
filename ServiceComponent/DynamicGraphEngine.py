@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional, Set, Tuple
 
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.intelligence_time import document_content_time
+from ServiceComponent.intelligence_contracts import APPENDIX_CONTENT_TIME, appendix_path
 from Tools.MongoDBAccess import MongoDBStorage
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.DictTools import dict_list_to_markdown
@@ -418,12 +419,12 @@ class DynamicGraphEngine:
         locations = []
         for entity in extracted_entities:
             name = str(entity.get("name", "")).strip()
-            entity_type = str(entity.get("entity_type", "")).lower()
+            entity_type = str(entity.get("type", "")).lower()
             if not name:
                 continue
             if entity_type in {"person", "organization", "agency", "company"}:
                 actors.append(name)
-            if entity_type in {"location", "country", "region", "city", "facility"}:
+            if entity_type in {"location", "country", "region", "city", "facility", "geopolitical_entity"}:
                 locations.append(name)
 
         return GraphNode(
@@ -438,17 +439,19 @@ class DynamicGraphEngine:
 
     @staticmethod
     def _document_id(doc: dict) -> str:
-        return str(doc.get("intelligence_uuid") or doc.get("_id") or "Unknown")
+        return str(doc.get("UUID") or "Unknown")
 
     @staticmethod
     def _message(doc: dict) -> dict:
-        analysis = doc.get("analysis") or {}
-        return analysis.get("message") or {}
+        return {
+            "title": doc.get("EVENT_TITLE"),
+            "brief": doc.get("EVENT_BRIEF"),
+            "text": doc.get("EVENT_TEXT"),
+        }
 
     @staticmethod
     def _extracted_entities(doc: dict) -> list[dict]:
-        analysis = doc.get("analysis") or {}
-        extraction = analysis.get("event_extraction") or {}
+        extraction = doc.get("EVENT_EXTRACTION") or {}
         return extraction.get("entities") or []
 
     def _update_snapshot_status(self, thread_id: str, nodes: List[GraphNode], edges: List[GraphEdge], status: str):
@@ -547,12 +550,12 @@ class DynamicGraphEngine:
         pipeline = [
             {
                 "$match": {
-                    "content_time": {"$gte": cutoff_date, "$lte": end_date}
+                    appendix_path(APPENDIX_CONTENT_TIME): {"$gte": cutoff_date, "$lte": end_date}
                 }
             },
             {
                 "$project": {
-                    "all_entities": {"$ifNull": ["$analysis.event_extraction.entities", []]}
+                    "all_entities": {"$ifNull": ["$EVENT_EXTRACTION.entities", []]}
                 }
             },
             # Step 3: 将数组打散为一条条独立的记录 (Unwind)

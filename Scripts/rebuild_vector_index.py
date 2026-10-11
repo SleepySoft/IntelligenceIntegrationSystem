@@ -15,7 +15,8 @@ import sys
 import argparse
 
 # --- New Architecture Imports ---
-from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
+from ServiceComponent.event_v4_archive import ArchivedDataV4
+from ServiceComponent.intelligence_contracts import APPENDIX_RAW_DATA
 from VectorDB.VectorDBClient import VectorDBClient, RemoteCollection
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 
@@ -144,7 +145,7 @@ def func_rebuild(
             # Extract UUIDs for existence checking (only in incremental mode)
             batch_uuids = []
             for doc in batch_docs:
-                uuid = str(doc.get('intelligence_uuid') or doc.get('_id') or '')
+                uuid = str(doc.get('UUID') or '')
                 if uuid:
                     batch_uuids.append(uuid)
 
@@ -178,13 +179,13 @@ def func_rebuild(
                     doc_clean = {k: v for k, v in doc.items() if k != '_id'}
 
                     try:
-                        archived_data = ArchivedIntelligenceV4.model_validate(doc_clean)
+                        archived_data = ArchivedDataV4.model_validate(doc_clean)
                     except Exception as validation_e:
                         # print(f"Validation error for doc {doc.get('_id')}: {validation_e}")
                         skipped_error_count += 1
                         continue
 
-                    uuid = str(archived_data.intelligence_uuid)
+                    uuid = archived_data.UUID
 
                     # 2. Process 'intelligence_summary'
                     # Skip if already exists in incremental mode
@@ -195,7 +196,7 @@ def func_rebuild(
 
                     # 3. Process 'intelligence_full_text'
                     # Skip if already exists in incremental mode
-                    raw_content = archived_data.raw_data.get('content')
+                    raw_content = archived_data.APPENDIX.get(APPENDIX_RAW_DATA, {}).get('content')
 
                     if raw_content and isinstance(raw_content, str):
                         if mode == "incremental" and full_text_exists_map.get(uuid, False):

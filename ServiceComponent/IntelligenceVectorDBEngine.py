@@ -4,7 +4,18 @@ from functools import lru_cache
 from typing import Optional, Tuple, List, Dict, Any
 
 from VectorDB.VectorDBClient import RemoteCollection
-from ServiceComponent.event_v4_archive import ArchivedIntelligenceV4
+from ServiceComponent.event_v4_archive import ArchivedDataV4
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_AI_MODEL,
+    APPENDIX_CONTENT_TIME,
+    APPENDIX_CONTENT_TIME_SOURCE,
+    APPENDIX_FIELD,
+    APPENDIX_RAW_DATA,
+    APPENDIX_SCHEMA_VERSION,
+    APPENDIX_SUBSYSTEM,
+    APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TOTAL_SCORE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,38 +50,40 @@ class IntelligenceVectorDBEngine:
                 return None
         return None
 
-    def _prepare_document(self, intelligence: ArchivedIntelligenceV4,
+    def _prepare_document(self, intelligence: ArchivedDataV4,
                           data_type: str) -> Optional[Dict]:
         if data_type == 'summary':
             text_parts = [
-                intelligence.analysis.message.title,
-                intelligence.analysis.message.brief,
-                intelligence.analysis.message.text,
+                intelligence.EVENT_TITLE,
+                intelligence.EVENT_BRIEF,
+                intelligence.EVENT_TEXT,
             ]
             full_text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
         else:
-            full_text = str(intelligence.raw_data.get('content', '') or '')
+            full_text = str(intelligence.APPENDIX.get(APPENDIX_RAW_DATA, {}).get('content', '') or '')
 
         if not full_text:
             logger.warning(
                 "Empty text for intelligence %s, skipping vectorization.",
-                intelligence.intelligence_uuid)
+                intelligence.UUID)
             return None
 
-        pub_ts = self._parse_timestamp_safe(intelligence.raw_data.get('pub_time'))
-        collect_ts = self._parse_timestamp_safe(intelligence.raw_data.get('collect_time'))
-        content_ts = self._parse_timestamp_safe(intelligence.content_time)
-        archived_ts = self._parse_timestamp_safe(intelligence.archived_at)
-        identifier = str(intelligence.intelligence_uuid)
+        appendix = intelligence.APPENDIX
+        raw_data = appendix.get(APPENDIX_RAW_DATA, {})
+        pub_ts = self._parse_timestamp_safe(raw_data.get('pub_time'))
+        collect_ts = self._parse_timestamp_safe(raw_data.get('collect_time'))
+        content_ts = self._parse_timestamp_safe(appendix.get(APPENDIX_CONTENT_TIME))
+        archived_ts = self._parse_timestamp_safe(appendix.get(APPENDIX_TIME_ARCHIVED))
+        identifier = intelligence.UUID
         metadata = {
             "uuid": identifier,
-            "informant": intelligence.informant,
+            "informant": intelligence.INFORMANT,
             "archived_timestamp": archived_ts,
-            "total_score": float(intelligence.total_score),
-            "subsystem": intelligence.subsystem,
-            "schema_version": intelligence.schema_version,
+            "total_score": float(appendix.get(APPENDIX_TOTAL_SCORE, 0.0)),
+            "subsystem": appendix.get(APPENDIX_SUBSYSTEM, ""),
+            "schema_version": appendix.get(APPENDIX_SCHEMA_VERSION, ""),
             "timestamp": content_ts if content_ts is not None else archived_ts,
-            "content_time_source": intelligence.content_time_source,
+            "content_time_source": appendix.get(APPENDIX_CONTENT_TIME_SOURCE),
         }
 
         if pub_ts is not None:
@@ -84,13 +97,13 @@ class IntelligenceVectorDBEngine:
             "metadata": metadata
         }
 
-    def upsert(self, intelligence: ArchivedIntelligenceV4, data_type: str,
+    def upsert(self, intelligence: ArchivedDataV4, data_type: str,
                timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
         if doc:
             self.collection.upsert(**doc, timeout=timeout)
 
-    def add_to_batch(self, intelligence: ArchivedIntelligenceV4, data_type: str,
+    def add_to_batch(self, intelligence: ArchivedDataV4, data_type: str,
                      timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
         if doc:
@@ -188,15 +201,14 @@ class IntelligenceVectorDBEngine:
     def build_search_text(intelligence_dict: Dict[str, Any], data_type: str = 'summary') -> str:
         """Build search text from a serialized Event V4 archive envelope."""
         if data_type == 'summary':
-            message = (intelligence_dict.get('analysis') or {}).get('message') or {}
             text_parts = [
-                message.get('title', ''),
-                message.get('brief', ''),
-                message.get('text', ''),
+                intelligence_dict.get('EVENT_TITLE', ''),
+                intelligence_dict.get('EVENT_BRIEF', ''),
+                intelligence_dict.get('EVENT_TEXT', ''),
             ]
             full_text = "\n\n".join([str(t) for t in text_parts if t and str(t).strip()])
         else:
-            raw = intelligence_dict.get('raw_data') or {}
+            raw = (intelligence_dict.get(APPENDIX_FIELD) or {}).get(APPENDIX_RAW_DATA) or {}
             full_text = raw.get('content', '')
 
         return full_text

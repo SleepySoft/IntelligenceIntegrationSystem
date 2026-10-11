@@ -13,29 +13,31 @@ from pydantic import ValidationError
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 
 from ServiceComponent.IntelligenceHubDefines_v4 import (
+    AnalysisResultV4,
     CollectedData,
     DEFAULT_EVENT_REGISTRY,
-    NonIntelligenceV4,
-    ValuableIntelligenceV4,
     validate_analysis_result_v4,
 )
 from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
 from ServiceComponent.event_v4_archive import (
-    ArchivedIntelligenceV4,
+    ArchivedDataV4,
     EventV4ArchiveRepository,
-    LowValueIntelligenceV4,
+    build_archive_appendix,
 )
 from ServiceComponent.event_v4_conversion import (
-    DeterministicEntityResolver,
-    EntityResolver,
     EventConversionResult,
     convert_event_extraction,
 )
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.intelligence_contracts import (
+    APPENDIX_CONTENT_TIME,
+    APPENDIX_CONTENT_TIME_SOURCE,
+    APPENDIX_RAW_DATA,
+    APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
 )
+from ServiceComponent.intelligence_time import resolve_content_time
 from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
@@ -43,7 +45,7 @@ from ServiceComponent.runtime.events import HubEvent
 
 @dataclass(frozen=True, slots=True)
 class PreparedValuableV4:
-    archive: ArchivedIntelligenceV4
+    archive: ArchivedDataV4
     conversion: EventConversionResult
 
 
@@ -59,7 +61,6 @@ class EventV4PipelinePorts(BasePipelinePorts):
         ai_client_manager: Any,
         *,
         archive_repository: EventV4ArchiveRepository | None = None,
-        entity_resolver: EntityResolver | None = None,
         event_registry: Any = DEFAULT_EVENT_REGISTRY,
         prompt_table: Mapping[int, str] | None = None,
         analyzer: Callable[[Any, str, dict], dict] | None = None,
@@ -81,7 +82,6 @@ class EventV4PipelinePorts(BasePipelinePorts):
             analysis_worker_count=analysis_worker_count,
         )
         self._archive_repository = archive_repository
-        self._entity_resolver = entity_resolver
         self._event_registry = event_registry
         self._failure_recorder = failure_recorder
         self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
@@ -163,17 +163,21 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 prompt_override=prompt_override,
             )
             processed_at = datetime.now(timezone.utc)
-            if isinstance(analysis, NonIntelligenceV4):
-                low_value = LowValueIntelligenceV4(
-                    intelligence_uuid=intelligence_uuid,
-                    informant=informant,
-                    raw_data=original_data,
-                    analysis=analysis,
+            if analysis.is_non_intelligence:
+                appendix = build_archive_appendix(
+                    original_data,
+                    subsystem=ctx.name,
                     ai_service=ai_service,
                     ai_model=ai_model,
                     prompt_version=prompt_version,
                     processed_at=processed_at,
-                    subsystem=ctx.name,
+                    archived_at=processed_at,
+                )
+                low_value = ArchivedDataV4(
+                    **analysis.model_dump(mode="python", by_alias=True),
+                    UUID=str(intelligence_uuid),
+                    INFORMANT=informant,
+                    APPENDIX=appendix,
                 )
                 if persist:
                     repository.save_low_value(low_value)
@@ -191,10 +195,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 )
 
             conversion = convert_event_extraction(
-                analysis.event_extraction,
+                analysis.EVENT_EXTRACTION,
                 intelligence_uuid=intelligence_uuid,
-                entity_resolver=(self._resolve_entity_resolver(ctx) if persist
-                                 else DeterministicEntityResolver()),
                 registry=self._event_registry,
                 observed_at=processed_at,
                 metadata={"informant": informant, "subsystem": ctx.name},
@@ -203,26 +205,27 @@ class EventV4PipelinePorts(BasePipelinePorts):
             if not hasattr(scorer, "calculate_v4"):
                 raise TypeError("V4 评分器必须实现 calculate_v4()")
             total_score = scorer.calculate_v4(analysis)
-            archive = ArchivedIntelligenceV4(
-                intelligence_uuid=intelligence_uuid,
-                informant=informant,
-                raw_data=original_data,
-                analysis=analysis,
+            appendix = build_archive_appendix(
+                original_data,
+                subsystem=ctx.name,
                 ai_service=ai_service,
                 ai_model=ai_model,
                 prompt_version=prompt_version,
                 processed_at=processed_at,
                 archived_at=processed_at,
                 total_score=total_score,
-                event_uuids=[item.uuid for item in conversion.events],
-                primary_event_uuid=conversion.primary_event_uuid,
-                subsystem=ctx.name,
+            )
+            archive = ArchivedDataV4(
+                **analysis.model_dump(mode="python", by_alias=True),
+                UUID=str(intelligence_uuid),
+                INFORMANT=informant,
+                APPENDIX=appendix,
             )
             if not persist:
-                from event_engine.query.serialization import event_to_document
-
                 result = archive.model_dump(mode="json", by_alias=True)
-                result["events"] = [event_to_document(item) for item in conversion.events]
+                # conversion.events 已经是可查询的派生事件文档，不再是 Event Engine
+                # 的领域对象，也不应再经过旧的 UUID 引用序列化器。
+                result["events"] = [dict(item) for item in conversion.events]
                 result["debug_prompt"] = {
                     "version": prompt_version,
                     "overridden": bool(prompt_override),
@@ -255,11 +258,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
             return StageResult.reject("invalid_v4_archive_payload")
         try:
             repository = self._require_archive_repository(ctx)
-            archive = prepared.archive.model_copy(
-                update={"archived_at": datetime.now(timezone.utc)}
-            )
+            archive = prepared.archive.model_copy(deep=True)
+            archived_at = datetime.now(timezone.utc)
+            archive.APPENDIX[APPENDIX_TIME_ARCHIVED] = archived_at
+            content_time, source = resolve_content_time(
+                archive.APPENDIX.get(APPENDIX_RAW_DATA) or {}, archived_at)
+            archive.APPENDIX[APPENDIX_CONTENT_TIME] = content_time
+            archive.APPENDIX[APPENDIX_CONTENT_TIME_SOURCE] = source
             repository.commit(archive, prepared.conversion.events)
-            source_uuid = str(archive.raw_data.get("UUID", ""))
+            source_uuid = archive.UUID
             self._mark_cache(source_uuid, CacheArchiveState.ARCHIVED, ctx)
             self._increment_stat(ctx, "archived")
             return StageResult.allow(
@@ -267,7 +274,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 subsystem=ctx.name,
             )
         except Exception as exc:
-            source_uuid = str(prepared.archive.raw_data.get("UUID", ""))
+            source_uuid = prepared.archive.UUID
             self._mark_cache(source_uuid, CacheArchiveState.ERROR, ctx)
             self._increment_stat(ctx, "error")
             return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
@@ -281,13 +288,6 @@ class EventV4PipelinePorts(BasePipelinePorts):
             raise RuntimeError("Event V4 端口仅配置为无持久化调试模式")
         return repository
 
-    def _resolve_entity_resolver(self, ctx: Any) -> EntityResolver:
-        return (
-            self._entity_resolver
-            or getattr(ctx, "event_v4_entity_resolver", None)
-            or DeterministicEntityResolver()
-        )
-
     @staticmethod
     def _mark_cache(uuid: str, state: CacheArchiveState, ctx: Any) -> None:
         if not uuid or not ctx.mongo_db_cache:
@@ -297,7 +297,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
         prompt_version: int | None = None, prompt_override: str | None = None,
-    ) -> tuple[ValuableIntelligenceV4 | NonIntelligenceV4, int, str, str]:
+    ) -> tuple[AnalysisResultV4, int, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(list(self._prompt_table.keys()))
         elif prompt_version not in self._prompt_table:
@@ -442,7 +442,9 @@ class _SensitiveAnalysisError(RuntimeError):
 def _compact_validation_error(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
         payload = exc.errors(include_url=False, include_input=False)
-        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        # Pydantic 的 ctx 可能携带原始 ValueError，诊断文本必须可序列化，
+        # 否则首次校验失败会反过来中断重试。
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
     else:
         text = str(exc)
     return text.replace("\n", " ")[:800]

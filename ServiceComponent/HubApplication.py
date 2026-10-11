@@ -16,6 +16,10 @@ from ServiceComponent.pipeline import (
     INTAKE_REJECTED,
 )
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_MANUAL_RATING,
+    appendix_path,
+)
 
 
 class HubApplication:
@@ -161,7 +165,8 @@ class HubApplication:
         if not isinstance(rating, dict):
             return False
         self._context(subsystem).event_v4_intelligence_collection.update_one(
-            {"_id": intelligence_uuid}, {"$set": {"manual_rating": rating}})
+            {"UUID": intelligence_uuid},
+            {"$set": {appendix_path(APPENDIX_MANUAL_RATING): rating}})
         return True
 
     def vector_search_intelligence(self, **kwargs) -> List[Tuple[str, float, dict]]:

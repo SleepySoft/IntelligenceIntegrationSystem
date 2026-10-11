@@ -60,7 +60,7 @@ class IISUnarchivedReplayExtension(HubPlugin):
                                 {"_id": stored_id}, {"$set": {"UUID": canonical_uuid}})
                             payload["UUID"] = canonical_uuid
                         # Mongo cache 的内部主键不是 CollectedData 领域字段，不能进入
-                        # raw_data，否则详情 JSON 会携带不可序列化的 ObjectId。
+                        # APPENDIX.RAW_DATA，否则详情 JSON 会携带不可序列化的 ObjectId。
                         payload.pop("_id", None)
                         runtime.emit(
                             HubEvent(ANALYSIS_REQUESTED, payload, context.name),
