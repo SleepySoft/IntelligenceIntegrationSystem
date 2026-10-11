@@ -8,7 +8,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
-from uuid import UUID, uuid5
 
 from pydantic import ValidationError
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
@@ -37,11 +36,9 @@ from ServiceComponent.intelligence_contracts import (
     CACHE_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
 )
+from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
-
-
-INTELLIGENCE_NAMESPACE = UUID("55672c83-cdd8-5754-a724-8a2ae8874fb7")
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +91,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
         try:
-            data = CollectedData.model_validate(dict(event.payload)).model_dump()
+            submitted = dict(event.payload)
+            submitted["UUID"] = str(normalize_or_assign_intelligence_uuid(
+                submitted.get("UUID")))
+            data = CollectedData.model_validate(submitted).model_dump()
         except ValidationError as exc:
             return StageResult.reject(str(exc))
         if data.get("source") == MANUAL_TEST_SOURCE:
@@ -102,10 +102,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
         data["subsystem"] = ctx.name
         with self._dedupe_lock:
             collection = ctx.mongo_db_cache.collection if ctx.mongo_db_cache else None
-            if collection is not None and collection.find_one({"$or": [
-                {"UUID": data["UUID"]}, {"informant": data["informant"]},
-            ]}, {"_id": 1}):
-                return StageResult.reject("collected_data_duplicated")
+            if collection is not None:
+                if collection.find_one({"informant": data["informant"]}, {"_id": 1}):
+                    return StageResult.reject("collected_data_duplicated")
+                while collection.find_one({"UUID": data["UUID"]}, {"_id": 1}):
+                    data["UUID"] = str(normalize_or_assign_intelligence_uuid(None))
             if ctx.mongo_db_cache:
                 ctx.mongo_db_cache.insert(data)
         return StageResult.allow(data, subsystem=ctx.name)
@@ -126,13 +127,31 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
         original_data = dict(event.payload)
-        intelligence_uuid = derive_intelligence_uuid(original_data)
         informant = str(original_data.get("informant", "")).strip()
+        if not informant:
+            return StageResult.reject("informant_required")
+        original_uuid = str(original_data.get("UUID", "")).strip()
+        intelligence_uuid = normalize_or_assign_intelligence_uuid(original_uuid)
+        canonical_uuid = str(intelligence_uuid)
+        if canonical_uuid != original_uuid:
+            original_data["UUID"] = canonical_uuid
+            if persist and ctx.mongo_db_cache:
+                cache_identity = ({"UUID": original_uuid} if original_uuid
+                                  else {"informant": informant})
+                ctx.mongo_db_cache.update(cache_identity, {"UUID": canonical_uuid})
         repository = self._require_archive_repository(ctx) if persist else None
-        if persist and repository.contains(intelligence_uuid, informant):
+        if persist and repository.contains_source(informant):
             self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
+        if persist:
+            while repository.contains_id(intelligence_uuid):
+                previous_uuid = original_data["UUID"]
+                intelligence_uuid = normalize_or_assign_intelligence_uuid(None)
+                original_data["UUID"] = str(intelligence_uuid)
+                if ctx.mongo_db_cache:
+                    ctx.mongo_db_cache.update(
+                        {"UUID": previous_uuid}, {"UUID": original_data["UUID"]})
         try:
             requested_prompt_version, prompt_override = (
                 self._transient_prompt_options(original_data) if not persist else (None, None)
@@ -419,18 +438,6 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
 class _SensitiveAnalysisError(RuntimeError):
     pass
-
-
-def derive_intelligence_uuid(data: dict[str, Any]) -> UUID:
-    """优先沿用合法 UUID，否则以原始标识和来源稳定派生全局 UUID。"""
-
-    raw_uuid = str(data.get("UUID", "")).strip()
-    try:
-        return UUID(raw_uuid)
-    except (ValueError, TypeError, AttributeError):
-        source = str(data.get("informant", "")).strip()
-        return uuid5(INTELLIGENCE_NAMESPACE, f"{raw_uuid}|{source}")
-
 
 def _compact_validation_error(exc: Exception) -> str:
     if isinstance(exc, ValidationError):

@@ -1,6 +1,7 @@
 import datetime
 import json
 import time
+import pytest
 
 from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
 from Workflow import CollectorSubmission
@@ -38,6 +39,11 @@ def test_collected_data_keeps_the_original_input_contract():
     assert fields["subsystem"].default == ""
     assert CollectedData.model_config["extra"] == "ignore"
     assert _collected().collect_time.tzinfo == datetime.timezone.utc
+
+
+def test_collected_data_rejects_blank_informant():
+    with pytest.raises(ValueError, match="informant/source URL cannot be empty"):
+        _collected(informant="   ")
 
 
 def test_submission_serializes_rss_struct_time_as_iso8601(monkeypatch):

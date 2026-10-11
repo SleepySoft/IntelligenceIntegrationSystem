@@ -70,7 +70,10 @@ class LowValueIntelligenceV4(ArchiveModel):
 class EventV4ArchiveRepository(Protocol):
     """V4 多集合提交端口；实现必须保证重复调用不会制造重复记录。"""
 
-    def contains(self, intelligence_uuid: UUID, informant: str) -> bool:
+    def contains_source(self, informant: str) -> bool:
+        ...
+
+    def contains_id(self, intelligence_uuid: UUID) -> bool:
         ...
 
     def save_low_value(self, record: LowValueIntelligenceV4) -> None:

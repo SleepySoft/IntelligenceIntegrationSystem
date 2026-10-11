@@ -102,11 +102,15 @@ class MongoEventV4ArchiveRepository:
             [("status", ASCENDING), ("updated_at", ASCENDING)], name="outbox_recovery"
         )
 
-    def contains(self, intelligence_uuid: UUID, informant: str) -> bool:
-        conditions = [{"_id": str(intelligence_uuid)}]
-        if informant:
-            conditions.append({"informant": informant})
-        return self.intelligence_collection.find_one({"$or": conditions}, {"_id": 1}) is not None
+    def contains_source(self, informant: str) -> bool:
+        if not informant:
+            return False
+        return self.intelligence_collection.find_one(
+            {"informant": informant}, {"_id": 1}) is not None
+
+    def contains_id(self, intelligence_uuid: UUID) -> bool:
+        return self.intelligence_collection.find_one(
+            {"_id": str(intelligence_uuid)}, {"_id": 1}) is not None
 
     def save_low_value(self, record: LowValueIntelligenceV4) -> None:
         document = archive_document(record)

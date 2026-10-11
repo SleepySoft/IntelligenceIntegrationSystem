@@ -1,4 +1,5 @@
 from tenacity import wait_none
+from uuid import UUID
 
 from ServiceComponent.adapters import EventV4PipelinePorts
 from ServiceComponent.IntelligenceHubDefines_v4 import validate_analysis_result_v4
@@ -18,6 +19,15 @@ class FakeStorage:
 
     def update(self, query, update):
         self.updated.append((query, update))
+
+    @property
+    def collection(self):
+        return self
+
+    def find_one(self, query, projection=None):
+        del projection
+        return next((item for item in self.inserted
+                     if all(item.get(key) == value for key, value in query.items())), None)
 
 
 class FakeContext:
@@ -79,9 +89,14 @@ class FakeArchiveRepository:
         self.archives = []
         self.events = []
         self.low_values = []
+        self.existing_sources = set()
+        self.existing_ids = set()
 
-    def contains(self, intelligence_uuid, informant):
-        return False
+    def contains_source(self, informant):
+        return informant in self.existing_sources
+
+    def contains_id(self, intelligence_uuid):
+        return intelligence_uuid in self.existing_ids
 
     def save_low_value(self, record):
         self.low_values.append(record)
@@ -131,6 +146,56 @@ def _valuable():
             }],
         },
     }
+
+
+def _ports_for_intake(context=None):
+    context = context or FakeContext()
+    return EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    ), context
+
+
+def test_v4_intake_assigns_and_persists_uuid_for_invalid_input():
+    ports, context = _ports_for_intake()
+    submitted = _original()
+    submitted["UUID"] = "not-a-uuid"
+
+    result = ports.accept(HubEvent("intake.received", submitted, "news"))
+
+    assert result.accepted
+    assigned = result.payload["UUID"]
+    assert str(UUID(assigned)) == assigned
+    assert assigned != submitted["UUID"]
+    assert context.mongo_db_cache.inserted[0]["UUID"] == assigned
+
+
+def test_v4_intake_deduplicates_by_informant_not_uuid():
+    ports, context = _ports_for_intake()
+    first = ports.accept(HubEvent("intake.received", _original(), "news"))
+    repeated_source = _original()
+    repeated_source["UUID"] = "a98f33b1-10a5-499a-85ac-eb3c773d2198"
+
+    second = ports.accept(HubEvent("intake.received", repeated_source, "news"))
+
+    assert first.accepted
+    assert not second.accepted
+    assert second.reason == "collected_data_duplicated"
+    assert len(context.mongo_db_cache.inserted) == 1
+
+
+def test_v4_intake_rejects_blank_informant():
+    ports, context = _ports_for_intake()
+    submitted = _original()
+    submitted["informant"] = "   "
+
+    result = ports.accept(HubEvent("intake.received", submitted, "news"))
+
+    assert not result.accepted
+    assert not context.mongo_db_cache.inserted
 
 
 def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
@@ -231,6 +296,51 @@ def test_v4_adapter_resolves_repository_from_subsystem_context():
     assert analyzed.accepted
     assert archived.accepted
     assert len(repository.archives) == 1
+
+
+def test_v4_analysis_deduplicates_archived_records_by_source_url():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    repository.existing_sources.add(_original()["informant"])
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert not result.accepted
+    assert result.reason == "already_archived"
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": _original()["UUID"]},
+        {"APPENDIX.__ARCHIVED__": "U"},
+    )
+
+
+def test_v4_analysis_reassigns_internal_uuid_collision_for_another_source():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    original_id = UUID(_original()["UUID"])
+    repository.existing_ids.add(original_id)
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted
+    assert result.payload.archive.intelligence_uuid != original_id
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": str(original_id)},
+        {"UUID": str(result.payload.archive.intelligence_uuid)},
+    )
 
 
 def test_v4_adapter_stores_non_intelligence_envelope_without_events():

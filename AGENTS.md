@@ -204,6 +204,7 @@ python VectorDB/VectorDBBService.py \
 - 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
 - 跨组件共享的 schema 版本、状态码、集合后缀、内容时间来源和 UUIDv5 命名空间统一定义在 `ServiceComponent.intelligence_contracts`；不得在业务模块重复声明
 - `CollectedData`：独立于分析版本的采集端原始数据契约
+- `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
 - `ValuableIntelligenceV4` / `NonIntelligenceV4`：AI 分析结果
 - `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`；主时间 `content_time` 优先采用非零时刻的发布时间，发布时间为零点时回退采集时间，最后才回退 `archived_at`
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验

@@ -7,6 +7,7 @@ import threading
 from typing import Any
 
 from ServiceComponent.intelligence_contracts import unarchived_cache_query
+from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
 from ServiceComponent.pipeline import ANALYSIS_REQUESTED
 from ServiceComponent.runtime import EventPriority, HubEvent, HubPlugin, HubRuntime
 
@@ -51,6 +52,13 @@ class IISUnarchivedReplayExtension(HubPlugin):
                         return
                     try:
                         payload = dict(record)
+                        stored_id = payload.get("_id")
+                        original_uuid = str(payload.get("UUID", "")).strip()
+                        canonical_uuid = str(normalize_or_assign_intelligence_uuid(original_uuid))
+                        if canonical_uuid != original_uuid:
+                            context.mongo_db_cache.collection.update_one(
+                                {"_id": stored_id}, {"$set": {"UUID": canonical_uuid}})
+                            payload["UUID"] = canonical_uuid
                         # Mongo cache 的内部主键不是 CollectedData 领域字段，不能进入
                         # raw_data，否则详情 JSON 会携带不可序列化的 ObjectId。
                         payload.pop("_id", None)

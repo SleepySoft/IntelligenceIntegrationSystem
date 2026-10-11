@@ -181,7 +181,8 @@ def test_archive_repository_is_idempotent_and_commits_events_before_intelligence
     assert len(intelligence.documents) == 1
     assert len(events.documents) == 1
     assert outbox.documents[str(archive.intelligence_uuid)]["status"] == "committed"
-    assert repository.contains(archive.intelligence_uuid, archive.informant)
+    assert repository.contains_source(archive.informant)
+    assert repository.contains_id(archive.intelligence_uuid)
     assert isinstance(intelligence.documents[str(archive.intelligence_uuid)]["archived_at"], datetime)
     assert intelligence.documents[str(archive.intelligence_uuid)]["content_time_source"] == "archived"
     assert isinstance(intelligence.documents[str(archive.intelligence_uuid)]["content_time"], datetime)

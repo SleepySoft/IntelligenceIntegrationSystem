@@ -83,6 +83,14 @@ class CollectedData(BaseModel):
             return None
         return normalize_intelligence_datetime(value) or value
 
+    @field_validator("informant", mode="before")
+    @classmethod
+    def normalize_informant(cls, value):
+        normalized = str(value or "").strip()
+        if not normalized:
+            raise ValueError("informant/source URL cannot be empty")
+        return normalized
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
