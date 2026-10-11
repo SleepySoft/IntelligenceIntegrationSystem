@@ -42,10 +42,9 @@ class ArchivedIntelligenceV4(ArchiveModel):
 
     @model_validator(mode="after")
     def populate_content_time(self):
-        if self.content_time is None or self.content_time_source is None:
-            value, source = resolve_content_time(self.raw_data, self.archived_at)
-            self.content_time = value
-            self.content_time_source = source
+        value, source = resolve_content_time(self.raw_data, self.archived_at)
+        self.content_time = value
+        self.content_time_source = source
         return self
 
 

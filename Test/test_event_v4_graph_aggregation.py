@@ -9,8 +9,12 @@ def _document():
         "_id": "intel-1",
         "intelligence_uuid": "intel-1",
         "archived_at": datetime.datetime(2026, 10, 9, tzinfo=datetime.timezone.utc),
-        "content_time": datetime.datetime(2026, 10, 8, tzinfo=datetime.timezone.utc),
+        "content_time": datetime.datetime(2026, 10, 8, 8, 30, tzinfo=datetime.timezone.utc),
         "content_time_source": "published",
+        "raw_data": {
+            "pub_time": datetime.datetime(2026, 10, 8, 8, 30,
+                                          tzinfo=datetime.timezone.utc),
+        },
         "analysis": {
             "message": {"title": "港口遇袭", "brief": "A组织袭击B港口。"},
             "event_extraction": {

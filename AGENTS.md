@@ -204,7 +204,7 @@ python VectorDB/VectorDBBService.py \
 - 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
 - `CollectedData`：独立于分析版本的采集端原始数据契约
 - `ValuableIntelligenceV4` / `NonIntelligenceV4`：AI 分析结果
-- `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`，归档时间位于 `archived_at`
+- `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`；主时间 `content_time` 优先采用非零时刻的发布时间，发布时间为零点时回退采集时间，最后才回退 `archived_at`
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验
 
 ### 5.3 并发模型

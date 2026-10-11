@@ -183,19 +183,47 @@ class MongoEventV4ArchiveRepository:
                 "onError": None, "onNull": None,
             }
         }
+        pub_has_clock = {
+            "$and": [
+                {"$ne": [convert_pub, None]},
+                {"$ne": [
+                    {"$dateToString": {
+                        "format": "%H:%M:%S.%L", "date": convert_pub,
+                        "timezone": "UTC", "onNull": None,
+                    }},
+                    "00:00:00.000",
+                ]},
+            ]
+        }
         self.intelligence_collection.update_many(
             {"$or": [
                 {"content_time": {"$exists": False}},
                 {"content_time": None},
+                {"content_time_source": {"$exists": False}},
+                {"content_time_source": None},
+                {
+                    "content_time_source": "published",
+                    "$expr": {"$eq": [
+                        {"$dateToString": {
+                            "format": "%H:%M:%S.%L", "date": convert_pub,
+                            "timezone": "UTC", "onNull": None,
+                        }},
+                        "00:00:00.000",
+                    ]},
+                },
             ]},
             [{"$set": {
                 "content_time": {
-                    "$ifNull": [convert_pub, {"$ifNull": [convert_collect, "$archived_at"]}]
+                    "$cond": [
+                        pub_has_clock,
+                        convert_pub,
+                        {"$ifNull": [convert_collect, "$archived_at"]},
+                    ]
                 },
                 "content_time_source": {
                     "$switch": {
                         "branches": [
-                            {"case": {"$ne": [convert_pub, None]}, "then": "published"},
+                            {"case": pub_has_clock, "then": "published"},
                             {"case": {"$ne": [convert_collect, None]}, "then": "collected"},
                         ],
                         "default": "archived",
@@ -206,8 +234,6 @@ class MongoEventV4ArchiveRepository:
 
     @staticmethod
     def _with_content_time(archive: dict) -> dict:
-        if archive.get("content_time") is not None and archive.get("content_time_source"):
-            return archive
         result = dict(archive)
         value, source = resolve_content_time(
             result.get("raw_data") or {}, result.get("archived_at"))

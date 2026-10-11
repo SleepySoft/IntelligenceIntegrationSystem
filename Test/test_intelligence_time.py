@@ -31,6 +31,33 @@ def test_content_time_uses_collection_when_publication_is_invalid():
     assert source == "collected"
 
 
+def test_content_time_uses_collection_when_publication_only_has_a_date():
+    collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
+
+    value, source = resolve_content_time(
+        {"pub_time": "2026-10-10", "collect_time": collected},
+        datetime.datetime(2026, 10, 10, 10, tzinfo=datetime.timezone.utc),
+    )
+
+    assert value == collected
+    assert source == "collected"
+
+
+def test_content_time_treats_midnight_publication_as_date_only():
+    collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
+
+    value, source = resolve_content_time(
+        {
+            "pub_time": datetime.datetime(2026, 10, 10, tzinfo=datetime.timezone.utc),
+            "collect_time": collected,
+        },
+        datetime.datetime(2026, 10, 10, 10, tzinfo=datetime.timezone.utc),
+    )
+
+    assert value == collected
+    assert source == "collected"
+
+
 def test_content_time_uses_archive_as_last_resort():
     archived = datetime.datetime(2026, 10, 10, 10, tzinfo=datetime.timezone.utc)
 
@@ -41,6 +68,17 @@ def test_document_content_time_supports_old_documents_without_materialized_field
     collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
 
     assert document_content_time({"raw_data": {"collect_time": collected}}) == collected
+
+
+def test_document_content_time_repairs_materialized_midnight_publication():
+    published = datetime.datetime(2026, 10, 10, tzinfo=datetime.timezone.utc)
+    collected = datetime.datetime(2026, 10, 10, 9, tzinfo=datetime.timezone.utc)
+
+    assert document_content_time({
+        "content_time": published,
+        "content_time_source": "published",
+        "raw_data": {"pub_time": published, "collect_time": collected},
+    }) == collected
 
 
 def test_numeric_timestamp_is_normalized_to_utc():

@@ -38,7 +38,7 @@ def _archive():
             }}],
         },
     })
-    now = datetime(2026, 10, 9, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 8, 30, tzinfo=timezone.utc)
     identifier = UUID("30eb0459-998d-486f-8eac-470b9dfd98ec")
     return ArchivedIntelligenceV4(
         intelligence_uuid=identifier,

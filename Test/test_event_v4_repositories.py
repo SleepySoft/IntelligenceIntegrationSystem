@@ -187,6 +187,25 @@ def test_archive_repository_is_idempotent_and_commits_events_before_intelligence
     assert isinstance(intelligence.documents[str(archive.intelligence_uuid)]["content_time"], datetime)
 
 
+def test_archive_repository_backfill_rechecks_midnight_publication_times():
+    intelligence = FakeCollection()
+    repository = MongoEventV4ArchiveRepository(
+        intelligence_collection=intelligence,
+        low_value_collection=FakeCollection(),
+        event_collection=FakeCollection(),
+        outbox_collection=FakeCollection(),
+    )
+
+    repository.ensure_indexes()
+
+    query, pipeline = intelligence.update_many_calls[0]
+    assert any(
+        clause.get("content_time_source") == "published" and "$expr" in clause
+        for clause in query["$or"]
+    )
+    assert "$cond" in pipeline[0]["$set"]["content_time"]
+
+
 def test_pending_outbox_can_be_recovered_after_interrupted_commit():
     intelligence = FailOnceCollection()
     events = FakeCollection()
