@@ -67,6 +67,10 @@ def test_v4_query_engine_builds_native_nested_field_filters():
     result, total = engine.query_intelligence(
         keywords="能源 安全",
         threshold=6,
+        period=(
+            datetime(2026, 1, 2, tzinfo=timezone.utc),
+            datetime(2026, 1, 31, tzinfo=timezone.utc),
+        ),
         archive_period=(
             datetime(2026, 1, 1, tzinfo=timezone.utc),
             datetime(2026, 2, 1, tzinfo=timezone.utc),
@@ -77,6 +81,7 @@ def test_v4_query_engine_builds_native_nested_field_filters():
     assert total == 1
     assert len(result) == 1
     assert {"total_score": {"$gte": 6.0}} in query["$and"]
+    assert any("content_time" in clause for clause in query["$and"])
     assert any("archived_at" in clause for clause in query["$and"])
     keyword_fields = {
         next(iter(item))

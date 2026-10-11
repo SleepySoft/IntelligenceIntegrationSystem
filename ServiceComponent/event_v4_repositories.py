@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from pymongo import ASCENDING, ReplaceOne
+from pymongo import ASCENDING, DESCENDING, ReplaceOne
 
 from event_engine.query.serialization import event_to_document
 from event_engine.schema import EventRecord
@@ -16,6 +16,7 @@ from ServiceComponent.event_v4_archive import (
     archive_document,
 )
 from ServiceComponent.event_v4_conversion import ResolvedEntity
+from ServiceComponent.intelligence_time import resolve_content_time
 
 
 class MongoEntityRepository:
@@ -80,8 +81,13 @@ class MongoEventV4ArchiveRepository:
         self.outbox_collection = outbox_collection
 
     def ensure_indexes(self) -> None:
+        self._backfill_content_time()
         self.intelligence_collection.create_index(
             [("informant", ASCENDING)], unique=True, name="intelligence_informant_unique"
+        )
+        self.intelligence_collection.create_index(
+            [("content_time", DESCENDING), ("_id", DESCENDING)],
+            name="intelligence_content_time",
         )
         self.low_value_collection.create_index(
             [("informant", ASCENDING)], name="low_value_informant"
@@ -152,6 +158,7 @@ class MongoEventV4ArchiveRepository:
         return recovered
 
     def _write_documents(self, archive: dict, events: list[dict]) -> None:
+        archive = self._with_content_time(archive)
         if events:
             self.event_collection.bulk_write(
                 [ReplaceOne({"_id": item["_id"]}, item, upsert=True) for item in events],
@@ -160,6 +167,53 @@ class MongoEventV4ArchiveRepository:
         self.intelligence_collection.replace_one(
             {"_id": archive["_id"]}, archive, upsert=True
         )
+
+    def _backfill_content_time(self) -> None:
+        """一次性为旧 V4 文档物化主时间，之后排序可直接使用索引。"""
+
+        convert_pub = {
+            "$convert": {
+                "input": "$raw_data.pub_time", "to": "date",
+                "onError": None, "onNull": None,
+            }
+        }
+        convert_collect = {
+            "$convert": {
+                "input": "$raw_data.collect_time", "to": "date",
+                "onError": None, "onNull": None,
+            }
+        }
+        self.intelligence_collection.update_many(
+            {"$or": [
+                {"content_time": {"$exists": False}},
+                {"content_time": None},
+            ]},
+            [{"$set": {
+                "content_time": {
+                    "$ifNull": [convert_pub, {"$ifNull": [convert_collect, "$archived_at"]}]
+                },
+                "content_time_source": {
+                    "$switch": {
+                        "branches": [
+                            {"case": {"$ne": [convert_pub, None]}, "then": "published"},
+                            {"case": {"$ne": [convert_collect, None]}, "then": "collected"},
+                        ],
+                        "default": "archived",
+                    }
+                },
+            }}],
+        )
+
+    @staticmethod
+    def _with_content_time(archive: dict) -> dict:
+        if archive.get("content_time") is not None and archive.get("content_time_source"):
+            return archive
+        result = dict(archive)
+        value, source = resolve_content_time(
+            result.get("raw_data") or {}, result.get("archived_at"))
+        result["content_time"] = value
+        result["content_time_source"] = source
+        return result
 
     @staticmethod
     def _validate_batch(record: ArchivedIntelligenceV4, events: list[dict]) -> None:

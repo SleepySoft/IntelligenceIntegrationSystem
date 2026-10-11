@@ -46,7 +46,7 @@ class EventV4QueryEngine:
 
     def get_intelligence_summary(self) -> dict[str, Any]:
         newest = self.intelligence_collection.find_one(
-            {}, {"_id": 1}, sort=[("archived_at", DESCENDING)])
+            {}, {"_id": 1}, sort=[("content_time", DESCENDING), ("_id", DESCENDING)])
         return {
             "total_count": self.intelligence_collection.count_documents({}),
             "base_uuid": str(newest["_id"]) if newest else None,
@@ -71,7 +71,7 @@ class EventV4QueryEngine:
     ) -> tuple[list[dict], int]:
         clauses: list[dict] = []
         if period:
-            clauses.append({"raw_data.pub_time": {"$gte": period[0], "$lte": period[1]}})
+            clauses.append({"content_time": {"$gte": period[0], "$lte": period[1]}})
         if archive_period:
             clauses.append({"archived_at": {
                 "$gte": archive_period[0], "$lte": archive_period[1]}})
@@ -112,7 +112,7 @@ class EventV4QueryEngine:
         total = self.intelligence_collection.count_documents(query)
         cursor = (
             self.intelligence_collection.find(query)
-            .sort([("archived_at", DESCENDING), ("_id", DESCENDING)])
+            .sort([("content_time", DESCENDING), ("_id", DESCENDING)])
             .skip(max(0, int(skip)))
             .limit(max(0, int(limit)))
         )

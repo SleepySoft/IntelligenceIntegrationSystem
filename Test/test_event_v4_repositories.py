@@ -29,6 +29,7 @@ class FakeCollection:
     def __init__(self):
         self.documents = {}
         self.indexes = []
+        self.update_many_calls = []
 
     def create_index(self, keys, **kwargs):
         self.indexes.append((keys, kwargs))
@@ -58,6 +59,9 @@ class FakeCollection:
             if value not in values:
                 values.append(value)
         self.documents[str(current["_id"])] = current
+
+    def update_many(self, query, update):
+        self.update_many_calls.append((query, update))
 
     def replace_one(self, query, document, upsert=False):
         assert upsert or self.find_one(query) is not None
@@ -179,6 +183,8 @@ def test_archive_repository_is_idempotent_and_commits_events_before_intelligence
     assert outbox.documents[str(archive.intelligence_uuid)]["status"] == "committed"
     assert repository.contains(archive.intelligence_uuid, archive.informant)
     assert isinstance(intelligence.documents[str(archive.intelligence_uuid)]["archived_at"], datetime)
+    assert intelligence.documents[str(archive.intelligence_uuid)]["content_time_source"] == "archived"
+    assert isinstance(intelligence.documents[str(archive.intelligence_uuid)]["content_time"], datetime)
 
 
 def test_pending_outbox_can_be_recovered_after_interrupted_commit():

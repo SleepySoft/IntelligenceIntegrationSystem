@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from event_engine.schema import EventRecord
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     NonIntelligenceV4,
     ValuableIntelligenceV4,
 )
+from ServiceComponent.intelligence_time import resolve_content_time
 
 
 class ArchiveModel(BaseModel):
@@ -30,12 +31,22 @@ class ArchivedIntelligenceV4(ArchiveModel):
     prompt_version: int
     processed_at: datetime
     archived_at: datetime
+    content_time: datetime | None = None
+    content_time_source: Literal["published", "collected", "archived"] | None = None
     total_score: float = Field(..., ge=0, le=10)
     event_uuids: list[UUID] = Field(..., min_length=1)
     primary_event_uuid: UUID
     subsystem: str
     translation_revision: str | None = None
     manual_rating: dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def populate_content_time(self):
+        if self.content_time is None or self.content_time_source is None:
+            value, source = resolve_content_time(self.raw_data, self.archived_at)
+            self.content_time = value
+            self.content_time_source = source
+        return self
 
 
 class LowValueIntelligenceV4(ArchiveModel):
