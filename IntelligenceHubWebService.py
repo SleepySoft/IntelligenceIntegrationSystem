@@ -135,7 +135,9 @@ def post_collected_intelligence(url: str, data: CollectedDataV4, timeout=10) -> 
     """
     if not isinstance(data, CollectedDataV4):
         return {'status': 'error', 'reason': 'Data must be CollectedDataV4 format.'}
-    return common_post(f'{url}/collect', data.model_dump(exclude_unset=True), timeout)
+    # HTTP 边界必须使用 JSON 模式；Python 模式会保留 datetime，requests 无法编码。
+    payload = data.model_dump(mode="json", exclude_unset=True)
+    return common_post(f'{url}/collect', payload, timeout)
 
 
 class WebServiceAccessManager:
