@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 
 from ServiceComponent.IntelligenceHubDefines_v4 import (
-    CollectedDataV4,
+    CollectedData,
     DEFAULT_EVENT_REGISTRY,
     NonIntelligenceV4,
     ValuableIntelligenceV4,
@@ -96,7 +96,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
         try:
-            data = CollectedDataV4.model_validate(dict(event.payload)).model_dump()
+            data = CollectedData.model_validate(dict(event.payload)).model_dump()
         except ValidationError as exc:
             return StageResult.reject(str(exc))
         if data.get("source") == MANUAL_TEST_SOURCE:

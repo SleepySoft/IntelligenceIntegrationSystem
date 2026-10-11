@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import uuid4
 
-from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
@@ -144,7 +144,7 @@ class ManualDebugAnalysisService(HubPlugin):
 
         job_id = str(uuid4())
         now = datetime.now(timezone.utc)
-        collected = CollectedDataV4(
+        collected = CollectedData(
             UUID=job_id,
             token=MANUAL_TEST_TOKEN,
             source=MANUAL_TEST_SOURCE,

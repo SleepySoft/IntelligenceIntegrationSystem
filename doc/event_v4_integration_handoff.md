@@ -10,7 +10,7 @@ IIS 生产主链和所有已启用子系统已统一切换到 Event V4，不保�
 ## 主链契约
 
 ```text
-CollectedDataV4
+CollectedData
 → EventV4PipelinePorts
 → ValuableIntelligenceV4 | NonIntelligenceV4
 → EventRecord 转换与实体解析

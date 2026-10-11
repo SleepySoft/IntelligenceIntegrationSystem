@@ -5,8 +5,7 @@
 """
 
 from ServiceComponent.HubApplication import HubApplication
-from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
 
 
 IntelligenceHub = HubApplication
-CollectedData = CollectedDataV4

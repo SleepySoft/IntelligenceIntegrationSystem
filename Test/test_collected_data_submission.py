@@ -2,11 +2,17 @@ import datetime
 import json
 import time
 
-from ServiceComponent.IntelligenceHubDefines_v4 import CollectedDataV4
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
 from Workflow import CollectorSubmission
 
 
-def _collected(**overrides) -> CollectedDataV4:
+EXPECTED_FIELDS = [
+    "UUID", "token", "source", "target", "prompt", "title", "authors",
+    "content", "pub_time", "collect_time", "informant", "subsystem", "temp_data",
+]
+
+
+def _collected(**overrides) -> CollectedData:
     values = {
         "UUID": "test-uuid",
         "token": "test-token",
@@ -15,7 +21,22 @@ def _collected(**overrides) -> CollectedDataV4:
         "informant": "https://example.test/article",
     }
     values.update(overrides)
-    return CollectedDataV4(**values)
+    return CollectedData(**values)
+
+
+def test_collected_data_keeps_the_original_input_contract():
+    fields = CollectedData.model_fields
+
+    assert CollectedData.__name__ == "CollectedData"
+    assert list(fields) == EXPECTED_FIELDS
+    assert {name for name, field in fields.items() if field.is_required()} == {
+        "UUID", "token", "title", "content", "informant",
+    }
+    assert fields["authors"].default_factory is list
+    assert fields["collect_time"].default_factory.__qualname__ == "datetime.now"
+    assert fields["temp_data"].default_factory is dict
+    assert fields["subsystem"].default == ""
+    assert CollectedData.model_config["extra"] == "ignore"
 
 
 def test_submission_serializes_rss_struct_time_as_iso8601(monkeypatch):

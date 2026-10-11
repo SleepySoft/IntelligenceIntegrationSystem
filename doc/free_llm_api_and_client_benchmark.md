@@ -256,7 +256,7 @@ Client。每个服务内部配置的模型轮换会照常发生，因此逐次�
 }
 ```
 
-`collected_data` 必须通过 `CollectedDataV4` 校验。`expected` 只描述稳定、客观的断言，不用
+`collected_data` 必须通过 `CollectedData` 校验。`expected` 只描述稳定、客观的断言，不用
 一份完整标准答案强迫模型逐字一致。
 
 ### 4.3 指标

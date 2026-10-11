@@ -202,7 +202,7 @@ python VectorDB/VectorDBBService.py \
 
 ### 5.2 数据模型
 - 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
-- `CollectedDataV4`：采集端提交的原始数据
+- `CollectedData`：独立于分析版本的采集端原始数据契约
 - `ValuableIntelligenceV4` / `NonIntelligenceV4`：AI 分析结果
 - `ArchivedIntelligenceV4`：归档信封；消息位于 `analysis.message`，评分位于 `total_score`，归档时间位于 `archived_at`
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验

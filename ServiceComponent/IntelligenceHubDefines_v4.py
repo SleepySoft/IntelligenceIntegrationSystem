@@ -1,6 +1,7 @@
-"""IIS Event V4 分析结果。
+"""IIS 采集输入与 Event V4 分析结果。
 
-事件抽取子结构由 event_engine 独立定义；本模块只组合 IIS 的消息、分类和评估字段。
+``CollectedData`` 是不随分析版本变化的采集契约；事件抽取子结构由 event_engine 独立
+定义，本模块同时组合 Event V4 的消息、分类和评估字段。
 """
 
 import datetime
@@ -20,24 +21,35 @@ from event_engine.extraction import (
 DEFAULT_EVENT_REGISTRY = registry_for("news", "industry", "financial")
 
 
-class CollectedDataV4(BaseModel):
-    """Raw collector input shared by every Event V4 subsystem."""
+class CollectedData(BaseModel):
+    """Raw collector input shared by every subsystem and analysis version."""
 
     model_config = ConfigDict(extra="ignore")
 
-    UUID: str = Field(..., min_length=1)
-    token: str = Field(..., min_length=1)
-    source: str | None = None
-    target: str | None = None
-    prompt: str | None = None
-    title: str = Field(..., min_length=1)
-    authors: list[str] = Field(default_factory=list)
-    content: str = Field(..., min_length=10)
-    pub_time: Any | None = None
-    collect_time: datetime.datetime | None = Field(default_factory=datetime.datetime.now)
-    informant: str = Field(..., min_length=1)
-    subsystem: str = ""
-    temp_data: dict = Field(default_factory=dict)
+    UUID: str = Field(..., min_length=1,
+                      description="[MUST]: Unique identifier for the message/article.")
+    token: str = Field(..., min_length=1,
+                       description="[MUST]: Validation token for the endpoint/source.")
+    source: str | None = Field(
+        None, description="(Optional): Origin platform (e.g., 'Twitter', 'BBC').")
+    target: str | None = Field(None, description="(Optional): Intended recipient or channel.")
+    prompt: str | None = Field(
+        None, description="(Optional): Custom prompt override for this specific item.")
+    title: str = Field(..., min_length=1, description="[MUST]: Raw title of the article.")
+    authors: list[str] = Field(
+        default_factory=list, description="(Optional): List of authors found in metadata.")
+    content: str = Field(
+        ..., min_length=10, description="[MUST]: The main text body to be analyzed by LLM.")
+    pub_time: Any | None = Field(None, description="(Optional): Original publish time.")
+    collect_time: datetime.datetime | None = Field(
+        default_factory=datetime.datetime.now, description="(Optional): Content collect time.")
+    informant: str = Field(
+        ..., min_length=1, description="[MUST]: The specific source URL or informant ID.")
+    subsystem: str = Field(
+        "", description="(Optional): Target subsystem name. Empty means the default subsystem. "
+                        "Examples: 'news', 'finance', 'industry'.")
+    temp_data: dict = Field(
+        default_factory=dict, description="(Optional): Temporary data for data management.")
 
     @field_validator("pub_time", mode="before")
     @classmethod

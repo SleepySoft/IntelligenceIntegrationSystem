@@ -21,7 +21,7 @@ from ServiceComponent.analysis_messages import (
     extract_pure_response,
 )
 from ServiceComponent.IntelligenceHubDefines_v4 import (
-    CollectedDataV4,
+    CollectedData,
     ValuableIntelligenceV4,
     validate_analysis_result_v4,
 )
@@ -49,7 +49,7 @@ def load_benchmark_suite(path: Path) -> tuple[str, list[BenchmarkCase]]:
         if not case_id or case_id in seen_ids:
             raise ValueError(f"cases[{index}] 的 id 为空或重复: {case_id!r}")
         seen_ids.add(case_id)
-        collected = CollectedDataV4.model_validate(
+        collected = CollectedData.model_validate(
             raw_case.get("collected_data") or {}
         ).model_dump(mode="json")
         expected = raw_case.get("expected") or {}

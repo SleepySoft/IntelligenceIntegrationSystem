@@ -8,7 +8,7 @@
 ## Event V4 版本说明
 
 当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。所有子系统共享
-`CollectedDataV4 → AnalysisResultV4 → ArchivedIntelligenceV4` 契约，事件与实体分别写入
+`CollectedData → AnalysisResultV4 → ArchivedIntelligenceV4` 契约，事件与实体分别写入
 MongoDB 索引集合。查询、翻译、向量化、聚合、图谱和 Web 展示均读取 V4 字段。
 
 历史 V1/V2 实现、Prompt、测试、训练资料和设计文档已归档到
