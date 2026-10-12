@@ -211,7 +211,7 @@
         try {
             const article = await fetchArticle(uuid);
 
-            state.titleEl.textContent = article?.analysis?.message?.title || titleFallback || 'Detail';
+            state.titleEl.textContent = article?.EVENT_TITLE || titleFallback || 'Detail';
             state.bodyEl.innerHTML = window.ArticleDetailRenderer.generateHTML(article);
             window.ArticleDetailRenderer.bindEvents(state.bodyEl, uuid, state.options.toastContainerId);
 

@@ -47,7 +47,7 @@ def test_event_section_renders_normalized_v4_event_readably():
             "predicate": {"id": "investigate", "surface": "启动调查", "gloss": None},
             "frame": {"dynamics": "process", "topology": "targeted", "agency": "agentive"},
             "roles": {
-                "investigator": [{"name": "甲机构", "type": "organization"}],
+                "investigator": [{"name": "甲机构", "type": "organization", "country_code": "CN"}],
                 "object": [{"name": "乙公司", "type": "organization"}],
             },
             "role_semantics": {"investigator": "agent", "object": "affected"},
@@ -62,7 +62,8 @@ def test_event_section_renders_normalized_v4_event_readably():
             "event_location": [{"name": "上海", "type": "location"}],
             "attributes": {"amount": {"type": "money", "value": 20, "currency": "CNY", "unit": "亿元"}},
             "qualifiers": [{
-                "type": "epistemic", "value": "asserted", "scope": "event",
+                "id": "Q1", "type": "epistemic", "value": "asserted", "scope": "event",
+                "time": {"normalized": "2026-10-11"},
                 "by": [{"name": "甲机构", "type": "organization"}], "surface": "甲机构表示",
             }],
             "relations": [{"predicate": "causes", "target_event_uuid": "event-2", "surface": "由此前事件导致"}],
@@ -80,15 +81,38 @@ def test_event_section_renders_normalized_v4_event_readably():
 
     assert "事件结构" in html
     assert "2 个事件" in html
+    assert 'data-event-view="narrative"' in html
+    assert 'data-event-view="audit"' in html
+    assert 'data-event-view="relations"' in html
+    assert 'data-event-select="event-1"' in html
+    assert 'data-event-panel="event-2" hidden' in html
     assert "主事件" in html
     assert "启动调查" in html
+    assert "事件解读" in html
+    assert "全部信息" in html
+    assert "事件联系" in html
+    assert "谁在行动" in html
+    assert "影响谁 / 什么" in html
+    assert "2026-10-11" in html
+    assert "dynamics" in html
+    assert "过程" in html
+    assert "investigate" in html
     assert "甲机构" in html
+    assert "机构 · CN" in html
     assert "乙公司" in html
     assert "上海" in html
-    assert "CNY 20 亿元" in html
+    assert "20 亿元 CNY" in html
+    assert "类型：money" in html
+    assert "精度：day" in html
     assert "信息状态" in html
     assert "已陈述" in html
-    assert "导致 <b>E2</b>" in html
+    assert "限定词 ID" in html
+    assert "Q1" in html
+    assert "适用范围" in html
+    assert "表述主体" in html
+    assert "启动调查</span><b>导致</b><span>实施限制" in html
+    assert "查看结构化字段" in html
+    assert "event-1" in html
     assert "以下内容是对来源报道的结构化整理" in html
 
 
@@ -117,8 +141,30 @@ def test_event_section_falls_back_to_extraction_and_escapes_content():
 
     assert "存在" in html
     assert "主事件" in html
+    assert "机构 · CN" in html
     assert "&lt;img src=x onerror=alert(1)&gt;" in html
     assert "<img src=x onerror=alert(1)>" not in html
+
+
+def test_single_event_relations_view_explains_missing_explicit_edges():
+    article = {
+        "events": [{
+            "event_uuid": "event-1",
+            "local_event_id": "E1",
+            "is_primary": True,
+            "predicate": {"surface": "举行会谈"},
+            "roles": {},
+            "qualifiers": [],
+            "relations": [],
+        }]
+    }
+
+    html = _render_event_section(article)
+
+    assert "1 个事件" in html
+    assert "当前事件之间没有显式关系" in html
+    assert 'data-event-panel="event-1"' in html
+    assert 'data-event-panel="event-1" hidden' not in html
 
 
 def test_event_section_is_hidden_without_events():

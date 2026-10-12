@@ -133,9 +133,17 @@ window.ArticleDetailRenderer = {
         const entity = typeof entityValue === 'object'
             ? entityValue : (entityMap[String(entityValue)] || {});
         const name = entity.canonical_name || entity.name || String(entityValue || '未知实体');
-        const extras = [entity.entity_type || entity.type, entity.country_code].filter(Boolean);
-        const title = extras.length ? ` title="${this.escapeHTML(extras.join(' · '))}"` : '';
-        return `<span class="event-entity-chip"${title}>${this.escapeHTML(name)}</span>`;
+        const entityTypeLabels = {
+            person: '人物', organization: '机构', geopolitical_entity: '国家/地区',
+            location: '地点', facility: '设施', product: '产品', asset: '资产',
+            event: '事件', law: '法规', agreement: '协议', other: '其他'
+        };
+        const rawType = entity.entity_type || entity.type;
+        const extras = [rawType ? this.humanLabel(rawType, entityTypeLabels) : '', entity.country_code]
+            .filter(Boolean);
+        const metadata = extras.length
+            ? `<small>${this.escapeHTML(extras.join(' · '))}</small>` : '';
+        return `<span class="event-entity-chip"><b>${this.escapeHTML(name)}</b>${metadata}</span>`;
     },
 
     renderEventTime: function(time) {
@@ -150,7 +158,9 @@ window.ArticleDetailRenderer = {
             const approximate = value.approximate ? '（约）' : '';
             const surface = value.surface && value.surface !== raw
                 ? `<span class="event-origin-text">原文：${this.escapeHTML(value.surface)}</span>` : '';
-            return `<span class="event-fact"><b>${this.escapeHTML(this.humanLabel(kind, labels))}：</b>${this.escapeHTML(raw)}${approximate}${surface}</span>`;
+            const precision = value.precision
+                ? `<small>精度：${this.escapeHTML(value.precision)}</small>` : '';
+            return `<span class="event-fact"><b>${this.escapeHTML(this.humanLabel(kind, labels))}：</b>${this.escapeHTML(raw)}${approximate}${precision}${surface}</span>`;
         }).filter(Boolean).join('');
     },
 
@@ -163,7 +173,7 @@ window.ArticleDetailRenderer = {
             if (!attribute) return '';
             let value;
             if (attribute.type === 'money') {
-                value = [attribute.currency, attribute.value, attribute.unit].filter(v => v != null && v !== '').join(' ');
+                value = [attribute.value, attribute.unit, attribute.currency].filter(v => v != null && v !== '').join(' ');
             } else if (attribute.type === 'ratio' && Number.isFinite(Number(attribute.value))) {
                 value = `${Number(attribute.value) * 100}%`;
             } else if (typeof attribute === 'object') {
@@ -173,7 +183,9 @@ window.ArticleDetailRenderer = {
             }
             const surface = attribute?.surface && String(attribute.surface) !== String(value)
                 ? `<span class="event-origin-text">原文：${this.escapeHTML(attribute.surface)}</span>` : '';
-            return `<span class="event-fact"><b>${this.escapeHTML(this.humanLabel(name, labels))}：</b>${this.escapeHTML(value || '未说明')}${surface}</span>`;
+            const type = attribute?.type
+                ? `<small>类型：${this.escapeHTML(attribute.type)}</small>` : '';
+            return `<span class="event-fact"><b>${this.escapeHTML(this.humanLabel(name, labels))}：</b>${this.escapeHTML(value || '未说明')}${type}${surface}</span>`;
         }).filter(Boolean).join('');
     },
 
@@ -181,7 +193,6 @@ window.ArticleDetailRenderer = {
         const events = this.normalizedEvents(article);
         if (!events.length) return '';
 
-        const entityMap = this.eventEntities(article);
         const roleLabels = {
             actor: '行动方', target: '目标', subject: '主体', counterpart: '关联方',
             agent: '执行方', affected: '受影响方', authority: '主管方', person: '人员',
@@ -228,85 +239,206 @@ window.ArticleDetailRenderer = {
         events.forEach(event => {
             localIdByUuid[String(event?.event_uuid || event?.local_event_id || '')] = event?.local_event_id;
         });
+        const eventKey = event => String(event?.event_uuid || event?.local_event_id || '');
+        const primaryEvent = events.find(event => event?.is_primary) || events[0];
+        const primaryKey = eventKey(primaryEvent);
+        const extraction = article?.EVENT_EXTRACTION || {};
+        const eventEntities = events.flatMap(event => [
+            ...Object.values(event?.roles || {}).flat(),
+            ...(event?.event_location || []),
+            ...(event?.qualifiers || []).flatMap(qualifier => qualifier.by || [])
+        ]);
+        const entityCount = Array.isArray(extraction.entities)
+            ? extraction.entities.length
+            : new Set(eventEntities.map(entity =>
+                `${entity?.entity_type || entity?.type || ''}:${entity?.canonical_name || entity?.name || ''}`)).size;
 
-        const cards = events.map((event, index) => {
+        const renderFrame = event => {
+            const frame = event?.frame || {};
+            return ['dynamics', 'topology', 'agency'].map(key => frame[key]
+                ? `<span class="event-frame-badge"><small>${this.escapeHTML(key)}</small>${this.escapeHTML(this.humanLabel(frame[key], frameLabels))}</span>`
+                : '').join('');
+        };
+        const renderRoles = event => Object.entries(event?.roles || {}).map(([roleName, entities]) => {
+            const semanticGroup = event?.role_semantics?.[roleName];
+            const semantic = semanticGroup
+                ? `<small>${this.escapeHTML(this.humanLabel(semanticGroup, semanticLabels))}</small>` : '';
+            const chips = (entities || []).map(entity => this.renderEntityChip(entity)).join('');
+            return `<div class="event-role-card"><span>${this.escapeHTML(this.humanLabel(roleName, roleLabels))}${semantic}</span><div>${chips}</div></div>`;
+        }).join('');
+        const renderQualifiers = event => (event?.qualifiers || []).map(qualifier => {
+            const by = (qualifier.by || []).map(value => this.renderEntityChip(value)).join('');
+            const byNames = (qualifier.by || []).map(value =>
+                value?.canonical_name || value?.name || String(value || '')).filter(Boolean).join('、');
+            const qualifierTime = qualifier.time
+                ? [
+                    qualifier.time.normalized || qualifier.time.surface || '',
+                    qualifier.time.precision ? `精度 ${qualifier.time.precision}` : '',
+                    qualifier.time.approximate ? '约' : ''
+                ].filter(Boolean).join(' · ') : '';
+            const surface = qualifier.surface
+                ? `<span class="event-origin-text">原文：${this.escapeHTML(qualifier.surface)}</span>` : '';
+            return `<div class="event-qualifier-card">
+                <div><b>${this.escapeHTML(byNames || '报道')}对这件事的表述</b><span>${this.escapeHTML(this.humanLabel(qualifier.value, qualifierValueLabels))}</span></div>
+                ${surface}
+                <details class="event-qualifier-technical"><summary>限定信息</summary><dl>
+                    <div><dt>类别</dt><dd>${this.escapeHTML(this.humanLabel(qualifier.type, qualifierTypeLabels))}</dd></div>
+                    ${qualifier.id ? `<div><dt>限定词 ID</dt><dd>${this.escapeHTML(qualifier.id)}</dd></div>` : ''}
+                    <div><dt>适用范围</dt><dd>${this.escapeHTML(qualifier.scope || 'event')}</dd></div>
+                    ${qualifierTime ? `<div><dt>时间</dt><dd>${this.escapeHTML(qualifierTime)}</dd></div>` : ''}
+                    ${by ? `<div><dt>表述主体</dt><dd class="event-chips">${by}</dd></div>` : ''}
+                </dl></details></div>`;
+        }).join('');
+        const renderRelations = event => (event?.relations || []).map(relation => {
+            const target = localIdByUuid[String(relation.target_event_uuid)]
+                || relation.target_event_uuid || '未知事件';
+            const targetEvent = events.find(candidate => eventKey(candidate) === String(relation.target_event_uuid));
+            const targetTitle = targetEvent?.predicate?.surface || targetEvent?.predicate?.gloss || '';
+            const sourceTitle = event?.predicate?.surface || event?.predicate?.gloss
+                || event?.local_event_id || '当前事件';
+            const targetUuid = String(relation.target_event_uuid || '');
+            const trace = [
+                targetUuid && targetUuid !== String(target) ? `目标 UUID：${targetUuid}` : '',
+                relation.surface ? `原文：${relation.surface}` : ''
+            ].filter(Boolean).join('；');
+            return `<div class="event-relation-card"><span>${this.escapeHTML(sourceTitle)}</span><b>${this.escapeHTML(this.humanLabel(relation.predicate, relationLabels))}</b><span>${this.escapeHTML(targetTitle || target)}</span>${trace ? `<small>${this.escapeHTML(trace)}</small>` : ''}</div>`;
+        }).join('');
+
+        const eventSelector = events.map((event, index) => {
+            const key = eventKey(event);
+            const predicate = event?.predicate || {};
+            const title = predicate.surface || predicate.gloss || predicate.id || '未命名事件';
+            const time = Object.values(event?.time || {})[0];
+            return `<button type="button" class="event-sequence-node${key === primaryKey ? ' active' : ''}" data-event-select="${this.escapeHTML(key)}" aria-pressed="${key === primaryKey ? 'true' : 'false'}">
+                <span><b>${event?.is_primary ? '主事件' : `相关事件 ${index + 1}`}</b></span>
+                <strong>${this.escapeHTML(title)}</strong>
+                <small>${time ? this.escapeHTML(time.normalized || time.surface || '') : '未提供明确时间'}</small>
+            </button>`;
+        }).join('');
+
+        const detailPanels = events.map((event, index) => {
             const eventUuid = String(event?.event_uuid || event?.local_event_id || '');
             const isPrimary = Boolean(event?.is_primary);
             const predicate = event?.predicate || {};
             const predicateTitle = predicate.surface || predicate.gloss || predicate.id || '未命名事件';
-            const predicateId = predicate.id
-                ? `<span class="event-code-badge">${this.escapeHTML(predicate.id)}</span>` : '';
-
-            const roles = Object.entries(event?.roles || {}).flatMap(([roleName, entities]) =>
-                (entities || []).map(entity => {
-                    const role = this.humanLabel(roleName, roleLabels);
-                    const semanticGroup = event?.role_semantics?.[roleName];
-                    const semantic = semanticGroup && semanticGroup !== 'other'
-                        ? `<small>${this.escapeHTML(this.humanLabel(semanticGroup, semanticLabels))}</small>` : '';
-                    return `<div class="event-role"><span class="event-role-label">${this.escapeHTML(role)}</span>${this.renderEntityChip(entity)}${semantic}</div>`;
-                })).join('');
-
+            const roles = renderRoles(event);
             const times = this.renderEventTime(event?.time);
             const locations = (event?.event_location || [])
                 .map(value => this.renderEntityChip(value)).join('');
             const attributes = this.renderEventAttributes(event?.attributes);
-            const qualifiers = (event?.qualifiers || []).map(qualifier => {
-                const by = (qualifier.by || []).map(value => this.renderEntityChip(value)).join('');
-                const qualifierTime = qualifier.time
-                    ? ` · ${this.escapeHTML(qualifier.time.normalized || qualifier.time.surface || '')}` : '';
-                const surface = qualifier.surface
-                    ? `<span class="event-origin-text">原文：${this.escapeHTML(qualifier.surface)}</span>` : '';
-                return `<div class="event-qualifier"><b>${this.escapeHTML(this.humanLabel(qualifier.type, qualifierTypeLabels))}：</b>${this.escapeHTML(this.humanLabel(qualifier.value, qualifierValueLabels))}${qualifierTime}${by ? `<span class="event-by">声明方：${by}</span>` : ''}${surface}</div>`;
-            }).join('');
-            const relations = (event?.relations || []).map(relation => {
-                const target = localIdByUuid[String(relation.target_event_uuid)] || relation.target_event_uuid || '未知事件';
-                const surface = relation.surface ? `（${this.escapeHTML(relation.surface)}）` : '';
-                return `<span class="event-relation">${this.escapeHTML(this.humanLabel(relation.predicate, relationLabels))} <b>${this.escapeHTML(target)}</b>${surface}</span>`;
-            }).join('');
-            const frame = event?.frame || {};
-            const frameBadges = ['dynamics', 'topology', 'agency'].map(key => frame[key]
-                ? `<span class="event-frame-badge">${this.escapeHTML(this.humanLabel(frame[key], frameLabels))}</span>` : '').join('');
-            const observedAt = event?.observed_at
-                ? `<span><b>系统观察时间：</b>${this.escapeHTML(this.anyTimeToTimeStr(event.observed_at))}</span>` : '';
+            const qualifiers = renderQualifiers(event);
+            const relations = renderRelations(event);
+            const roleCount = Object.values(event?.roles || {}).flat().length;
+            const firstTime = Object.values(event?.time || {})[0];
+            const timeSummary = firstTime
+                ? firstTime.normalized || firstTime.surface || String(firstTime) : '';
+            const locationSummary = (event?.event_location || []).map(value =>
+                value?.canonical_name || value?.name || String(value || '')).filter(Boolean).join('、');
+            const roleItems = Object.entries(event?.roles || {}).flatMap(([role, values]) =>
+                (values || []).map(value => ({
+                    role,
+                    semantic: event?.role_semantics?.[role] || 'other',
+                    value
+                })));
+            const leadingGroups = new Set(['agent', 'source', 'authority']);
+            let leadingItems = roleItems.filter(item => leadingGroups.has(item.semantic));
+            if (!leadingItems.length && roleItems.length) leadingItems = [roleItems[0]];
+            const leadingSet = new Set(leadingItems);
+            const affectedItems = roleItems.filter(item => !leadingSet.has(item));
+            const renderStoryParty = (items, fallback, label) => `<div class="event-story-party">
+                <small>${label}</small>${items.length ? items.map(item => this.renderEntityChip(item.value)).join('') : `<span>${fallback}</span>`}
+            </div>`;
+            const storyline = `<div class="event-storyline">
+                ${renderStoryParty(leadingItems, '行动方未标注', '谁在行动')}
+                <div class="event-story-action"><span class="event-story-arrow before" aria-hidden="true">→</span><strong>${this.escapeHTML(predicateTitle)}</strong><small>${predicate.gloss ? this.escapeHTML(predicate.gloss) : '发生了什么'}</small><span class="event-story-arrow after" aria-hidden="true">→</span></div>
+                ${renderStoryParty(affectedItems, '未指向特定对象', '影响谁 / 什么')}
+            </div>`;
+            const metadata = event?.metadata && Object.keys(event.metadata).length
+                ? `<span><b>附加元数据：</b><code>${this.escapeHTML(JSON.stringify(event.metadata))}</code></span>` : '';
 
             return `
-                <article class="event-card${isPrimary ? ' primary' : ''}">
-                    <header class="event-card-header">
-                        <div>
-                            <span class="event-sequence">事件 ${index + 1}</span>
-                            ${isPrimary ? '<span class="event-primary-badge">主事件</span>' : ''}
-                            <h4>${this.escapeHTML(predicateTitle)} ${predicateId}</h4>
-                        </div>
+                <article class="event-detail-panel${isPrimary ? ' primary' : ''}" data-event-panel="${this.escapeHTML(eventUuid)}" ${eventUuid === primaryKey ? '' : 'hidden'}>
+                    <header class="event-detail-heading">
+                        <div><span>${isPrimary ? '这篇报道的主事件' : `相关事件 ${index + 1}`}</span><h4>${this.escapeHTML(predicateTitle)}</h4></div>
+                        <div class="event-story-context">${timeSummary ? `<span><i class="bi bi-clock"></i>${this.escapeHTML(timeSummary)}</span>` : ''}${locationSummary ? `<span><i class="bi bi-geo-alt"></i>${this.escapeHTML(locationSummary)}</span>` : ''}</div>
                     </header>
-                    ${roles ? `<div class="event-block"><div class="event-block-title">参与者与角色</div><div class="event-roles">${roles}</div></div>` : ''}
-                    ${times ? `<div class="event-block"><div class="event-block-title">时间</div><div class="event-facts">${times}</div></div>` : ''}
-                    ${locations ? `<div class="event-block"><div class="event-block-title">地点</div><div class="event-chips">${locations}</div></div>` : ''}
-                    ${attributes ? `<div class="event-block"><div class="event-block-title">数值与属性</div><div class="event-facts">${attributes}</div></div>` : ''}
-                    ${qualifiers ? `<div class="event-block"><div class="event-block-title">状态与限定</div>${qualifiers}</div>` : ''}
-                    ${relations ? `<div class="event-block"><div class="event-block-title">与其他事件的关系</div><div class="event-relations">${relations}</div></div>` : ''}
-                    <details class="event-technical">
-                        <summary>查看结构信息</summary>
-                        <div>${frameBadges}</div>
-                        <div class="event-technical-text">
-                            <span><b>事件编号：</b>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}</span>
-                            ${eventUuid ? `<span><b>事件 UUID：</b>${this.escapeHTML(eventUuid)}</span>` : ''}
-                            ${observedAt}
+                    ${storyline}
+                    <div class="event-detail-grid">
+                        <div class="event-detail-main">
+                            ${roles ? `<section class="event-detail-group"><h5>参与方分别扮演什么角色</h5><div class="event-role-grid">${roles}</div></section>` : ''}
+                            ${(times || locations) ? `<section class="event-detail-group"><h5>事情发生在何时何地</h5>${times ? `<div class="event-facts">${times}</div>` : ''}${locations ? `<div class="event-location-row"><span>地点</span><div class="event-chips">${locations}</div></div>` : ''}</section>` : ''}
+                            ${attributes ? `<section class="event-detail-group"><h5>报道中的关键数字</h5><div class="event-facts">${attributes}</div></section>` : ''}
+                            ${qualifiers ? `<section class="event-detail-group"><h5>报道如何描述这件事</h5><div class="event-qualifier-list">${qualifiers}</div></section>` : ''}
+                            ${relations ? `<section class="event-detail-group"><h5>它与其他事件有什么联系</h5><div class="event-relation-list">${relations}</div></section>` : ''}
                         </div>
+                    </div>
+                    <details class="event-technical">
+                        <summary>查看结构化字段</summary><div class="event-technical-structure"><div class="event-frame-strip">${renderFrame(event)}${predicate.id ? `<code>${this.escapeHTML(predicate.id)}</code>` : '<code>开放谓词</code>'}</div><span>${roleCount} 个实体引用 · ${Object.keys(event?.time || {}).length} 个时间表达 · ${(event?.qualifiers || []).length} 个限定词 · ${(event?.relations || []).length} 条关系</span></div><div class="event-technical-text"><span><b>局部编号：</b>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}</span>${eventUuid ? `<span><b>事件 UUID：</b>${this.escapeHTML(eventUuid)}</span>` : ''}${event?.intelligence_uuid ? `<span><b>来源文章 UUID：</b>${this.escapeHTML(event.intelligence_uuid)}</span>` : ''}${event?.observed_at ? `<span><b>系统观察时间：</b>${this.escapeHTML(this.anyTimeToTimeStr(event.observed_at))}</span>` : ''}${metadata}</div>
                     </details>
                 </article>`;
         }).join('');
+
+        const auditRows = events.map((event, index) => {
+            const predicate = event?.predicate || {};
+            const roles = Object.entries(event?.roles || {}).map(([role, values]) =>
+                `<div><b>${this.escapeHTML(this.humanLabel(role, roleLabels))}</b>${(values || []).map(value => this.renderEntityChip(value)).join('')}</div>`).join('');
+            const qualifiers = (event?.qualifiers || []).map(value =>
+                [
+                    value.id,
+                    `${this.humanLabel(value.type, qualifierTypeLabels)}=${this.humanLabel(value.value, qualifierValueLabels)}`,
+                    `范围=${value.scope || 'event'}`,
+                    value.time ? `时间=${value.time.normalized || value.time.surface || ''}` : '',
+                    (value.by || []).length ? `声明方=${value.by.map(item => item.canonical_name || item.name || '').filter(Boolean).join('/')}` : ''
+                ].filter(Boolean).join(' · ')).join('；');
+            const relations = (event?.relations || []).map(value => {
+                const target = localIdByUuid[String(value.target_event_uuid)] || value.target_event_uuid || '?';
+                return `${this.humanLabel(value.predicate, relationLabels)} → ${target}`;
+            }).join('；');
+            return `<tr><td><b>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}</b>${event?.is_primary ? '<em>主事件</em>' : ''}<small>${this.escapeHTML(predicate.surface || predicate.gloss || '')}</small></td><td>${renderFrame(event)}${predicate.id ? `<code>${this.escapeHTML(predicate.id)}</code>` : ''}</td><td><div class="event-audit-roles">${roles || '<span>无</span>'}</div></td><td>${this.renderEventTime(event?.time) || '<span>无</span>'}<div class="event-chips">${(event?.event_location || []).map(value => this.renderEntityChip(value)).join('')}</div></td><td>${this.renderEventAttributes(event?.attributes) || '<span>无</span>'}</td><td>${this.escapeHTML(qualifiers || '无')}</td><td>${this.escapeHTML(relations || '无')}</td></tr>`;
+        }).join('');
+
+        const relationCards = events.map((event, index) => {
+            const predicate = event?.predicate || {};
+            return `<div class="event-map-node${event?.is_primary ? ' primary' : ''}"><span>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}${event?.is_primary ? ' · 主事件' : ''}</span><b>${this.escapeHTML(predicate.surface || predicate.gloss || predicate.id || '未命名事件')}</b><code>${this.escapeHTML(predicate.id || 'open')}</code></div>`;
+        }).join('');
+        const relationEdges = events.flatMap(event => (event?.relations || []).map(relation => {
+            const target = localIdByUuid[String(relation.target_event_uuid)] || relation.target_event_uuid || '?';
+            const targetEvent = events.find(candidate => eventKey(candidate) === String(relation.target_event_uuid));
+            const sourceTitle = event?.predicate?.surface || event?.local_event_id || '?';
+            const targetTitle = targetEvent?.predicate?.surface || targetEvent?.local_event_id || target;
+            const trace = [
+                `${event.local_event_id || '?'} → ${target}`,
+                relation.surface || ''
+            ].filter(Boolean).join(' · ');
+            return `<div class="event-map-edge"><span>${this.escapeHTML(sourceTitle)}</span><b>${this.escapeHTML(this.humanLabel(relation.predicate, relationLabels))}</b><span>${this.escapeHTML(targetTitle)}</span><small>${this.escapeHTML(trace)}</small></div>`;
+        })).join('');
 
         return `
             <section class="event-section" aria-labelledby="v4-event-heading">
                 <div class="event-section-heading">
                     <div>
                         <h3 id="v4-event-heading"><i class="bi bi-diagram-3"></i> 事件结构</h3>
-                        <p>AI 从文章中抽取的结构化事件描述，可用于理解参与者、时间、地点及事件之间的关系。</p>
+                        <p>先理解发生了什么；需要核验时，再展开全部字段。</p>
                     </div>
-                    <span class="event-count">${events.length} 个事件</span>
+                    <div class="event-summary-counts"><span>${events.length} 个事件</span><span>${entityCount} 个实体</span>${extraction.schema_version ? `<code>${this.escapeHTML(extraction.schema_version)}</code>` : ''}</div>
                 </div>
                 <div class="event-notice"><i class="bi bi-info-circle"></i> 以下内容是对来源报道的结构化整理，不代表系统已独立核实相关事实。</div>
-                <div class="event-list">${cards}</div>
+                <div class="event-view-tabs" role="tablist" aria-label="事件结构视图">
+                    <button type="button" role="tab" class="active" data-event-view="narrative" aria-selected="true">事件解读</button>
+                    <button type="button" role="tab" data-event-view="audit" aria-selected="false">全部信息</button>
+                    <button type="button" role="tab" data-event-view="relations" aria-selected="false">事件联系</button>
+                </div>
+                <div class="event-view-panel" role="tabpanel" data-event-view-panel="narrative">
+                    <nav class="event-sequence-rail" aria-label="事件序列">${eventSelector}</nav>
+                    <div class="event-detail-list">${detailPanels}</div>
+                </div>
+                <div class="event-view-panel" role="tabpanel" data-event-view-panel="audit" hidden>
+                    <div class="event-audit-table-wrap"><table class="event-audit-table"><thead><tr><th>事件</th><th>谓词与 Frame</th><th>角色</th><th>时间地点</th><th>属性</th><th>限定词</th><th>关系</th></tr></thead><tbody>${auditRows}</tbody></table></div>
+                </div>
+                <div class="event-view-panel" role="tabpanel" data-event-view-panel="relations" hidden>
+                    <div class="event-map-nodes">${relationCards}</div>
+                    <div class="event-map-edges">${relationEdges || '<p>当前事件之间没有显式关系。</p>'}</div>
+                </div>
             </section>`;
     },
 
@@ -408,6 +540,37 @@ window.ArticleDetailRenderer = {
 
     // 绑定评分提交逻辑
     bindEvents: function(containerElement, uuid, toastContainerId) {
+        containerElement.querySelectorAll('[data-event-view]').forEach(button => {
+            button.addEventListener('click', () => {
+                const section = button.closest('.event-section');
+                if (!section) return;
+                const view = button.dataset.eventView;
+                section.querySelectorAll('[data-event-view]').forEach(item => {
+                    const active = item === button;
+                    item.classList.toggle('active', active);
+                    item.setAttribute('aria-selected', active ? 'true' : 'false');
+                });
+                section.querySelectorAll('[data-event-view-panel]').forEach(panel => {
+                    panel.hidden = panel.dataset.eventViewPanel !== view;
+                });
+            });
+        });
+        containerElement.querySelectorAll('[data-event-select]').forEach(button => {
+            button.addEventListener('click', () => {
+                const section = button.closest('.event-section');
+                if (!section) return;
+                const key = button.dataset.eventSelect;
+                section.querySelectorAll('[data-event-select]').forEach(item => {
+                    const active = item === button;
+                    item.classList.toggle('active', active);
+                    item.setAttribute('aria-pressed', active ? 'true' : 'false');
+                });
+                section.querySelectorAll('[data-event-panel]').forEach(panel => {
+                    panel.hidden = panel.dataset.eventPanel !== key;
+                });
+            });
+        });
+
         const submitBtn = containerElement.querySelector('#submit-rating');
         if (!submitBtn) return;
 
