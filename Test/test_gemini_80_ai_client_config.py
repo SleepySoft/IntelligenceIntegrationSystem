@@ -1,4 +1,5 @@
 from pathlib import Path
+import runpy
 
 import pytest
 
@@ -47,8 +48,33 @@ def test_config_builds_shared_per_model_limiters_at_80_percent(monkeypatch):
         "rpm": 4, "tpm": 200_000, "rpd": 16, "tpd": None,
     }
     assert lite[0].get_rate_limit_snapshot()["persistent"] is True
-    assert lite[0].get_rate_limit_snapshot()["storage_namespace"] == (
-        "google-generative-language:gemini-3.5-flash-lite"
+    namespace = lite[0].get_rate_limit_snapshot()["storage_namespace"]
+    assert namespace.startswith("google-generative-language:")
+    assert namespace.endswith(":gemini-3.5-flash-lite")
+    assert "test-key" not in namespace
+
+
+def test_config_supports_multiple_direct_keys_with_independent_quotas(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_MODELS", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("GEMINI_PRIMARY_SLOTS", "2")
+    namespace = runpy.run_path(str(CONFIG_PATH))
+
+    clients = namespace["build_ai_clients"]({
+        "project-a": "direct-key-a",
+        "project-b": "direct-key-b",
+    })
+
+    assert len(clients) == 4
+    project_a = [client for client in clients.values() if "[project-a]" in client.name]
+    project_b = [client for client in clients.values() if "[project-b]" in client.name]
+    assert len(project_a) == len(project_b) == 2
+    assert project_a[0].rate_limiter is project_a[1].rate_limiter
+    assert project_b[0].rate_limiter is project_b[1].rate_limiter
+    assert project_a[0].rate_limiter is not project_b[0].rate_limiter
+    assert (
+        project_a[0].get_rate_limit_snapshot()["storage_namespace"]
+        != project_b[0].get_rate_limit_snapshot()["storage_namespace"]
     )
 
 
