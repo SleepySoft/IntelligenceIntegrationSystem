@@ -129,18 +129,39 @@ window.ArticleDetailRenderer = {
         });
     },
 
+    countryDisplayName: function(countryCode) {
+        const code = String(countryCode || '').toUpperCase();
+        if (!code) return '';
+        try {
+            if (typeof Intl !== 'undefined' && Intl.DisplayNames) {
+                return new Intl.DisplayNames(['zh-CN'], {type: 'region'}).of(code) || code;
+            }
+        } catch (_) {
+            // 旧浏览器或无效代码回退到原始 ISO 代码。
+        }
+        return code;
+    },
+
     renderEntityChip: function(entityValue, entityMap = {}) {
         const entity = typeof entityValue === 'object'
             ? entityValue : (entityMap[String(entityValue)] || {});
         const name = entity.canonical_name || entity.name || String(entityValue || '未知实体');
         const entityTypeLabels = {
             person: '人物', organization: '机构', geopolitical_entity: '国家/地区',
-            location: '地点', facility: '设施', product: '产品', asset: '资产',
-            event: '事件', law: '法规', agreement: '协议', other: '其他'
+            location: '地点', facility: '设施', equipment: '设备', product: '产品',
+            resource: '资源', asset: '资产', information: '信息', policy: '政策',
+            agreement: '协议', position: '职位', capability: '能力', topic: '议题',
+            phenomenon: '现象', case: '案件', event: '事件', other_object: '其他对象',
+            law: '法规', other: '其他'
         };
         const rawType = entity.entity_type || entity.type;
-        const extras = [rawType ? this.humanLabel(rawType, entityTypeLabels) : '', entity.country_code]
-            .filter(Boolean);
+        const typeLabel = rawType ? this.humanLabel(rawType, entityTypeLabels) : '';
+        const countryName = this.countryDisplayName(entity.country_code);
+        const physicalTypes = new Set(['location', 'facility', 'equipment', 'product', 'resource', 'asset']);
+        const repeatsEntityName = countryName && String(name).includes(countryName);
+        const countryContext = countryName && !repeatsEntityName
+            ? `${countryName}${physicalTypes.has(rawType) ? '境内' : ''}` : '';
+        const extras = [countryContext, typeLabel].filter(Boolean);
         const metadata = extras.length
             ? `<small>${this.escapeHTML(extras.join(' · '))}</small>` : '';
         return `<span class="event-entity-chip"><b>${this.escapeHTML(name)}</b>${metadata}</span>`;
@@ -360,7 +381,7 @@ window.ArticleDetailRenderer = {
                 <article class="event-detail-panel${isPrimary ? ' primary' : ''}" data-event-panel="${this.escapeHTML(eventUuid)}" ${eventUuid === primaryKey ? '' : 'hidden'}>
                     <header class="event-detail-heading">
                         <div><span>${isPrimary ? '这篇报道的主事件' : `相关事件 ${index + 1}`}</span><h4>${this.escapeHTML(predicateTitle)}</h4></div>
-                        <div class="event-story-context">${timeSummary ? `<span><i class="bi bi-clock"></i>${this.escapeHTML(timeSummary)}</span>` : ''}${locationSummary ? `<span><i class="bi bi-geo-alt"></i>${this.escapeHTML(locationSummary)}</span>` : ''}</div>
+                        <div class="event-story-context">${timeSummary ? `<span><i class="bi bi-clock"></i>${this.escapeHTML(timeSummary)}</span>` : ''}${locationSummary ? `<span><i class="bi bi-geo-alt"></i>事发地：${this.escapeHTML(locationSummary)}</span>` : ''}</div>
                     </header>
                     ${storyline}
                     <div class="event-detail-grid">

@@ -36,8 +36,13 @@ class ExtractionContractTests(unittest.TestCase):
         self.assertEqual(len(self.registry), len(catalog.splitlines()))
         self.assertIn(catalog, prompt)
         self.assertIn("{{CONTENT}}", prompt)
+        self.assertIn("乌克兰的发电厂", prompt)
+        self.assertIn("country_code=UA", prompt)
+        self.assertIn("country_code 不表示所有权", prompt)
         enum = schema["$defs"]["ExtractedPredicate"]["properties"]["id"]["anyOf"][0]["enum"]
         self.assertEqual(list(self.registry), enum)
+        country_schema = schema["$defs"]["ExtractedEntity"]["properties"]["country_code"]
+        self.assertIn("不表示所有权", country_schema["description"])
 
     def test_semantics_are_validated_against_registry(self):
         result = validate_event_extraction(self.payload, self.registry)

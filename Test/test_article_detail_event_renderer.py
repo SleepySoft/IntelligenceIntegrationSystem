@@ -98,7 +98,7 @@ def test_event_section_renders_normalized_v4_event_readably():
     assert "过程" in html
     assert "investigate" in html
     assert "甲机构" in html
-    assert "机构 · CN" in html
+    assert "中国 · 机构" in html
     assert "乙公司" in html
     assert "上海" in html
     assert "20 亿元 CNY" in html
@@ -141,7 +141,7 @@ def test_event_section_falls_back_to_extraction_and_escapes_content():
 
     assert "存在" in html
     assert "主事件" in html
-    assert "机构 · CN" in html
+    assert "中国 · 机构" in html
     assert "&lt;img src=x onerror=alert(1)&gt;" in html
     assert "<img src=x onerror=alert(1)>" not in html
 
@@ -165,6 +165,34 @@ def test_single_event_relations_view_explains_missing_explicit_edges():
     assert "当前事件之间没有显式关系" in html
     assert 'data-event-panel="event-1"' in html
     assert 'data-event-panel="event-1" hidden' not in html
+
+
+def test_event_story_makes_a_physical_targets_country_visible():
+    article = {
+        "events": [{
+            "event_uuid": "event-attack-1",
+            "local_event_id": "E1",
+            "is_primary": True,
+            "predicate": {"id": "attack", "surface": "袭击"},
+            "frame": {"dynamics": "process", "topology": "targeted", "agency": "agentive"},
+            "roles": {
+                "actor": [{"name": "俄罗斯", "type": "geopolitical_entity", "country_code": "RU"}],
+                "target": [{"name": "发电厂", "type": "facility", "country_code": "UA"}],
+            },
+            "role_semantics": {"actor": "agent", "target": "affected"},
+            "event_location": [{"name": "乌克兰", "type": "geopolitical_entity", "country_code": "UA"}],
+            "qualifiers": [],
+            "relations": [],
+        }],
+    }
+
+    html = _render_event_section(article)
+
+    assert "俄罗斯" in html
+    assert "袭击" in html
+    assert "发电厂" in html
+    assert "乌克兰境内 · 设施" in html
+    assert "事发地：乌克兰" in html
 
 
 def test_event_section_is_hidden_without_events():

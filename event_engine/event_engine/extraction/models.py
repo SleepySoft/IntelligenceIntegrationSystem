@@ -29,7 +29,15 @@ class ExtractedEntity(StrictModel):
     id: str = Field(..., pattern=r"^ENT[1-9][0-9]*$")
     name: str = Field(..., min_length=1)
     type: EntityType
-    country_code: str | None = Field(None, pattern=r"^[A-Z]{2}$")
+    country_code: str | None = Field(
+        None,
+        pattern=r"^[A-Z]{2}$",
+        description=(
+            "实体与国家的明确地理或国别关联。设施、地点、设备、资产、资源、产品等"
+            "实体表示其所在或部署国家；人物和组织表示原文明确给出的国别关联。"
+            "该字段不表示所有权，不得仅根据事件行动方推断。"
+        ),
+    )
 
 
 class ExtractedFrame(StrictModel):

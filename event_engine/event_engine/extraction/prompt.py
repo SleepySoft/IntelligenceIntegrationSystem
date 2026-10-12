@@ -78,6 +78,8 @@ def build_event_extraction_section(registry) -> str:
 
 实体 type 只能是 person、organization、geopolitical_entity、location、facility、equipment、product、resource、asset、information、policy、agreement、position、capability、topic、phenomenon、case、event、other_object。country_code 可选，只能使用真实存在的两位大写 ISO 3166-1 代码；虚构国家、代称国家或无法确定时必须省略，禁止编造 XA、XB 等代码。
 
+country_code 用于保留原文明示的国别或地理关联。对于 facility、location、equipment、asset、resource、product 等物理实体，它表示所在或部署国家：例如原文明确写“乌克兰的发电厂”或“位于乌克兰的发电厂”，即使实体名仅为“发电厂”，也必须标注 country_code=UA。对于 person、organization，它只记录原文明示的国别关联。country_code 不表示所有权；不得根据攻击方、其他参与方或无关地点反推目标实体的国家，证据不足时省略。
+
 ## 谓词目录
 
 目录来自 Event Engine Registry，是谓词、Frame 和角色的唯一规则源。`+` 表示必填角色，`?` 表示已登记角色。
@@ -95,7 +97,7 @@ def build_event_extraction_section(registry) -> str:
 
 - `core.time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。
 - 时间包含 normalized、precision、approximate、surface；precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。
-- `core.context` 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。
+- `core.context` 只使用 event_location。决定事件身份的起点、终点、目标等位置应进入 roles。原文明示事件发生在某国时，event_location 应包含相应地点实体；若目标设施等物理实体也明确位于该国，还应同时在该目标实体上填写 country_code，以保留“目标位于哪里”的直接联系。
 - `core.attributes` 必须是以 amount、quantity、ratio、value_before、value_after、delta、duration、level 为键的 JSON 对象，绝不能是数组；每种键最多出现一次。
 - amount 使用 `{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}`。
 - quantity、value_before、value_after、delta、level 使用 `{{"type":"number","value":5000,"unit":"人","surface":"5000人"}}`。

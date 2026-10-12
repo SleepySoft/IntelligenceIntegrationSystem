@@ -1355,6 +1355,12 @@ body {
     font-weight: 500;
 }
 
+.article-preview .event-story-party .event-entity-chip small {
+    color: #496783;
+    font-size: 11px;
+    font-weight: 600;
+}
+
 .article-preview .event-fact {
     display: inline-grid;
     gap: 1px;
