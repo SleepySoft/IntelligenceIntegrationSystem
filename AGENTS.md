@@ -47,7 +47,7 @@
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 定义表 |
+| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 定义表（生产抽样表 + 仅供显式选择的实验版本 + 各版本抽取协议模式） |
 
 ### 3.2 主要子目录
 
@@ -206,6 +206,7 @@ python VectorDB/VectorDBBService.py \
 - `CollectedData`：独立于分析版本的采集端原始数据契约
 - `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
 - `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
+- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；LLM 面向的 Prompt 可使用完整契约（`full`）或核心子集（`core_subset`，v42 起，LLM 不输出 ID/frame/schema_version，由 `event_engine.extraction.complete_core_extraction` 桥接补齐后再统一校验），详见 `doc/20261013_event_v4_extraction_subset_design.md`
 - `ArchivedDataV4`：分析结果加 `UUID`、`INFORMANT`、事件派生速查字段和 `APPENDIX`；`EVENT_EXTRACTION` 内嵌且是权威事件数据
 - Mongo `_id` 不是业务字段，读取后必须清除；`UUID` 始终表示文章 ID
 - `RAW_DATA`、评分、主时间、归档时间、翻译修订等系统元数据均位于 `APPENDIX`，键名只允许在 `intelligence_contracts.py` 定义；基本查询和前端输出默认移除 `APPENDIX`
@@ -318,6 +319,7 @@ pytest Test/
 | `doc/event_v4_integration_handoff.md` | Event V4 架构、存储契约与切换状态 |
 | `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
+| `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |
 | `VectorDB/README.md` | 向量数据库说明 |

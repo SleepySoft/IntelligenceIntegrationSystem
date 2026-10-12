@@ -478,3 +478,93 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
     assert result.accepted
     assert prompts == ["V4 覆盖版 {{CONTENT}} Prompt"]
     assert result.payload["debug_prompt"] == {"version": 41, "overridden": True}
+
+
+def _valuable_core_subset():
+    """核心子集协议（v42）的 AI 输出：无 ID、无 frame、实体内联。"""
+    result = _valuable()
+    result["EVENT_EXTRACTION"] = {
+        "events": [{
+            "is_primary": True,
+            "predicate": {"id": "attack", "surface": "袭击"},
+            "roles": {
+                "actor": [{"name": "A军", "type": "organization"}],
+                "target": [{"name": "B设施", "type": "facility"}],
+            },
+        }],
+    }
+    return result
+
+
+def test_v4_adapter_completes_core_subset_before_archiving():
+    context = FakeContext()
+    repository = FakeArchiveRepository()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=repository,
+        prompt_table={42: "core subset prompt"},
+        analyzer=lambda *_: _valuable_core_subset(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    extraction = analyzed.payload.archive.EVENT_EXTRACTION
+    assert extraction.schema_version == "event-extraction/1.0"
+    assert extraction.primary_event_id == "E1"
+    assert [entity.id for entity in extraction.entities] == ["ENT1", "ENT2"]
+    assert extraction.events[0].core.roles == {"actor": ["ENT1"], "target": ["ENT2"]}
+    archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
+    assert archived.accepted
+    assert repository.archives[0].APPENDIX["__PROMPT_VERSION__"] == 42
+    assert len(repository.events) == 1
+
+
+def test_v4_adapter_core_subset_validation_failure_retries_with_feedback():
+    prompts = []
+
+    def analyzer(client, prompt, original):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            # 已登记谓词不得携带 frame，桥接层拒绝后重试。
+            bad = _valuable_core_subset()
+            bad["EVENT_EXTRACTION"]["events"][0]["frame"] = {
+                "dynamics": "process", "topology": "targeted", "agency": "agentive",
+            }
+            return bad
+        return _valuable_core_subset()
+
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={42: "core subset prompt"},
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert len(prompts) == 2
+    assert "上一次输出的修正要求" in prompts[1]
+    assert ports.statistics["validation_errors"] == 1
+
+
+def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        analyzer=lambda *_: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    table = ports.get_transient_prompt_table("news")
+
+    assert set(table) == {41, 42}
+    assert "核心子集" in table[42]
+    # 生产抽样表保持只有 41。
+    assert list(ports._prompt_table) == [41]

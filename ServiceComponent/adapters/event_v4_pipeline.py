@@ -10,7 +10,14 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 from pydantic import ValidationError
-from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
+from event_engine.extraction import complete_core_extraction
+from prompts_event_v4 import (
+    EVENT_ANALYSIS_EXTRA_PROMPTS,
+    EVENT_ANALYSIS_PROMPT_TABLE,
+    EXTRACTION_MODE_CORE_SUBSET,
+    EXTRACTION_MODE_FULL,
+    PROMPT_EXTRACTION_MODES,
+)
 
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     AnalysisResultV4,
@@ -63,6 +70,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         archive_repository: EventV4ArchiveRepository | None = None,
         event_registry: Any = DEFAULT_EVENT_REGISTRY,
         prompt_table: Mapping[int, str] | None = None,
+        extra_prompt_versions: Mapping[int, str] | None = None,
+        extraction_modes: Mapping[int, str] | None = None,
         analyzer: Callable[[Any, str, dict], dict] | None = None,
         transient_analyzer: Callable[[Any, str, dict], dict] | None = None,
         scorer_factory: Callable[[dict | None], Any] | None = None,
@@ -87,6 +96,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
         if not self._prompt_table:
             raise ValueError("Event V4 prompt_table 不能为空")
+        # 额外版本仅供显式选择（人工调试/灰度实验），不参与生产抽样；
+        # 与抽样表重叠时以抽样表为准。
+        extra = dict(EVENT_ANALYSIS_EXTRA_PROMPTS if extra_prompt_versions is None
+                     else extra_prompt_versions)
+        self._selectable_prompts = {**extra, **self._prompt_table}
+        self._extraction_modes = dict(PROMPT_EXTRACTION_MODES if extraction_modes is None
+                                      else extraction_modes)
 
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
@@ -122,7 +138,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def get_transient_prompt_table(self, subsystem: str) -> dict[int, str]:
         if self._registry.resolve(subsystem) is None:
             raise ValueError(f"unknown_subsystem:{subsystem!r}")
-        return dict(self._prompt_table)
+        return dict(self._selectable_prompts)
 
     def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
@@ -300,12 +316,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
     ) -> tuple[AnalysisResultV4, int, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(list(self._prompt_table.keys()))
-        elif prompt_version not in self._prompt_table:
+        elif prompt_version not in self._selectable_prompts:
             raise ValueError(f"prompt_version_not_configured:{prompt_version}")
         base_prompt = (
             prompt_override if prompt_override is not None
-            else self._prompt_table[prompt_version]
+            else self._selectable_prompts[prompt_version]
         )
+        # 协议模式跟随所选版本；prompt_override 通常是对该版本的改写，沿用同一模式。
+        extraction_mode = self._extraction_modes.get(prompt_version, EXTRACTION_MODE_FULL)
         prompt = base_prompt
         user_name = f"HubRuntime-v4-{event.correlation_id or event.event_id}"
         service = ""
@@ -361,7 +379,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             elif raw_result is not None:
                 self._change_runtime_stat("validation_running", 1)
                 try:
-                    validated = validate_analysis_result_v4(raw_result)
+                    validated = self._validate_analysis(raw_result, extraction_mode)
                     self._change_runtime_stat("validated")
                     return (
                         validated,
@@ -401,6 +419,23 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._stop_event.wait(delay)
         assert last_error is not None
         raise last_error
+
+    def _validate_analysis(self, raw_result: dict, extraction_mode: str) -> AnalysisResultV4:
+        """按 Prompt 版本的抽取协议模式校验分析结果。
+
+        核心子集模式下先把 EVENT_EXTRACTION 确定性补齐为完整的
+        event-extraction/1.0 结果，再走统一的 AnalysisResultV4 校验；
+        归档与下游索引消费的仍是完整契约。
+        """
+        if extraction_mode != EXTRACTION_MODE_CORE_SUBSET or not isinstance(raw_result, dict):
+            return validate_analysis_result_v4(raw_result)
+        data = raw_result
+        extraction = raw_result.get("EVENT_EXTRACTION")
+        if extraction is not None:
+            completed = complete_core_extraction(extraction, self._event_registry)
+            data = dict(raw_result)
+            data["EVENT_EXTRACTION"] = completed.model_dump(mode="python")
+        return validate_analysis_result_v4(data)
 
     def _record_failure_sample(
         self, *, category: str, error: Exception, raw_response: Any,
