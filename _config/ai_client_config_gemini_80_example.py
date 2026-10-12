@@ -1,9 +1,10 @@
-"""Gemini Flash 专用 AI Client 配置（按项目限额的 80% 主动控流）。
+"""Gemini Flash + Groq 大模型 AI Client 配置（按免费层限额主动控流）。
 
-复制本文件为 ``_config/ai_client_config.py``，设置 ``GEMINI_API_KEY`` 后使用。
+复制本文件为 ``_config/ai_client_config.py``，设置 ``GEMINI_API_KEY`` 和/或
+``GROQ_API_KEY`` 后使用。
 配额来自 2026-10-11 AI Studio 免费层项目页面；Google 调整额度后应同步修改
 ``MODEL_LIMITS``。多个 API Key 不会放大同一项目的额度。请求记录持久化到 SQLite，
-程序重启后仍会继续遵守滚动 RPM/TPM/RPD 限额。
+程序重启后仍会继续遵守滚动 RPM/TPM/RPD/TPD 限额。
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from AIClientCenter.core.manager import (
 from AIClientCenter.core.rate_limit import EstimatedRateLimiter
 from AIClientCenter.providers.openai_clients import RateLimitedOpenAIClient
 from AIClientCenter.providers.openai_compatible import create_gemini_client
+from AIClientCenter.providers.groq import GROQ_GROUP_ID, build_groq_clients
 
 
 GROUP_ID = "gemini_flash_80"
@@ -123,6 +125,14 @@ def build_ai_clients() -> dict[str, BaseAIClient]:
 
 
 AI_CLIENTS = build_ai_clients()
+AI_CLIENTS.update(build_groq_clients())
 
 # 每个 Client 对象是一个并发槽；各模型同名槽共享一个限额器。
-AI_CLIENT_LIMIT = {GROUP_ID: max(1, len(AI_CLIENTS))}
+AI_CLIENT_LIMIT = {
+    GROUP_ID: max(1, sum(
+        client.group_id == GROUP_ID for client in AI_CLIENTS.values()
+    )),
+}
+if any(client.group_id == GROQ_GROUP_ID for client in AI_CLIENTS.values()):
+    # Groq 免费层的 120B 模型只有 8K TPM，固定单并发，避免并行请求争抢额度。
+    AI_CLIENT_LIMIT[GROQ_GROUP_ID] = 1
