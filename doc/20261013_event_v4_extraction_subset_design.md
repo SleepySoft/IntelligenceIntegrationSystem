@@ -198,7 +198,24 @@
 
 ## 7. 未实施项与后续建议
 
-按收益/成本排序的候选后续工作（本次刻意未做，避免一次改动过大）：
+### 7.0 分析链路抽象重构（v43+ 的前置，已立项待排期）
+
+现状：prompt 文本、协议模式、校验分派分散在三张表（`EVENT_ANALYSIS_PROMPT_TABLE` /
+`EVENT_ANALYSIS_EXTRA_PROMPTS` / `PROMPT_EXTRACTION_MODES`）加 pipeline 内的硬编码分派
+（`_validate_analysis` 的 if-else）。新增一个协议需要多点同步改动，且未登记版本静默
+回落到 `full` 模式。
+
+目标：**任意 prompt + 对应的前处理、后处理、校验组合都即插即用**，新增链路不改
+pipeline 代码。方向：
+
+- 引入 AnalysisChain 一等抽象：每条链 = {版本, prompt 文本, 输入前处理钩子（如注入发布时间锚点、相似消息裁剪）, 结果适配器（raw → 规范契约，complete_core_extraction 是第一个实例）, 校验器序列, lint 规则集}，集中注册；
+- 校验分级显式化：block（拒绝）/ reask（定向重试）/ warn（仅统计进 `__EXTRACTION_QUALITY__`），由链路声明而非 pipeline 硬编码；
+- 未登记版本的行为显式化（拒绝优先于静默回落），保持 `__PROMPT_VERSION__` 版本纪律；
+- pipeline 只负责调度：选链 → 执行链 → 重试循环 → 交给归档，不再感知协议细节。
+
+### 后续候选
+
+按收益/成本排序（本次刻意未做，避免一次改动过大）：
 
 1. **抽取质量与价值评分分离**（调查报告 §5.4）：增加独立的 extraction confidence 指标（如校验重试次数、桥接修复次数的归档记录），使高分低质样本可被识别。低成本，建议优先。
 2. **Prompt 内容哈希入 APPENDIX**（调查报告 P0-2）：`__PROMPT_VERSION__` 只能区分整数版本，同一版本内容迭代无法追踪。
