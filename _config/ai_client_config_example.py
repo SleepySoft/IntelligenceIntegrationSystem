@@ -10,13 +10,18 @@ from AIClientCenter.providers.zhipu import ZhipuSDKAdapter
 from AIClientCenter.providers.openai_clients import StandardOpenAIClient, \
     SelfRotatingOpenAIClient, OuterTokenRotatingOpenAIClient
 from AIClientCenter.core.manager import CLIENT_PRIORITY_EXPENSIVE, \
-    CLIENT_PRIORITY_FREEBIE, BaseAIClient, CLIENT_PRIORITY_NORMAL, CLIENT_PRIORITY_CONSUMABLES
+    CLIENT_PRIORITY_FREEBIE, BaseAIClient, CLIENT_PRIORITY_NORMAL, CLIENT_PRIORITY_CONSUMABLES, \
+    HealthPolicy
 from AIClientCenter.providers.openai_compatible import create_siliconflow_client, create_modelscope_client
 from AIClientCenter.services.token_rotator import SiliconFlowServiceRotator
 from AIClientCenter.providers.gemini import GoogleGeminiAdapter
 
 
 def build_ai_clients() -> Dict[str, BaseAIClient]:
+    # 启动和空闲时不会发送健康检查请求。连续瞬时失败后，Client 仅在存在真实任务且
+    # 退避到期时试运行一次。各 Client 可选传入：
+    # health_policy=HealthPolicy(failure_threshold=2, initial_backoff_sec=30,
+    #                            max_backoff_sec=1800, jitter_ratio=0.2)
     # -------- The default silicon flow client --------
     # - Use high balance account's token
     # - It is considered available by default.
