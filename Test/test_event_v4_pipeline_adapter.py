@@ -150,6 +150,7 @@ def _ports_for_intake(context=None):
     return EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -209,6 +210,7 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), manager,
         archive_repository=repository,
+        prompt_table={41: "v41 prompt"},
         analyzer=analyzer,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -218,7 +220,7 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
 
     assert analyzed.accepted
     assert len(prompts) == 2
-    assert "IIS 情报分析要求" in prompts[0]
+    assert prompts[0] == "v41 prompt"
     assert "上一次输出的修正要求" in prompts[1]
     assert len(manager.released) == 2
     runtime_stats = ports.statistics
@@ -264,6 +266,7 @@ def test_v4_adapter_removes_conversation_record_file_before_validation():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: response,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -282,6 +285,7 @@ def test_v4_adapter_resolves_repository_from_subsystem_context():
     context.event_v4_archive_repository = repository
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -325,6 +329,7 @@ def test_v4_analysis_reassigns_internal_uuid_collision_for_another_source():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -388,6 +393,7 @@ def test_v4_transient_analysis_returns_events_without_archive_writes():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -411,6 +417,7 @@ def test_v4_transient_analysis_does_not_require_archive_repository():
     context = FakeContext()
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
+        prompt_table={41: "v41 prompt"},
         analyzer=lambda *_: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -566,8 +573,8 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     assert set(table) == {41, 42}
     assert "核心子集" in table[42]
-    # 生产抽样表保持只有 41。
-    assert list(ports._prompt_table) == [41]
+    # 生产抽样表已切换为只有 42。
+    assert list(ports._prompt_table) == [42]
 
 
 class FakeShadowRecorder:

@@ -108,10 +108,6 @@ EVENT_ANALYSIS_PROMPT_V41 = f"""# 角色与任务
 """
 
 
-EVENT_ANALYSIS_PROMPT_TABLE = {41: EVENT_ANALYSIS_PROMPT_V41}
-EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V41
-
-
 # V42：核心子集协议。LLM 不输出 schema_version、局部 ID、已登记谓词的 frame 和
 # 限定词编号，实体内联在角色中，事件关系使用数组位置序号；服务端桥接层确定性补齐为
 # 完整的 event-extraction/1.0 结果后再校验。设计见
@@ -144,8 +140,15 @@ EVENT_ANALYSIS_PROMPT_V42 = f"""# 角色与任务
 {EVENT_CORE_EXTRACTION_SECTION}
 """
 
-# 仅供显式选择（人工调试/灰度实验），不参与生产抽样。
-EVENT_ANALYSIS_EXTRA_PROMPTS = {42: EVENT_ANALYSIS_PROMPT_V42}
+
+# 生产抽样表：v42（核心子集协议）已于 2026-10-12 切换为生产版本，
+# 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果（v42 零校验失败，
+# v41 有 6 次机械类校验失败；NAZA 等重点案例结构显著改善）。
+EVENT_ANALYSIS_PROMPT_TABLE = {42: EVENT_ANALYSIS_PROMPT_V42}
+EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V42
+
+# 回滚/对照通道：v41 保留完整契约直出协议，仅供调试路由显式选择，不参与生产抽样。
+EVENT_ANALYSIS_EXTRA_PROMPTS = {41: EVENT_ANALYSIS_PROMPT_V41}
 
 PROMPT_EXTRACTION_MODES = {
     41: EXTRACTION_MODE_FULL,

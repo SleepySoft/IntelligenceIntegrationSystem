@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-13
 **前置文档：** `doc/20261012_event_v4_extraction_quality_investigation.md`（质量调查报告）
-**状态：** 已实现为实验性 Prompt v42，等待灰度评估
+**状态：** v42 已于 2026-10-12 切换为生产版本（依据 `doc/20261012_prompt_v41_v42_comparison.md`：v42 零校验失败、NAZA 案例达预期结构）；v41 保留在回滚通道
 **关联代码：** `event_engine/event_engine/extraction/subset.py`、`subset_prompt.py`、`prompts_event_v4.py`、`ServiceComponent/adapters/event_v4_pipeline.py`
 
 ## 1. 问题与目标
@@ -140,8 +140,8 @@
 ## 5. 接入方式与灰度路径
 
 - `prompts_event_v4.py`：
-  - `EVENT_ANALYSIS_PROMPT_TABLE = {41: ...}` —— 生产抽样表**不变**，生产流量仍 100% 走 v41；
-  - `EVENT_ANALYSIS_EXTRA_PROMPTS = {42: ...}` —— 仅供显式选择（人工调试/灰度）；
+  - `EVENT_ANALYSIS_PROMPT_TABLE = {42: ...}` —— 生产抽样表，v42 已于 2026-10-12 切换为生产版本；
+  - `EVENT_ANALYSIS_EXTRA_PROMPTS = {41: ...}` —— v41 回滚/对照通道，仅供显式选择；
   - `PROMPT_EXTRACTION_MODES = {41: "full", 42: "core_subset"}` —— 版本 → 协议模式映射。
 - `EventV4PipelinePorts`：新增 `extra_prompt_versions`、`extraction_modes` 构造参数（默认取上述常量）；生产抽样只用 `prompt_table`，显式版本选择（调试路由）可用并集；校验按版本模式分派，core_subset 先桥接再走统一校验。
 - 调试后台（`ManualDebugAnalysisService`）的 prompt_catalog 自动暴露 v42，可直接用于对照实验；归档 APPENDIX 的 `__PROMPT_VERSION__` 区分 41/42 数据，满足调查报告 P0 的可追踪性要求。
@@ -170,7 +170,7 @@
 | `Test/test_extraction_quality.py` | 新增 5 个质量统计单元测试 |
 | `Test/test_event_v4_pipeline_adapter.py` | 新增 7 个 pipeline 集成测试（桥接归档、重试反馈、调试目录、影子链路、质量统计） |
 
-生产行为零变化：默认抽样表仍只有 v41，默认模式 full；影子链路默认关闭（versions 为空）。
+生产当前使用 v42；影子链路默认关闭（versions 为空），评估新版本时把其加入影子表即可与生产版本并行对比。
 
 ## 6.1 并行链路（保守灰度）设计
 
@@ -184,7 +184,7 @@
 - 影子链路的任何失败（AI 调用、校验、落盘）都被隔离，仅记录日志与 `shadow_statistics` 计数，绝不影响主链；
 - 影子分析在分析 worker 内同步执行，自然受 `ai_analysis_thread` 与客户端调度容量节流，不需要额外线程模型；
 - 影子记录与归档 APPENDIX 中的 `__EXTRACTION_QUALITY__` 使用同一检查器，两条链路的指标口径一致，可直接按版本对比；
-- 配置开关：`intelligence_hub.shadow_analysis.versions`（如 `[42]`，默认空=关闭）。评估达标后把 42 移入生产抽样表、从影子表移除即可完成切换；41 移入 extra 表保留回滚通道。
+- 配置开关：`intelligence_hub.shadow_analysis.versions`（默认空=关闭；评佽新版本时填入其版本号即可与生产版本并行对比）。2026-10-12 v42 已按此路径完成评估并切换为生产版本。
 
 ## 6.2 质量统计（仅参考，不拦截）
 

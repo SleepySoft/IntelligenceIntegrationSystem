@@ -14,7 +14,7 @@
 
     "shadow_analysis": {
       "enabled": true,
-      "versions": [42],
+      "versions": [],
       "directory": "_data/analysis_shadow",
       "max_files": 1000
     },
