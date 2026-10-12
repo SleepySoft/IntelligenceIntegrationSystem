@@ -12,6 +12,13 @@
       "max_files": 500
     },
 
+    "shadow_analysis": {
+      "enabled": true,
+      "versions": [42],
+      "directory": "_data/analysis_shadow",
+      "max_files": 1000
+    },
+
     "manual_debug": {
       "max_results": 50,
       "worker_count": 1

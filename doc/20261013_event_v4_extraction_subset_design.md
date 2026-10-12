@@ -158,14 +158,43 @@
 | 文件 | 改动 |
 |---|---|
 | `event_engine/event_engine/extraction/subset.py` | 新增：核心子集模型（SubsetEntity/SubsetEvent/CoreExtractionSubset 等）、时间修复 `normalize_time_text`、桥接 `complete_core_extraction` |
-| `event_engine/event_engine/extraction/subset_prompt.py` | 新增：`build_core_extraction_section` / `build_core_extraction_prompt` |
+| `event_engine/event_engine/extraction/subset_prompt.py` | 新增：`build_core_extraction_section` / `build_core_extraction_prompt`（含 surface 逐字要求） |
 | `event_engine/event_engine/extraction/__init__.py` | 导出新 API |
 | `prompts_event_v4.py` | 新增 V42、`EVENT_ANALYSIS_EXTRA_PROMPTS`、`PROMPT_EXTRACTION_MODES`、模式常量 |
-| `ServiceComponent/adapters/event_v4_pipeline.py` | 新增 extra_prompt_versions/extraction_modes 参数、按版本的校验分派、调试 prompt 表暴露额外版本 |
+| `ServiceComponent/adapters/event_v4_pipeline.py` | 新增 extra_prompt_versions/extraction_modes 参数、按版本的校验分派、调试 prompt 表暴露额外版本；新增 shadow_versions/shadow_recorder/quality_enabled 参数、影子链路执行、归档质量统计 |
+| `ServiceComponent/extraction_quality.py` | 新增：未登记角色名、角色-实体类型兼容性、surface 接地率三类确定性检查（仅统计） |
+| `ServiceComponent/analysis_shadow.py` | 新增：`ShadowAnalysisRecorder` 影子分析落盘（JSON 文件，超量淘汰） |
+| `ServiceComponent/intelligence_contracts.py` | 新增 APPENDIX 键 `__EXTRACTION_QUALITY__` |
+| `IntelligenceHubStartup.py` | 装配影子链路（`intelligence_hub.shadow_analysis.*` 配置） |
 | `event_engine/tests/test_extraction_subset.py` | 新增 12 个桥接单元测试 |
-| `Test/test_event_v4_pipeline_adapter.py` | 新增 3 个 pipeline 集成测试（桥接归档、重试反馈、调试目录） |
+| `Test/test_extraction_quality.py` | 新增 5 个质量统计单元测试 |
+| `Test/test_event_v4_pipeline_adapter.py` | 新增 7 个 pipeline 集成测试（桥接归档、重试反馈、调试目录、影子链路、质量统计） |
 
-生产行为零变化：默认抽样表仍只有 v41，默认模式 full。
+生产行为零变化：默认抽样表仍只有 v41，默认模式 full；影子链路默认关闭（versions 为空）。
+
+## 6.1 并行链路（保守灰度）设计
+
+两条同构输出的分析链路并存：
+
+- **主链（v41 直出）**：生产抽样表不变，归档数据全部来自 v41；
+- **影子链（v42 + 桥接后处理）**：主链分析成功后，对同一输入并行执行 v42 分析（走同一重试与校验通道，经桥接补齐为完整契约），结果由 `ShadowAnalysisRecorder` 写入 `_data/analysis_shadow/`（每样本一个 JSON，含影子分析结果、质量指标、主/影子版本号、模型信息），**不进入归档、事件索引、向量库等任何下游**。
+
+特性：
+
+- 影子链路的任何失败（AI 调用、校验、落盘）都被隔离，仅记录日志与 `shadow_statistics` 计数，绝不影响主链；
+- 影子分析在分析 worker 内同步执行，自然受 `ai_analysis_thread` 与客户端调度容量节流，不需要额外线程模型；
+- 影子记录与归档 APPENDIX 中的 `__EXTRACTION_QUALITY__` 使用同一检查器，两条链路的指标口径一致，可直接按版本对比；
+- 配置开关：`intelligence_hub.shadow_analysis.versions`（如 `[42]`，默认空=关闭）。评估达标后把 42 移入生产抽样表、从影子表移除即可完成切换；41 移入 extra 表保留回滚通道。
+
+## 6.2 质量统计（仅参考，不拦截）
+
+`compute_extraction_quality()` 对通过校验的抽取结果做三类确定性检查：
+
+1. **未登记角色名**：已登记谓词使用了 Registry 未声明的角色（形式错误，未来可升级为 reask）；
+2. **角色-实体类型冲突**：按角色的 SemanticRoleGroup 做类型兼容性检查（AGENT/AUTHORITY 组只接受 person/organization/geopolitical_entity/position；LOCATION 组只接受 location/geopolitical_entity/facility），可机器拦截“作品当调查者”类错误；
+3. **surface 接地率**：谓词/时间 surface 规范化后是否为原文子串。基线实测（15 条高分样本）：谓词 surface 命中率仅 9%，跨语言翻译是主因；v42 prompt 已加入“surface 必须逐字摘自正文、保持原文语言”要求，该指标用于跟踪合规率，暂不拦截。
+
+指标写入归档 APPENDIX `__EXTRACTION_QUALITY__` 与影子记录，供按 prompt 版本/模型聚合，为后续校验收紧与枚举收窄提供决策数据。
 
 ## 7. 未实施项与后续建议
 

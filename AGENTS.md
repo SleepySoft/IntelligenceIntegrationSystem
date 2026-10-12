@@ -221,6 +221,7 @@ python VectorDB/VectorDBBService.py \
   `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
 - 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
+- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）

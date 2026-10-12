@@ -568,3 +568,100 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
     assert "核心子集" in table[42]
     # 生产抽样表保持只有 41。
     assert list(ports._prompt_table) == [41]
+
+
+class FakeShadowRecorder:
+    def __init__(self):
+        self.records = []
+
+    def record(self, **kwargs):
+        self.records.append(kwargs)
+
+
+def _ports_with_shadow(analyzer, shadow_recorder):
+    return EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "full prompt"},
+        extra_prompt_versions={42: "shadow prompt"},
+        extraction_modes={41: "full", 42: "core_subset"},
+        shadow_versions=[42],
+        shadow_recorder=shadow_recorder,
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+
+def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
+    def analyzer(client, prompt, original):
+        return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    repository = FakeArchiveRepository()
+    ports = _ports_with_shadow(analyzer, shadow_recorder)
+    ports._archive_repository = repository
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    # 主链仍是 v41 直出，归档内容不受影响。
+    assert analyzed.payload.archive.APPENDIX["__PROMPT_VERSION__"] == 41
+    extraction = analyzed.payload.archive.EVENT_EXTRACTION
+    assert [entity.id for entity in extraction.entities] == ["ENT1", "ENT2"]
+    # 影子链路执行了 v42 子集分析并落盘对比记录。
+    assert len(shadow_recorder.records) == 1
+    record = shadow_recorder.records[0]
+    assert record["primary_prompt_version"] == 41
+    assert record["shadow_prompt_version"] == 42
+    shadow_extraction = record["analysis"]["EVENT_EXTRACTION"]
+    assert shadow_extraction["schema_version"] == "event-extraction/1.0"
+    assert [entity["id"] for entity in shadow_extraction["entities"]] == ["ENT1", "ENT2"]
+    assert record["extraction_quality"] is not None
+    assert ports.shadow_statistics == {"recorded": 1, "failed": 0}
+
+
+def test_v4_shadow_failure_does_not_affect_primary_chain():
+    def analyzer(client, prompt, original):
+        if prompt == "shadow prompt":
+            raise RuntimeError("shadow ai unavailable")
+        return _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    ports = _ports_with_shadow(analyzer, shadow_recorder)
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert analyzed.payload.archive.APPENDIX["__PROMPT_VERSION__"] == 41
+    assert not shadow_recorder.records
+    assert ports.shadow_statistics == {"recorded": 0, "failed": 1}
+
+
+def test_v4_archive_appendix_carries_extraction_quality_stats():
+    ports, _ = _ports_for_intake()
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    quality = analyzed.payload.archive.APPENDIX["__EXTRACTION_QUALITY__"]
+    assert quality["unregistered_role_count"] == 0
+    assert quality["role_type_conflict_count"] == 0
+    # _original 正文包含“袭击”，v41 样例 surface 逐字命中。
+    assert quality["surface_grounding"]["predicate"] == {"total": 1, "hit": 1}
+
+
+def test_v4_shadow_versions_must_be_configured():
+    try:
+        EventV4PipelinePorts(
+            FakeRegistry(FakeContext()), FakeClientManager(),
+            archive_repository=FakeArchiveRepository(),
+            shadow_versions=[99],
+            shadow_recorder=FakeShadowRecorder(),
+            analyzer=lambda *_: _valuable(),
+            scorer_factory=lambda _: FakeScorer(),
+            retry_wait=wait_none(),
+        )
+    except ValueError as exc:
+        assert "99" in str(exc)
+    else:
+        raise AssertionError("unknown shadow version should be rejected")

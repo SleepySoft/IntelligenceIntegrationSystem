@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from pydantic import ValidationError
 from event_engine.extraction import complete_core_extraction
@@ -36,9 +38,11 @@ from ServiceComponent.event_v4_conversion import (
     convert_event_extraction,
 )
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
+from ServiceComponent.extraction_quality import compute_extraction_quality
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME,
     APPENDIX_CONTENT_TIME_SOURCE,
+    APPENDIX_EXTRACTION_QUALITY,
     APPENDIX_RAW_DATA,
     APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
@@ -48,6 +52,9 @@ from ServiceComponent.intelligence_time import resolve_content_time
 from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +86,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         client_wait_timeout: float = 60.0,
         analysis_worker_count: int = 1,
         failure_recorder: Any = None,
+        shadow_versions: Iterable[int] | None = None,
+        shadow_recorder: Any = None,
+        quality_enabled: bool = True,
     ):
         super().__init__(
             subsystem_registry,
@@ -103,6 +113,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._selectable_prompts = {**extra, **self._prompt_table}
         self._extraction_modes = dict(PROMPT_EXTRACTION_MODES if extraction_modes is None
                                       else extraction_modes)
+        # 影子链路：与主链并行执行同构分析，结果只落盘对比，不归档、不影响主链。
+        self._shadow_versions = [int(version) for version in (shadow_versions or ())]
+        unknown_shadow = [v for v in self._shadow_versions if v not in self._selectable_prompts]
+        if unknown_shadow:
+            raise ValueError(f"shadow prompt versions not configured: {unknown_shadow}")
+        self._shadow_recorder = shadow_recorder
+        self._quality_enabled = quality_enabled
+        self._shadow_stats_lock = threading.Lock()
+        self._shadow_stats = {"recorded": 0, "failed": 0}
 
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
@@ -178,6 +197,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 prompt_version=requested_prompt_version,
                 prompt_override=prompt_override,
             )
+            self._run_shadow_analysis(
+                ctx, event, original_data,
+                primary_version=prompt_version, persist=persist,
+            )
             processed_at = datetime.now(timezone.utc)
             if analysis.is_non_intelligence:
                 appendix = build_archive_appendix(
@@ -231,6 +254,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 archived_at=processed_at,
                 total_score=total_score,
             )
+            quality = self._compute_quality(analysis, original_data)
+            if quality is not None:
+                appendix[APPENDIX_EXTRACTION_QUALITY] = quality
             archive = ArchivedDataV4(
                 **analysis.model_dump(mode="python", by_alias=True),
                 UUID=str(intelligence_uuid),
@@ -419,6 +445,54 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._stop_event.wait(delay)
         assert last_error is not None
         raise last_error
+
+    @property
+    def shadow_statistics(self) -> dict[str, int]:
+        with self._shadow_stats_lock:
+            return dict(self._shadow_stats)
+
+    def _compute_quality(self, analysis: AnalysisResultV4, original_data: dict) -> dict | None:
+        """计算抽取质量统计；仅供后续聚合参考，任何异常都不得影响主链。"""
+        if not self._quality_enabled or analysis.EVENT_EXTRACTION is None:
+            return None
+        raw_text = f"{original_data.get('title') or ''}\n{original_data.get('content') or ''}"
+        try:
+            return compute_extraction_quality(
+                analysis.EVENT_EXTRACTION, self._event_registry, raw_text=raw_text)
+        except Exception:
+            logger.exception("extraction quality check failed; ignored")
+            return None
+
+    def _run_shadow_analysis(self, ctx: Any, event: HubEvent, original_data: dict, *,
+                             primary_version: int, persist: bool) -> None:
+        """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
+        if not persist or self._shadow_recorder is None:
+            return
+        for version in self._shadow_versions:
+            if version == primary_version:
+                continue
+            try:
+                analysis, _, service, model = self._analyze_v4_with_retry(
+                    ctx, event, original_data,
+                    analyzer=self._analyzer,
+                    prompt_version=version,
+                )
+                self._shadow_recorder.record(
+                    original_data=original_data,
+                    subsystem=ctx.name,
+                    primary_prompt_version=primary_version,
+                    shadow_prompt_version=version,
+                    analysis=analysis.model_dump(mode="json", by_alias=True),
+                    ai_service=service,
+                    ai_model=model,
+                    extraction_quality=self._compute_quality(analysis, original_data),
+                )
+                with self._shadow_stats_lock:
+                    self._shadow_stats["recorded"] += 1
+            except Exception:
+                with self._shadow_stats_lock:
+                    self._shadow_stats["failed"] += 1
+                logger.warning("shadow analysis failed for prompt v%s", version, exc_info=True)
 
     def _validate_analysis(self, raw_result: dict, extraction_mode: str) -> AnalysisResultV4:
         """按 Prompt 版本的抽取协议模式校验分析结果。

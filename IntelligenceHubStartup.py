@@ -27,6 +27,7 @@ from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
+from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
 from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appendix_path
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
@@ -203,12 +204,31 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         enabled=config.get('intelligence_hub.analysis_failure_dump.enabled', True),
         max_files=config.get('intelligence_hub.analysis_failure_dump.max_files', 500),
     )
+    # 影子链路：保守灰度。生产归档仍由抽样表版本产生，影子版本并行分析同一输入，
+    # 结果只写入 analysis_shadow 目录供离线对比，不进入归档与索引。
+    shadow_versions = config.get('intelligence_hub.shadow_analysis.versions', [])
+    shadow_recorder = None
+    if shadow_versions:
+        shadow_directory = config.get(
+            'intelligence_hub.shadow_analysis.directory',
+            os.path.join(DATA_PATH, 'analysis_shadow'),
+        )
+        if not os.path.isabs(shadow_directory):
+            shadow_directory = os.path.join(self_path, shadow_directory)
+        shadow_recorder = ShadowAnalysisRecorder(
+            shadow_directory,
+            enabled=config.get('intelligence_hub.shadow_analysis.enabled', True),
+            max_files=config.get('intelligence_hub.shadow_analysis.max_files', 1000),
+        )
+        logger.info(f'Shadow analysis enabled for prompt versions: {shadow_versions}')
     pipeline_ports = EventV4PipelinePorts(
         subsystem_registry,
         client_manager,
         client_wait_timeout=ai_client_wait_timeout,
         analysis_worker_count=ai_analysis_thread,
         failure_recorder=failure_recorder,
+        shadow_versions=shadow_versions,
+        shadow_recorder=shadow_recorder,
     )
     extensions = []
     services = {}
