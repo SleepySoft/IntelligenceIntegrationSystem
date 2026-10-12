@@ -12,13 +12,13 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from pydantic import ValidationError
-from event_engine.extraction import complete_core_extraction
 from prompts_event_v4 import (
     EVENT_ANALYSIS_EXTRA_PROMPTS,
     EVENT_ANALYSIS_PROMPT_TABLE,
-    EXTRACTION_MODE_CORE_SUBSET,
     EXTRACTION_MODE_FULL,
     PROMPT_EXTRACTION_MODES,
+    build_event_v4_prompt_catalog,
+    build_event_v4_protocols,
 )
 
 from ServiceComponent.IntelligenceHubDefines_v4 import (
@@ -27,6 +27,7 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
     DEFAULT_EVENT_REGISTRY,
     validate_analysis_result_v4,
 )
+from ServiceComponent.prompt_protocols import PromptCatalog
 from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
 from ServiceComponent.event_v4_archive import (
     ArchivedDataV4,
@@ -76,6 +77,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         *,
         archive_repository: EventV4ArchiveRepository | None = None,
         event_registry: Any = DEFAULT_EVENT_REGISTRY,
+        prompt_catalog: PromptCatalog | None = None,
         prompt_table: Mapping[int, str] | None = None,
         extra_prompt_versions: Mapping[int, str] | None = None,
         extraction_modes: Mapping[int, str] | None = None,
@@ -103,16 +105,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._archive_repository = archive_repository
         self._event_registry = event_registry
         self._failure_recorder = failure_recorder
-        self._prompt_table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
+        self._prompt_catalog = prompt_catalog or self._build_catalog(
+            event_registry, prompt_table, extra_prompt_versions, extraction_modes)
+        self._prompt_table = self._prompt_catalog.sampling_table()
         if not self._prompt_table:
-            raise ValueError("Event V4 prompt_table 不能为空")
-        # 额外版本仅供显式选择（人工调试/灰度实验），不参与生产抽样；
-        # 与抽样表重叠时以抽样表为准。
-        extra = dict(EVENT_ANALYSIS_EXTRA_PROMPTS if extra_prompt_versions is None
-                     else extra_prompt_versions)
-        self._selectable_prompts = {**extra, **self._prompt_table}
-        self._extraction_modes = dict(PROMPT_EXTRACTION_MODES if extraction_modes is None
-                                      else extraction_modes)
+            raise ValueError("Event V4 prompt_catalog 没有参与生产抽样的 prompt 版本")
+        self._selectable_prompts = self._prompt_catalog.selectable_table()
         # 影子链路：与主链并行执行同构分析，结果只落盘对比，不归档、不影响主链。
         self._shadow_versions = [int(version) for version in (shadow_versions or ())]
         unknown_shadow = [v for v in self._shadow_versions if v not in self._selectable_prompts]
@@ -122,6 +120,30 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._quality_enabled = quality_enabled
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
+
+    @staticmethod
+    def _build_catalog(event_registry: Any,
+                       prompt_table: Mapping[int, str] | None,
+                       extra_prompt_versions: Mapping[int, str] | None,
+                       extraction_modes: Mapping[int, str] | None) -> PromptCatalog:
+        """未显式传入目录时：默认使用 Event V4 目录；传入旧式表参数时折算为目录。"""
+        if prompt_table is None and extra_prompt_versions is None and extraction_modes is None:
+            return build_event_v4_prompt_catalog(event_registry)
+        catalog = PromptCatalog()
+        for protocol in build_event_v4_protocols(event_registry):
+            catalog.register_protocol(protocol)
+        table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
+        extra = dict(EVENT_ANALYSIS_EXTRA_PROMPTS if extra_prompt_versions is None
+                     else extra_prompt_versions)
+        modes = dict(PROMPT_EXTRACTION_MODES if extraction_modes is None
+                     else extraction_modes)
+        for version, text in {**extra, **table}.items():
+            catalog.register_prompt(
+                int(version), text,
+                protocol=modes.get(int(version), EXTRACTION_MODE_FULL),
+                sampling=int(version) in table,
+            )
+        return catalog
 
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
@@ -341,15 +363,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
         prompt_version: int | None = None, prompt_override: str | None = None,
     ) -> tuple[AnalysisResultV4, int, str, str]:
         if prompt_version is None:
-            prompt_version = random.choice(list(self._prompt_table.keys()))
-        elif prompt_version not in self._selectable_prompts:
+            prompt_version = random.choice(self._prompt_catalog.sampling_versions())
+        elif not self._prompt_catalog.has(prompt_version):
             raise ValueError(f"prompt_version_not_configured:{prompt_version}")
+        protocol = self._prompt_catalog.protocol_for(prompt_version)
         base_prompt = (
             prompt_override if prompt_override is not None
-            else self._selectable_prompts[prompt_version]
+            else self._prompt_catalog.text_for(prompt_version)
         )
-        # 协议模式跟随所选版本；prompt_override 通常是对该版本的改写，沿用同一模式。
-        extraction_mode = self._extraction_modes.get(prompt_version, EXTRACTION_MODE_FULL)
+        # 前处理/注入钩子属于协议；prompt_override 通常是对该版本的改写，沿用同一协议。
+        base_prompt = protocol.prepare_prompt(base_prompt, original_data)
         prompt = base_prompt
         user_name = f"HubRuntime-v4-{event.correlation_id or event.event_id}"
         service = ""
@@ -405,7 +428,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             elif raw_result is not None:
                 self._change_runtime_stat("validation_running", 1)
                 try:
-                    validated = self._validate_analysis(raw_result, extraction_mode)
+                    validated = self._validate_analysis(raw_result, prompt_version)
                     self._change_runtime_stat("validated")
                     return (
                         validated,
@@ -494,22 +517,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._shadow_stats["failed"] += 1
                 logger.warning("shadow analysis failed for prompt v%s", version, exc_info=True)
 
-    def _validate_analysis(self, raw_result: dict, extraction_mode: str) -> AnalysisResultV4:
-        """按 Prompt 版本的抽取协议模式校验分析结果。
+    def _validate_analysis(self, raw_result: dict, prompt_version: int) -> AnalysisResultV4:
+        """按所选版本绑定的协议做后处理（桥接）与校验。
 
-        核心子集模式下先把 EVENT_EXTRACTION 确定性补齐为完整的
-        event-extraction/1.0 结果，再走统一的 AnalysisResultV4 校验；
-        归档与下游索引消费的仍是完整契约。
+        归档与下游索引消费的始终是规范契约（AnalysisResultV4 + 完整
+        event-extraction/1.0 的 EVENT_EXTRACTION）；各协议的差异封装在
+        PromptProtocol.validate_result 内。
         """
-        if extraction_mode != EXTRACTION_MODE_CORE_SUBSET or not isinstance(raw_result, dict):
-            return validate_analysis_result_v4(raw_result)
-        data = raw_result
-        extraction = raw_result.get("EVENT_EXTRACTION")
-        if extraction is not None:
-            completed = complete_core_extraction(extraction, self._event_registry)
-            data = dict(raw_result)
-            data["EVENT_EXTRACTION"] = completed.model_dump(mode="python")
-        return validate_analysis_result_v4(data)
+        return self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
 
     def _record_failure_sample(
         self, *, category: str, error: Exception, raw_response: Any,

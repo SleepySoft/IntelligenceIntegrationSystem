@@ -198,20 +198,29 @@
 
 ## 7. 未实施项与后续建议
 
-### 7.0 分析链路抽象重构（v43+ 的前置，已立项待排期）
+### 7.0 分析链路抽象：Prompt 协议族机制（2026-10-12 已实现）
 
-现状：prompt 文本、协议模式、校验分派分散在三张表（`EVENT_ANALYSIS_PROMPT_TABLE` /
-`EVENT_ANALYSIS_EXTRA_PROMPTS` / `PROMPT_EXTRACTION_MODES`）加 pipeline 内的硬编码分派
-（`_validate_analysis` 的 if-else）。新增一个协议需要多点同步改动，且未登记版本静默
-回落到 `full` 模式。
+`ServiceComponent/prompt_protocols.py` 提供通用机制：
 
-目标：**任意 prompt + 对应的前处理、后处理、校验组合都即插即用**，新增链路不改
-pipeline 代码。方向：
+- **协议（PromptProtocol）** = 一族 prompt 共用的处理链：`prepare_prompt`（前处理/注入，
+  签名 `(prompt, data) -> prompt`）+ `validate_result`（后处理桥接 + 校验，
+  签名 `raw -> AnalysisResultV4`）。多个 prompt 版本共用同一协议是小迭代，
+  结构大改才新建协议；
+- **PromptCatalog**：协议与版本的注册表。版本注册时声明 `sampling`（是否参与
+  生产随机抽样），非 sampling 版本仅供显式选择（调试、影子、回滚）。版本号
+  全局唯一、必须绑定已注册协议，杜绝 prompt 与校验静默错配；
+- pipeline 只调度：抽样/显式选版本 → 协议的 prepare → 重试循环 → 协议的
+  validate_result → 归档，不感知协议细节。旧式 prompt_table/extraction_modes
+  构造参数仍兼容（内部折算为目录）；
+- **与 subsystem 的关系**：机制不认识 subsystem；需要按子系统差异化绑定时，
+  在组合根（IntelligenceHubStartup）为不同 pipeline 实例传入不同 PromptCatalog，
+  机制代码无需改动。
 
-- 引入 AnalysisChain 一等抽象：每条链 = {版本, prompt 文本, 输入前处理钩子（如注入发布时间锚点、相似消息裁剪）, 结果适配器（raw → 规范契约，complete_core_extraction 是第一个实例）, 校验器序列, lint 规则集}，集中注册；
-- 校验分级显式化：block（拒绝）/ reask（定向重试）/ warn（仅统计进 `__EXTRACTION_QUALITY__`），由链路声明而非 pipeline 硬编码；
-- 未登记版本的行为显式化（拒绝优先于静默回落），保持 `__PROMPT_VERSION__` 版本纪律；
-- pipeline 只负责调度：选链 → 执行链 → 重试循环 → 交给归档，不再感知协议细节。
+Event V4 的具体注册见 `prompts_event_v4.py::build_event_v4_prompt_catalog`；
+接入自定义 prompt 族时复制该函数自行注册，经 pipeline 的 `prompt_catalog` 参数注入。
+
+未实施的校验分级（block/reask/warn 由链路声明）仍是后续项，目前的 warn 级检查
+统一走 `__EXTRACTION_QUALITY__` 统计通道。
 
 ### 后续候选
 

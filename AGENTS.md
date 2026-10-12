@@ -47,7 +47,7 @@
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 定义表（生产抽样表 + 仅供显式选择的实验版本 + 各版本抽取协议模式） |
+| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：基于 `ServiceComponent.prompt_protocols` 的协议族机制，prompt 版本绑定协议（前处理/后处理/校验链）并声明是否参与生产抽样 |
 
 ### 3.2 主要子目录
 
@@ -68,6 +68,7 @@
   - `CrawlPipeline.py` / `Discoverer.py` / `Extractor.py` / `Fetcher.py`：流水线组件
 
 - **`ServiceComponent/`** — 业务组件层
+  - `prompt_protocols.py`：Prompt 协议族机制（协议 = 前处理/后处理/校验链，目录 = 版本注册与抽样声明）
   - `IntelligenceHubDefines_v4.py`：V4 采集输入和 AI 分析结果模型
   - `event_v4_archive.py`：`ArchivedDataV4`、APPENDIX 构造与归档投影
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
