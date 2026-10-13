@@ -128,6 +128,11 @@
   "ai_client_center": {
     "sqlite_db_file": "ai_client_state_log.db",
     "heartbeat_interval_sec": 30,
-    "heartbeat_grace_sec": 120
+    "heartbeat_grace_sec": 120,
+    "call_observation": {
+      "enabled": true,
+      "sqlite_db_file": "ai_client_observations.db",
+      "retention_days": 90
+    }
   }
 }

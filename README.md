@@ -224,6 +224,9 @@ python CrawlerServiceEngine.py
 > 每个 Key 使用独立额度账本，明文不会写入日志或账本。映射为空时仍兼容对应的单 Key
 > 环境变量。主配置通过 `compose_presets()` 组合服务商预置，无需重复模型、限额和并发
 > 参数；这些推荐值统一维护在 AIClientCenter 的对应 Provider 文件中。
+> 调用观测默认写入 `_data/ai_client_observations.db`，只保存模型、耗时、次数、逻辑
+> 字节量及估算/服务商实报 Token 等元数据，不保存请求和回复正文；可在
+> `ai_client_center.call_observation` 中关闭或调整保留期。
 > 准备组合多个免费服务时，也可复制
 > [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
 > 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。

@@ -31,6 +31,7 @@ from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
 from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appendix_path
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
+from AIClientCenter.core.observation import CallObservationSQLiteLogger
 from MyPythonUtility.proc_utils import find_processes, kill_processes
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
@@ -92,7 +93,24 @@ def build_ai_client_manager(config: EasyConfig):
     )
     state_logger.start()
 
-    client_manager = AIClientManager(state_logger=state_logger)
+    observation_config = config.get('ai_client_center.call_observation', {}) or {}
+    call_observer = None
+    if observation_config.get('enabled', True):
+        try:
+            observation_db_file = observation_config.get(
+                'sqlite_db_file', 'ai_client_observations.db')
+            retention_days = observation_config.get('retention_days', 90)
+            call_observer = CallObservationSQLiteLogger(
+                sqlite_db_path=os.path.join(DATA_PATH, observation_db_file),
+                retention_days=retention_days,
+            )
+        except Exception:
+            logger.exception("AI Client 调用观测初始化失败，主调用链继续运行。")
+
+    client_manager = AIClientManager(
+        state_logger=state_logger,
+        call_observer=call_observer,
+    )
 
     logger.info(f"AI clients count: {len(AI_CLIENTS)}).")
     logger.info(f"AI group limit count: {len(AI_CLIENT_LIMIT)}).")
