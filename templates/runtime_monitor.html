@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIS 运行监控</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card-bg: #1e293b; --card-border: #334155;
+            --primary: #38bdf8; --success: #4ade80; --warning: #fbbf24;
+            --danger: #f87171; --text: #f1f5f9; --muted: #94a3b8; --hover: #27354f;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+               margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 24px; margin: 0; }
+        h2 { font-size: 17px; margin: 0 0 12px; color: var(--primary); }
+        .subtitle { color: var(--muted); font-size: 13px; }
+        header { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--card-border);
+                 flex-wrap: wrap; gap: 12px; }
+        .section { background: var(--card-bg); border: 1px solid var(--card-border);
+                   border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                 gap: 12px; margin-bottom: 12px; }
+        .card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px; }
+        .card .value { font-size: 22px; font-weight: 700; }
+        .card .label { color: var(--muted); font-size: 12px; }
+        .card.warn .value { color: var(--warning); }
+        .card.bad .value { color: var(--danger); }
+        pre.status-line { background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px;
+                          padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap;
+                          word-break: break-all; color: var(--muted); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--card-border); }
+        th { color: var(--muted); font-weight: 500; }
+        .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; }
+        .tag.ok { background: rgba(74,222,128,.15); color: var(--success); }
+        .tag.busy { background: rgba(251,191,36,.15); color: var(--warning); }
+        .tag.bad { background: rgba(248,113,113,.15); color: var(--danger); }
+        .error { color: var(--danger); font-size: 13px; padding: 8px 0; }
+        .link { color: var(--primary); text-decoration: none; font-size: 13px; }
+        .link:hover { text-decoration: underline; }
+        .refresh-note { color: var(--muted); font-size: 12px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>运行监控</h1>
+            <div class="subtitle">Hub 事件流 · AI 客户端 · 系统资源（实时内存数据，5s 刷新）</div>
+        </div>
+        <div>
+            <span class="refresh-note" id="refresh-note"></span>&nbsp;&nbsp;
+            <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
+            <a class="link" href="/statistics/overview">统计分析 →</a>&nbsp;&nbsp;
+            <a class="link" href="/monitor/ai-client-dashboard">AI 客户端详情 →</a>
+        </div>
+    </header>
+
+    <!-- Hub 控制台状态 -->
+    <div class="section">
+        <h2>Hub 控制台状态</h2>
+        <pre class="status-line" id="status-line">加载中…</pre>
+        <div class="cards" id="hub-cards"></div>
+        <table id="subsystem-table"></table>
+        <div class="error" id="hub-error" style="display:none"></div>
+    </div>
+
+    <!-- AI 客户端 -->
+    <div class="section">
+        <h2>AI 客户端</h2>
+        <div class="cards">
+            <div class="card"><div class="value" id="ai-total">-</div><div class="label">客户端总数</div></div>
+            <div class="card"><div class="value" id="ai-available">-</div><div class="label">空闲可用</div></div>
+            <div class="card"><div class="value" id="ai-busy">-</div><div class="label">忙碌</div></div>
+        </div>
+        <table id="ai-table"></table>
+        <div class="error" id="ai-error" style="display:none"></div>
+    </div>
+
+    <!-- 系统资源 -->
+    <div class="section">
+        <h2>系统资源 <a class="link" href="/monitor/api/dashboard" style="font-size:13px">进程/线程详情 →</a></h2>
+        <div class="cards" id="sys-cards"></div>
+        <div class="error" id="sys-error" style="display:none"></div>
+    </div>
+</div>
+
+<script>
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.style.display = msg ? '' : 'none';
+    el.textContent = msg || '';
+}
+async function fetchJson(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+}
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function metricCard(label, value, cls = '') {
+    return `<div class="card ${cls}"><div class="value">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
+}
+
+/* ---------- Hub 状态 ---------- */
+async function loadHub() {
+    try {
+        const data = await fetchJson('/api/runtime/status');
+        document.getElementById('status-line').textContent = data.status_text || '(无状态文本)';
+        const runtime = data.hub?.runtime || {};
+        const analysis = data.hub?.analysis || {};
+        const shadow = data.hub?.shadow || {};
+        const vErr = analysis.validation_errors || 0;
+        document.getElementById('hub-cards').innerHTML = [
+            metricCard('事件 已发/已处理', `${runtime.emitted ?? 0} / ${runtime.processed ?? 0}`),
+            metricCard('队列积压', runtime.pending_events ?? 0,
+                       (runtime.pending_events ?? 0) > 100 ? 'warn' : ''),
+            metricCard('在途提交', runtime.in_flight_submissions ?? 0),
+            metricCard('AI 调用/重试', `${analysis.attempts ?? 0} / ${analysis.retries ?? 0}`),
+            metricCard('校验失败', vErr, vErr > 0 ? 'warn' : ''),
+            metricCard('AI 错误', (analysis.call_errors ?? 0) + (analysis.api_errors ?? 0)),
+            metricCard('影子分析 记录/失败', `${shadow.recorded ?? 0} / ${shadow.failed ?? 0}`),
+            metricCard('活动 Handler', runtime.active_handlers ?? 0),
+        ].join('');
+        const subs = data.hub?.subsystems || [];
+        document.getElementById('subsystem-table').innerHTML =
+            '<tr><th>子系统</th><th>归档</th><th>丢弃</th><th>错误</th></tr>' +
+            subs.map(s => {
+                const stats = s.stats || {};
+                return `<tr><td>${esc(s.display_name || s.name)}</td><td>${stats.archived ?? 0}</td>` +
+                       `<td>${stats.dropped ?? 0}</td>` +
+                       `<td style="color:${(stats.error ?? 0) > 0 ? 'var(--danger)' : 'inherit'}">${stats.error ?? 0}</td></tr>`;
+            }).join('');
+        showError('hub-error', null);
+    } catch (e) { showError('hub-error', `加载失败: ${e.message}`); }
+}
+
+/* ---------- AI 客户端 ---------- */
+async function loadAi() {
+    try {
+        const data = await fetchJson('/monitor/ai-client-dashboard/api/overview');
+        const clients = data.clients || [];
+        const available = clients.filter(c =>
+            (c.state?.status || '').toLowerCase() === 'available' && !c.state?.is_busy).length;
+        const busy = clients.filter(c => c.state?.is_busy).length;
+        document.getElementById('ai-total').textContent = clients.length;
+        document.getElementById('ai-available').textContent = available;
+        document.getElementById('ai-busy').textContent = busy;
+        document.getElementById('ai-table').innerHTML =
+            '<tr><th>客户端</th><th>当前模型</th><th>状态</th></tr>' +
+            clients.map(c => {
+                const st = c.state || {};
+                const busyTag = st.is_busy ? '<span class="tag busy">忙碌</span>'
+                                           : '<span class="tag ok">空闲</span>';
+                const status = (st.status || 'unknown').toLowerCase();
+                const statusTag = status === 'available'
+                    ? `<span class="tag ok">${esc(status)}</span>`
+                    : `<span class="tag bad">${esc(status)}</span>`;
+                return `<tr><td>${esc(c.meta?.name)}</td><td>${esc(c.meta?.current_model)}</td>` +
+                       `<td>${statusTag} ${busyTag}</td></tr>`;
+            }).join('');
+        showError('ai-error', null);
+    } catch (e) { showError('ai-error', `加载失败: ${e.message}`); }
+}
+
+/* ---------- 系统资源 ---------- */
+async function loadSystem() {
+    try {
+        const sys = await fetchJson('/monitor/api/system');
+        const stats = await fetchJson('/monitor/api/stats');
+        const threads = stats.threads || {};
+        const threadCount = Object.values(threads)
+            .reduce((acc, t) => acc + (Array.isArray(t) ? t.length : Object.keys(t || {}).length), 0);
+        const cards = [];
+        const push = (label, v, suffix, warnAt, badAt) => {
+            const num = parseFloat(v);
+            let cls = '';
+            if (!isNaN(num)) {
+                if (badAt !== undefined && num >= badAt) cls = 'bad';
+                else if (warnAt !== undefined && num >= warnAt) cls = 'warn';
+            }
+            cards.push(metricCard(label, isNaN(num) ? (v ?? '-') : num.toFixed(1) + (suffix || ''), cls));
+        };
+        push('CPU %', sys.cpu_percent ?? sys.cpu, '%', 70, 90);
+        push('内存 %', sys.memory_percent ?? sys.memory?.percent ?? sys.memory, '%', 75, 90);
+        push('磁盘 %', sys.disk_percent ?? sys.disk?.percent ?? sys.disk, '%', 80, 95);
+        cards.push(metricCard('线程总数', threadCount || '-'));
+        document.getElementById('sys-cards').innerHTML = cards.join('');
+        showError('sys-error', null);
+    } catch (e) { showError('sys-error', `加载失败: ${e.message}`); }
+}
+
+async function refreshAll() {
+    await Promise.allSettled([loadHub(), loadAi(), loadSystem()]);
+    document.getElementById('refresh-note').textContent =
+        '上次刷新 ' + new Date().toLocaleTimeString();
+}
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>

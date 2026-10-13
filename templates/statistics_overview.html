@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIS 统计分析</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a; --card-bg: #1e293b; --card-border: #334155;
+            --primary: #38bdf8; --success: #4ade80; --warning: #fbbf24;
+            --danger: #f87171; --text: #f1f5f9; --muted: #94a3b8; --hover: #27354f;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+               margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 24px; margin: 0; }
+        h2 { font-size: 17px; margin: 0 0 12px; color: var(--primary); }
+        .subtitle { color: var(--muted); font-size: 13px; }
+        header { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--card-border);
+                 flex-wrap: wrap; gap: 12px; }
+        .section { background: var(--card-bg); border: 1px solid var(--card-border);
+                   border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+        .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .controls label { color: var(--muted); font-size: 13px; }
+        select, button { background: var(--bg); color: var(--text); border: 1px solid var(--card-border);
+                         border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+        button:hover, select:hover { background: var(--hover); }
+        button.active { background: var(--primary); color: #0f172a; border-color: var(--primary); }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                 gap: 12px; margin-bottom: 12px; }
+        .card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px; }
+        .card .value { font-size: 24px; font-weight: 700; }
+        .card .label { color: var(--muted); font-size: 12px; }
+        .chart { width: 100%; height: 300px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--card-border); }
+        th { color: var(--muted); font-weight: 500; }
+        .error { color: var(--danger); font-size: 13px; padding: 8px 0; }
+        .link { color: var(--primary); text-decoration: none; font-size: 13px; }
+        .link:hover { text-decoration: underline; }
+        a.visited-plain { color: var(--primary); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>统计分析</h1>
+            <div class="subtitle">归档分布 · 评分分布 · 实体频率（数据来自 Mongo/SQLite 聚合）</div>
+        </div>
+        <div>
+            <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
+            <a class="link" href="/monitor/runtime">运行监控 →</a>
+        </div>
+    </header>
+
+    <!-- 归档分布 -->
+    <div class="section" id="distribution">
+        <h2>归档分布</h2>
+        <div class="controls">
+            <label>范围:</label>
+            <button data-dist-range="1" class="active">近24小时</button>
+            <button data-dist-range="7">近7天</button>
+            <button data-dist-range="30">近30天</button>
+            <span class="subtitle" id="dist-range-note"></span>
+        </div>
+        <div class="cards">
+            <div class="card"><div class="value" id="dist-total">-</div><div class="label">归档总量</div></div>
+            <div class="card"><div class="value" id="dist-sources">-</div><div class="label">来源数</div></div>
+        </div>
+        <div class="chart" id="dist-chart"></div>
+        <div class="error" id="dist-error" style="display:none"></div>
+        <table id="dist-top" style="margin-top:12px"></table>
+    </div>
+
+    <!-- 评分分布 -->
+    <div class="section" id="score">
+        <h2>评分分布</h2>
+        <div class="controls">
+            <label>范围:</label>
+            <button data-score-range="7">近7天</button>
+            <button data-score-range="30" class="active">近30天</button>
+            <button data-score-range="90">近90天</button>
+        </div>
+        <div class="cards">
+            <div class="card"><div class="value" id="score-total">-</div><div class="label">记录数</div></div>
+        </div>
+        <div class="chart" id="score-chart"></div>
+        <div class="error" id="score-error" style="display:none"></div>
+    </div>
+
+    <!-- 实体频率 -->
+    <div class="section" id="entity">
+        <h2>实体频率 <a class="link" href="/statistics/entity_frequency/page" style="font-size:13px">完整功能（趋势/缓存构建）→</a></h2>
+        <div class="controls">
+            <label>类型:</label>
+            <select id="entity-type">
+                <option value="LOCATION">地点</option>
+                <option value="PEOPLE">人物</option>
+                <option value="ORGANIZATION">组织</option>
+            </select>
+            <label>范围:</label>
+            <button data-entity-range="7">近7天</button>
+            <button data-entity-range="30" class="active">近30天</button>
+            <button data-entity-range="90">近90天</button>
+        </div>
+        <div class="cards">
+            <div class="card"><div class="value" id="entity-mentions">-</div><div class="label">总提及次数</div></div>
+            <div class="card"><div class="value" id="entity-unique">-</div><div class="label">唯一实体数</div></div>
+        </div>
+        <div class="chart" id="entity-chart"></div>
+        <div class="error" id="entity-error" style="display:none"></div>
+    </div>
+</div>
+
+<script>
+const charts = {};
+function chart(id) {
+    if (!charts[id]) charts[id] = echarts.init(document.getElementById(id), 'dark');
+    return charts[id];
+}
+window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
+
+function isoDaysAgo(days) {
+    const d = new Date(Date.now() - days * 86400000);
+    return d.toISOString();
+}
+function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.style.display = msg ? '' : 'none';
+    el.textContent = msg || '';
+}
+async function fetchJson(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+}
+function bindRange(attr, onPick) {
+    document.querySelectorAll(`button[${attr}]`).forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll(`button[${attr}]`).forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            onPick(parseInt(btn.getAttribute(attr)));
+        });
+    });
+}
+
+/* ---------- 归档分布 ---------- */
+async function loadDistribution(days) {
+    const start = isoDaysAgo(days), end = new Date().toISOString();
+    const hourly = days <= 1;
+    document.getElementById('dist-range-note').textContent = hourly ? '按小时聚合' : '按天聚合';
+    try {
+        const dist = await fetchJson(
+            `/statistics/intelligence_distribution/${hourly ? 'hourly' : 'daily'}?start_time=${start}&end_time=${end}`);
+        const summary = await fetchJson(
+            `/statistics/intelligence_distribution/summary?start_time=${start}&end_time=${end}`);
+        const labels = dist.map(r => {
+            const i = r._id;
+            const base = `${i.year}-${String(i.month).padStart(2,'0')}-${String(i.day).padStart(2,'0')}`;
+            return hourly ? `${base} ${String(i.hour).padStart(2,'0')}:00` : base;
+        });
+        chart('dist-chart').setOption({
+            backgroundColor: 'transparent',
+            tooltip: {trigger: 'axis'},
+            xAxis: {type: 'category', data: labels},
+            yAxis: {type: 'value', minInterval: 1},
+            series: [{type: 'bar', data: dist.map(r => r.count), itemStyle: {color: '#38bdf8'}}],
+            grid: {left: 50, right: 20, top: 20, bottom: 60},
+        }, true);
+        document.getElementById('dist-total').textContent = summary.total_count ?? '-';
+        const informants = summary.top_informants || [];
+        document.getElementById('dist-sources').textContent = informants.length;
+        document.getElementById('dist-top').innerHTML =
+            '<tr><th>来源</th><th>数量</th></tr>' +
+            informants.slice(0, 10).map(i =>
+                `<tr><td>${i.informant ?? i._id ?? ''}</td><td>${i.count ?? ''}</td></tr>`).join('');
+        showError('dist-error', null);
+    } catch (e) { showError('dist-error', `加载失败: ${e.message}`); }
+}
+bindRange('data-dist-range', loadDistribution);
+
+/* ---------- 评分分布 ---------- */
+async function loadScore(days) {
+    const start = isoDaysAgo(days), end = new Date().toISOString();
+    try {
+        const data = await fetchJson(`/statistics/score_distribution?start_time=${start}&end_time=${end}`);
+        const rows = (data.chart_data || []).slice().sort((a, b) => a.score - b.score);
+        document.getElementById('score-total').textContent = data.total_records ?? '-';
+        chart('score-chart').setOption({
+            backgroundColor: 'transparent',
+            tooltip: {trigger: 'axis'},
+            xAxis: {type: 'category', data: rows.map(r => String(r.score)), name: '分数'},
+            yAxis: {type: 'value', minInterval: 1},
+            series: [{type: 'bar', data: rows.map(r => r.count), itemStyle: {color: '#fbbf24'}}],
+            grid: {left: 50, right: 20, top: 20, bottom: 40},
+        }, true);
+        showError('score-error', null);
+    } catch (e) { showError('score-error', `加载失败: ${e.message}`); }
+}
+bindRange('data-score-range', loadScore);
+
+/* ---------- 实体频率 ---------- */
+async function loadEntity(days) {
+    const type = document.getElementById('entity-type').value;
+    const start = isoDaysAgo(days), end = new Date().toISOString();
+    try {
+        const data = await fetchJson(
+            `/statistics/entity_frequency?entity_type=${type}&start_time=${start}&end_time=${end}&top_n=20`);
+        const top = data.top_entities || [];
+        document.getElementById('entity-mentions').textContent = data.summary?.total_mentions ?? '-';
+        document.getElementById('entity-unique').textContent = data.summary?.unique_entities ?? '-';
+        chart('entity-chart').setOption({
+            backgroundColor: 'transparent',
+            tooltip: {trigger: 'axis'},
+            xAxis: {type: 'value', minInterval: 1},
+            yAxis: {type: 'category', data: top.map(e => e.name).reverse()},
+            series: [{type: 'bar', data: top.map(e => e.total_count).reverse(),
+                      itemStyle: {color: '#4ade80'}}],
+            grid: {left: 140, right: 30, top: 20, bottom: 30},
+        }, true);
+        showError('entity-error', null);
+    } catch (e) { showError('entity-error', `加载失败: ${e.message}`); }
+}
+bindRange('data-entity-range', loadEntity);
+document.getElementById('entity-type').addEventListener('change',
+    () => loadEntity(parseInt(document.querySelector('button[data-entity-range].active')
+                              ?.getAttribute('data-entity-range') || '30')));
+
+loadDistribution(1);
+loadScore(30);
+loadEntity(30);
+</script>
+</body>
+</html>

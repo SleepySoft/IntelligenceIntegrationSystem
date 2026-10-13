@@ -28,6 +28,7 @@ from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
 from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
+from ServiceComponent.runtime.status import format_hub_status
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.intelligence_contracts import APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path
 from IntelligenceHub import IntelligenceHub
@@ -160,7 +161,8 @@ class IntelligenceHubWebService:
                  rss_publisher: RSSPublisher,
                  public_search_limits: Optional[Dict[str, Any]] = None,
                  monitor_api=None,
-                 subsystem_registry=None):
+                 subsystem_registry=None,
+                 control_state=None):
 
         # ---------------- Parameters ----------------
 
@@ -173,6 +175,7 @@ class IntelligenceHubWebService:
         self.wsgi_app = None
         self.monitor_api = monitor_api
         self.subsystem_registry = subsystem_registry
+        self.control_state = control_state
 
         # ---------------- Public Search Limits ----------------
 
@@ -200,11 +203,33 @@ class IntelligenceHubWebService:
         # ------------- Other Components -------------
 
         self.request_tracer = None
-        threading.Timer(30.0, self.dump_request_connection_periodically).start()
+        self._start_dump_timer()
+
+    def _start_dump_timer(self):
+        # 诊断性定时任务不应阻止进程退出（也避免测试进程悬挂）。
+        timer = threading.Timer(30.0, self.dump_request_connection_periodically)
+        timer.daemon = True
+        timer.start()
 
     def set_monitor_api(self, monitor_api):
         """Set the MonitorAPI instance so dashboard can reuse system/process/thread stats."""
         self.monitor_api = monitor_api
+
+    def _control_set_scope(self, req, *, pause: bool):
+        """暂停/恢复某个处理环节；scope 白名单校验由 RuntimeControlState 执行。"""
+        if self.control_state is None:
+            return jsonify({"error": "控制状态未启用"}), 503
+        data = req.get_json(silent=True) or req.form.to_dict()
+        scope = str(data.get("scope", "")).strip()
+        operator = session.get("username", "")
+        try:
+            if pause:
+                self.control_state.pause(scope, operator=operator)
+            else:
+                self.control_state.resume(scope, operator=operator)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"success": True, "status": self.control_state.status()})
 
     @staticmethod
     def _serialize_for_json(obj):
@@ -750,6 +775,9 @@ class IntelligenceHubWebService:
         @app.route('/collect', methods=['POST'])
         def collect_api():
             try:
+                if self.control_state is not None and self.control_state.is_paused('intake'):
+                    return jsonify({'resp': 'maintenance', 'uuid': '',
+                                    'message': 'intake paused by operator'}), 503
                 data = dict(request.json)
                 if not data.get('UUID', ''):
                     raise ValueError('Invalid UUID.')
@@ -1465,15 +1493,50 @@ class IntelligenceHubWebService:
 
         # ---------------------------------------------- Management Pages ----------------------------------------------
 
+        # 收束后的合并页面：统计三合一 / 运行监控；旧页面 302 到新区块。
+        @app.route('/statistics/overview', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def statistics_overview_page():
+            return render_template('statistics_overview.html')
+
+        @app.route('/monitor/runtime', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def runtime_monitor_page():
+            return render_template('runtime_monitor.html')
+
+        # --------------------------- 运行控制 ---------------------------
+
+        @app.route('/control', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def control_panel_page():
+            return render_template('control_panel.html')
+
+        @app.route('/api/control/status', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def control_status_api():
+            if self.control_state is None:
+                return jsonify({"error": "控制状态未启用"}), 503
+            return jsonify(self.control_state.status())
+
+        @app.route('/api/control/pause', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def control_pause_api():
+            return self._control_set_scope(request, pause=True)
+
+        @app.route('/api/control/resume', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def control_resume_api():
+            return self._control_set_scope(request, pause=False)
+
         @app.route('/statistics/score_distribution.html', methods=['GET'])
         @WebServiceAccessManager.login_required
         def score_distribution_page():
-            return get_statistics_page('/statistics/score_distribution')
+            return redirect('/statistics/overview#score')
 
         @app.route('/statistics/intelligence_statistics.html', methods=['GET'])
         @WebServiceAccessManager.login_required
         def intelligence_dashboard_page():
-            return get_intelligence_statistics_page()
+            return redirect('/statistics/overview#distribution')
 
         @app.route('/maintenance/export_mongodb.html', methods=['GET'])
         @WebServiceAccessManager.login_required
@@ -1659,6 +1722,21 @@ class IntelligenceHubWebService:
                 })
             except Exception as e:
                 logger.error(f"Error generating dashboard data: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
+
+        @app.route('/api/runtime/status', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def get_runtime_status():
+            """运行监控页的实时状态：hub 统计 + 影子分析 + 控制台状态原文。"""
+            try:
+                hub_stats = self.intelligence_hub.statistics
+                return jsonify({
+                    "timestamp": get_aware_time().isoformat(),
+                    "hub": hub_stats,
+                    "status_text": format_hub_status(hub_stats),
+                })
+            except Exception as e:
+                logger.error(f"Error generating runtime status: {e}", exc_info=True)
                 return jsonify({"error": str(e)}), 500
 
         # --------------------------- Entity Frequency Statistics ---------------------------
@@ -2199,5 +2277,6 @@ class IntelligenceHubWebService:
         return start_time, end_time
 
     def dump_request_connection_periodically(self):
-        self.request_tracer.dump_long_running_requests()
-        threading.Timer(30.0, self.dump_request_connection_periodically).start()
+        if self.request_tracer is not None:
+            self.request_tracer.dump_long_running_requests()
+        self._start_dump_timer()

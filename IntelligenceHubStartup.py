@@ -16,7 +16,7 @@ from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import (
     EventV4PipelinePorts, IISAsyncTranslationExtension,
     IISUnarchivedReplayExtension, IISVectorExtension)
-from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin
+from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin, RuntimeControlState
 from ServiceComponent.runtime.status import HubStatusLogGate, format_hub_status
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
@@ -239,6 +239,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             max_files=config.get('intelligence_hub.shadow_analysis.max_files', 1000),
         )
         logger.info(f'Shadow analysis enabled for prompt versions: {shadow_versions}')
+    # 运行控制开关：组合根创建唯一实例，分别注入 pipeline 与 Web 层。
+    control_state = RuntimeControlState()
     pipeline_ports = EventV4PipelinePorts(
         subsystem_registry,
         client_manager,
@@ -247,6 +249,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         failure_recorder=failure_recorder,
         shadow_versions=shadow_versions,
         shadow_recorder=shadow_recorder,
+        control_state=control_state,
     )
     extensions = []
     services = {}
@@ -450,6 +453,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         rss_publisher=RSSPublisher(rss_base_url),
         public_search_limits=public_search_limits,
         subsystem_registry=subsystem_registry,
+        control_state=control_state,
     )
 
     hub_service.register_routers(wsgi_app)

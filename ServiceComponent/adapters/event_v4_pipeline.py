@@ -96,6 +96,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_versions: Iterable[int] | None = None,
         shadow_recorder: Any = None,
         quality_enabled: bool = True,
+        control_state: Any = None,
     ):
         super().__init__(
             subsystem_registry,
@@ -125,6 +126,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._quality_enabled = quality_enabled
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
+        self._control_state = control_state
 
     @staticmethod
     def _build_catalog(event_registry: Any,
@@ -174,6 +176,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         return StageResult.allow(data, subsystem=ctx.name)
 
     def analyze(self, event: HubEvent) -> StageResult:
+        self._wait_while_analysis_paused()
         return self._analyze_v4(event, persist=True)
 
     def analyze_transient(self, event: HubEvent) -> StageResult:
@@ -486,6 +489,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
         assert last_error is not None
         raise last_error
 
+    def _wait_while_analysis_paused(self) -> None:
+        """分析暂停时事件留在 worker 上等待恢复，不消费 AI、不标记错误。"""
+        control = self._control_state
+        if control is None:
+            return
+        while control.is_paused("analysis") and not self._stop_event.is_set():
+            self._stop_event.wait(2.0)
+
     @property
     def shadow_statistics(self) -> dict[str, int]:
         with self._shadow_stats_lock:
@@ -507,6 +518,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                              primary_version: int, persist: bool) -> None:
         """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
         if not persist or self._shadow_recorder is None:
+            return
+        if self._control_state is not None and self._control_state.is_paused("shadow"):
             return
         for version in self._shadow_versions:
             if version == primary_version:

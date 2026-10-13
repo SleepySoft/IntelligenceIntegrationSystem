@@ -18,15 +18,17 @@
 
 #### Statistics
 
-+ [Dashboard](/statistics/intelligence_statistics.html)
++ [Statistics Overview](/statistics/overview)
 
-+ [Rate Statistics](/statistics/score_distribution.html)
-
-+ [Entity Statistics](/statistics/entity_frequency/page)
++ [Entity Statistics (Full)](/statistics/entity_frequency/page)
 
 -----------------------------------------------
 
 #### Maintenance
+
++ [Runtime Monitor](/monitor/runtime)
+
++ [Runtime Control](/control)
 
 + [Manual Intelligence Debug](/debug/intelligence)
 
@@ -36,7 +38,7 @@
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
-+ [System Monitor](/monitor/api/dashboard)
++ [System Monitor (Legacy)](/monitor/api/dashboard)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 

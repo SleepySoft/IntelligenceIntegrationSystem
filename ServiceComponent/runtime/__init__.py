@@ -5,6 +5,7 @@ from ServiceComponent.runtime.runtime import EventPriority, HubPlugin, HubRuntim
 from ServiceComponent.runtime.callbacks import EventCallbackPlugin
 from ServiceComponent.runtime.maintenance import ScheduledMaintenancePlugin
 from ServiceComponent.runtime.deferred import DeferredServicePlugin
+from ServiceComponent.runtime.control import RuntimeControlState
 
 __all__ = ["DeferredServicePlugin", "EventCallbackPlugin", "EventPriority", "HandlerFailure", "HubEvent", "HubPlugin", "HubRuntime",
-           "ScheduledMaintenancePlugin"]
+           "RuntimeControlState", "ScheduledMaintenancePlugin"]
