@@ -24,25 +24,24 @@ class ArticleRenderer {
         const selectedKey = this.sortBy === 'content_time'
             ? source : (this.sortBy === 'archived_at' ? 'archived' : null);
         const times = [
-            ['published', '发布时间', article.published_at],
-            ['collected', '采集时间', article.collected_at],
-            ['archived', '归档时间', article.archived_at]
+            ['published', '发布', article.published_at],
+            ['collected', '采集', article.collected_at],
+            ['archived', '归档', article.archived_at]
         ];
         times.sort((left, right) => Number(right[0] === selectedKey) - Number(left[0] === selectedKey));
         return times
             .map(([key, label, value]) => {
                 const active = key === selectedKey ? ' time-sort-active' : '';
-                const archivedClass = key === 'archived' && value ? ' archived-time' : '';
-                const archivedData = key === 'archived' && value
-                    ? ` data-archived="${this.escapeHTML(value)}"` : '';
-                let sortHint = '';
-                if (key === selectedKey) {
-                    sortHint = this.sortBy === 'content_time'
-                        ? ` · 内容时间${source === 'archived' ? '（兜底）' : ''} · 排序`
-                        : ' · 排序';
-                }
+                const sortTime = key === selectedKey
+                    ? (this.sortBy === 'content_time' ? article.content_time : article.archived_at)
+                    : '';
+                const sortData = sortTime
+                    ? ` data-sort-time="${this.escapeHTML(sortTime)}"` : '';
+                const title = key === selectedKey
+                    ? ` title="${this.sortBy === 'content_time' ? '内容时间排序依据' : '归档时间排序依据'}"`
+                    : '';
                 const display = value ? this.formatLocalTime(value) : '—';
-                return `<span class="article-time time-${key}${active}${archivedClass}"${archivedData}>${label}${sortHint}: ${this.escapeHTML(display)}</span>`;
+                return `<span class="article-time time-${key}${active}"${sortData}${title}>${label}: ${this.escapeHTML(display)}</span>`;
             }).join('');
     }
 
@@ -326,13 +325,10 @@ class ArticleRenderer {
         const now = new Date().getTime();
         const twelveHours = 12 * 60 * 60 * 1000;
         const container = this.listContainer || document;
-        container.querySelectorAll('.archived-time').forEach(el => {
-            if (el.classList.contains('time-sort-active')) return;
-            const archivedStr = el.dataset.archived;
-            if(!archivedStr) return;
-            const archivedTime = new Date(archivedStr.replace(/-/g, '/')).getTime();
-            if (isNaN(archivedTime)) return;
-            const timeDiff = now - archivedTime;
+        container.querySelectorAll('.time-sort-active[data-sort-time]').forEach(el => {
+            const sortTime = new Date(el.dataset.sortTime).getTime();
+            if (isNaN(sortTime)) return;
+            const timeDiff = now - sortTime;
             let ratio = Math.min(1, Math.max(0, timeDiff / twelveHours));
             const r = Math.round(255 - ratio * (255 - 227));
             const g = Math.round(165 - ratio * (165 - 242));
