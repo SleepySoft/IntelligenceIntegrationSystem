@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, List
 from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
 from ServiceComponent.analysis_messages import (
+    ANALYSIS_MAX_OUTPUT_TOKENS,
     AIMessage,
     build_analyze_message,
     build_analyze_user_message,
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-MAX_OUTPUT_TOKEN = 8192         # The limit of Gemini
+MAX_OUTPUT_TOKEN = ANALYSIS_MAX_OUTPUT_TOKENS
 CONVERSATION_PATH = 'conversation'
 conversation_db = HybridDB(CONVERSATION_PATH)
 

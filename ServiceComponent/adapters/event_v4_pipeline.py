@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from pydantic import ValidationError
+from AIClientCenter.core.rate_limit import estimate_message_tokens
 from prompts_event_v4 import (
     EVENT_ANALYSIS_EXTRA_PROMPTS,
     EVENT_ANALYSIS_PROMPT_TABLE,
@@ -26,6 +27,10 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
     CollectedData,
     DEFAULT_EVENT_REGISTRY,
     validate_analysis_result_v4,
+)
+from ServiceComponent.analysis_messages import (
+    ANALYSIS_MAX_OUTPUT_TOKENS,
+    build_analyze_message,
 )
 from ServiceComponent.prompt_protocols import PromptCatalog
 from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
@@ -379,9 +384,19 @@ class EventV4PipelinePorts(BasePipelinePorts):
         model = ""
         last_error: Exception | None = None
         validation_feedback: list[str] = []
+        failed_client_names: set[str] = set()
 
         for attempt in range(1, 4):
-            ai_client = self._wait_for_ai_client(ctx, user_name)
+            estimated_input_tokens = estimate_message_tokens(
+                build_analyze_message(prompt, original_data)
+            )
+            ai_client = self._wait_for_ai_client(
+                ctx,
+                user_name,
+                estimated_input_tokens=estimated_input_tokens,
+                max_tokens=ANALYSIS_MAX_OUTPUT_TOKENS,
+                avoid_client_names=set(failed_client_names),
+            )
             self._change_runtime_stat("attempts")
             self._change_runtime_stat("ai_running", 1)
             call_started = time.perf_counter()
@@ -400,6 +415,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 )
                 last_error = exc
                 raw_result = None
+                failed_client_names.add(getattr(ai_client, "name", ""))
             finally:
                 call_ms = max(0, int((time.perf_counter() - call_started) * 1000))
                 with self._runtime_stats_lock:
@@ -425,6 +441,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 if raw_result.get("api_error_code") == "HTTP_400":
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
                 last_error = api_error
+                failed_client_names.add(getattr(ai_client, "name", ""))
             elif raw_result is not None:
                 self._change_runtime_stat("validation_running", 1)
                 try:

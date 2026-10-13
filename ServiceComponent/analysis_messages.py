@@ -11,6 +11,8 @@ from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
+ANALYSIS_MAX_OUTPUT_TOKENS = 8192
+
 
 class AIMessage(BaseModel):
     UUID: str

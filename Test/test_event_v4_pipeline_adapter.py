@@ -54,6 +54,8 @@ class FakeRegistry:
 
 
 class FakeClient:
+    name = "fake-client"
+
     def get_api_base_url(self):
         return "fake://ai"
 
@@ -65,14 +67,16 @@ class FakeClientManager:
     def __init__(self):
         self.client = FakeClient()
         self.released = []
+        self.requests = []
 
     def wait_for_available_client(self, user, **kwargs):
+        self.requests.append(kwargs)
         return self.client
 
     def release_client(self, client):
         self.released.append(client)
 
-    def get_scheduling_capacity(self, target_group_id=None):
+    def get_scheduling_capacity(self, target_group_id=None, **kwargs):
         return 1
 
 
@@ -223,6 +227,9 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert prompts[0] == "v41 prompt"
     assert "上一次输出的修正要求" in prompts[1]
     assert len(manager.released) == 2
+    assert manager.requests[0]["estimated_input_tokens"] > 0
+    assert manager.requests[0]["max_tokens"] == 8192
+    assert manager.requests[1]["avoid_client_names"] == set()
     runtime_stats = ports.statistics
     timing_stats = {
         "last_call_ms": runtime_stats.pop("last_call_ms"),
@@ -258,6 +265,28 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
         {"UUID": _original()["UUID"]},
         {"APPENDIX.__ARCHIVED__": "A"},
     )
+
+
+def test_v4_adapter_deprioritizes_api_failed_client_on_retry():
+    responses = [
+        {"error": "local_rate_limit", "error_type": "recoverable"},
+        _valuable(),
+    ]
+    manager = FakeClientManager()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_: responses.pop(0),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert manager.requests[0]["avoid_client_names"] == set()
+    assert manager.requests[1]["avoid_client_names"] == {"fake-client"}
 
 
 def test_v4_adapter_removes_conversation_record_file_before_validation():

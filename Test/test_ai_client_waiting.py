@@ -14,7 +14,7 @@ class TimeoutThenAvailableManager:
         self.calls += 1
         return None if self.calls == 1 else self.client
 
-    def get_scheduling_capacity(self, target_group_id=None):
+    def get_scheduling_capacity(self, target_group_id=None, **kwargs):
         return 1
 
     def notify_waiters(self):
