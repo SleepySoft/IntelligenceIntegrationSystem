@@ -34,9 +34,6 @@
                               border: 1px solid var(--danger); border-radius: 10px;
                               padding: 12px 16px; margin-bottom: 16px; color: var(--danger);
                               font-weight: 600; }
-        pre.status-line { background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px;
-                          padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap;
-                          word-break: break-all; color: var(--muted); }
         .error { color: var(--danger); font-size: 13px; padding: 8px 0; }
         .link { color: var(--primary); text-decoration: none; font-size: 13px; }
         .link:hover { text-decoration: underline; }
@@ -63,11 +60,7 @@
         <h2>处理环节开关</h2>
         <div id="scopes"></div>
         <div class="error" id="control-error" style="display:none"></div>
-    </div>
-
-    <div class="section">
-        <h2>控制台状态原文</h2>
-        <pre class="status-line" id="status-line">加载中…</pre>
+        <div class="subtitle">实时运行状态见 <a class="link" href="/monitor/runtime">运行监控</a>。</div>
     </div>
 </div>
 
@@ -147,20 +140,8 @@ async function loadStatus() {
     } catch (e) { showError(`状态加载失败: ${e.message}`); }
 }
 
-async function loadHubStatus() {
-    try {
-        const resp = await fetch('/api/runtime/status');
-        const data = await resp.json();
-        document.getElementById('status-line').textContent =
-            data.status_text || '(无状态文本)';
-    } catch (e) {
-        document.getElementById('status-line').textContent = `加载失败: ${e.message}`;
-    }
-}
-
 loadStatus();
-loadHubStatus();
-setInterval(() => { loadStatus(); loadHubStatus(); }, 5000);
+setInterval(loadStatus, 5000);
 </script>
 </body>
 </html>

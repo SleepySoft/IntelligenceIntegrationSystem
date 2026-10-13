@@ -26,8 +26,6 @@ from ServiceComponent.UserManager import UserManager
 from MyPythonUtility.ArbitraryRPC import RPCService
 from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
 from ServiceComponent.PostManager import generate_html_from_markdown
-from ServiceComponent.IntelligenceDistributionPageRender import get_intelligence_statistics_page
-from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.runtime.status import format_hub_status
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.intelligence_contracts import APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path

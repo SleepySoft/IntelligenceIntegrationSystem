@@ -38,7 +38,6 @@
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
-+ [System Monitor (Legacy)](/monitor/api/dashboard)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 

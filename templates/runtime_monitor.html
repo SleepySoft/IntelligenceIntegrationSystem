@@ -29,9 +29,6 @@
         .card .label { color: var(--muted); font-size: 12px; }
         .card.warn .value { color: var(--warning); }
         .card.bad .value { color: var(--danger); }
-        pre.status-line { background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px;
-                          padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap;
-                          word-break: break-all; color: var(--muted); }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--card-border); }
         th { color: var(--muted); font-weight: 500; }
@@ -43,6 +40,7 @@
         .link { color: var(--primary); text-decoration: none; font-size: 13px; }
         .link:hover { text-decoration: underline; }
         .refresh-note { color: var(--muted); font-size: 12px; }
+        td.num { font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
@@ -50,20 +48,20 @@
     <header>
         <div>
             <h1>运行监控</h1>
-            <div class="subtitle">Hub 事件流 · AI 客户端 · 系统资源（实时内存数据，5s 刷新）</div>
+            <div class="subtitle">Hub 事件流 · AI 客户端 · 进程与系统资源（实时内存数据，5s 刷新）</div>
         </div>
         <div>
             <span class="refresh-note" id="refresh-note"></span>&nbsp;&nbsp;
             <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
+            <a class="link" href="/control">运行控制 →</a>&nbsp;&nbsp;
             <a class="link" href="/statistics/overview">统计分析 →</a>&nbsp;&nbsp;
             <a class="link" href="/monitor/ai-client-dashboard">AI 客户端详情 →</a>
         </div>
     </header>
 
-    <!-- Hub 控制台状态 -->
+    <!-- Hub 状态（分析展示） -->
     <div class="section">
-        <h2>Hub 控制台状态</h2>
-        <pre class="status-line" id="status-line">加载中…</pre>
+        <h2>Hub 事件流</h2>
         <div class="cards" id="hub-cards"></div>
         <table id="subsystem-table"></table>
         <div class="error" id="hub-error" style="display:none"></div>
@@ -81,9 +79,18 @@
         <div class="error" id="ai-error" style="display:none"></div>
     </div>
 
+    <!-- 本进程 -->
+    <div class="section">
+        <h2>本进程 <span class="subtitle" id="proc-name"></span></h2>
+        <div class="cards" id="proc-cards"></div>
+        <h2 style="margin-top:16px">线程（按 CPU 降序，取前 15）</h2>
+        <table id="thread-table"></table>
+        <div class="error" id="proc-error" style="display:none"></div>
+    </div>
+
     <!-- 系统资源 -->
     <div class="section">
-        <h2>系统资源 <a class="link" href="/monitor/api/dashboard" style="font-size:13px">进程/线程详情 →</a></h2>
+        <h2>系统资源</h2>
         <div class="cards" id="sys-cards"></div>
         <div class="error" id="sys-error" style="display:none"></div>
     </div>
@@ -106,12 +113,21 @@ function esc(s) {
 function metricCard(label, value, cls = '') {
     return `<div class="card ${cls}"><div class="value">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
 }
+function percentCard(label, value, warnAt, badAt) {
+    if (value === undefined || value === null) return metricCard(label, 'N/A');
+    const num = parseFloat(value);
+    let cls = '';
+    if (num >= badAt) cls = 'bad'; else if (num >= warnAt) cls = 'warn';
+    return metricCard(label, num.toFixed(1) + '%', cls);
+}
+function mb(bytes) {
+    return bytes === undefined || bytes === null ? 'N/A' : (bytes / 1048576).toFixed(0) + ' MB';
+}
 
 /* ---------- Hub 状态 ---------- */
 async function loadHub() {
     try {
         const data = await fetchJson('/api/runtime/status');
-        document.getElementById('status-line').textContent = data.status_text || '(无状态文本)';
         const runtime = data.hub?.runtime || {};
         const analysis = data.hub?.analysis || {};
         const shadow = data.hub?.shadow || {};
@@ -168,35 +184,63 @@ async function loadAi() {
     } catch (e) { showError('ai-error', `加载失败: ${e.message}`); }
 }
 
+/* ---------- 本进程（含线程与句柄） ---------- */
+async function loadProcess() {
+    try {
+        const processes = await fetchJson('/monitor/api/processes');
+        if (!processes.length) {
+            showError('proc-error', '没有被监控的进程');
+            return;
+        }
+        // 启动装配会把本服务进程注册进监控列表，取第一个（通常即本进程）。
+        const pid = processes[0].pid;
+        const [proc, threads] = await Promise.all([
+            fetchJson(`/monitor/api/process/${pid}`),
+            fetchJson(`/monitor/api/threads/${pid}`),
+        ]);
+        document.getElementById('proc-name').textContent =
+            `PID ${proc.pid} · ${proc.name || ''} · ${proc.status || ''}`;
+        document.getElementById('proc-cards').innerHTML = [
+            percentCard('进程 CPU', proc.cpu_percent, 50, 80),
+            metricCard('进程内存 (RSS)', mb(proc.memory_info?.rss)),
+            percentCard('进程内存占比', proc.memory_percent, 20, 40),
+            metricCard('句柄数', proc.num_handles ?? 'N/A',
+                       (proc.num_handles ?? 0) > 5000 ? 'warn' : ''),
+            metricCard('线程数', proc.num_threads ?? '-'),
+            metricCard('网络连接数', proc.connections ?? 'N/A'),
+        ].join('');
+        const rows = (threads || []).slice(0, 15);
+        document.getElementById('thread-table').innerHTML =
+            '<tr><th>线程名</th><th>TID</th><th>CPU %</th><th>用户态(s)</th><th>内核态(s)</th></tr>' +
+            rows.map(t =>
+                `<tr><td>${esc(t.name)}</td><td class="num">${t.tid}</td>` +
+                `<td class="num">${t.cpu_percent.toFixed(2)}</td>` +
+                `<td class="num">${t.user_time.toFixed(1)}</td>` +
+                `<td class="num">${t.system_time.toFixed(1)}</td></tr>`).join('');
+        showError('proc-error', null);
+    } catch (e) { showError('proc-error', `加载失败: ${e.message}`); }
+}
+
 /* ---------- 系统资源 ---------- */
 async function loadSystem() {
     try {
         const sys = await fetchJson('/monitor/api/system');
-        const stats = await fetchJson('/monitor/api/stats');
-        const threads = stats.threads || {};
-        const threadCount = Object.values(threads)
-            .reduce((acc, t) => acc + (Array.isArray(t) ? t.length : Object.keys(t || {}).length), 0);
-        const cards = [];
-        const push = (label, v, suffix, warnAt, badAt) => {
-            const num = parseFloat(v);
-            let cls = '';
-            if (!isNaN(num)) {
-                if (badAt !== undefined && num >= badAt) cls = 'bad';
-                else if (warnAt !== undefined && num >= warnAt) cls = 'warn';
-            }
-            cards.push(metricCard(label, isNaN(num) ? (v ?? '-') : num.toFixed(1) + (suffix || ''), cls));
-        };
-        push('CPU %', sys.cpu_percent ?? sys.cpu, '%', 70, 90);
-        push('内存 %', sys.memory_percent ?? sys.memory?.percent ?? sys.memory, '%', 75, 90);
-        push('磁盘 %', sys.disk_percent ?? sys.disk?.percent ?? sys.disk, '%', 80, 95);
-        cards.push(metricCard('线程总数', threadCount || '-'));
-        document.getElementById('sys-cards').innerHTML = cards.join('');
+        document.getElementById('sys-cards').innerHTML = [
+            percentCard('CPU', sys.cpu?.percent, 70, 90),
+            metricCard('CPU 核心', `${sys.cpu?.cores ?? '?'} 物理 / ${sys.cpu?.logical_cores ?? '?'} 逻辑`),
+            percentCard('内存', sys.memory?.percent, 75, 90),
+            metricCard('内存 已用/总量',
+                `${mb(sys.memory?.used)} / ${mb(sys.memory?.total)}`),
+            percentCard('磁盘', sys.disk?.usage?.percent, 80, 95),
+            percentCard('交换区', sys.swap?.percent, 50, 80),
+            metricCard('网络连接数', sys.network?.connections ?? 'N/A'),
+        ].join('');
         showError('sys-error', null);
     } catch (e) { showError('sys-error', `加载失败: ${e.message}`); }
 }
 
 async function refreshAll() {
-    await Promise.allSettled([loadHub(), loadAi(), loadSystem()]);
+    await Promise.allSettled([loadHub(), loadAi(), loadProcess(), loadSystem()]);
     document.getElementById('refresh-note').textContent =
         '上次刷新 ' + new Date().toLocaleTimeString();
 }

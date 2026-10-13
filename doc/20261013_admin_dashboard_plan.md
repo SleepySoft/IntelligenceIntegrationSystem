@@ -70,7 +70,7 @@
 **P1（页面收束）——已完成（2026-10-13）**
 1. `/statistics/overview`：合并三统计页（实体频率的缓存构建入口保留在原页，overview 覆盖其查看功能）；
 2. `/monitor/runtime`：合并系统监控 + hub 实时状态 + AI 概览；新增 `/api/runtime/status`（含 `format_hub_status` 原文）；
-3. 旧统计两页 302 重定向；`posts/index.md` 链接更新；`/monitor/api/dashboard` 保留为 legacy 详情页。
+3. 旧统计两页 302 重定向；`posts/index.md` 链接更新；旧系统监控页（`/monitor/api/dashboard` + `monitor_dashboard.html`）的进程/线程/句柄展示并入运行监控页后已退役至 `recycled/`（含旧 dashboard 模板与两个统计页渲染模块 `RateStatisticsPageRender.py`、`IntelligenceDistributionPageRender.py`）；
 
 **P2（控制钩子）——已完成（2026-10-13）**
 4. `ServiceComponent/runtime/control.py` 的 `RuntimeControlState`（内存态、审计日志、maintenance 总开关）+ intake/analysis/shadow 三开关接入（translation/vector 为预留位）+ `/control` 页面与 `/api/control/*` 端点（login_required）；

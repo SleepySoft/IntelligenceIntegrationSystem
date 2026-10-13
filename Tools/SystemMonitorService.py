@@ -14,13 +14,15 @@ API Endpoints:
     GET    /api/threads/<int:pid>  Get per-thread stats for a specific process
     POST   /api/process            Add a new process to monitoring
     DELETE /api/process/<pid>      Remove a process from monitoring
-    GET    /api/dashboard          HTML dashboard with auto-refresh
+
+HTML 仪表盘页面已退役（2026-10-13，功能并入 IIS 主后台 /monitor/runtime）；
+旧模板见 recycled/monitor_dashboard.html。
 """
 
 import os
 import sys
 import argparse
-from flask import Flask, Blueprint, jsonify, request, abort, render_template
+from flask import Flask, Blueprint, jsonify, request, abort
 
 root_path = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(root_path)
@@ -151,24 +153,12 @@ class MonitorAPI:
             else:
                 abort(404, description=f"Process {pid} not found in monitoring list")
 
-        @self.blueprint.route('/api/dashboard', methods=['GET'])
-        @self.wrapper
-        def get_dashboard():
-            """HTML dashboard with detailed process and thread monitoring data."""
-            stats = self.monitor.get_all_stats()
-            return render_template(
-                'monitor_dashboard.html',
-                prefix=self.prefix,
-                stats=stats
-            )
-
     def start(self):
         """Start the monitoring system and web server (only in standalone mode)."""
         self.monitor.start_monitoring()
         if self._is_standalone:
             base_url = f"http://{self.host}:{self.port}{self.prefix}"
             print(f"Starting monitoring API on {base_url}")
-            print(f" - Dashboard: {base_url}/api/dashboard")
             self.app.run(host=self.host, port=self.port, debug=False)
         else:
             print(f"Monitoring routes registered to external Flask application with prefix: {self.prefix}")
