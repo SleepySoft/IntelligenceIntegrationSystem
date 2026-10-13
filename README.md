@@ -222,7 +222,8 @@ python CrawlerServiceEngine.py
 > 在 Python 文件的 `GEMINI_API_KEYS`、`GROQ_API_KEYS`、`NVIDIA_API_KEYS` 映射中
 > 配置一个或多个 Key；
 > 每个 Key 使用独立额度账本，明文不会写入日志或账本。映射为空时仍兼容对应的单 Key
-> 环境变量。
+> 环境变量。主配置通过 `compose_presets()` 组合服务商预置，无需重复模型、限额和并发
+> 参数；这些推荐值统一维护在 AIClientCenter 的对应 Provider 文件中。
 > 准备组合多个免费服务时，也可复制
 > [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
 > 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。

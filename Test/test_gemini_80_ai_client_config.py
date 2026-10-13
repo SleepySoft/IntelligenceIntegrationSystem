@@ -24,7 +24,7 @@ def test_config_registers_nothing_without_key(monkeypatch):
     clients, limits = load_config(CONFIG_PATH)
 
     assert clients == {}
-    assert limits == {"gemini_flash_80": 1}
+    assert limits == {}
 
 
 def test_config_builds_shared_per_model_limiters_at_80_percent(monkeypatch):
@@ -62,10 +62,10 @@ def test_config_supports_multiple_direct_keys_with_independent_quotas(monkeypatc
     monkeypatch.setenv("GEMINI_PRIMARY_SLOTS", "2")
     namespace = runpy.run_path(str(CONFIG_PATH))
 
-    clients = namespace["build_ai_clients"]({
+    clients = namespace["gemini_free"]({
         "project-a": "direct-key-a",
         "project-b": "direct-key-b",
-    })
+    }).clients
 
     assert len(clients) == 4
     project_a = [client for client in clients.values() if "[project-a]" in client.name]
@@ -105,7 +105,7 @@ def test_config_can_register_only_the_groq_large_model(monkeypatch):
     assert len(clients) == 1
     client = next(iter(clients.values()))
     assert client.get_current_model() == "openai/gpt-oss-120b"
-    assert limits == {"gemini_flash_80": 1, "groq_free_large": 1}
+    assert limits == {"groq_free_large": 1}
 
 
 def test_config_contains_all_confirmed_free_models(monkeypatch):
