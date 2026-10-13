@@ -226,7 +226,8 @@ python CrawlerServiceEngine.py
 > 参数；这些推荐值统一维护在 AIClientCenter 的对应 Provider 文件中。
 > 调用观测默认写入 `_data/ai_client_observations.db`，只保存模型、耗时、次数、逻辑
 > 字节量及估算/服务商实报 Token 等元数据，不保存请求和回复正文；可在
-> `ai_client_center.call_observation` 中关闭或调整保留期。
+> `ai_client_center.call_observation` 中关闭或调整保留期。登录后台后可从 AI Client
+> Manager 进入 Usage 页面，查看总览、趋势、切片排行和最近调用。
 > 准备组合多个免费服务时，也可复制
 > [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
 > 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。
