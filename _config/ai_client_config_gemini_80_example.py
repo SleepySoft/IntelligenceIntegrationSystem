@@ -1,8 +1,8 @@
-"""Gemini Flash + Groq 大模型 AI Client 配置（按免费层限额主动控流）。
+"""Gemini、Groq、NVIDIA 大模型 AI Client 配置（按免费层限额主动控流）。
 
 复制本文件为 ``_config/ai_client_config.py``，直接填写 ``GEMINI_API_KEYS`` 和/或
-``GROQ_API_KEYS`` 后使用。未填写映射时仍兼容 ``GEMINI_API_KEY``、
-``GROQ_API_KEY`` 环境变量。
+``GROQ_API_KEYS``、``NVIDIA_API_KEYS`` 后使用。未填写映射时仍兼容对应的单 Key
+环境变量。
 配额来自 2026-10-11 AI Studio 免费层项目页面；Google 调整额度后应同步修改
 ``MODEL_LIMITS``。每个映射项必须代表一份独立额度；同一个 Key 不得重复填写。
 请求记录按 Key 的不可逆指纹隔离并持久化到 SQLite，程序重启后仍会继续遵守滚动
@@ -25,6 +25,7 @@ from AIClientCenter.core.rate_limit import EstimatedRateLimiter
 from AIClientCenter.providers.openai_clients import RateLimitedOpenAIClient
 from AIClientCenter.providers.openai_compatible import create_gemini_client
 from AIClientCenter.providers.groq import GROQ_GROUP_ID, build_groq_clients
+from AIClientCenter.providers.nvidia import build_nvidia_clients, nvidia_group_limits
 
 
 GROUP_ID = "gemini_flash_80"
@@ -38,6 +39,11 @@ GEMINI_API_KEYS: dict[str, str] = {
 }
 GROQ_API_KEYS: dict[str, str] = {
     # "groq_account_a": "gsk_...",
+}
+NVIDIA_API_KEYS: dict[str, str] = {
+    # 两个账号分别填写；每个账号拥有独立 RPM 账本与单并发槽。
+    # "nvidia_account_a": "nvapi-...",
+    # "nvidia_account_b": "nvapi-...",
 }
 
 
@@ -143,6 +149,7 @@ def build_ai_clients(api_keys: APIKeyConfig = None) -> dict[str, BaseAIClient]:
 
 AI_CLIENTS = build_ai_clients(GEMINI_API_KEYS)
 AI_CLIENTS.update(build_groq_clients(api_keys=GROQ_API_KEYS))
+AI_CLIENTS.update(build_nvidia_clients(NVIDIA_API_KEYS))
 
 # 每个 Client 对象是一个并发槽；各模型同名槽共享一个限额器。
 AI_CLIENT_LIMIT = {
@@ -155,3 +162,4 @@ if any(client.group_id == GROQ_GROUP_ID for client in AI_CLIENTS.values()):
     AI_CLIENT_LIMIT[GROQ_GROUP_ID] = sum(
         client.group_id == GROQ_GROUP_ID for client in AI_CLIENTS.values()
     )
+AI_CLIENT_LIMIT.update(nvidia_group_limits(AI_CLIENTS))

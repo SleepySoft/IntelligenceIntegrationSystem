@@ -217,9 +217,10 @@ python CrawlerServiceEngine.py
 > 配置请参阅 [AIClientCenter/README.md](AIClientCenter/README.md)。
 > 免费 API 服务的当前额度、使用边界，以及针对 Event V4 的 Client 能力/性能基准方案见
 > [免费 LLM API 资源池与 Client 基准验证方案](doc/free_llm_api_and_client_benchmark.md)。
-> Gemini/Groq 的限额配置可直接复制
+> Gemini/Groq/NVIDIA 的限额配置可直接复制
 > [_config/ai_client_config_gemini_80_example.py](_config/ai_client_config_gemini_80_example.py)，
-> 在 Python 文件的 `GEMINI_API_KEYS`、`GROQ_API_KEYS` 映射中配置一个或多个 Key；
+> 在 Python 文件的 `GEMINI_API_KEYS`、`GROQ_API_KEYS`、`NVIDIA_API_KEYS` 映射中
+> 配置一个或多个 Key；
 > 每个 Key 使用独立额度账本，明文不会写入日志或账本。映射为空时仍兼容对应的单 Key
 > 环境变量。
 > 准备组合多个免费服务时，也可复制

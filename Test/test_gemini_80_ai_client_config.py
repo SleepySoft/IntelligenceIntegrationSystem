@@ -13,7 +13,9 @@ CONFIG_PATH = Path(__file__).parents[1] / "_config" / "ai_client_config_gemini_8
 def isolated_rate_limit_database(monkeypatch, tmp_path):
     monkeypatch.setenv("GEMINI_RATE_LIMIT_DB", str(tmp_path / "gemini_rate_limits.sqlite3"))
     monkeypatch.setenv("GROQ_RATE_LIMIT_DB", str(tmp_path / "groq_rate_limits.sqlite3"))
+    monkeypatch.setenv("NVIDIA_RATE_LIMIT_DB", str(tmp_path / "nvidia_rate_limits.sqlite3"))
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
 
 
 def test_config_registers_nothing_without_key(monkeypatch):
@@ -126,3 +128,22 @@ def test_config_contains_all_confirmed_free_models(monkeypatch):
         "gemini-3.8-flash",
     }
     assert limits == {"gemini_flash_80": 9}
+
+
+def test_config_registers_nvidia_account_pool_with_single_concurrency(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+
+    clients, limits = load_config(CONFIG_PATH)
+    errors, warnings = validate_config(clients, limits)
+
+    assert not errors
+    assert not warnings
+    assert {client.get_current_model() for client in clients.values()} == {
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "z-ai/glm-5.3",
+        "moonshotai/kimi-k3",
+    }
+    group_ids = {client.group_id for client in clients.values()}
+    assert len(group_ids) == 1
+    assert limits[next(iter(group_ids))] == 1
