@@ -600,10 +600,10 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42}
+    assert set(table) == {41, 42, 43}
     assert "核心子集" in table[42]
-    # 生产抽样表已切换为只有 42。
-    assert list(ports._prompt_table) == [42]
+    # 生产抽样表已切换为只有 43。
+    assert list(ports._prompt_table) == [43]
 
 
 class FakeShadowRecorder:

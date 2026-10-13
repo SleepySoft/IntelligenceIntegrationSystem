@@ -31,13 +31,7 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
     validate_analysis_result_v4,
 )
 from ServiceComponent.extraction_quality import compute_extraction_quality
-from event_engine.extraction import complete_core_extraction
-from prompts_event_v4 import (
-    EVENT_ANALYSIS_PROMPT_TABLE,
-    EVENT_ANALYSIS_EXTRA_PROMPTS,
-    PROMPT_EXTRACTION_MODES,
-    EXTRACTION_MODE_CORE_SUBSET,
-)
+from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
 
 # 调查报告（doc/20261012）中 10 条最新高分样本 + NAZA 重点案例。
 INVESTIGATION_UUIDS = [
@@ -54,22 +48,16 @@ INVESTIGATION_UUIDS = [
     "8150b416-e90e-4269-bf22-1eee538721ab",
 ]
 
-PROMPTS = {**EVENT_ANALYSIS_EXTRA_PROMPTS, **EVENT_ANALYSIS_PROMPT_TABLE}
+PROMPTS = EVENT_V4_PROMPT_CATALOG.selectable_table()
 MAX_ATTEMPTS = 3
 
 
-def validate_with_mode(raw_result: dict, mode: str):
-    """与 EventV4PipelinePorts._validate_analysis 同逻辑。"""
-    if mode == EXTRACTION_MODE_CORE_SUBSET and isinstance(raw_result, dict):
-        extraction = raw_result.get("EVENT_EXTRACTION")
-        if extraction is not None:
-            completed = complete_core_extraction(extraction, DEFAULT_EVENT_REGISTRY)
-            raw_result = dict(raw_result)
-            raw_result["EVENT_EXTRACTION"] = completed.model_dump(mode="python")
-    return validate_analysis_result_v4(raw_result)
+def validate_with_mode(raw_result: dict, version: int):
+    """与 EventV4PipelinePorts._validate_analysis 同逻辑：按版本绑定协议处理。"""
+    return EVENT_V4_PROMPT_CATALOG.protocol_for(version).validate_result(raw_result)
 
 
-def analyze_with_retry(client_manager, prompt: str, mode: str, data: dict) -> dict:
+def analyze_with_retry(client_manager, prompt: str, version: int, data: dict) -> dict:
     """模拟生产重试：校验失败把错误摘要拼回 prompt，最多 MAX_ATTEMPTS 次。"""
     base_prompt = prompt
     feedback: list[str] = []
@@ -92,7 +80,7 @@ def analyze_with_retry(client_manager, prompt: str, mode: str, data: dict) -> di
             last_error = RuntimeError(str(raw.get("error") if isinstance(raw, dict) else raw))
             continue
         try:
-            validated = validate_with_mode(raw, mode)
+            validated = validate_with_mode(raw, version)
             return {
                 "ok": True,
                 "attempts": attempts,
@@ -173,14 +161,13 @@ def main() -> None:
         }
         raw_text = f"{data['title']}\n{data['content']}"
         for version in versions:
-            mode = PROMPT_EXTRACTION_MODES.get(version, "full")
             t0 = time.perf_counter()
-            result = analyze_with_retry(client_manager, PROMPTS[version], mode, data)
+            result = analyze_with_retry(client_manager, PROMPTS[version], version, data)
             elapsed = time.perf_counter() - t0
             entry = {
                 "uuid": uuid,
                 "prompt_version": version,
-                "mode": mode,
+                "mode": EVENT_V4_PROMPT_CATALOG.spec_for(version).protocol,
                 "elapsed_sec": round(elapsed, 1),
                 **result,
             }
@@ -191,7 +178,7 @@ def main() -> None:
                     entry["quality"] = {"error": str(exc)[:200]}
             all_results.append(entry)
             status = "OK" if result["ok"] else f"FAIL({result.get('error', '')[:60]})"
-            print(f"[{index}/{len(records)}] {uuid[:8]} v{version} ({mode}): "
+            print(f"[{index}/{len(records)}] {uuid[:8]} v{version} ({entry['mode']}): "
                   f"{status}, attempts={result['attempts']}, {elapsed:.1f}s", flush=True)
 
     payload = {
@@ -219,7 +206,7 @@ def main() -> None:
         time_hit = sum(x["surface_grounding"]["time"]["hit"] for x in q)
         time_total = sum(x["surface_grounding"]["time"]["total"] for x in q)
         elapsed = [e["elapsed_sec"] for e in entries]
-        print(f"v{version} ({PROMPT_EXTRACTION_MODES.get(version)}): "
+        print(f"v{version} ({EVENT_V4_PROMPT_CATALOG.spec_for(version).protocol}): "
               f"成功 {len(ok)}/{len(entries)}, "
               f"平均尝试 {sum(attempts)/max(len(attempts),1):.2f}, "
               f"未登记角色 {unreg}, 角色类型冲突 {conflicts}, "

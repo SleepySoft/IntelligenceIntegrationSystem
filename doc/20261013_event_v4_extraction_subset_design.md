@@ -222,6 +222,17 @@ Event V4 的具体注册见 `prompts_event_v4.py::build_event_v4_prompt_catalog`
 未实施的校验分级（block/reask/warn 由链路声明）仍是后续项，目前的 warn 级检查
 统一走 `__EXTRACTION_QUALITY__` 统计通道。
 
+### 7.1 RATE 词表化（v43，2026-10-12 已切换为生产版本）
+
+RATE 从“维度: 1-10 整数”迁移为“维度: 等级词”：AI 只做受限有序分类，分数由服务端按
+`IntelligenceHubDefines_v4.RATE_LEVELS` 确定映射（unknown 一律映射为 1，避免
+“信息越少分越高”的反向激励）。词表为六维度专属、事实化、按程度升序；prompt 中
+不出现任何分数。存储契约不变：归档 RATE 仍是整数，`calculate_v4` 与下游零改动。
+
+实现：新协议 `core_subset_levels`（子集桥接 + `map_rate_levels`），prompt v43
+复用核心子集抽取章节，仅 IIS 要求段的 RATE 部分改为等级词表与按级的上限表述
+（原“最高2分/4分”改为“最高选第 2/4 级”）。v42/v41 保留为回滚通道。
+
 ### 后续候选
 
 按收益/成本排序（本次刻意未做，避免一次改动过大）：

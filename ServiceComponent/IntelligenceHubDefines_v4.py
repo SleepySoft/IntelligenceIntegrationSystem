@@ -36,6 +36,78 @@ RATE_DIMENSIONS = {
     "可行动性",
 }
 
+# 维度 -> 按程度升序的 (等级词, 映射分, 释义)。unknown 一律映射为 1：
+# 缺证据按最低分处理，避免“信息越少分越高”的反向激励。
+# v43 起 LLM 只输出等级词，分数由服务端按本表确定。
+RATE_LEVELS: dict[str, tuple[tuple[str, int, str], ...]] = {
+    "影响广度": (
+        ("unknown", 1, "无足够范围信息"),
+        ("individual", 2, "单个个人或对象"),
+        ("organization", 3, "单个组织或设施"),
+        ("local", 4, "局部地区或多个组织"),
+        ("sectoral", 6, "主要行业或跨地区"),
+        ("national", 7, "全国性范围"),
+        ("international", 8, "跨国或多市场"),
+        ("systemic", 10, "系统性范围"),
+    ),
+    "影响深度": (
+        ("unknown", 1, "无法判断实际后果"),
+        ("nominal", 2, "仅名义或轻微变化"),
+        ("limited", 4, "有限、局部、容易恢复"),
+        ("material", 6, "产生明确业务或状态变化"),
+        ("severe", 8, "造成重大损失、中断或权利变化"),
+        ("critical", 10, "造成关键能力丧失或不可逆后果"),
+    ),
+    "新颖性与异常性": (
+        ("unknown", 1, "没有足够历史基线"),
+        ("routine", 2, "常规重复事件"),
+        ("uncommon", 4, "不常见但已有多次先例"),
+        ("rare", 6, "历史上较少发生"),
+        ("exceptional", 8, "极少发生或组合异常"),
+        ("unprecedented", 10, "没有可比先例"),
+    ),
+    "演化与连锁潜力": (
+        ("unknown", 1, "缺少关系或依赖信息"),
+        ("isolated", 2, "基本局限于当前事件"),
+        ("contained", 4, "存在后续可能，但传播路径有限"),
+        ("conditional", 5, "依赖明确条件才会扩展"),
+        ("propagating", 7, "已出现向其他主体或事件传播"),
+        ("cascading", 8, "存在多级传播路径"),
+        ("systemic", 10, "可能形成系统性连锁"),
+    ),
+    "舆情及认知影响": (
+        ("unknown", 1, "没有传播信息"),
+        ("unnoticed", 2, "尚未形成明显关注"),
+        ("niche", 3, "局限于专业或小众群体"),
+        ("visible", 5, "已形成可观察公众关注"),
+        ("controversial", 7, "出现明显争议或叙事分化"),
+        ("widespread", 8, "广泛传播并影响公众认知"),
+        ("dominant", 10, "成为主导性公共议题或叙事"),
+    ),
+    "可行动性": (
+        ("unknown", 1, "未指定行动主体或信息不足"),
+        ("non_actionable", 1, "没有明确可执行动作"),
+        ("expired", 2, "原本可行动，但行动窗口已结束"),
+        ("monitorable", 4, "只能继续监控"),
+        ("preparatory", 6, "可以提前准备或调整预案"),
+        ("actionable", 8, "存在明确对象、窗口和可执行措施"),
+        ("urgent", 10, "行动窗口很短，需要立即响应"),
+    ),
+}
+
+
+def map_rate_levels(rate: Any) -> dict[str, int]:
+    """把六维度的等级词确定射为整数分；维度集合或等级词非法时报错。"""
+    if not isinstance(rate, dict) or set(rate) != RATE_DIMENSIONS:
+        raise ValueError("RATE must contain exactly the six defined score dimensions")
+    mapped: dict[str, int] = {}
+    for dimension, level in rate.items():
+        table = {item[0]: item[1] for item in RATE_LEVELS[dimension]}
+        if level not in table:
+            raise ValueError(f"RATE[{dimension}] 未登记等级词: {level!r}")
+        mapped[dimension] = table[level]
+    return mapped
+
 
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)

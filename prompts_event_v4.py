@@ -17,12 +17,15 @@ from event_engine.extraction import (
 )
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     DEFAULT_EVENT_REGISTRY,
+    RATE_LEVELS,
+    map_rate_levels,
     validate_analysis_result_v4,
 )
 from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
 
 EXTRACTION_MODE_FULL = "full"
 EXTRACTION_MODE_CORE_SUBSET = "core_subset"
+EXTRACTION_MODE_CORE_SUBSET_LEVELS = "core_subset_levels"
 
 
 EVENT_V4_PREDICATE_CATALOG = build_predicate_catalog(DEFAULT_EVENT_REGISTRY)
@@ -148,10 +151,55 @@ EVENT_ANALYSIS_PROMPT_V42 = f"""# 角色与任务
 """
 
 
-# 生产抽样表：v42（核心子集协议）已于 2026-10-12 切换为生产版本，
-# 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果（v42 零校验失败，
-# v41 有 6 次机械类校验失败；NAZA 等重点案例结构显著改善）。
-# v41 保留为回滚/对照通道（sampling=False），可经调试路由显式选择。
+def _build_rate_level_catalog() -> str:
+    return "\n".join(
+        f"- {dimension}：" + " < ".join(
+            f"{level}（{gloss}）" for level, _score, gloss in levels)
+        for dimension, levels in RATE_LEVELS.items()
+    )
+
+
+# V43：RATE 从数字迁移为等级词。LLM 每个维度只选一个等级词，分数由服务端按
+# RATE_LEVELS 确定映射（unknown 为 1），prompt 中不出现任何分数。
+IIS_ANALYSIS_REQUIREMENTS_V43 = (
+    IIS_ANALYSIS_REQUIREMENTS_V4
+    .replace(
+        '''  "RATE": {
+    "影响广度": 1,
+    "影响深度": 1,
+    "新颖性与异常性": 1,
+    "演化与连锁潜力": 1,
+    "舆情及认知影响": 1,
+    "可行动性": 1
+  },''',
+        '''  "RATE": {
+    "影响广度": "local",
+    "影响深度": "material",
+    "新颖性与异常性": "uncommon",
+    "演化与连锁潜力": "contained",
+    "舆情及认知影响": "visible",
+    "可行动性": "monitorable"
+  },''')
+    .replace(
+        "- RATE：包含影响广度、影响深度、新颖性与异常性、演化与连锁潜力、舆情及认知影响、可行动性，均为1至10整数。",
+        "- RATE：六个维度各从下方对应词表中选择一个等级词，不得输出数字分数。"
+        "各词表按程度从左到右升序，第 1 级 unknown 表示正文证据不足；"
+        "等级应根据正文可观察的事实选择，知名企业或国家的名称本身不构成高档证据。\n"
+        + _build_rate_level_catalog())
+    .replace(
+        "评分以 EVENT_EXTRACTION.primary_event_id 为锚点。相似历史消息已覆盖核心事实且正文没有新增事实时，新颖性、可行动性和演化与连锁潜力最高2分；回顾、总结、汇编且没有新增事实时，各维度最高4分。",
+        "评级以 EVENT_EXTRACTION.primary_event_id 为锚点。相似历史消息已覆盖核心事实且正文没有新增事实时，"
+        "新颖性、可行动性和演化与连锁潜力最高选第 2 级；回顾、总结、汇编且没有新增事实时，各维度最高选第 4 级。")
+)
+
+EVENT_ANALYSIS_PROMPT_V43 = EVENT_ANALYSIS_PROMPT_V42.replace(
+    IIS_ANALYSIS_REQUIREMENTS_V4, IIS_ANALYSIS_REQUIREMENTS_V43)
+
+
+# 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
+# v42（核心子集、数字 RATE）与 v41（完整契约直出）保留为回滚/对照通道。
+# 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
+# （doc/20261013_event_v4_extraction_subset_design.md §7.1）。
 
 
 def build_event_v4_protocols(registry=DEFAULT_EVENT_REGISTRY) -> list[PromptProtocol]:
@@ -167,6 +215,19 @@ def build_event_v4_protocols(registry=DEFAULT_EVENT_REGISTRY) -> list[PromptProt
             raw["EVENT_EXTRACTION"] = completed.model_dump(mode="python")
         return validate_analysis_result_v4(raw)
 
+    def validate_core_subset_levels(raw):
+        """v43 协议：先桥接事件子集，再把 RATE 等级词映射为分数。"""
+        if not isinstance(raw, dict):
+            return validate_analysis_result_v4(raw)
+        raw = dict(raw)
+        if raw.get("EVENT_EXTRACTION") is not None:
+            completed = complete_core_extraction(raw["EVENT_EXTRACTION"], registry)
+            raw["EVENT_EXTRACTION"] = completed.model_dump(mode="python")
+        rate = raw.get("RATE")
+        if rate:  # NonIntelligence 分支 RATE 为 {}，不映射
+            raw["RATE"] = map_rate_levels(rate)
+        return validate_analysis_result_v4(raw)
+
     return [
         PromptProtocol(
             name=EXTRACTION_MODE_FULL,
@@ -178,6 +239,11 @@ def build_event_v4_protocols(registry=DEFAULT_EVENT_REGISTRY) -> list[PromptProt
             validate_result=validate_core_subset,
             description="核心子集协议：LLM 输出子集，桥接层确定性补齐为完整契约",
         ),
+        PromptProtocol(
+            name=EXTRACTION_MODE_CORE_SUBSET_LEVELS,
+            validate_result=validate_core_subset_levels,
+            description="核心子集 + RATE 等级词映射：LLM 选等级词，分数由服务端确定",
+        ),
     ]
 
 
@@ -187,8 +253,11 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
     catalog.register_prompt(
+        43, EVENT_ANALYSIS_PROMPT_V43,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=True)
+    catalog.register_prompt(
         42, EVENT_ANALYSIS_PROMPT_V42,
-        protocol=EXTRACTION_MODE_CORE_SUBSET, sampling=True)
+        protocol=EXTRACTION_MODE_CORE_SUBSET, sampling=False)
     catalog.register_prompt(
         41, EVENT_ANALYSIS_PROMPT_V41,
         protocol=EXTRACTION_MODE_FULL, sampling=False)
@@ -199,6 +268,6 @@ EVENT_V4_PROMPT_CATALOG = build_event_v4_prompt_catalog()
 
 # 兼容导出：web 展示、benchmark 等既有消费者继续按版本表读取。
 EVENT_ANALYSIS_PROMPT_TABLE = EVENT_V4_PROMPT_CATALOG.sampling_table()
-EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V42
+EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V43
 EVENT_ANALYSIS_EXTRA_PROMPTS = EVENT_V4_PROMPT_CATALOG.extra_table()
 PROMPT_EXTRACTION_MODES = EVENT_V4_PROMPT_CATALOG.modes_table()

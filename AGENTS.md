@@ -207,7 +207,7 @@ python VectorDB/VectorDBBService.py \
 - `CollectedData`：独立于分析版本的采集端原始数据契约
 - `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
 - `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
-- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；LLM 面向的 Prompt 可使用完整契约（`full`，v41）或核心子集（`core_subset`，v42，2026-10-12 起为生产版本；LLM 不输出 ID/frame/schema_version，由 `event_engine.extraction.complete_core_extraction` 桥接补齐后再统一校验），详见 `doc/20261013_event_v4_extraction_subset_design.md`
+- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；LLM 面向的 Prompt 可使用完整契约（`full`，v41）或核心子集（`core_subset`，v42；v43 起 RATE 也从数字改为等级词，由服务端按 `IntelligenceHubDefines_v4.RATE_LEVELS` 映射为分数）。生产版本以 `prompts_event_v4.build_event_v4_prompt_catalog` 的注册为准；桥接由 `event_engine.extraction.complete_core_extraction` 完成，详见 `doc/20261013_event_v4_extraction_subset_design.md`
 - `ArchivedDataV4`：分析结果加 `UUID`、`INFORMANT`、事件派生速查字段和 `APPENDIX`；`EVENT_EXTRACTION` 内嵌且是权威事件数据
 - Mongo `_id` 不是业务字段，读取后必须清除；`UUID` 始终表示文章 ID
 - `RAW_DATA`、评分、主时间、归档时间、翻译修订等系统元数据均位于 `APPENDIX`，键名只允许在 `intelligence_contracts.py` 定义；基本查询和前端输出默认移除 `APPENDIX`
