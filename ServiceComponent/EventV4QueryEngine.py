@@ -55,7 +55,7 @@ class EventV4QueryEngine:
     def get_intelligence_summary(self) -> dict[str, Any]:
         newest = self.intelligence_collection.find_one(
             {}, {"_id": 0, "UUID": 1},
-            sort=[(appendix_path(APPENDIX_CONTENT_TIME), DESCENDING), ("UUID", DESCENDING)])
+            sort=[(appendix_path(APPENDIX_TIME_ARCHIVED), DESCENDING), ("UUID", DESCENDING)])
         return {
             "total_count": self.intelligence_collection.count_documents({}),
             "base_uuid": str(newest["UUID"]) if newest else None,
@@ -73,6 +73,7 @@ class EventV4QueryEngine:
         informant_domains=None,
         threshold: float | None = None,
         threshold_max: float | None = None,
+        sort_by: str = "archived_at",
         skip: int = 0,
         limit: int = 20,
         **_: Any,
@@ -120,10 +121,12 @@ class EventV4QueryEngine:
 
         query = {"$and": clauses} if clauses else {}
         total = self.intelligence_collection.count_documents(query)
+        sort_key = (APPENDIX_CONTENT_TIME
+                    if sort_by == "content_time" else APPENDIX_TIME_ARCHIVED)
         projection = {"_id": 0}
         cursor = (
             self.intelligence_collection.find(query, projection)
-            .sort([(appendix_path(APPENDIX_CONTENT_TIME), DESCENDING), ("UUID", DESCENDING)])
+            .sort([(appendix_path(sort_key), DESCENDING), ("UUID", DESCENDING)])
             .skip(max(0, int(skip)))
             .limit(max(0, int(limit)))
         )

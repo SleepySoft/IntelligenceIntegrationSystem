@@ -63,17 +63,7 @@
         const intelUrl = base + '/intelligence/' + encodeURIComponent(documentId);
 
         // ---- meta/time ----
-        const raw_archived = doc.archived_at || '';
-        let archived_html = '';
-        if (raw_archived) {
-            archived_html = `<span class="article-time archived-time" data-archived="${ctx.escapeHTML(raw_archived)}">Archived: ${ctx.formatLocalTime(raw_archived)}</span>`;
-        }
-        const contentTime = doc.content_time || raw_archived;
-        const contentTimeSource = doc.content_time_source
-            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
-        const contentTimeLabel = window.IntelligenceContract.contentTimeLabel(
-            contentTimeSource, 'en');
-        const time_block = `                ${archived_html}\n                <span class="article-time">${contentTimeLabel}: ${ctx.formatLocalTime(contentTime)}</span>`;
+        const time_block = ctx.renderTimeChips(doc);
 
         // ---- meta/vector ----
         const vector_score = doc.vector_score;

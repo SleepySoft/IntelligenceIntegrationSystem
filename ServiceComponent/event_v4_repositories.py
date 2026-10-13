@@ -47,8 +47,8 @@ class MongoEventV4ArchiveRepository:
             name="intelligence_content_time",
         )
         self.intelligence_collection.create_index(
-            [(appendix_path(APPENDIX_TIME_ARCHIVED), DESCENDING)],
-            name="intelligence_archived_time",
+            [(appendix_path(APPENDIX_TIME_ARCHIVED), DESCENDING), ("UUID", DESCENDING)],
+            name="intelligence_archived_time_uuid",
         )
         self.intelligence_collection.create_index(
             [(appendix_path(APPENDIX_TOTAL_SCORE), DESCENDING)],

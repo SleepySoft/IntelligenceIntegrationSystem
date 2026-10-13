@@ -32,6 +32,7 @@ body {
    ========================================= */
 .controls-container {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     align-items: center;
     gap: 15px;
@@ -153,6 +154,15 @@ body {
     padding: 3px 8px;
     border-radius: 4px;
     background: #e3f2fd;
+}
+
+.article-time.time-sort-active {
+    order: -1;
+    color: #073b66;
+    font-weight: 650;
+    border: 1px solid rgba(30, 136, 229, 0.3);
+    background: linear-gradient(135deg, #dff4ff 0%, #cfe4ff 52%, #e8dcff 100%);
+    box-shadow: 0 2px 7px rgba(37, 99, 235, 0.14);
 }
 
 .article-source {

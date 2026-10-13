@@ -281,6 +281,8 @@ class IntelligenceHubWebService:
 
         params = {
             'search_mode': combined.get('search_mode', 'mongo'),
+            'sort_by': ('content_time' if combined.get('sort_by') == 'content_time'
+                        else 'archived_at'),
             'page': int(combined.get('page', 1)),
             'per_page': int(combined.get('per_page', 10)),
             'start_time': combined.get('start_time', ''),
@@ -397,7 +399,8 @@ class IntelligenceHubWebService:
 
         skip = (p['page'] - 1) * p['per_page']
         return self.intelligence_hub.query_intelligence(
-            skip=skip, limit=p['per_page'], subsystem=subsystem_name, **query)
+            skip=skip, limit=p['per_page'], sort_by=p['sort_by'],
+            subsystem=subsystem_name, **query)
 
     def _do_vector_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
         """走向量召回 + 内存分页（向量检索当前仅默认子系统启用）"""
@@ -1199,6 +1202,8 @@ class IntelligenceHubWebService:
 
             params = {
                 'search_mode': combined.get('search_mode', 'mongo'),
+                'sort_by': ('content_time' if combined.get('sort_by') == 'content_time'
+                            else 'archived_at'),
                 'page': int(combined.get('page', 1)),
                 'per_page': int(combined.get('per_page', 10)),
                 # 保持原始字符串，在具体逻辑中再转 datetime，避免在此处 crash
@@ -1268,7 +1273,7 @@ class IntelligenceHubWebService:
 
             skip = (p['page'] - 1) * p['per_page']
             return self.intelligence_hub.query_intelligence(
-                skip=skip, limit=p['per_page'], **query)
+                skip=skip, limit=p['per_page'], sort_by=p['sort_by'], **query)
 
         def _do_vector_search(p: dict) -> Tuple[List[dict], int]:
             """走向量召回 + 内存分页"""

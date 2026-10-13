@@ -195,6 +195,8 @@ def archive_public_view(document: dict[str, Any]) -> dict[str, Any]:
     appendix = result.pop(APPENDIX_FIELD, {}) or {}
     result["content_time"] = appendix.get(APPENDIX_CONTENT_TIME)
     result["content_time_source"] = appendix.get(APPENDIX_CONTENT_TIME_SOURCE)
+    result["published_at"] = appendix.get(APPENDIX_TIME_PUB)
+    result["collected_at"] = appendix.get(APPENDIX_TIME_GOT)
     result["archived_at"] = appendix.get(APPENDIX_TIME_ARCHIVED)
     result["total_score"] = appendix.get(APPENDIX_TOTAL_SCORE)
     result["prompt_version"] = appendix.get(APPENDIX_PROMPT_VERSION)

@@ -9,8 +9,41 @@ class ArticleRenderer {
         this.listContainer = document.getElementById(listContainerId);
         this.paginationClass = paginationContainerClass;
         this.promptCache = new Map();
+        this.sortBy = 'archived_at';
         this.initPromptViewer();
         this.initAutoRefresh();
+    }
+
+    setSortBy(sortBy) {
+        this.sortBy = ['content_time', 'archived_at'].includes(sortBy) ? sortBy : 'relevance';
+    }
+
+    renderTimeChips(article) {
+        const source = article.content_time_source
+            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
+        const selectedKey = this.sortBy === 'content_time'
+            ? source : (this.sortBy === 'archived_at' ? 'archived' : null);
+        const times = [
+            ['published', '发布时间', article.published_at],
+            ['collected', '采集时间', article.collected_at],
+            ['archived', '归档时间', article.archived_at]
+        ];
+        times.sort((left, right) => Number(right[0] === selectedKey) - Number(left[0] === selectedKey));
+        return times
+            .map(([key, label, value]) => {
+                const active = key === selectedKey ? ' time-sort-active' : '';
+                const archivedClass = key === 'archived' && value ? ' archived-time' : '';
+                const archivedData = key === 'archived' && value
+                    ? ` data-archived="${this.escapeHTML(value)}"` : '';
+                let sortHint = '';
+                if (key === selectedKey) {
+                    sortHint = this.sortBy === 'content_time'
+                        ? ` · 内容时间${source === 'archived' ? '（兜底）' : ''} · 排序`
+                        : ' · 排序';
+                }
+                const display = value ? this.formatLocalTime(value) : '—';
+                return `<span class="article-time time-${key}${active}${archivedClass}"${archivedData}>${label}${sortHint}: ${this.escapeHTML(display)}</span>`;
+            }).join('');
     }
 
     // --- 公共方法 ---
@@ -101,22 +134,7 @@ class ArticleRenderer {
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
             : (informant || 'Unknown Source');
 
-        const content_time_raw = article.content_time || article.archived_at;
-        const content_time_display = this.formatLocalTime(content_time_raw);
-        const content_time_source = article.content_time_source
-            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
-        const content_time_label = window.IntelligenceContract.contentTimeLabel(
-            content_time_source, 'en');
-
-        // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
-        const raw_archived_time = article.archived_at || '';
-        const archived_time_display = this.formatLocalTime(raw_archived_time);
-
-        // 生成归档时间 HTML 片段
-        let archived_html = "";
-        if (raw_archived_time) {
-            archived_html = `<span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">Archived: ${archived_time_display}</span>`;
-        }
+        const time_html = this.renderTimeChips(article);
 
         // 1.6 向量评分 (Vector Score)
         const vector_score = article.vector_score;
@@ -177,8 +195,7 @@ class ArticleRenderer {
               </a>
             </h3>
             <div class="article-meta">
-                ${archived_html}
-                <span class="article-time">${content_time_label}: ${content_time_display}</span>
+                ${time_html}
                 ${vector_score_html}
                 <span class="article-source">Source: ${informant_html}</span>
             </div>
@@ -310,6 +327,7 @@ class ArticleRenderer {
         const twelveHours = 12 * 60 * 60 * 1000;
         const container = this.listContainer || document;
         container.querySelectorAll('.archived-time').forEach(el => {
+            if (el.classList.contains('time-sort-active')) return;
             const archivedStr = el.dataset.archived;
             if(!archivedStr) return;
             const archivedTime = new Date(archivedStr.replace(/-/g, '/')).getTime();

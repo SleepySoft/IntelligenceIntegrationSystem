@@ -4,12 +4,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const thresholdSelect = document.getElementById('threshold-select');
     const countSelect = document.getElementById('count-select');
+    const sortSelect = document.getElementById('sort-select');
     const refreshBtn = document.getElementById('refresh-btn');
 
     const DEFAULTS = {
         page: 1,
         per_page: 10,
         threshold: 0,      // 后端默认是 0
+        sort_by: 'archived_at',
         search_mode: 'mongo',
         score_threshold: 0.6
     };
@@ -28,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
             page: parseInt(params.get('page')) || DEFAULTS.page,
             per_page: parseInt(params.get('per_page')) || DEFAULTS.per_page,
             threshold: parseFloat(params.get('threshold')) || DEFAULTS.threshold,
+            sort_by: params.get('sort_by') === 'content_time' ? 'content_time' : DEFAULTS.sort_by,
 
             // 读取搜索模式和引用ID
             search_mode: params.get('search_mode') || DEFAULTS.search_mode,
@@ -43,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.page !== DEFAULTS.page) params.set('page', state.page);
         if (state.per_page !== DEFAULTS.per_page) params.set('per_page', state.per_page);
         if (state.threshold !== DEFAULTS.threshold) params.set('threshold', state.threshold);
+        if (state.sort_by !== DEFAULTS.sort_by) params.set('sort_by', state.sort_by);
 
         // 新增：如果当前是非 mongo 模式，必须保留 mode 和 reference 到 URL 中
         if (state.search_mode !== 'mongo') {
@@ -63,6 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (countSelect && countSelect.querySelector(`option[value="${state.per_page}"]`)) {
             countSelect.value = state.per_page;
         }
+        if (sortSelect) {
+            sortSelect.value = state.sort_by;
+            sortSelect.disabled = state.search_mode !== 'mongo';
+            sortSelect.title = sortSelect.disabled ? '向量检索按相似度排序' : '';
+        }
     }
 
     async function loadData() {
@@ -76,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
         requestParams.set('page', state.page);
         requestParams.set('per_page', state.per_page);
         requestParams.set('search_mode', state.search_mode); // 传给后端
+        requestParams.set('sort_by', state.sort_by);
 
         if (state.threshold > 0) requestParams.set('threshold', state.threshold);
 
@@ -112,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
 
+            renderer.setSortBy(state.search_mode === 'mongo' ? state.sort_by : 'relevance');
             renderer.render(data.results, {
                 total: data.total,
                 page: state.page,       // 直接用当前的 page
@@ -130,6 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const state = getUrlState();
         if (thresholdSelect) state.threshold = parseFloat(thresholdSelect.value);
         if (countSelect) state.per_page = parseInt(countSelect.value);
+        if (sortSelect) state.sort_by = sortSelect.value;
 
         state.page = 1; // 重置页码
 
@@ -139,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (thresholdSelect) thresholdSelect.addEventListener('change', handleFilterChange);
     if (countSelect) countSelect.addEventListener('change', handleFilterChange);
+    if (sortSelect) sortSelect.addEventListener('change', handleFilterChange);
     if (refreshBtn) refreshBtn.addEventListener('click', loadData);
 
     document.body.addEventListener('click', (e) => {
