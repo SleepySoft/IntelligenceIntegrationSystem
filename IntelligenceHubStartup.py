@@ -567,15 +567,29 @@ def run():
     self_pid = os.getpid()
     logger.info(f'Service PID: {self_pid}')
     monitor_api.monitor.add_process(self_pid)
-    # 多进程监控：自动注册同机运行的伴随服务进程（爬虫、向量库），在运行监控页可切换查看。
-    for companion_script in ('CrawlerServiceEngine.py', 'VectorDBBService.py'):
-        try:
-            for companion_pid in find_processes(companion_script):
-                if companion_pid != self_pid:
-                    monitor_api.monitor.add_process(companion_pid)
-                    logger.info(f'Monitoring companion process: {companion_script} (pid={companion_pid})')
-        except Exception:
-            logger.warning(f'注册伴随进程监控失败: {companion_script}', exc_info=True)
+    # 伴随进程（爬虫、向量库）可能单独调试或由独立 systemd 单元管理，启动顺序与
+    # pid 都会变化；用周期重扫替代一次性注册。失效 pid 由 SystemMonitor 自行摘除
+    # （NoSuchProcess 时 remove_process），这里只负责“加新”。
+    companion_scripts = ('CrawlerServiceEngine.py', 'VectorDBBService.py')
+
+    def refresh_companion_processes():
+        for script_name in companion_scripts:
+            try:
+                for pid in find_processes(script_name):
+                    if pid != self_pid and pid not in monitor_api.monitor.monitored_pids:
+                        monitor_api.monitor.add_process(pid)
+                        logger.info(f'Monitoring companion process: {script_name} (pid={pid})')
+            except Exception:
+                logger.warning(f'伴随进程监控扫描失败: {script_name}', exc_info=True)
+
+    def _companion_monitor_worker():
+        while True:
+            refresh_companion_processes()
+            time.sleep(60)
+
+    refresh_companion_processes()
+    threading.Thread(
+        name='CompanionProcessMonitor', target=_companion_monitor_worker, daemon=True).start()
     monitor_api.start()
     ihub_service.set_monitor_api(monitor_api)
 
