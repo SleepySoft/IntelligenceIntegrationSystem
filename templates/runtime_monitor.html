@@ -41,6 +41,14 @@
         .link:hover { text-decoration: underline; }
         .refresh-note { color: var(--muted); font-size: 12px; }
         td.num { font-variant-numeric: tabular-nums; }
+        .proc-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+        .proc-tab { background: var(--bg); border: 1px solid var(--card-border); border-radius: 8px;
+                    padding: 5px 14px; font-size: 13px; cursor: pointer; color: var(--text); }
+        .proc-tab:hover { background: var(--hover); }
+        .proc-tab.active { background: var(--primary); color: #0f172a; border-color: var(--primary); }
+        .thread-scroll { max-height: 420px; overflow-y: auto; border: 1px solid var(--card-border);
+                         border-radius: 8px; }
+        .thread-scroll table th { position: sticky; top: 0; background: var(--bg); }
     </style>
 </head>
 <body>
@@ -79,12 +87,15 @@
         <div class="error" id="ai-error" style="display:none"></div>
     </div>
 
-    <!-- 本进程 -->
+    <!-- 进程监控（支持多进程：本服务/爬虫/向量库等） -->
     <div class="section">
-        <h2>本进程 <span class="subtitle" id="proc-name"></span></h2>
+        <h2>进程监控 <span class="subtitle" id="proc-name"></span></h2>
+        <div class="proc-tabs" id="proc-tabs"></div>
         <div class="cards" id="proc-cards"></div>
-        <h2 style="margin-top:16px">线程（按 CPU 降序，取前 15）</h2>
-        <table id="thread-table"></table>
+        <h2 style="margin-top:16px">线程（按 CPU 降序，全部）</h2>
+        <div class="thread-scroll">
+            <table id="thread-table"></table>
+        </div>
         <div class="error" id="proc-error" style="display:none"></div>
     </div>
 
@@ -184,7 +195,9 @@ async function loadAi() {
     } catch (e) { showError('ai-error', `加载失败: ${e.message}`); }
 }
 
-/* ---------- 本进程（含线程与句柄） ---------- */
+/* ---------- 进程监控（多进程） ---------- */
+let selectedPid = null;
+
 async function loadProcess() {
     try {
         const processes = await fetchJson('/monitor/api/processes');
@@ -192,11 +205,20 @@ async function loadProcess() {
             showError('proc-error', '没有被监控的进程');
             return;
         }
-        // 启动装配会把本服务进程注册进监控列表，取第一个（通常即本进程）。
-        const pid = processes[0].pid;
+        // 保持用户选择；默认选中第一个（启动装配首先注册本服务进程）。
+        if (!processes.some(p => p.pid === selectedPid)) selectedPid = processes[0].pid;
+        document.getElementById('proc-tabs').innerHTML = '';
+        const tabs = document.getElementById('proc-tabs');
+        for (const p of processes) {
+            const tab = document.createElement('button');
+            tab.className = 'proc-tab' + (p.pid === selectedPid ? ' active' : '');
+            tab.textContent = `${p.name || 'process'} (${p.pid})`;
+            tab.onclick = () => { selectedPid = p.pid; loadProcess(); };
+            tabs.appendChild(tab);
+        }
         const [proc, threads] = await Promise.all([
-            fetchJson(`/monitor/api/process/${pid}`),
-            fetchJson(`/monitor/api/threads/${pid}`),
+            fetchJson(`/monitor/api/process/${selectedPid}`),
+            fetchJson(`/monitor/api/threads/${selectedPid}`),
         ]);
         document.getElementById('proc-name').textContent =
             `PID ${proc.pid} · ${proc.name || ''} · ${proc.status || ''}`;
@@ -209,7 +231,7 @@ async function loadProcess() {
             metricCard('线程数', proc.num_threads ?? '-'),
             metricCard('网络连接数', proc.connections ?? 'N/A'),
         ].join('');
-        const rows = (threads || []).slice(0, 15);
+        const rows = threads || [];
         document.getElementById('thread-table').innerHTML =
             '<tr><th>线程名</th><th>TID</th><th>CPU %</th><th>用户态(s)</th><th>内核态(s)</th></tr>' +
             rows.map(t =>
