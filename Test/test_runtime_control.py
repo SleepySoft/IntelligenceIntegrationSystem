@@ -45,7 +45,33 @@ class FakeHub:
         return []
 
 
-def _build_app(control: RuntimeControlState):
+class FakeCache:
+    """最小心存 cache：仅支持弃用端点使用的 update(query, data)。"""
+
+    def __init__(self, records):
+        self.records = records
+
+    def update(self, query, update):
+        matched = 0
+        for record in self.records:
+            appendix = record.setdefault("APPENDIX", {})
+            if "__ARCHIVED__" in appendix:
+                continue
+            matched += 1
+            for key, value in update.items():
+                appendix[key.split(".")[-1]] = value
+        return matched, matched
+
+
+class FakeSubsystemRegistry:
+    def __init__(self, contexts):
+        self._contexts = contexts
+
+    def enabled_subsystems(self):
+        return self._contexts
+
+
+def _build_app(control: RuntimeControlState, subsystem_registry=None):
     app = Flask(
         __name__,
         template_folder=str(Path(__file__).resolve().parent.parent / "templates"),
@@ -58,7 +84,7 @@ def _build_app(control: RuntimeControlState):
         intelligence_hub=FakeHub(),
         access_manager=access_manager,
         rss_publisher=FakeRSSPublisher(),
-        subsystem_registry=None,
+        subsystem_registry=subsystem_registry,
         control_state=control,
     )
     service.register_routers(app)
@@ -175,3 +201,35 @@ def test_analysis_pause_holds_worker_without_consuming_ai():
     assert result_box["result"].accepted
     assert len(calls) == 1
     ports.stop()
+
+
+def test_discard_pending_marks_unanalyzed_cache_deprecated():
+    from types import SimpleNamespace
+
+    cache = FakeCache([
+        {"UUID": "u1", "APPENDIX": {}},                              # 未分析 → 弃用
+        {"UUID": "u2", "APPENDIX": {}},                              # 未分析 → 弃用
+        {"UUID": "u3", "APPENDIX": {"__ARCHIVED__": "A"}},           # 已归档 → 不动
+        {"UUID": "u4", "APPENDIX": {"__ARCHIVED__": "D"}},           # 已终态 → 不动
+    ])
+    registry = FakeSubsystemRegistry([SimpleNamespace(
+        name="news", mongo_db_cache=cache,
+        url_prefix="/news", is_default=True, ui_plugin_enabled=False,
+    )])
+    app = _build_app(RuntimeControlState(), subsystem_registry=registry)
+    client = _logged_in_client(app)
+
+    resp = client.post("/api/control/discard_pending")
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["deprecated_total"] == 2
+    assert data["details"]["news"]["deprecated"] == 2
+    flags = {r["UUID"]: r["APPENDIX"].get("__ARCHIVED__") for r in cache.records}
+    assert flags == {"u1": "X", "u2": "X", "u3": "A", "u4": "D"}
+
+    # 弃用后这些记录不再被重放查询命中（unarchived_cache_query 只认无标志记录）。
+    from ServiceComponent.intelligence_contracts import unarchived_cache_query
+    assert unarchived_cache_query()  # 查询存在
+    remaining = [r for r in cache.records if "__ARCHIVED__" not in r["APPENDIX"]]
+    assert remaining == []

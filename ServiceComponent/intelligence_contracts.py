@@ -54,6 +54,7 @@ class CacheArchiveState(StrEnum):
     ARCHIVED = "A"
     SENSITIVE = "S"
     DUPLICATED = "U"
+    DEPRECATED = "X"  # 运维主动弃用（积压清理），不再分析与回放
 
 
 CACHE_ARCHIVED_FLAG_FIELD = appendix_path(APPENDIX_ARCHIVED_FLAG)

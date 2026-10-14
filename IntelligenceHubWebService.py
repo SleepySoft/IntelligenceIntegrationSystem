@@ -28,7 +28,10 @@ from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
 from ServiceComponent.PostManager import generate_html_from_markdown
 from ServiceComponent.runtime.status import format_hub_status
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
-from ServiceComponent.intelligence_contracts import APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path,
+    CACHE_ARCHIVED_FLAG_FIELD, CacheArchiveState, unarchived_cache_query,
+)
 from IntelligenceHub import IntelligenceHub
 from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
 from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
@@ -1525,6 +1528,34 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def control_resume_api():
             return self._control_set_scope(request, pause=False)
+
+        @app.route('/api/control/discard_pending', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def control_discard_pending_api():
+            """把 cache 中全部未分析记录标记为弃用（不再分析与回放）。
+
+            暂停/维护期间的持久化积压可用此操作一键清理；内存队列中的在途事件
+            不受影响，恢复后仍会继续分析。
+            """
+            if self.subsystem_registry is None:
+                return jsonify({"error": "子系统注册表未启用"}), 503
+            operator = session.get("username", "")
+            details = {}
+            total = 0
+            for ctx in self.subsystem_registry.enabled_subsystems():
+                cache = getattr(ctx, "mongo_db_cache", None)
+                if cache is None:
+                    continue
+                matched, modified = cache.update(
+                    unarchived_cache_query(),
+                    {CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.DEPRECATED.value},
+                )
+                details[ctx.name] = {"matched": matched, "deprecated": modified}
+                total += modified
+            logger.warning(
+                "运行控制：弃用未分析积压（操作人: %s），共 %d 条，明细: %s",
+                operator or "unknown", total, details)
+            return jsonify({"success": True, "deprecated_total": total, "details": details})
 
         @app.route('/statistics/score_distribution.html', methods=['GET'])
         @WebServiceAccessManager.login_required

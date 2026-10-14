@@ -60,7 +60,19 @@
         <h2>处理环节开关</h2>
         <div id="scopes"></div>
         <div class="error" id="control-error" style="display:none"></div>
-        <div class="subtitle">实时运行状态见 <a class="link" href="/monitor/runtime">运行监控</a>。</div>
+        <div class="subtitle">暂停期间：内存队列中的事件保留，恢复后继续分析；重启后未分析记录由
+        cache 重放机制续接。实时运行状态见 <a class="link" href="/monitor/runtime">运行监控</a>。</div>
+    </div>
+
+    <div class="section">
+        <h2>积压处理</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            暂停/维护时间较长时，cache 中积压的未分析内容可能已失去时效。
+            此操作将其全部标记为弃用（不再分析、不再回放、不消耗 token），不可撤销。
+            内存队列中的在途事件不受影响。
+        </div>
+        <button class="switch-btn paused" onclick="discardPending()">弃用全部未分析积压</button>
+        <span class="subtitle" id="discard-result"></span>
     </div>
 </div>
 
@@ -138,6 +150,21 @@ async function loadStatus() {
         }
         showError(null);
     } catch (e) { showError(`状态加载失败: ${e.message}`); }
+}
+
+async function discardPending() {
+    if (!confirm('确认弃用全部未分析积压？\n此操作不可撤销，这些记录将不再被分析。')) return;
+    if (!confirm('再次确认：弃用后需要重新抓取才能获得这些内容。')) return;
+    try {
+        const resp = await fetch('/api/control/discard_pending', {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        const detail = Object.entries(data.details || {})
+            .map(([k, v]) => `${k}: ${v.deprecated} 条`).join('，');
+        document.getElementById('discard-result').textContent =
+            ` 已弃用 ${data.deprecated_total} 条（${detail}）`;
+        showError(null);
+    } catch (e) { showError(`操作失败: ${e.message}`); }
 }
 
 loadStatus();
