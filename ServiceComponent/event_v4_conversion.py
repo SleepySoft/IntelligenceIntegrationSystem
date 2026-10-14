@@ -77,6 +77,11 @@ def _event_document(
     spec = registry.get(core.predicate.id or "")
     role_groups = spec.role_groups if spec else {}
 
+    # 展示层用 registry 的中文标签作事件名；surface 保留原文措辞作证据锚点。
+    predicate = core.predicate.model_dump(mode="python")
+    if spec and spec.label:
+        predicate["label"] = spec.label
+
     roles = {
         role: [entity_snapshot(entities[key]) for key in references]
         for role, references in core.roles.items()
@@ -102,7 +107,7 @@ def _event_document(
         "intelligence_uuid": intelligence_uuid,
         "local_event_id": event.id,
         "frame": core.frame.model_dump(mode="python"),
-        "predicate": core.predicate.model_dump(mode="python"),
+        "predicate": predicate,
         "roles": roles,
         "role_semantics": role_semantics,
         "time": core.time.model_dump(mode="python", exclude_none=True) if core.time else {},

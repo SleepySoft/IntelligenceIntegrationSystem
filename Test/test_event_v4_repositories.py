@@ -90,6 +90,16 @@ def _repository(events=None, outbox=None):
         event_collection=events or FakeCollection(), outbox_collection=outbox or FakeCollection())
 
 
+def test_event_index_predicate_carries_registry_label_for_display():
+    # 事件索引的 predicate 带 registry 中文标签，展示层据此显示中文事件名；
+    # surface 保留原文措辞作证据锚点。
+    _, events = _archive_and_events()
+    predicate = events[0]["predicate"]
+    assert predicate["id"] == "attack"
+    assert predicate["label"] == DEFAULT_EVENT_REGISTRY["attack"].label
+    assert predicate["surface"] == "袭击"
+
+
 def test_archive_is_idempotent_and_authoritative():
     repository = _repository()
     repository.ensure_indexes()

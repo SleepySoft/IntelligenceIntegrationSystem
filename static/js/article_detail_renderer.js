@@ -83,6 +83,13 @@ window.ArticleDetailRenderer = {
         return labels[text] || text.replace(/_/g, ' ');
     },
 
+    // 事件标题优先使用 registry 中文标签；surface 是原文措辞（可能是外语），
+    // 作为证据锚点保留在技术字段中，不充当面向用户的标题。
+    predicateTitle: function(predicate, fallback = '未命名事件') {
+        const p = predicate || {};
+        return p.label || p.gloss || p.surface || p.id || fallback;
+    },
+
     eventEntities: function(article) {
         const result = {};
         const add = (key, entity) => {
@@ -314,9 +321,9 @@ window.ArticleDetailRenderer = {
             const target = localIdByUuid[String(relation.target_event_uuid)]
                 || relation.target_event_uuid || '未知事件';
             const targetEvent = events.find(candidate => eventKey(candidate) === String(relation.target_event_uuid));
-            const targetTitle = targetEvent?.predicate?.surface || targetEvent?.predicate?.gloss || '';
-            const sourceTitle = event?.predicate?.surface || event?.predicate?.gloss
-                || event?.local_event_id || '当前事件';
+            const targetTitle = this.predicateTitle(targetEvent?.predicate, '');
+            const sourceTitle = this.predicateTitle(
+                event?.predicate, event?.local_event_id || '当前事件');
             const targetUuid = String(relation.target_event_uuid || '');
             const trace = [
                 targetUuid && targetUuid !== String(target) ? `目标 UUID：${targetUuid}` : '',
@@ -328,7 +335,7 @@ window.ArticleDetailRenderer = {
         const eventSelector = events.map((event, index) => {
             const key = eventKey(event);
             const predicate = event?.predicate || {};
-            const title = predicate.surface || predicate.gloss || predicate.id || '未命名事件';
+            const title = this.predicateTitle(predicate);
             const time = Object.values(event?.time || {})[0];
             return `<button type="button" class="event-sequence-node${key === primaryKey ? ' active' : ''}" data-event-select="${this.escapeHTML(key)}" aria-pressed="${key === primaryKey ? 'true' : 'false'}">
                 <span><b>${event?.is_primary ? '主事件' : `相关事件 ${index + 1}`}</b></span>
@@ -341,7 +348,7 @@ window.ArticleDetailRenderer = {
             const eventUuid = String(event?.event_uuid || event?.local_event_id || '');
             const isPrimary = Boolean(event?.is_primary);
             const predicate = event?.predicate || {};
-            const predicateTitle = predicate.surface || predicate.gloss || predicate.id || '未命名事件';
+            const predicateTitle = this.predicateTitle(predicate);
             const roles = renderRoles(event);
             const times = this.renderEventTime(event?.time);
             const locations = (event?.event_location || [])
@@ -420,13 +427,13 @@ window.ArticleDetailRenderer = {
 
         const relationCards = events.map((event, index) => {
             const predicate = event?.predicate || {};
-            return `<div class="event-map-node${event?.is_primary ? ' primary' : ''}"><span>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}${event?.is_primary ? ' · 主事件' : ''}</span><b>${this.escapeHTML(predicate.surface || predicate.gloss || predicate.id || '未命名事件')}</b><code>${this.escapeHTML(predicate.id || 'open')}</code></div>`;
+            return `<div class="event-map-node${event?.is_primary ? ' primary' : ''}"><span>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}${event?.is_primary ? ' · 主事件' : ''}</span><b>${this.escapeHTML(this.predicateTitle(predicate))}</b><code>${this.escapeHTML(predicate.id || 'open')}</code></div>`;
         }).join('');
         const relationEdges = events.flatMap(event => (event?.relations || []).map(relation => {
             const target = localIdByUuid[String(relation.target_event_uuid)] || relation.target_event_uuid || '?';
             const targetEvent = events.find(candidate => eventKey(candidate) === String(relation.target_event_uuid));
-            const sourceTitle = event?.predicate?.surface || event?.local_event_id || '?';
-            const targetTitle = targetEvent?.predicate?.surface || targetEvent?.local_event_id || target;
+            const sourceTitle = this.predicateTitle(event?.predicate, event?.local_event_id || '?');
+            const targetTitle = this.predicateTitle(targetEvent?.predicate, targetEvent?.local_event_id || target);
             const trace = [
                 `${event.local_event_id || '?'} → ${target}`,
                 relation.surface || ''
