@@ -72,7 +72,9 @@ def _v43_valuable():
 
 
 def test_v43_production_maps_levels_to_scores_end_to_end():
-    # 默认目录的生产版本即 v43：等级词 RATE + 核心子集抽取。
+    # 默认目录的生产版本（当前 v43+ 词表协议）：等级词 RATE + 核心子集抽取。
+    from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
+    production_version = EVENT_V4_PROMPT_CATALOG.sampling_versions()[0]
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
@@ -85,7 +87,7 @@ def test_v43_production_maps_levels_to_scores_end_to_end():
 
     assert result.accepted
     archive = result.payload.archive
-    assert archive.APPENDIX["__PROMPT_VERSION__"] == 43
+    assert archive.APPENDIX["__PROMPT_VERSION__"] == production_version
     # RATE 已被映射为整数，走原有评分器无差异。
     assert archive.RATE["影响广度"] == 4
     assert archive.RATE["影响深度"] == 6

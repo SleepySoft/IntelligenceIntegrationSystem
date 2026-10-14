@@ -151,12 +151,17 @@ EVENT_ANALYSIS_PROMPT_V42 = f"""# 角色与任务
 """
 
 
-def _build_rate_level_catalog() -> str:
-    return "\n".join(
-        f"- {dimension}：" + " < ".join(
-            f"{level}（{gloss}）" for level, _score, gloss in levels)
-        for dimension, levels in RATE_LEVELS.items()
-    )
+def _build_rate_level_catalog(with_notes: bool = False) -> str:
+    lines = []
+    for dimension, levels in RATE_LEVELS.items():
+        items = []
+        for level, _score, gloss, note in levels:
+            text = f"{level}（{gloss}）"
+            if with_notes and note:
+                text += f"【注意：{note}】"
+            items.append(text)
+        lines.append(f"- {dimension}：" + " < ".join(items))
+    return "\n".join(lines)
 
 
 # V43：RATE 从数字迁移为等级词。LLM 每个维度只选一个等级词，分数由服务端按
@@ -194,6 +199,28 @@ IIS_ANALYSIS_REQUIREMENTS_V43 = (
 
 EVENT_ANALYSIS_PROMPT_V43 = EVENT_ANALYSIS_PROMPT_V42.replace(
     IIS_ANALYSIS_REQUIREMENTS_V4, IIS_ANALYSIS_REQUIREMENTS_V43)
+
+
+# V44：在 v43 基础上为 RATE 聚集档位补充准入/排除提示（生产评估见
+# doc/20261014_prompt_v43_production_eval.md：可行动性 94% 落在 monitorable 等）。
+IIS_ANALYSIS_REQUIREMENTS_V44 = IIS_ANALYSIS_REQUIREMENTS_V43.replace(
+    _build_rate_level_catalog(), _build_rate_level_catalog(with_notes=True))
+assert IIS_ANALYSIS_REQUIREMENTS_V44 != IIS_ANALYSIS_REQUIREMENTS_V43
+
+EVENT_ANALYSIS_PROMPT_V44 = EVENT_ANALYSIS_PROMPT_V42.replace(
+    IIS_ANALYSIS_REQUIREMENTS_V4, IIS_ANALYSIS_REQUIREMENTS_V44)
+
+# V44 补充抽取指引：未证实/否认/阶段状态必须保留为限定词。
+_V44_EXTRACTION_ADDENDUM = """
+
+## 信息状态与阶段（必须保留）
+
+- 报道强调某方未证实、未回应、否认或拒绝置评时，必须保留该信息状态：对相关事件加 epistemic 限定词（value 用 doubted 或 denied，by 填该方实体）；“截至发稿未证实”按 doubted 记录。
+- 事件阶段必须标注 phase 限定词（planned/ongoing/completed 等）；不得把进行中或计划中的事件写成已完成的确定事实。
+- 否定信息（某事未发生、被取消、被否认）用 polarity=negated 限定词表达，不得直接省略。
+"""
+EVENT_ANALYSIS_PROMPT_V44 = EVENT_ANALYSIS_PROMPT_V44.replace(
+    EVENT_CORE_EXTRACTION_SECTION, EVENT_CORE_EXTRACTION_SECTION + _V44_EXTRACTION_ADDENDUM)
 
 
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
@@ -253,8 +280,11 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
     catalog.register_prompt(
-        43, EVENT_ANALYSIS_PROMPT_V43,
+        44, EVENT_ANALYSIS_PROMPT_V44,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=True)
+    catalog.register_prompt(
+        43, EVENT_ANALYSIS_PROMPT_V43,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
     catalog.register_prompt(
         42, EVENT_ANALYSIS_PROMPT_V42,
         protocol=EXTRACTION_MODE_CORE_SUBSET, sampling=False)
@@ -268,6 +298,6 @@ EVENT_V4_PROMPT_CATALOG = build_event_v4_prompt_catalog()
 
 # 兼容导出：web 展示、benchmark 等既有消费者继续按版本表读取。
 EVENT_ANALYSIS_PROMPT_TABLE = EVENT_V4_PROMPT_CATALOG.sampling_table()
-EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V43
+EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V44
 EVENT_ANALYSIS_EXTRA_PROMPTS = EVENT_V4_PROMPT_CATALOG.extra_table()
 PROMPT_EXTRACTION_MODES = EVENT_V4_PROMPT_CATALOG.modes_table()

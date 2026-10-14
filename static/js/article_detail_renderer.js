@@ -250,8 +250,12 @@ window.ArticleDetailRenderer = {
             epistemic: '信息状态', modality: '可能性', polarity: '极性'
         };
         const qualifierValueLabels = {
-            asserted: '已陈述', estimated: '估计', doubted: '存疑', denied: '已否认',
-            possible: '可能', probable: '很可能', conditional: '有条件', negated: '否定'
+            asserted: '已陈述', estimated: '估计', doubted: '存疑/未证实', denied: '已否认',
+            possible: '可能', probable: '很可能', conditional: '有条件', negated: '否定',
+            not_started: '未开始', planned: '计划中', ongoing: '进行中', paused: '已暂停',
+            suspended: '已中止', completed: '已完成', cancelled: '已取消', terminated: '已终止',
+            confirmed: '已确认', pending: '待批准', approved: '已批准', revoked: '已撤销',
+            ordered: '已下令', rescinded: '已撤销指令'
         };
         const relationLabels = {
             causes: '导致', promotes: '促进', prevents: '阻止', aggravates: '加剧',
@@ -378,7 +382,7 @@ window.ArticleDetailRenderer = {
             </div>`;
             const storyline = `<div class="event-storyline">
                 ${renderStoryParty(leadingItems, '行动方未标注', '谁在行动')}
-                <div class="event-story-action"><span class="event-story-arrow before" aria-hidden="true">→</span><strong>${this.escapeHTML(predicateTitle)}</strong><small>${predicate.gloss ? this.escapeHTML(predicate.gloss) : '发生了什么'}</small><span class="event-story-arrow after" aria-hidden="true">→</span></div>
+                <div class="event-story-action"><span class="event-story-arrow before" aria-hidden="true">→</span><strong>${this.escapeHTML(predicateTitle)}</strong><small>${predicate.surface && predicate.surface !== predicateTitle ? `原文：${this.escapeHTML(predicate.surface)}` : (predicate.gloss ? this.escapeHTML(predicate.gloss) : '发生了什么')}</small><span class="event-story-arrow after" aria-hidden="true">→</span></div>
                 ${renderStoryParty(affectedItems, '未指向特定对象', '影响谁 / 什么')}
             </div>`;
             const metadata = event?.metadata && Object.keys(event.metadata).length
@@ -387,7 +391,7 @@ window.ArticleDetailRenderer = {
             return `
                 <article class="event-detail-panel${isPrimary ? ' primary' : ''}" data-event-panel="${this.escapeHTML(eventUuid)}" ${eventUuid === primaryKey ? '' : 'hidden'}>
                     <header class="event-detail-heading">
-                        <div><span>${isPrimary ? '这篇报道的主事件' : `相关事件 ${index + 1}`}</span><h4>${this.escapeHTML(predicateTitle)}</h4></div>
+                        <div><span>${isPrimary ? '这篇报道的主事件' : `相关事件 ${index + 1}`}</span><h4>${this.escapeHTML(predicateTitle)}${predicate.surface && predicate.surface !== predicateTitle ? ` <small class="event-origin-text">原文：${this.escapeHTML(predicate.surface)}</small>` : ''}</h4></div>
                         <div class="event-story-context">${timeSummary ? `<span><i class="bi bi-clock"></i>${this.escapeHTML(timeSummary)}</span>` : ''}${locationSummary ? `<span><i class="bi bi-geo-alt"></i>事发地：${this.escapeHTML(locationSummary)}</span>` : ''}</div>
                     </header>
                     ${storyline}

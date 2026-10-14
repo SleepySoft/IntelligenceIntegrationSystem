@@ -57,7 +57,8 @@ def validate_with_mode(raw_result: dict, version: int):
     return EVENT_V4_PROMPT_CATALOG.protocol_for(version).validate_result(raw_result)
 
 
-def analyze_with_retry(client_manager, prompt: str, version: int, data: dict) -> dict:
+def analyze_with_retry(client_manager, prompt: str, version: int, data: dict,
+                       group: str | None = None) -> dict:
     """模拟生产重试：校验失败把错误摘要拼回 prompt，最多 MAX_ATTEMPTS 次。"""
     base_prompt = prompt
     feedback: list[str] = []
@@ -65,8 +66,9 @@ def analyze_with_retry(client_manager, prompt: str, version: int, data: dict) ->
     last_error = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         attempts = attempt
+        kwargs = {"target_group_id": group} if group else {}
         client = client_manager.wait_for_available_client(
-            f"prompt-compare-{attempt}", timeout=120)
+            f"prompt-compare-{attempt}", timeout=120, **kwargs)
         if client is None:
             raise RuntimeError("no available AI client")
         try:
@@ -115,8 +117,13 @@ def main() -> None:
     parser.add_argument("--uuids", default="", help="只跑指定 UUID（逗号分隔）")
     parser.add_argument("--output", default="_data/prompt_compare", help="输出目录")
     parser.add_argument("--versions", default="41,42", help="对比的 prompt 版本")
+    parser.add_argument("--group", default="",
+                        help="AI 客户端分组；空字符串为不限制（与生产 news 子系统一致）")
+    parser.add_argument("--exclude", default="",
+                        help="排除名称包含该子串的客户端（如 groq，其 TPM 放不下大 prompt）")
     args = parser.parse_args()
     versions = [int(v) for v in args.versions.split(",")]
+    args.group = args.group or None
 
     mongo = pymongo.MongoClient("mongodb://localhost:27017")["IntelligenceIntegrationSystem"]
     archived = mongo["intelligence_v4_archived"]
@@ -141,7 +148,9 @@ def main() -> None:
     print(f"样本数: {len(records)}")
 
     client_manager = AIClientManager()
-    for client in AI_CLIENTS.values():
+    for name, client in AI_CLIENTS.items():
+        if args.exclude and args.exclude.lower() in name.lower():
+            continue
         client_manager.register_client(client)
     for group, limit in AI_CLIENT_LIMIT.items():
         client_manager.set_group_limit(group, limit)
@@ -162,7 +171,8 @@ def main() -> None:
         raw_text = f"{data['title']}\n{data['content']}"
         for version in versions:
             t0 = time.perf_counter()
-            result = analyze_with_retry(client_manager, PROMPTS[version], version, data)
+            result = analyze_with_retry(client_manager, PROMPTS[version], version, data,
+                                        group=args.group)
             elapsed = time.perf_counter() - t0
             entry = {
                 "uuid": uuid,
