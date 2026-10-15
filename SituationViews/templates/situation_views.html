@@ -260,10 +260,8 @@ const localInputValue = date => {
 };
 const now = new Date();
 $('subsystem').value = DASHBOARD_PROFILE.subsystem;
-$('end').value = localInputValue(DASHBOARD_PROFILE.end ? new Date(DASHBOARD_PROFILE.end) : now);
-$('start').value = localInputValue(DASHBOARD_PROFILE.start
-    ? new Date(DASHBOARD_PROFILE.start)
-    : new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
+$('end').value = localInputValue(now);
+$('start').value = localInputValue(new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
 $('min-score').value = DASHBOARD_PROFILE.min_score;
 $('min-support').value = DASHBOARD_PROFILE.min_support;
 $('max-nodes').value = DASHBOARD_PROFILE.max_nodes;

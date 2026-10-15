@@ -27,57 +27,45 @@ class SituationViewsService:
         bp = Blueprint("situation_views", __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)
 
-        @bp.get("/")
-        @protect
-        def index():
-            return self._render_dashboard("map")
-
-        @bp.get("/map")
-        @protect
-        def map_dashboard():
-            return self._render_dashboard("map")
-
-        @bp.get("/entities")
-        @protect
-        def entity_dashboard():
-            return self._render_dashboard("graph")
-
         @bp.get("/embed/map")
         @protect
         def embedded_map_dashboard():
-            try:
-                return self._render_dashboard(
-                    "map", profile=self._embedded_profile(), embedded=True)
-            except ValueError as exc:
-                return str(exc), 400
+            return self._render_dashboard(
+                "map", profile=self.dashboard, embedded=True)
 
         @bp.get("/embed/entities")
         @protect
         def embedded_entity_dashboard():
-            try:
-                return self._render_dashboard(
-                    "graph", profile=self._embedded_profile(), embedded=True)
-            except ValueError as exc:
-                return str(exc), 400
+            return self._render_dashboard(
+                "graph", profile=self.dashboard, embedded=True)
 
         @bp.get("/api/map")
+        @bp.get("/api/scoped/map")
         @protect
         def map_api():
             try:
-                engine, query = self._request_context()
+                engine, query = self._request_context(fixed=self._is_scoped_request())
                 return jsonify(engine.map_view(query))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
         @bp.get("/api/entity-graph")
+        @bp.get("/api/scoped/entity-graph")
         @protect
         def entity_graph_api():
             try:
-                engine, query = self._request_context()
-                min_support = self._bounded_int("min_support", 2, 1, 50)
-                max_nodes = self._bounded_int("max_nodes", 80, 10, 300)
-                max_edges = self._bounded_int("max_edges", 240, 10, 1000)
-                keep_singletons = self._bool_arg("keep_high_score_singletons", True)
+                fixed = self._is_scoped_request()
+                engine, query = self._request_context(fixed=fixed)
+                if fixed:
+                    min_support = self.dashboard["min_support"]
+                    max_nodes = self.dashboard["max_nodes"]
+                    max_edges = self.dashboard["max_edges"]
+                    keep_singletons = self.dashboard["keep_high_score_singletons"]
+                else:
+                    min_support = self._bounded_int("min_support", 2, 1, 50)
+                    max_nodes = self._bounded_int("max_nodes", 80, 10, 300)
+                    max_edges = self._bounded_int("max_edges", 240, 10, 1000)
+                    keep_singletons = self._bool_arg("keep_high_score_singletons", True)
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
                 return jsonify(engine.entity_graph(
                     query,
@@ -91,10 +79,11 @@ class SituationViewsService:
                 return jsonify({"error": str(exc)}), 400
 
         @bp.get("/api/entity-graph/intelligences")
+        @bp.get("/api/scoped/entity-graph/intelligences")
         @protect
         def entity_graph_intelligences_api():
             try:
-                engine, query = self._request_context()
+                engine, query = self._request_context(fixed=self._is_scoped_request())
                 selection_type = str(request.args.get("selection_type") or "").strip()
                 role = str(request.args.get("role") or "all").strip()
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
@@ -117,10 +106,11 @@ class SituationViewsService:
                 return jsonify({"error": str(exc)}), 400
 
         @bp.get("/api/map/intelligences")
+        @bp.get("/api/scoped/map/intelligences")
         @protect
         def map_intelligences_api():
             try:
-                engine, query = self._request_context()
+                engine, query = self._request_context(fixed=self._is_scoped_request())
                 country_code = request.args.get("country_code")
                 location_name = str(request.args.get("location_name") or "").strip() or None
                 offset = self._bounded_int("offset", 0, 0, 100000)
@@ -132,6 +122,7 @@ class SituationViewsService:
                 return jsonify({"error": str(exc)}), 400
 
         @bp.post("/api/map/locations")
+        @bp.post("/api/scoped/map/locations")
         @protect
         def map_locations_api():
             try:
@@ -175,39 +166,8 @@ class SituationViewsService:
             dashboard_view=view,
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
-            api_prefix="../api" if embedded else "api",
+            api_prefix="../api/scoped" if embedded else "api",
         )
-
-    def _embedded_profile(self):
-        values = dict(self.dashboard)
-        if request.args.get("subsystem") is not None:
-            requested_subsystem = str(request.args.get("subsystem") or "").strip()
-            if not any(
-                    item.get("name") == requested_subsystem
-                    for item in self.subsystem_registry.describe()):
-                raise ValueError(f"未知子系统: {requested_subsystem}")
-            values["subsystem"] = requested_subsystem
-        profile = self._dashboard_profile(values)
-
-        now = dt.datetime.now(dt.timezone.utc)
-        end = self._datetime_arg("end", now)
-        start = self._datetime_arg(
-            "start", end - dt.timedelta(days=profile["window_days"]))
-        if start >= end:
-            raise ValueError("start 必须早于 end")
-        if request.args.get("min_score") is not None:
-            profile["min_score"] = self._bounded_float("min_score", 6.0, 0, 10)
-        if request.args.get("min_support") is not None:
-            profile["min_support"] = self._bounded_int("min_support", 2, 1, 50)
-        if request.args.get("max_nodes") is not None:
-            profile["max_nodes"] = self._bounded_int("max_nodes", 80, 10, 300)
-        if request.args.get("keep_high_score_singletons") is not None:
-            profile["keep_high_score_singletons"] = self._bool_arg(
-                "keep_high_score_singletons", True)
-        profile["start"] = start.isoformat()
-        profile["end"] = end.isoformat()
-        profile["window_days"] = max(1, (end - start).days)
-        return profile
 
     def _dashboard_profile(self, raw):
         values = dict(raw or {}) if isinstance(raw, dict) else {}
@@ -228,6 +188,10 @@ class SituationViewsService:
             "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
             "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
             "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 300, int),
+            "max_edges": self._coerce_number(values.get("max_edges"), 240, 10, 1000, int),
+            "max_articles": self._coerce_number(
+                values.get("max_articles"), 5000, 100, 20000, int),
+            "primary_only": self._coerce_bool(values.get("primary_only"), True),
             "keep_high_score_singletons": self._coerce_bool(
                 values.get("keep_high_score_singletons"), True),
         }
@@ -248,17 +212,24 @@ class SituationViewsService:
             return value
         return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
-    def _request_context(self):
-        subsystem = request.args.get("subsystem")
+    def _request_context(self, *, fixed=False):
+        subsystem = self.dashboard["subsystem"] if fixed else request.args.get("subsystem")
         ctx = self.subsystem_registry.resolve(subsystem)
         if ctx is None:
             raise ValueError(f"未知子系统: {subsystem}")
         now = dt.datetime.now(dt.timezone.utc)
-        start = self._datetime_arg("start", now - dt.timedelta(days=7))
-        end = self._datetime_arg("end", now)
+        if fixed:
+            end = now
+            start = end - dt.timedelta(days=self.dashboard["window_days"])
+        else:
+            start = self._datetime_arg("start", now - dt.timedelta(days=7))
+            end = self._datetime_arg("end", now)
         if start >= end:
             raise ValueError("start 必须早于 end")
-        min_score = self._bounded_float("min_score", 6.0, 0, 10)
+        min_score = (
+            self.dashboard["min_score"] if fixed
+            else self._bounded_float("min_score", 6.0, 0, 10)
+        )
         raw_categories = str(request.args.get("category") or "").strip()
         if not raw_categories:
             categories = None
@@ -275,8 +246,14 @@ class SituationViewsService:
             end=end,
             min_score=min_score,
             categories=categories,
-            primary_only=self._bool_arg("primary_only", True),
-            max_articles=self._bounded_int("max_articles", 5000, 100, 20000),
+            primary_only=(
+                self.dashboard["primary_only"] if fixed
+                else self._bool_arg("primary_only", True)
+            ),
+            max_articles=(
+                self.dashboard["max_articles"] if fixed
+                else self._bounded_int("max_articles", 5000, 100, 20000)
+            ),
         )
         key = ctx.name
         engine = self._engines.get(key)
@@ -288,6 +265,10 @@ class SituationViewsService:
             )
             self._engines[key] = engine
         return engine, query
+
+    @staticmethod
+    def _is_scoped_request():
+        return "/api/scoped/" in request.path
 
     @staticmethod
     def _datetime_arg(name, default):

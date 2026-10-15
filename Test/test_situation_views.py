@@ -379,7 +379,10 @@ def test_web_service_serves_both_views_with_injected_collections():
             }
 
     app = Flask(__name__)
-    SituationViewsService(Registry(), geocoder=Geocoder()).mount_to_app(
+    SituationViewsService(
+        Registry(), geocoder=Geocoder(),
+        dashboard={"subsystem": "news", "window_days": 7, "min_score": 6},
+    ).mount_to_app(
         app, url_prefix="/situation")
     client = app.test_client()
     params = {
@@ -393,10 +396,13 @@ def test_web_service_serves_both_views_with_injected_collections():
     map_page = client.get("/situation/map")
     entity_page = client.get("/situation/entities")
     embedded_map = client.get("/situation/embed/map", query_string={
-        "subsystem": "news",
-        "start": (now - timedelta(days=2)).isoformat(),
-        "end": now.isoformat(),
-        "min_score": "7.5",
+        "subsystem": "missing",
+        "start": "bad",
+        "end": "bad",
+        "min_score": "9",
+    })
+    scoped_map = client.get("/situation/api/scoped/map", query_string={
+        "subsystem": "missing", "start": "bad", "min_score": "9",
     })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
@@ -420,19 +426,16 @@ def test_web_service_serves_both_views_with_injected_collections():
         }],
     })
 
-    assert page.status_code == 200
-    assert "地缘态势" in page.get_data(as_text=True)
-    assert map_page.status_code == 200
-    assert "const DASHBOARD_VIEW = \"map\"" in map_page.get_data(as_text=True)
-    assert entity_page.status_code == 200
-    assert "const DASHBOARD_VIEW = \"graph\"" in entity_page.get_data(as_text=True)
+    assert page.status_code == 404
+    assert map_page.status_code == 404
+    assert entity_page.status_code == 404
     assert embedded_map.status_code == 200
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
-    assert 'const API_PREFIX = "../api"' in embedded_html
-    assert '"min_score": 7.5' in embedded_html
-    assert client.get(
-        "/situation/embed/map?subsystem=missing").status_code == 400
+    assert 'const API_PREFIX = "../api/scoped"' in embedded_html
+    assert '"min_score": 6.0' in embedded_html
+    assert scoped_map.status_code == 200
+    assert scoped_map.get_json()["meta"]["hotspot_count"] == 1
     assert map_payload.status_code == 200
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200
@@ -455,7 +458,6 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
             if key == "intelligence_hub_web_service.situation_views":
                 return {
                     "enabled": True,
-                    "dashboard": {"window_days": 14, "min_score": 7.5},
                     "geocoding": {"enabled": False},
                 }
             return default
@@ -478,14 +480,15 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
         subsystem_registry=Registry(),
         wrapper=require_login,
         data_path=tmp_path,
+        dashboard={"window_days": 14, "min_score": 7.5},
     )
 
     assert service is not None
     assert service.dashboard["window_days"] == 14
     assert service.dashboard["min_score"] == 7.5
     assert app.config["SITUATION_VIEWS_ENABLED"] is True
-    assert app.test_client().get("/situation/").status_code == 401
-    assert app.test_client().get("/situation/api/map").status_code == 401
+    assert app.test_client().get("/situation/embed/map").status_code == 401
+    assert app.test_client().get("/situation/api/scoped/map").status_code == 401
 
 
 def test_iis_integration_can_be_disabled_without_registering_routes(tmp_path):
@@ -544,4 +547,4 @@ def test_iis_integration_keeps_views_when_geocoder_initialization_fails(tmp_path
 
     assert service is not None
     assert service.geocoder is None
-    assert app.test_client().get("/situation/").status_code == 200
+    assert app.test_client().get("/situation/embed/map").status_code == 200

@@ -106,14 +106,6 @@
 
     "situation_views": {
       "enabled": true,
-      "dashboard": {
-        "subsystem": "news",
-        "window_days": 7,
-        "min_score": 6.0,
-        "min_support": 2,
-        "max_nodes": 80,
-        "keep_high_score_singletons": true
-      },
       "geocoding": {
         "enabled": true,
         "cache_file": "SituationViews/geocoding.sqlite",
@@ -127,12 +119,17 @@
       "url_prefix": "/views",
       "situation_prefix": "/situation",
       "default_view": "list",
-      "window_days": 7,
-      "max_window_days": 366,
-      "min_score": 6.0,
-      "min_support": 2,
-      "max_nodes": 80,
-      "keep_high_score_singletons": true
+      "situation": {
+        "subsystem": "news",
+        "window_days": 7,
+        "min_score": 6.0,
+        "min_support": 2,
+        "max_nodes": 80,
+        "max_edges": 240,
+        "max_articles": 5000,
+        "primary_only": true,
+        "keep_high_score_singletons": true
+      }
     },
 
     "public_search": {

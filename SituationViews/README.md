@@ -3,14 +3,14 @@
 Event V4 的只读地缘态势与实体关系看板。该目录可整体移除；它只读取归档集合和派生事件
 索引，不写数据库，也不参与采集、分析、评分、归档、聚合或图谱扩展。
 
-IIS 内提供两个独立展示页面：
+IIS 内仅向 `IntelligenceViews` 集成页提供两个嵌入组件：
 
-- `/situation/map`：地缘态势；
-- `/situation/entities`：实体关系。
+- `/situation/embed/map`：地缘态势；
+- `/situation/embed/entities`：实体关系。
 
 两个页面的子系统、滚动时间窗口、最低评分和图规模由服务端配置固定，页面不提供修改入口；
-事件类别和实体类型仍可通过右上角可折叠悬浮图例进行筛选。根路径 `/situation/` 保持兼容，
-默认展示地缘态势。
+事件类别和实体类型仍可通过右上角可折叠悬浮图例进行筛选。旧的 `/situation/`、
+`/situation/map` 和 `/situation/entities` 不再注册。
 
 独立运行（直接读取 `_config/config.json` 指向的真实 MongoDB）：
 
@@ -18,25 +18,30 @@ IIS 内提供两个独立展示页面：
 python -m SituationViews.standalone
 ```
 
-然后访问 `http://127.0.0.1:5010/situation/`。
+然后访问 `http://127.0.0.1:5010/situation/embed/map`。
 
-IIS 主站会把同一套只读视图挂载到 `/situation/`，复用主站的登录保护和
+IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，复用主站的登录保护和
 `SubsystemRegistry`，但不进入 Hub 事件链。可以在 `_config/config.json` 中单独关闭整个
 模块或地名解析：
 
 ```json
 {
   "intelligence_hub_web_service": {
-    "situation_views": {
-      "enabled": true,
-      "dashboard": {
+    "intelligence_views": {
+      "situation": {
         "subsystem": "news",
         "window_days": 7,
         "min_score": 6.0,
         "min_support": 2,
         "max_nodes": 80,
+        "max_edges": 240,
+        "max_articles": 5000,
+        "primary_only": true,
         "keep_high_score_singletons": true
-      },
+      }
+    },
+    "situation_views": {
+      "enabled": true,
       "geocoding": {
         "enabled": true,
         "cache_file": "SituationViews/geocoding.sqlite"

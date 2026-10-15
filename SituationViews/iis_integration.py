@@ -12,7 +12,8 @@ from .web import SituationViewsService
 logger = logging.getLogger(__name__)
 
 
-def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path):
+def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path,
+                 dashboard=None):
     """将只读态势视图挂到 IIS；任何初始化失败都不阻断主服务。"""
     app.config["SITUATION_VIEWS_ENABLED"] = False
     settings = config.get("intelligence_hub_web_service.situation_views", {}) or {}
@@ -29,7 +30,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path):
             subsystem_registry,
             detail_origin="",
             geocoder=geocoder,
-            dashboard=settings.get("dashboard"),
+            dashboard=dashboard if dashboard is not None else settings.get("dashboard"),
         )
         service.mount_to_app(
             app,
@@ -37,7 +38,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path):
             url_prefix="/situation",
         )
         app.config["SITUATION_VIEWS_ENABLED"] = True
-        logger.info("SituationViews mounted at '/situation/'.")
+        logger.info("SituationViews components mounted at '/situation/embed/*'.")
         return service
     except Exception:
         logger.exception("态势视图初始化失败，IIS 主服务继续运行。")

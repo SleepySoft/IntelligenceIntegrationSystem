@@ -1,7 +1,7 @@
 import json
 import re
 from functools import wraps
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from flask import Flask
 
@@ -33,14 +33,21 @@ def _frame_urls(html):
     return json.loads(matched.group(1))
 
 
-def test_integration_page_composes_three_existing_pages_with_shared_scope():
+def test_integration_page_limits_only_situation_views_from_configuration():
     app = Flask(__name__)
-    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+    service = IntelligenceViewsService(SUBSYSTEMS, settings={
+        "situation": {
+            "subsystem": "finance",
+            "window_days": 14,
+            "min_score": 7.5,
+        },
+    })
+    service.mount_to_app(app, url_prefix="/views")
     response = app.test_client().get("/views/", query_string={
-        "subsystem": "finance",
+        "subsystem": "news",
         "start": "2026-10-01T00:00:00Z",
         "end": "2026-10-15T00:00:00Z",
-        "min_score": "7.5",
+        "min_score": "1",
         "view": "map",
     })
 
@@ -50,28 +57,31 @@ def test_integration_page_composes_three_existing_pages_with_shared_scope():
     assert "地域视图" in html
     assert "实体视图" in html
     assert 'let activeView = "map"' in html
+    assert service.situation == {
+        "subsystem": "finance",
+        "subsystem_display_name": "财经情报",
+        "window_days": 14,
+        "min_score": 7.5,
+    }
+    assert "完整情报列表；筛选、排序与分页保持原页面行为。" in html
 
     urls = _frame_urls(html)
-    assert urlparse(urls["list"]).path == "/finance/intelligences"
-    assert parse_qs(urlparse(urls["list"]).query)["threshold"] == ["7.5"]
-    map_query = parse_qs(urlparse(urls["map"]).query)
-    assert urlparse(urls["map"]).path == "/situation/embed/map"
-    assert map_query["subsystem"] == ["finance"]
-    assert map_query["start"] == ["2026-10-01T00:00:00+00:00"]
-    assert map_query["end"] == ["2026-10-15T00:00:00+00:00"]
-    assert map_query["min_score"] == ["7.5"]
-    assert urlparse(urls["entities"]).path == "/situation/embed/entities"
+    assert urls["list"] == "/intelligences"
+    assert urls["map"] == "/situation/embed/map"
+    assert urls["entities"] == "/situation/embed/entities"
+    assert all(not urlparse(url).query for url in urls.values())
 
 
-def test_integration_page_rejects_unknown_subsystem_and_invalid_range():
+def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():
     app = Flask(__name__)
     IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
     client = app.test_client()
 
-    assert client.get("/views/?subsystem=missing").status_code == 400
-    assert client.get(
-        "/views/?start=2026-10-15T00:00:00Z&end=2026-10-01T00:00:00Z"
-    ).status_code == 400
+    response = client.get(
+        "/views/?subsystem=missing&start=bad&end=bad&min_score=99&view=bad"
+    )
+    assert response.status_code == 200
+    assert 'let activeView = "list"' in response.get_data(as_text=True)
 
 
 def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():

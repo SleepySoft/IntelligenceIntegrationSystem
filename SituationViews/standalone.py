@@ -40,12 +40,12 @@ def create_app(config=None, *, subsystem_registry=None) -> Flask:
         geocoder=CachedNominatimGeocoder(
             Path(DATA_PATH) / "SituationViews" / "geocoding.sqlite"),
         dashboard=config.get(
-            "intelligence_hub_web_service.situation_views.dashboard", {}),
+            "intelligence_hub_web_service.intelligence_views.situation", {}),
     ).mount_to_app(app, url_prefix="/situation")
 
     @app.get("/")
     def root():
-        return redirect("/situation/")
+        return redirect("/situation/embed/map")
 
     return app
 

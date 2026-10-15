@@ -46,7 +46,7 @@
     <header>
         <div class="identity">
             <h1>情报视图</h1>
-            <div class="scope">{{ profile.subsystem_display_name }} · {{ profile.start[:10] }}—{{ profile.end[:10] }} · 评分 ≥ {{ profile.min_score }}</div>
+            <div class="scope" id="scope"></div>
         </div>
         <nav class="tabs" aria-label="情报展示方式">
             <button class="tab" type="button" data-view="list">情报列表</button>
@@ -64,6 +64,11 @@
 </div>
 <script>
 const FRAME_URLS = {{ frame_urls|tojson }};
+const VIEW_SCOPES = {
+    list: '完整情报列表；筛选、排序与分页保持原页面行为。',
+    map: {{ (profile.situation.subsystem_display_name ~ ' · 最近 ' ~ profile.situation.window_days ~ ' 天 · 评分 ≥ ' ~ profile.situation.min_score)|tojson }},
+    entities: {{ (profile.situation.subsystem_display_name ~ ' · 最近 ' ~ profile.situation.window_days ~ ' 天 · 评分 ≥ ' ~ profile.situation.min_score)|tojson }}
+};
 let activeView = {{ profile.active_view|tojson }};
 
 function activate(view, updateHistory = true) {
@@ -84,6 +89,7 @@ function activate(view, updateHistory = true) {
         }
     });
     document.getElementById('open-view').href = FRAME_URLS[view];
+    document.getElementById('scope').textContent = VIEW_SCOPES[view];
     if (updateHistory) {
         const url = new URL(window.location.href);
         url.searchParams.set('view', view);
