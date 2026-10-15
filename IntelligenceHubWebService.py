@@ -19,7 +19,7 @@ from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for
 
 from GlobalConfig import *
 from MyPythonUtility.DictTools import DictPrinter
-from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
+from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
 from Tools.RequestTracer import RequestTracer
 from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware, time_str_to_datetime
 from ServiceComponent.UserManager import UserManager
@@ -895,8 +895,10 @@ class IntelligenceHubWebService:
             except ValueError as e:
                 abort(400, str(e))
 
-            prompt_text = EVENT_ANALYSIS_PROMPT_TABLE.get(version_digit)
-            if prompt_text is None:
+            # 查完整目录（含回滚通道版本），避免点击历史归档的 prompt 链接打不开。
+            try:
+                prompt_text = EVENT_V4_PROMPT_CATALOG.text_for(version_digit)
+            except ValueError:
                 prompt_text = f"[Prompt v{version_digit}] Not configured."
 
             resp = Response(prompt_text, content_type="text/plain; charset=utf-8")

@@ -155,6 +155,18 @@ def test_control_panel_page_renders():
     assert "运行控制" in resp.get_data(as_text=True)
 
 
+def test_prompt_endpoint_serves_all_catalog_versions_not_only_production():
+    # 回归：历史归档（v41/42/43）的 prompt 链接也必须能打开，而非只服务生产版本。
+    app = _build_app(RuntimeControlState())
+    client = _logged_in_client(app)
+    for version in (41, 42, 43, 44):
+        resp = client.get(f"/api/prompts/{version}")
+        assert resp.status_code == 200
+        assert "Not configured" not in resp.get_data(as_text=True)
+    resp = client.get("/api/prompts/99")
+    assert "Not configured" in resp.get_data(as_text=True)
+
+
 def test_runtime_status_endpoint_returns_console_text():
     app = _build_app(RuntimeControlState())
     client = _logged_in_client(app)
