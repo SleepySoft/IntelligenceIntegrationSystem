@@ -496,7 +496,7 @@ function renderGraph() {
     $('graph-summary').innerHTML = `<div class="meta">
         <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
         <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
-        <div class="warning">当前按名称、类型和国家临时归一化，不代表已完成实体消歧。</div>`;
+        <div class="warning">当前按名称、类型和国家临时归一化；同名同类型且国家唯一时，会在投影中补齐缺失国家。别名尚未合并。</div>`;
 }
 
 function entityColor(type) {

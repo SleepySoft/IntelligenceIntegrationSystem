@@ -318,7 +318,8 @@ class SituationViewEngine:
         events, meta = self._load_events(query)
         node_data: dict[str, dict[str, Any]] = {}
         edge_data: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
-        considered = 0
+        prepared_events = []
+        country_hints: dict[tuple[str, str], set[str]] = defaultdict(set)
 
         for event in events:
             category = self._category(event)
@@ -327,16 +328,28 @@ class SituationViewEngine:
             relations = self._entity_relations(event)
             if not relations:
                 continue
-            considered += 1
+            prepared_events.append((event, category, relations))
+            for source, target, _ in relations:
+                for entity in (source, target):
+                    name, entity_type, country = self._entity_identity_parts(entity)
+                    if name and country:
+                        country_hints[(name, entity_type)].add(country)
+
+        inferred_country_nodes = set()
+        for event, category, relations in prepared_events:
             event_uuid = str(event.get("event_uuid") or "")
             article_uuid = str(event.get("intelligence_uuid") or "")
             score = float(event.get("_view_score") or 0)
             predicate = self._predicate_id(event)
             for source, target, directed in relations:
-                source_key = self._entity_key(source)
-                target_key = self._entity_key(target)
+                source_key, source_inferred = self._graph_entity_key(source, country_hints)
+                target_key, target_inferred = self._graph_entity_key(target, country_hints)
                 if not source_key or not target_key or source_key == target_key:
                     continue
+                if source_inferred:
+                    inferred_country_nodes.add(source_key)
+                if target_inferred:
+                    inferred_country_nodes.add(target_key)
                 if not directed and target_key < source_key:
                     source, target = target, source
                     source_key, target_key = target_key, source_key
@@ -404,7 +417,7 @@ class SituationViewEngine:
                  for edge in retained]
 
         meta.update({
-            "relational_event_count": considered,
+            "relational_event_count": len(prepared_events),
             "raw_node_count": len(node_data),
             "raw_edge_count": len(edge_data),
             "node_count": len(nodes),
@@ -414,7 +427,8 @@ class SituationViewEngine:
             "max_nodes": max_nodes,
             "max_edges": max_edges,
             "high_score_singleton_cutoff": high_score_cutoff if keep_high_score_singletons else None,
-            "identity_mode": "normalized_name_type_country",
+            "identity_mode": "normalized_name_type_country_with_unique_country_fill",
+            "inferred_country_node_count": len(inferred_country_nodes),
         })
         return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
 
@@ -527,12 +541,30 @@ class SituationViewEngine:
 
     @staticmethod
     def _entity_key(entity: dict) -> str:
+        name, entity_type, country = SituationViewEngine._entity_identity_parts(entity)
+        return f"{entity_type}|{country}|{name}" if name else ""
+
+    @staticmethod
+    def _entity_identity_parts(entity: dict) -> tuple[str, str, str]:
         if not isinstance(entity, dict):
-            return ""
+            return "", "", ""
         name = re.sub(r"\s+", " ", str(entity.get("name") or "").strip()).casefold()
         entity_type = str(entity.get("type") or "other").strip().casefold()
         country = str(entity.get("country_code") or "").strip().upper()
-        return f"{entity_type}|{country}|{name}" if name else ""
+        return name, entity_type, country
+
+    @staticmethod
+    def _graph_entity_key(entity: dict, country_hints) -> tuple[str, bool]:
+        name, entity_type, country = SituationViewEngine._entity_identity_parts(entity)
+        if not name:
+            return "", False
+        inferred = False
+        if not country:
+            candidates = country_hints.get((name, entity_type), set())
+            if len(candidates) == 1:
+                country = next(iter(candidates))
+                inferred = True
+        return f"{entity_type}|{country}|{name}", inferred
 
     @staticmethod
     def _touch_node(store, key, entity, event_uuid, article_uuid, score):
@@ -547,6 +579,8 @@ class SituationViewEngine:
         item["event_ids"].add(event_uuid)
         item["article_ids"].add(article_uuid)
         item["score_max"] = max(item["score_max"], score)
+        if not item.get("country_code") and entity.get("country_code"):
+            item["country_code"] = entity.get("country_code")
 
     @staticmethod
     def _json_time(value):

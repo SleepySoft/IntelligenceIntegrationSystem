@@ -167,6 +167,56 @@ def test_entity_graph_keeps_high_score_singleton_for_review():
     assert result["meta"]["high_score_singleton_cutoff"] == 8.0
 
 
+def test_entity_graph_merges_missing_country_when_same_name_has_one_country():
+    now = datetime.now(timezone.utc)
+    first = _attack("e1", "a", "胡塞武装", "同一目标")
+    second = _attack("e2", "b", "胡塞武装", "同一目标")
+    first["roles"]["actor"][0].pop("country_code")
+    second["roles"]["actor"][0]["country_code"] = "YE"
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+    )
+
+    actors = [node for node in result["nodes"] if node["name"] == "胡塞武装"]
+    assert len(actors) == 1
+    assert actors[0]["country_code"] == "YE"
+    assert result["edges"][0]["support"] == 2
+    assert result["meta"]["inferred_country_node_count"] == 1
+
+
+def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
+    now = datetime.now(timezone.utc)
+    events = []
+    for index, country in enumerate(("YE", "IR", None), start=1):
+        event = _attack(f"e{index}", f"a{index}", "同名组织", "同一目标")
+        if country:
+            event["roles"]["actor"][0]["country_code"] = country
+        else:
+            event["roles"]["actor"][0].pop("country_code")
+        events.append(event)
+    engine = SituationViewEngine(
+        FakeCollection([_archive(f"a{i}", now, 7) for i in range(1, 4)]),
+        FakeCollection(events),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+    )
+
+    actors = [node for node in result["nodes"] if node["name"] == "同名组织"]
+    assert {node["country_code"] for node in actors} == {"YE", "IR", None}
+    assert result["meta"]["inferred_country_node_count"] == 0
+
+
 def test_web_service_serves_both_views_with_injected_collections():
     from flask import Flask
     from types import SimpleNamespace
