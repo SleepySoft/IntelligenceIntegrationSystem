@@ -47,6 +47,9 @@
         .legend { display: flex; flex-wrap: wrap; gap: 7px 10px; margin-top: 12px; }
         .legend span { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); font-size: 12px; }
         .legend .legend-heading { flex-basis: 100%; color: var(--text); font-weight: 650; margin-top: 3px; }
+        .legend .category-filter { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 500; }
+        .legend .category-filter:hover { border-color: var(--accent); color: var(--text); }
+        .legend .category-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--text); }
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
@@ -215,8 +218,11 @@ function queryParams(extra = {}) {
 }
 
 function legendHtml() {
+    const selected = $('category').value;
     return Object.entries(CATEGORY_LABELS).map(([key, label]) =>
-        `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
+        `<button type="button" class="category-filter${selected === key ? ' active' : ''}" data-category="${key}" aria-pressed="${selected === key}">
+            <i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}
+        </button>`).join('');
 }
 $('map-legend').innerHTML = legendHtml();
 $('graph-legend').innerHTML = graphLegendHtml();
@@ -226,6 +232,15 @@ function graphLegendHtml() {
         `<span><i class="dot" style="background:${ENTITY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
     return `<span class="legend-heading">节点颜色 · 实体类型</span>${nodes}
         <span class="legend-heading">边颜色 · 事件类别</span>${legendHtml()}`;
+}
+
+function syncCategoryFilters() {
+    const selected = $('category').value;
+    document.querySelectorAll('.category-filter').forEach(button => {
+        const active = button.dataset.category === selected;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
 }
 
 async function loadJson(url, options = undefined) {
@@ -521,12 +536,14 @@ function entityColor(type) {
 function showNodeDetail(d) {
     $('graph-detail').innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
-        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>`;
+        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
+        <div class="legend">${graphLegendHtml()}</div>`;
 }
 function showEdgeDetail(d) {
     $('graph-detail').innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
         <div class="meta"><div class="metric"><b>${d.support}</b>独立事件</div><div class="metric"><b>${d.article_count}</b>文章</div>
-        <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>`;
+        <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>
+        <div class="legend">${graphLegendHtml()}</div>`;
 }
 function showTooltip(id, event, html) {
     const tip = $(id), box = tip.parentElement.getBoundingClientRect();
@@ -542,6 +559,15 @@ document.querySelectorAll('.tabs button').forEach(button => button.addEventListe
     if (activeView === 'graph' && !graphData) refreshGraph();
 }));
 $('apply').addEventListener('click', () => activeView === 'map' ? refreshMap() : refreshGraph());
+$('category').addEventListener('change', syncCategoryFilters);
+document.addEventListener('click', event => {
+    const button = event.target.closest('.category-filter');
+    if (!button) return;
+    const category = button.dataset.category;
+    $('category').value = $('category').value === category ? '' : category;
+    syncCategoryFilters();
+    activeView === 'map' ? refreshMap() : refreshGraph();
+});
 $('min-support').addEventListener('change', () => activeView === 'graph' && refreshGraph());
 $('max-nodes').addEventListener('change', () => activeView === 'graph' && refreshGraph());
 $('keep-singletons').addEventListener('change', () => activeView === 'graph' && refreshGraph());
