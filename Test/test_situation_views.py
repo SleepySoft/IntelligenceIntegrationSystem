@@ -169,6 +169,28 @@ def test_entity_graph_aggregates_subject_object_and_filters_weak_edges():
     assert result["meta"]["filtered_edge_count"] == 1
 
 
+def test_entity_graph_uses_registry_label_and_keeps_surface_label_counts():
+    now = datetime.now(timezone.utc)
+    first = _attack("e1", "a", "同一行动方", "同一目标")
+    second = _attack("e2", "b", "同一行动方", "同一目标")
+    second["predicate"]["label"] = "ataque"
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+    )
+
+    assert result["edges"][0]["predicate_label"] == "攻击"
+    assert result["edges"][0]["surface_labels"] == [
+        {"label": "ataque", "count": 1},
+    ]
+
+
 def test_entity_graph_keeps_high_score_singleton_for_review():
     now = datetime.now(timezone.utc)
     engine = SituationViewEngine(

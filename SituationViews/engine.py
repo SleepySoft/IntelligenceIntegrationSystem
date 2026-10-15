@@ -371,19 +371,23 @@ class SituationViewEngine:
                     "source": source_key,
                     "target": target_key,
                     "predicate": predicate,
-                    "predicate_label": self._predicate_label(event),
+                    "predicate_label": self._canonical_predicate_label(event),
                     "category": category,
                     "directed": directed,
                     "event_ids": set(),
                     "article_ids": set(),
                     "score_sum": 0.0,
                     "score_max": 0.0,
+                    "surface_labels": Counter(),
                 })
                 if event_uuid not in edge["event_ids"]:
                     edge["event_ids"].add(event_uuid)
                     edge["article_ids"].add(article_uuid)
                     edge["score_sum"] += score
                     edge["score_max"] = max(edge["score_max"], score)
+                    surface_label = self._predicate_label(event)
+                    if surface_label:
+                        edge["surface_labels"][surface_label] += 1
 
         high_score_cutoff = max(8.0, query.min_score + 2.0)
         retained = []
@@ -423,9 +427,20 @@ class SituationViewEngine:
                 "importance": importance[key],
                 "max_score": round(item["score_max"], 2),
             })
-        edges = [{key: value for key, value in edge.items()
-                  if key not in {"event_ids", "article_ids", "score_sum"}}
-                 for edge in retained]
+        edges = []
+        for edge in retained:
+            payload = {
+                key: value for key, value in edge.items()
+                if key not in {
+                    "event_ids", "article_ids", "score_sum", "surface_labels",
+                }
+            }
+            payload["surface_labels"] = [
+                {"label": label, "count": count}
+                for label, count in edge["surface_labels"].most_common(8)
+                if label != edge["predicate_label"]
+            ]
+            edges.append(payload)
 
         meta.update({
             "relational_event_count": len(prepared_events),
@@ -515,6 +530,11 @@ class SituationViewEngine:
     def _predicate_label(event: dict) -> str:
         predicate = event.get("predicate") or {}
         return str(predicate.get("label") or predicate.get("gloss") or predicate.get("surface") or predicate.get("id") or "未归类")
+
+    def _canonical_predicate_label(self, event: dict) -> str:
+        spec = self.registry.get(self._predicate_id(event)) if self.registry else None
+        label = str(getattr(spec, "label", "") or "").strip()
+        return label or self._predicate_label(event)
 
     def _entity_relations(self, event: dict) -> list[tuple[dict, dict, bool]]:
         roles = event.get("roles") or {}

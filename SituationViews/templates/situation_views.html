@@ -522,7 +522,11 @@ function renderGraph() {
     const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
         .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
         .attr('stroke-width', d => edgeScale(d.support)).attr('marker-end', d => d.directed ? 'url(#arrow)' : null)
-        .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.predicate_label} · ${d.support} 个事件`))
+        .on('mouseenter', (event,d) => {
+            const surfaces = d.surface_labels?.slice(0, 3).map(item => item.label).join('、');
+            showTooltip('graph-tooltip', event,
+                `${d.predicate_label} (${d.predicate})${surfaces ? ` · 原文：${surfaces}` : ''} · ${d.support} 个事件`);
+        })
         .on('mouseleave', () => hideTooltip('graph-tooltip'))
         .on('click', (_,d) => showEdgeDetail(d));
     const edgeLabels = root.append('g').selectAll('text').data(edges.slice(0, 40)).join('text')
@@ -575,9 +579,15 @@ function showNodeDetail(d) {
         <div class="legend">${graphLegendHtml()}</div>`;
 }
 function showEdgeDetail(d) {
+    const surfaces = d.surface_labels?.length
+        ? `<h3>原文表述</h3><ul class="list">${d.surface_labels.map(item =>
+            `<li>${escapeHtml(item.label)}：${item.count}</li>`).join('')}</ul>`
+        : '<p class="muted">原文表述与规范标签一致。</p>';
     $('graph-detail').innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
+        <p class="muted">谓词 ID：${escapeHtml(d.predicate)}</p>
         <div class="meta"><div class="metric"><b>${d.support}</b>独立事件</div><div class="metric"><b>${d.article_count}</b>文章</div>
         <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>
+        ${surfaces}
         <div class="legend">${graphLegendHtml()}</div>`;
 }
 function showTooltip(id, event, html) {
