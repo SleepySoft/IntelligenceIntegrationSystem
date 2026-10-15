@@ -905,6 +905,19 @@ class IntelligenceHubWebService:
             resp.headers["X-Prompt-Version-Normalized"] = str(version_digit)
             return resp
 
+        # 情报卡片的 prompt 查看器请求的是 {base_path}/prompt?version=N；
+        # 该路由此前只存在于子系统蓝图中，根路径缺失会导致 404。
+        @app.route('/prompt', methods=['GET'])
+        def root_prompt():
+            version = request.args.get('version')
+            try:
+                prompt_text = self.intelligence_hub.get_prompt(
+                    self.intelligence_hub.default_subsystem_name,
+                    int(version) if version else None)
+            except Exception:
+                prompt_text = "[Prompt] Not configured."
+            return Response(prompt_text, content_type="text/plain; charset=utf-8")
+
         @app.get('/api/subsystems')
         def api_subsystems():
             """返回子系统注册表，供前端导航/切换使用。"""
