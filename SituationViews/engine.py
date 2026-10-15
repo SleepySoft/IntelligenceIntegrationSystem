@@ -19,6 +19,7 @@ from ServiceComponent.intelligence_contracts import (
 
 CATEGORY_LABELS = {
     "war": "武装冲突",
+    "terror": "恐怖主义",
     "security": "安全与管制",
     "politics": "政治与社会",
     "hazard": "灾害与卫生",
@@ -485,6 +486,8 @@ class SituationViewEngine:
         tags = set(getattr(spec, "tags", ()) or ())
         if "war" in tags:
             return "war"
+        if "terror" in tags:
+            return "terror"
         if "crime" in tags:
             return "security"
         for category, predicates in PREDICATE_CATEGORIES.items():

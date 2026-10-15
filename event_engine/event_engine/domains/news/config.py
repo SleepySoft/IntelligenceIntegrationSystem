@@ -53,6 +53,7 @@ PREDICATE_ARGUMENT_SPECS = {
     "assault": _arguments("actor", "target"),
     "kidnap": _arguments("actor", "target"),
     "rob": _arguments("actor", "target object"),
+    "terror": _arguments("actor", "target"),
     "attack": _arguments("actor", "target"),
     "defend": _arguments("actor", "target"),
     "intercept": _arguments("actor", "target"),
@@ -112,9 +113,19 @@ IDENTITIES = {
         location_mode="strict", repeatability="high",
         max_time_uncertainty=timedelta(days=1),
     ),
+    "terror": IdentitySpec(
+        identity_roles=("actor", "target"), discriminator_roles=("instrument",),
+        time_mode="occurrence", time_tolerance=timedelta(hours=48),
+        location_mode="strict", repeatability="high",
+        role_weight=.35, time_weight=.30, location_weight=.25,
+        attribute_weight=.10, lifecycle_weight=0,
+        auto_merge_threshold=.90, review_threshold=.72,
+        max_time_uncertainty=timedelta(days=1),
+    ),
 }
 TAGS = {"attack": {"war"}, "armed_conflict": {"war"},
-        "kill": {"crime"}, "assault": {"crime"}, "kidnap": {"crime"}, "rob": {"crime"}}
+        "kill": {"crime"}, "assault": {"crime"}, "kidnap": {"crime"}, "rob": {"crime"},
+        "terror": {"terror"}}
 
 FRAMES = frame_specs(
     ("exist capable", _frame("state", "intrinsic", "unknown")),
@@ -122,7 +133,7 @@ FRAMES = frame_specs(
     ("possess control member_of located_at depend_on connected_to", _frame("state", "relational", "unknown")),
     ("increase decrease improve deteriorate terminate gain lose restore", _frame("change", "intrinsic", "unknown")),
     ("create damage casualty discover appoint remove adjudicate detain seize sanction restrict violate", _frame("change", "targeted")),
-    ("inspect investigate protest regulate attack defend intercept observe disrupt assault", _frame("process", "targeted")),
+    ("inspect investigate protest regulate attack defend intercept observe disrupt assault terror", _frame("process", "targeted")),
     ("kill kidnap rob", _frame("change", "targeted")),
     ("negotiate cooperate armed_conflict", _frame("process", "relational")),
     ("agree elect", _frame("change", "relational")),
@@ -133,4 +144,4 @@ FRAMES = frame_specs(
     ("natural_hazard outbreak", _frame("process", "intrinsic", "non_agentive")),
 )
 PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, NEWS_PREDICATE_METADATA)
-PACK = DomainPack("news", "1.3", PREDICATE_SPECS)
+PACK = DomainPack("news", "1.4", PREDICATE_SPECS)
