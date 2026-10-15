@@ -28,6 +28,10 @@ CATEGORY_LABELS = {
     "other": "其他",
 }
 
+ENTITY_TYPE_GROUPS = frozenset({
+    "person", "organization", "geopolitical_entity", "location", "facility", "other",
+})
+
 # 独立视图的展示归类。Registry tag 优先；这里仅是可随实验删除的展示回退，
 # 不参与 Event V4 的抽取、校验、身份合并或持久化契约。
 PREDICATE_CATEGORIES = {
@@ -315,6 +319,7 @@ class SituationViewEngine:
         max_nodes: int = 80,
         max_edges: int = 240,
         keep_high_score_singletons: bool = True,
+        entity_types: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         events, meta = self._load_events(query)
         node_data: dict[str, dict[str, Any]] = {}
@@ -343,6 +348,11 @@ class SituationViewEngine:
             score = float(event.get("_view_score") or 0)
             predicate = self._predicate_id(event)
             for source, target, directed in relations:
+                if entity_types is not None and (
+                    self._entity_type_group(source) not in entity_types
+                    or self._entity_type_group(target) not in entity_types
+                ):
+                    continue
                 source_key, source_inferred = self._graph_entity_key(source, country_hints)
                 target_key, target_inferred = self._graph_entity_key(target, country_hints)
                 if not source_key or not target_key or source_key == target_key:
@@ -430,6 +440,7 @@ class SituationViewEngine:
             "high_score_singleton_cutoff": high_score_cutoff if keep_high_score_singletons else None,
             "identity_mode": "normalized_name_type_country_with_unique_country_fill",
             "inferred_country_node_count": len(inferred_country_nodes),
+            "entity_types": sorted(entity_types) if entity_types is not None else None,
         })
         return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
 
@@ -556,6 +567,11 @@ class SituationViewEngine:
         entity_type = str(entity.get("type") or "other").strip().casefold()
         country = str(entity.get("country_code") or "").strip().upper()
         return name, entity_type, country
+
+    @staticmethod
+    def _entity_type_group(entity: dict) -> str:
+        entity_type = str((entity or {}).get("type") or "other").strip().casefold()
+        return entity_type if entity_type in ENTITY_TYPE_GROUPS - {"other"} else "other"
 
     @staticmethod
     def _graph_entity_key(entity: dict, country_hints) -> tuple[str, bool]:

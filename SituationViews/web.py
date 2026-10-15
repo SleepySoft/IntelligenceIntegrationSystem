@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, render_template, request
 
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
-from .engine import CATEGORY_LABELS, SituationViewEngine, ViewQuery
+from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, ViewQuery
 
 
 class SituationViewsService:
@@ -53,12 +53,14 @@ class SituationViewsService:
                 max_nodes = self._bounded_int("max_nodes", 80, 10, 300)
                 max_edges = self._bounded_int("max_edges", 240, 10, 1000)
                 keep_singletons = self._bool_arg("keep_high_score_singletons", True)
+                entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
                 return jsonify(engine.entity_graph(
                     query,
                     min_support=min_support,
                     max_nodes=max_nodes,
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
+                    entity_types=entity_types,
                 ))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
@@ -193,3 +195,16 @@ class SituationViewsService:
         if raw is None:
             return default
         return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+    @staticmethod
+    def _set_arg(name, allowed):
+        raw = str(request.args.get(name) or "").strip()
+        if not raw:
+            return None
+        if raw == "__none__":
+            return frozenset()
+        values = frozenset(value.strip() for value in raw.split(",") if value.strip())
+        unknown = values.difference(allowed)
+        if unknown:
+            raise ValueError(f"{name} 包含未知值: {', '.join(sorted(unknown))}")
+        return values

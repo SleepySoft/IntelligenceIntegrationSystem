@@ -238,6 +238,28 @@ def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
     assert result["meta"]["inferred_country_node_count"] == 0
 
 
+def test_entity_graph_filters_relationships_by_both_entity_type_groups():
+    now = datetime.now(timezone.utc)
+    organization_edge = _attack("e1", "a", "组织甲", "组织乙")
+    organization_edge["roles"]["target"][0]["type"] = "organization"
+    facility_edge = _attack("e2", "b", "组织甲", "设施甲")
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([organization_edge, facility_edge]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+        entity_types=frozenset({"organization"}),
+    )
+
+    assert len(result["edges"]) == 1
+    assert {node["type"] for node in result["nodes"]} == {"organization"}
+    assert result["meta"]["entity_types"] == ["organization"]
+
+
 def test_web_service_serves_both_views_with_injected_collections():
     from flask import Flask
     from types import SimpleNamespace

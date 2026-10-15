@@ -26,6 +26,7 @@
         h1 { margin: 0; font-size: 24px; }
         header p { margin: 5px 0 0; color: var(--muted); }
         .filters { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .filters [hidden] { display: none; }
         label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
         input, select, button { min-height: 38px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); color: var(--text); padding: 7px 9px; }
         button { cursor: pointer; font-weight: 600; }
@@ -47,9 +48,9 @@
         .legend { display: flex; flex-wrap: wrap; gap: 7px 10px; margin-top: 12px; }
         .legend span { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); font-size: 12px; }
         .legend .legend-heading { flex-basis: 100%; color: var(--text); font-weight: 650; margin-top: 3px; }
-        .legend .category-filter { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 500; }
-        .legend .category-filter:hover { border-color: var(--accent); color: var(--text); }
-        .legend .category-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--text); }
+        .legend .category-filter, .legend .entity-filter { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 500; }
+        .legend .category-filter:hover, .legend .entity-filter:hover { border-color: var(--accent); color: var(--text); }
+        .legend .category-filter.active, .legend .entity-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--text); }
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
@@ -116,8 +117,11 @@
         <label>开始时间<input id="start" type="datetime-local"></label>
         <label>结束时间<input id="end" type="datetime-local"></label>
         <label>最低评分<input id="min-score" type="number" min="0" max="10" step="0.5" value="6"></label>
-        <label>事件类别
+        <label id="map-filter-control">事件类别
             <button id="category-all" type="button">全部已选</button>
+        </label>
+        <label id="graph-filter-control" hidden>实体类型
+            <button id="entity-all" type="button">全部已选</button>
         </label>
         <button id="apply" class="primary" type="button">应用并刷新</button>
     </section>
@@ -186,6 +190,8 @@ const ENTITY_LABELS = {
 const CATEGORY_LABELS = {{ categories|tojson }};
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
+const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
+const selectedEntityTypes = new Set(ALL_ENTITY_TYPES);
 const SUBSYSTEMS = {{ subsystems|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
@@ -215,6 +221,7 @@ function queryParams(extra = {}) {
         ...extra
     });
     if (!params.get('category')) params.delete('category');
+    if (activeView !== 'map') params.delete('category');
     return params;
 }
 
@@ -229,9 +236,13 @@ $('graph-legend').innerHTML = graphLegendHtml();
 
 function graphLegendHtml() {
     const nodes = Object.entries(ENTITY_LABELS).map(([key, label]) =>
-        `<span><i class="dot" style="background:${ENTITY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
+        `<button type="button" class="entity-filter${selectedEntityTypes.has(key) ? ' active' : ''}" data-entity-type="${key}" aria-pressed="${selectedEntityTypes.has(key)}">
+            <i class="dot" style="background:${ENTITY_COLORS[key]}"></i>${escapeHtml(label)}
+        </button>`).join('');
+    const edgeCategories = Object.entries(CATEGORY_LABELS).map(([key, label]) =>
+        `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
     return `<span class="legend-heading">节点颜色 · 实体类型</span>${nodes}
-        <span class="legend-heading">边颜色 · 事件类别</span>${legendHtml()}`;
+        <span class="legend-heading">边颜色 · 事件类别</span>${edgeCategories}`;
 }
 
 function syncCategoryFilters() {
@@ -242,6 +253,16 @@ function syncCategoryFilters() {
     });
     $('category-all').textContent = selectedCategories.size === ALL_CATEGORY_KEYS.length
         ? '全部已选' : `全选（已选 ${selectedCategories.size}/${ALL_CATEGORY_KEYS.length}）`;
+}
+
+function syncEntityFilters() {
+    document.querySelectorAll('.entity-filter').forEach(button => {
+        const active = selectedEntityTypes.has(button.dataset.entityType);
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    $('entity-all').textContent = selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+        ? '全部已选' : `全选（已选 ${selectedEntityTypes.size}/${ALL_ENTITY_TYPES.length}）`;
 }
 
 async function loadJson(url, options = undefined) {
@@ -472,7 +493,9 @@ async function refreshGraph() {
         graphData = await loadJson(`api/entity-graph?${queryParams({
             min_support: $('min-support').value,
             max_nodes: $('max-nodes').value,
-            keep_high_score_singletons: $('keep-singletons').checked
+            keep_high_score_singletons: $('keep-singletons').checked,
+            entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+                ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
         renderGraph();
     } catch (error) {
@@ -555,6 +578,8 @@ function hideTooltip(id) { $(id).style.display = 'none'; }
 
 document.querySelectorAll('.tabs button').forEach(button => button.addEventListener('click', () => {
     activeView = button.dataset.view;
+    $('map-filter-control').hidden = activeView !== 'map';
+    $('graph-filter-control').hidden = activeView !== 'graph';
     document.querySelectorAll('.tabs button').forEach(v => v.setAttribute('aria-selected', String(v === button)));
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `${activeView}-view`));
     if (activeView === 'graph' && !graphData) refreshGraph();
@@ -566,14 +591,29 @@ $('category-all').addEventListener('click', () => {
     syncCategoryFilters();
     activeView === 'map' ? refreshMap() : refreshGraph();
 });
+$('entity-all').addEventListener('click', () => {
+    selectedEntityTypes.clear();
+    ALL_ENTITY_TYPES.forEach(type => selectedEntityTypes.add(type));
+    syncEntityFilters();
+    if (activeView === 'graph') refreshGraph();
+});
 document.addEventListener('click', event => {
     const button = event.target.closest('.category-filter');
-    if (!button) return;
-    const category = button.dataset.category;
-    if (selectedCategories.has(category)) selectedCategories.delete(category);
-    else selectedCategories.add(category);
-    syncCategoryFilters();
-    activeView === 'map' ? refreshMap() : refreshGraph();
+    if (button) {
+        const category = button.dataset.category;
+        if (selectedCategories.has(category)) selectedCategories.delete(category);
+        else selectedCategories.add(category);
+        syncCategoryFilters();
+        if (activeView === 'map') refreshMap();
+        return;
+    }
+    const entityButton = event.target.closest('.entity-filter');
+    if (!entityButton) return;
+    const entityType = entityButton.dataset.entityType;
+    if (selectedEntityTypes.has(entityType)) selectedEntityTypes.delete(entityType);
+    else selectedEntityTypes.add(entityType);
+    syncEntityFilters();
+    if (activeView === 'graph') refreshGraph();
 });
 $('min-support').addEventListener('change', () => activeView === 'graph' && refreshGraph());
 $('max-nodes').addEventListener('change', () => activeView === 'graph' && refreshGraph());
