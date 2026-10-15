@@ -42,6 +42,24 @@ class SituationViewsService:
         def entity_dashboard():
             return self._render_dashboard("graph")
 
+        @bp.get("/embed/map")
+        @protect
+        def embedded_map_dashboard():
+            try:
+                return self._render_dashboard(
+                    "map", profile=self._embedded_profile(), embedded=True)
+            except ValueError as exc:
+                return str(exc), 400
+
+        @bp.get("/embed/entities")
+        @protect
+        def embedded_entity_dashboard():
+            try:
+                return self._render_dashboard(
+                    "graph", profile=self._embedded_profile(), embedded=True)
+            except ValueError as exc:
+                return str(exc), 400
+
         @bp.get("/api/map")
         @protect
         def map_api():
@@ -148,15 +166,48 @@ class SituationViewsService:
 
         app.register_blueprint(bp, url_prefix=url_prefix)
 
-    def _render_dashboard(self, view):
+    def _render_dashboard(self, view, *, profile=None, embedded=False):
         return render_template(
             "situation_views.html",
             categories=CATEGORY_LABELS,
             subsystems=self.subsystem_registry.describe(),
             detail_origin=self.detail_origin,
             dashboard_view=view,
-            dashboard_profile=self.dashboard,
+            dashboard_profile=profile or self.dashboard,
+            embedded=embedded,
+            api_prefix="../api" if embedded else "api",
         )
+
+    def _embedded_profile(self):
+        values = dict(self.dashboard)
+        if request.args.get("subsystem") is not None:
+            requested_subsystem = str(request.args.get("subsystem") or "").strip()
+            if not any(
+                    item.get("name") == requested_subsystem
+                    for item in self.subsystem_registry.describe()):
+                raise ValueError(f"未知子系统: {requested_subsystem}")
+            values["subsystem"] = requested_subsystem
+        profile = self._dashboard_profile(values)
+
+        now = dt.datetime.now(dt.timezone.utc)
+        end = self._datetime_arg("end", now)
+        start = self._datetime_arg(
+            "start", end - dt.timedelta(days=profile["window_days"]))
+        if start >= end:
+            raise ValueError("start 必须早于 end")
+        if request.args.get("min_score") is not None:
+            profile["min_score"] = self._bounded_float("min_score", 6.0, 0, 10)
+        if request.args.get("min_support") is not None:
+            profile["min_support"] = self._bounded_int("min_support", 2, 1, 50)
+        if request.args.get("max_nodes") is not None:
+            profile["max_nodes"] = self._bounded_int("max_nodes", 80, 10, 300)
+        if request.args.get("keep_high_score_singletons") is not None:
+            profile["keep_high_score_singletons"] = self._bool_arg(
+                "keep_high_score_singletons", True)
+        profile["start"] = start.isoformat()
+        profile["end"] = end.isoformat()
+        profile["window_days"] = max(1, (end - start).days)
+        return profile
 
     def _dashboard_profile(self, raw):
         values = dict(raw or {}) if isinstance(raw, dict) else {}

@@ -392,6 +392,12 @@ def test_web_service_serves_both_views_with_injected_collections():
     page = client.get("/situation/")
     map_page = client.get("/situation/map")
     entity_page = client.get("/situation/entities")
+    embedded_map = client.get("/situation/embed/map", query_string={
+        "subsystem": "news",
+        "start": (now - timedelta(days=2)).isoformat(),
+        "end": now.isoformat(),
+        "min_score": "7.5",
+    })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
     graph_intelligences = client.get(
@@ -420,6 +426,13 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "const DASHBOARD_VIEW = \"map\"" in map_page.get_data(as_text=True)
     assert entity_page.status_code == 200
     assert "const DASHBOARD_VIEW = \"graph\"" in entity_page.get_data(as_text=True)
+    assert embedded_map.status_code == 200
+    embedded_html = embedded_map.get_data(as_text=True)
+    assert '<body class="dashboard embedded">' in embedded_html
+    assert 'const API_PREFIX = "../api"' in embedded_html
+    assert '"min_score": 7.5' in embedded_html
+    assert client.get(
+        "/situation/embed/map?subsystem=missing").status_code == 400
     assert map_payload.status_code == 200
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200

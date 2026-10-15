@@ -122,6 +122,19 @@
       }
     },
 
+    "intelligence_views": {
+      "enabled": true,
+      "url_prefix": "/views",
+      "situation_prefix": "/situation",
+      "default_view": "list",
+      "window_days": 7,
+      "max_window_days": 366,
+      "min_score": 6.0,
+      "min_support": 2,
+      "max_nodes": 80,
+      "keep_high_score_singletons": true
+    },
+
     "public_search": {
       "mongo_max_per_page": 20,
       "mongo_max_page": 5,

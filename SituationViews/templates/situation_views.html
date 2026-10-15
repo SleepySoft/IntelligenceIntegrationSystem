@@ -109,6 +109,10 @@
         .dashboard .side-toggle { display: block; position: absolute; top: 12px; right: 12px; z-index: 9; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
         .dashboard .side:not(.is-collapsed) + .side-toggle { right: 354px; }
         .dashboard .graph-controls { display: none; }
+        .embedded .shell { padding: 0; }
+        .embedded header { display: none; }
+        .embedded .canvas { min-height: 100vh; border-radius: 0; }
+        .embedded svg { height: 100vh; min-height: 620px; }
         @media (max-width: 950px) {
             .filters { grid-template-columns: repeat(2, 1fr); }
             .layout { grid-template-columns: 1fr; }
@@ -125,7 +129,7 @@
         }
     </style>
 </head>
-<body class="dashboard">
+<body class="dashboard{% if embedded %} embedded{% endif %}">
 <main class="shell">
     <header>
         <div>
@@ -236,6 +240,7 @@ const ENTITY_LABELS = {
 const CATEGORY_LABELS = {{ categories|tojson }};
 const DASHBOARD_VIEW = {{ dashboard_view|tojson }};
 const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
+const API_PREFIX = {{ api_prefix|tojson }};
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
@@ -255,8 +260,10 @@ const localInputValue = date => {
 };
 const now = new Date();
 $('subsystem').value = DASHBOARD_PROFILE.subsystem;
-$('end').value = localInputValue(now);
-$('start').value = localInputValue(new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
+$('end').value = localInputValue(DASHBOARD_PROFILE.end ? new Date(DASHBOARD_PROFILE.end) : now);
+$('start').value = localInputValue(DASHBOARD_PROFILE.start
+    ? new Date(DASHBOARD_PROFILE.start)
+    : new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
 $('min-score').value = DASHBOARD_PROFILE.min_score;
 $('min-support').value = DASHBOARD_PROFILE.min_support;
 $('max-nodes').value = DASHBOARD_PROFILE.max_nodes;
@@ -332,7 +339,7 @@ async function refreshMap() {
     $('map-intelligence-panel').hidden = true;
     try {
         const [data, resources] = await Promise.all([
-            loadJson(`api/map?${queryParams()}`),
+            loadJson(`${API_PREFIX}/map?${queryParams()}`),
             worldResources || Promise.all([d3.json(WORLD_URL), d3.json(COUNTRIES_URL)])
         ]);
         mapData = data;
@@ -437,7 +444,7 @@ function renderMap() {
         if (!candidates.length) return;
         locationRequestActive = true;
         try {
-            const data = await loadJson('api/map/locations', {
+            const data = await loadJson(`${API_PREFIX}/map/locations`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({locations: candidates})
@@ -509,7 +516,7 @@ function showMapDetail(d, countryName, locationName = null) {
 async function loadMapIntelligences(countryCode, locationName = null) {
     const selectionKey = `${countryCode}|${locationName || ''}`;
     try {
-        const data = await loadJson(`api/map/intelligences?${queryParams({
+        const data = await loadJson(`${API_PREFIX}/map/intelligences?${queryParams({
             country_code: countryCode,
             ...(locationName ? {location_name: locationName} : {}),
             offset: 0,
@@ -548,7 +555,7 @@ async function refreshGraph() {
     $('graph-status').classList.add('show');
     $('graph-status').textContent = '正在聚合实体关系…';
     try {
-        graphData = await loadJson(`api/entity-graph?${queryParams({
+        graphData = await loadJson(`${API_PREFIX}/entity-graph?${queryParams({
             min_support: $('min-support').value,
             max_nodes: $('max-nodes').value,
             keep_high_score_singletons: $('keep-singletons').checked,
@@ -740,7 +747,7 @@ async function loadGraphIntelligences(append) {
             predicate: selection.predicate, directed: selection.directed
         };
     try {
-        const data = await loadJson(`api/entity-graph/intelligences?${queryParams({
+        const data = await loadJson(`${API_PREFIX}/entity-graph/intelligences?${queryParams({
             ...selectionParams,
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__'),

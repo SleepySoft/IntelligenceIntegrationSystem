@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>情报视图</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#edf2f8, #0b1220);
+            --panel: light-dark(#ffffff, #131d2d);
+            --border: light-dark(#d8e1ec, #304057);
+            --text: light-dark(#172033, #e8eef8);
+            --muted: light-dark(#65748a, #9babc2);
+            --accent: #4f7cff;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+        .shell { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+        header { display: flex; align-items: center; gap: 18px; min-height: 66px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+        .identity { min-width: 220px; }
+        h1 { margin: 0; font-size: 19px; }
+        .scope { margin-top: 2px; color: var(--muted); font-size: 12px; }
+        .tabs { display: flex; align-self: stretch; gap: 6px; }
+        .tab { min-width: 104px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
+        .tab:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+        .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+        .open-view { margin-left: auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; white-space: nowrap; }
+        .frames { position: relative; min-height: 0; }
+        iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); display: none; }
+        iframe.active { display: block; }
+        .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); background: var(--bg); z-index: 2; }
+        .loading[hidden] { display: none; }
+        @media (max-width: 720px) {
+            header { gap: 7px; padding: 7px; flex-wrap: wrap; }
+            .identity { min-width: 100%; }
+            .tabs { min-height: 42px; flex: 1; }
+            .tab { min-width: 0; flex: 1; }
+            .open-view { display: none; }
+            .shell { grid-template-rows: auto minmax(0, 1fr); }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <div class="identity">
+            <h1>情报视图</h1>
+            <div class="scope">{{ profile.subsystem_display_name }} · {{ profile.start[:10] }}—{{ profile.end[:10] }} · 评分 ≥ {{ profile.min_score }}</div>
+        </div>
+        <nav class="tabs" aria-label="情报展示方式">
+            <button class="tab" type="button" data-view="list">情报列表</button>
+            <button class="tab" type="button" data-view="map">地域视图</button>
+            <button class="tab" type="button" data-view="entities">实体视图</button>
+        </nav>
+        <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">单独打开</a>
+    </header>
+    <main class="frames">
+        <div class="loading" id="loading">正在加载视图…</div>
+        <iframe data-view="list" title="情报列表视图"></iframe>
+        <iframe data-view="map" title="地域态势视图"></iframe>
+        <iframe data-view="entities" title="实体关系视图"></iframe>
+    </main>
+</div>
+<script>
+const FRAME_URLS = {{ frame_urls|tojson }};
+let activeView = {{ profile.active_view|tojson }};
+
+function activate(view, updateHistory = true) {
+    if (!FRAME_URLS[view]) view = 'list';
+    activeView = view;
+    document.querySelectorAll('.tab').forEach(button => {
+        button.setAttribute('aria-selected', String(button.dataset.view === view));
+    });
+    document.querySelectorAll('iframe').forEach(frame => {
+        const selected = frame.dataset.view === view;
+        frame.classList.toggle('active', selected);
+        if (selected && !frame.dataset.loaded) {
+            document.getElementById('loading').hidden = false;
+            frame.src = FRAME_URLS[view];
+            frame.dataset.loaded = 'true';
+        } else if (selected) {
+            document.getElementById('loading').hidden = true;
+        }
+    });
+    document.getElementById('open-view').href = FRAME_URLS[view];
+    if (updateHistory) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', view);
+        history.replaceState(null, '', url);
+    }
+}
+document.querySelectorAll('iframe').forEach(frame => {
+    frame.addEventListener('load', () => {
+        if (frame.dataset.loaded && frame.dataset.view === activeView) {
+            document.getElementById('loading').hidden = true;
+        }
+    });
+});
+document.querySelectorAll('.tab').forEach(button => {
+    button.addEventListener('click', () => activate(button.dataset.view));
+});
+activate(activeView, false);
+</script>
+</body>
+</html>

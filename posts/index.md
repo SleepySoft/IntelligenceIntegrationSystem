@@ -12,6 +12,8 @@
 
 + [Intelligence Search](/intelligences/search)
 
++ [Intelligence Views](/views/)
+
 + [Intelligence Graph](/intelligence/graph/view)
 
 + [Situation Insight · Map](/situation/map)

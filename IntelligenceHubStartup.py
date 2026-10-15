@@ -405,6 +405,19 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     except Exception:
         logger.exception("态势视图模块加载失败，IIS 主服务继续运行。")
 
+    # 情报三视图是纯展示编排层：仅组合列表和 SituationViews 子页面，
+    # 不访问 Hub 领域对象或数据库，初始化失败不影响任何既有页面。
+    try:
+        from IntelligenceViews.iis_integration import mount_to_iis as mount_intelligence_views
+        mount_intelligence_views(
+            wsgi_app,
+            config=config,
+            subsystem_registry=subsystem_registry,
+            wrapper=hub_service.access_manager.login_required,
+        )
+    except Exception:
+        logger.exception("情报三视图集成页加载失败，IIS 主服务继续运行。")
+
     # --------------------------------- End of Init ---------------------------------
 
     return hub, hub_service, client_manager

@@ -50,9 +50,9 @@ IIS 主站会把同一套只读视图挂载到 `/situation/`，复用主站的�
 解析初始化失败，国家级热点和实体关系图仍可使用。`SituationViewsService.mount_to_app()`
 仍可供独立程序或其他 Flask 应用直接挂载。
 
-未来把情报列表、地缘态势和实体关系组合成三个视图 Tab 时，应新建 IIS Core 之外的纯展示
-集成页面。集成页只组合通用情报查询接口、SituationViews API 和各自的前端展示组件；不得把
-地图或实体图逻辑移入 `IntelligenceHubWebService`，也不得让三个视图互相直接依赖。
+情报列表、地缘态势和实体关系的三个视图 Tab 由 IIS Core 之外的 `IntelligenceViews`
+纯展示模块提供。集成页只组合已有子页面；地图或实体图逻辑不进入
+`IntelligenceHubWebService`，三个视图也不互相直接依赖。
 
 当前地图只使用 `event_location` 中明确给出的 ISO 两位 `country_code`，在国家中心显示
 热点；点击热点会按当前筛选条件加载对应的真实情报摘要，标题链接到主站详情页。单次最多
