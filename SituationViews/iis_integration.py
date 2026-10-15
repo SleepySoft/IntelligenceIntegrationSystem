@@ -29,6 +29,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path):
             subsystem_registry,
             detail_origin="",
             geocoder=geocoder,
+            dashboard=settings.get("dashboard"),
         )
         service.mount_to_app(
             app,

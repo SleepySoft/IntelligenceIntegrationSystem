@@ -390,6 +390,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     }
 
     page = client.get("/situation/")
+    map_page = client.get("/situation/map")
+    entity_page = client.get("/situation/entities")
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
     graph_intelligences = client.get(
@@ -413,7 +415,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     })
 
     assert page.status_code == 200
-    assert "态势实验视图" in page.get_data(as_text=True)
+    assert "地缘态势" in page.get_data(as_text=True)
+    assert map_page.status_code == 200
+    assert "const DASHBOARD_VIEW = \"map\"" in map_page.get_data(as_text=True)
+    assert entity_page.status_code == 200
+    assert "const DASHBOARD_VIEW = \"graph\"" in entity_page.get_data(as_text=True)
     assert map_payload.status_code == 200
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200
@@ -434,7 +440,11 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
         @staticmethod
         def get(key, default=None):
             if key == "intelligence_hub_web_service.situation_views":
-                return {"enabled": True, "geocoding": {"enabled": False}}
+                return {
+                    "enabled": True,
+                    "dashboard": {"window_days": 14, "min_score": 7.5},
+                    "geocoding": {"enabled": False},
+                }
             return default
 
     class Registry:
@@ -458,6 +468,8 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
     )
 
     assert service is not None
+    assert service.dashboard["window_days"] == 14
+    assert service.dashboard["min_score"] == 7.5
     assert app.config["SITUATION_VIEWS_ENABLED"] is True
     assert app.test_client().get("/situation/").status_code == 401
     assert app.test_client().get("/situation/api/map").status_code == 401

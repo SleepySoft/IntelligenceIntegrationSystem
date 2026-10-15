@@ -14,7 +14,9 @@
 
 + [Intelligence Graph](/intelligence/graph/view)
 
-+ [Situation Map & Entity Graph](/situation/)
++ [Situation Insight · Map](/situation/map)
+
++ [Situation Insight · Entity Relations](/situation/entities)
 
 -----------------------------------------------
 

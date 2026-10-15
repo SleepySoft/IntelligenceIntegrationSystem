@@ -1,4 +1,4 @@
-"""实验性态势视图的可拆卸 Flask 挂载层。"""
+"""“态势洞察”的可拆卸 Flask 挂载层。"""
 
 from __future__ import annotations
 
@@ -13,14 +13,16 @@ from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, Vi
 
 
 class SituationViewsService:
-    def __init__(self, subsystem_registry, registry=None, *, detail_origin="", geocoder=None):
+    def __init__(self, subsystem_registry, registry=None, *, detail_origin="", geocoder=None,
+                 dashboard=None):
         self.subsystem_registry = subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
         self.geocoder = geocoder
+        self.dashboard = self._dashboard_profile(dashboard)
         self._engines = {}
 
-    def mount_to_app(self, app, *, wrapper=None, url_prefix="/experimental/situation"):
+    def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation"):
         template_folder = str(Path(__file__).with_name("templates"))
         bp = Blueprint("situation_views", __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)
@@ -28,12 +30,17 @@ class SituationViewsService:
         @bp.get("/")
         @protect
         def index():
-            return render_template(
-                "situation_views.html",
-                categories=CATEGORY_LABELS,
-                subsystems=self.subsystem_registry.describe(),
-                detail_origin=self.detail_origin,
-            )
+            return self._render_dashboard("map")
+
+        @bp.get("/map")
+        @protect
+        def map_dashboard():
+            return self._render_dashboard("map")
+
+        @bp.get("/entities")
+        @protect
+        def entity_dashboard():
+            return self._render_dashboard("graph")
 
         @bp.get("/api/map")
         @protect
@@ -140,6 +147,55 @@ class SituationViewsService:
                 return jsonify({"error": str(exc)}), 400
 
         app.register_blueprint(bp, url_prefix=url_prefix)
+
+    def _render_dashboard(self, view):
+        return render_template(
+            "situation_views.html",
+            categories=CATEGORY_LABELS,
+            subsystems=self.subsystem_registry.describe(),
+            detail_origin=self.detail_origin,
+            dashboard_view=view,
+            dashboard_profile=self.dashboard,
+        )
+
+    def _dashboard_profile(self, raw):
+        values = dict(raw or {}) if isinstance(raw, dict) else {}
+        descriptions = self.subsystem_registry.describe()
+        default = next(
+            (item.get("name") for item in descriptions if item.get("is_default")),
+            descriptions[0].get("name") if descriptions else "",
+        )
+        subsystem = str(values.get("subsystem") or default).strip()
+        if not any(item.get("name") == subsystem for item in descriptions):
+            subsystem = default
+        selected = next(
+            (item for item in descriptions if item.get("name") == subsystem), {})
+        return {
+            "subsystem": subsystem,
+            "subsystem_display_name": selected.get("display_name") or subsystem,
+            "window_days": self._coerce_number(values.get("window_days"), 7, 1, 365, int),
+            "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
+            "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
+            "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 300, int),
+            "keep_high_score_singletons": self._coerce_bool(
+                values.get("keep_high_score_singletons"), True),
+        }
+
+    @staticmethod
+    def _coerce_number(value, default, minimum, maximum, converter):
+        try:
+            converted = converter(value if value is not None else default)
+        except (TypeError, ValueError):
+            converted = converter(default)
+        return max(minimum, min(maximum, converted))
+
+    @staticmethod
+    def _coerce_bool(value, default):
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
     def _request_context(self):
         subsystem = request.args.get("subsystem")

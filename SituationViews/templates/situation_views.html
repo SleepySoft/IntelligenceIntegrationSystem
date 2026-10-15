@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>态势实验视图 - IIS</title>
+    <title>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }} · 态势洞察</title>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
@@ -19,6 +19,7 @@
             --danger: #db4b4b;
         }
         * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
         body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
         button, input, select { font: inherit; }
         .shell { max-width: 1500px; margin: auto; padding: 20px; }
@@ -92,10 +93,27 @@
         .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
         .map-attribution a { color: inherit; }
         .warning { margin-top: 10px; padding: 9px; border-radius: 8px; background: color-mix(in srgb, #eab308 16%, var(--panel)); color: var(--text); }
+        .dashboard .shell { max-width: none; padding: 12px; }
+        .dashboard header { align-items: center; margin-bottom: 10px; }
+        .dashboard header p { margin-top: 2px; }
+        .dashboard-nav { display: flex; gap: 8px; }
+        .dashboard-nav a { min-height: 34px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--panel); text-decoration: none; font-weight: 650; }
+        .dashboard-nav a.active { color: #fff; background: var(--accent); border-color: transparent; }
+        .dashboard .layout { display: block; position: relative; }
+        .dashboard .canvas { min-height: calc(100vh - 94px); }
+        .dashboard svg { height: calc(100vh - 94px); min-height: 620px; }
+        .dashboard .side { position: absolute; top: 12px; right: 12px; z-index: 8; width: min(330px, calc(100% - 72px)); min-height: 0; max-height: calc(100vh - 140px); overflow: auto; box-shadow: 0 14px 38px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); }
+        .dashboard .side.is-collapsed { display: none; }
+        .side-toggle { display: none; }
+        .dashboard .side-toggle { display: block; position: absolute; top: 12px; right: 12px; z-index: 9; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
+        .dashboard .side:not(.is-collapsed) + .side-toggle { right: 354px; }
+        .dashboard .graph-controls { display: none; }
         @media (max-width: 950px) {
             .filters { grid-template-columns: repeat(2, 1fr); }
             .layout { grid-template-columns: 1fr; }
             .side { min-height: auto; }
+            .dashboard .side { position: absolute; width: min(330px, calc(100% - 64px)); }
+            .dashboard .side:not(.is-collapsed) + .side-toggle { right: 12px; top: 18px; transform: translateY(100%); }
         }
         @media (max-width: 520px) {
             .shell { padding: 10px; }
@@ -106,20 +124,24 @@
         }
     </style>
 </head>
-<body>
+<body class="dashboard">
 <main class="shell">
     <header>
         <div>
-            <h1>态势实验视图</h1>
-            <p>独立只读原型；地图使用明确事件地点，实体图使用 Registry 主客角色。</p>
+            <h1>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }}</h1>
+            <p>态势洞察 · {{ dashboard_profile.subsystem_display_name }} · 最近 {{ dashboard_profile.window_days }} 天 · 评分不低于 {{ dashboard_profile.min_score }}</p>
         </div>
+        <nav class="dashboard-nav" aria-label="态势洞察看板">
+            <a href="map"{% if dashboard_view == 'map' %} class="active" aria-current="page"{% endif %}>地缘态势</a>
+            <a href="entities"{% if dashboard_view == 'graph' %} class="active" aria-current="page"{% endif %}>实体关系</a>
+        </nav>
     </header>
 
-    <section class="filters" aria-label="公共筛选条件">
+    <section class="filters" aria-label="公共筛选条件" hidden>
         <label>子系统
             <select id="subsystem">
                 {% for subsystem in subsystems %}
-                <option value="{{ subsystem.name }}"{% if subsystem.is_default %} selected{% endif %}>{{ subsystem.display_name }}</option>
+                <option value="{{ subsystem.name }}"{% if subsystem.name == dashboard_profile.subsystem %} selected{% endif %}>{{ subsystem.display_name }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -135,12 +157,12 @@
         <button id="apply" class="primary" type="button">应用并刷新</button>
     </section>
 
-    <nav class="tabs" aria-label="视图">
+    <nav class="tabs" aria-label="视图" hidden>
         <button type="button" data-view="map" aria-selected="true">地图视图</button>
         <button type="button" data-view="graph" aria-selected="false">实体关系图</button>
     </nav>
 
-    <section id="map-view" class="view active">
+    <section id="map-view" class="view{% if dashboard_view == 'map' %} active{% endif %}">
         <div class="layout">
             <div class="canvas" id="map-canvas">
                 <div class="status" id="map-status">正在加载地图与事件…</div>
@@ -154,6 +176,7 @@
                 <div id="map-summary"></div>
                 <div class="legend" id="map-legend"></div>
             </aside>
+            <button class="side-toggle" type="button" data-side="map-detail" aria-expanded="true">收起图例</button>
         </div>
         <section class="intelligence-panel" id="map-intelligence-panel" hidden>
             <h2 id="map-intelligence-title">对应情报</h2>
@@ -162,7 +185,7 @@
         </section>
     </section>
 
-    <section id="graph-view" class="view">
+    <section id="graph-view" class="view{% if dashboard_view == 'graph' %} active{% endif %}">
         <div class="layout">
             <div class="canvas" id="graph-canvas">
                 <div class="status" id="graph-status">正在聚合实体关系…</div>
@@ -179,6 +202,7 @@
                 <div id="graph-summary"></div>
                 <div class="legend" id="graph-legend"></div>
             </aside>
+            <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
         </div>
         <section class="intelligence-panel" id="graph-intelligence-panel" hidden>
             <h2 id="graph-intelligence-title">对应情报</h2>
@@ -209,6 +233,8 @@ const ENTITY_LABELS = {
     location: '地点', facility: '设施', other: '其他实体'
 };
 const CATEGORY_LABELS = {{ categories|tojson }};
+const DASHBOARD_VIEW = {{ dashboard_view|tojson }};
+const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
@@ -217,7 +243,7 @@ const SUBSYSTEMS = {{ subsystems|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 const COUNTRIES_URL = 'https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json';
-let activeView = 'map', mapData = null, graphData = null, worldResources = null, selectedCountry = null;
+let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 
 const $ = id => document.getElementById(id);
@@ -227,8 +253,13 @@ const localInputValue = date => {
     return shifted.toISOString().slice(0, 16);
 };
 const now = new Date();
+$('subsystem').value = DASHBOARD_PROFILE.subsystem;
 $('end').value = localInputValue(now);
-$('start').value = localInputValue(new Date(now.getTime() - 7 * 86400000));
+$('start').value = localInputValue(new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
+$('min-score').value = DASHBOARD_PROFILE.min_score;
+$('min-support').value = DASHBOARD_PROFILE.min_support;
+$('max-nodes').value = DASHBOARD_PROFILE.max_nodes;
+$('keep-singletons').checked = DASHBOARD_PROFILE.keep_high_score_singletons;
 
 function queryParams(extra = {}) {
     const categoryValue = selectedCategories.size === ALL_CATEGORY_KEYS.length
@@ -814,13 +845,15 @@ $('graph-role-filters').addEventListener('click', event => {
     loadGraphIntelligences(false);
 });
 $('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
+document.querySelectorAll('.side-toggle').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.side);
+    const collapsed = panel.classList.toggle('is-collapsed');
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.textContent = collapsed ? '展开图例' : '收起图例';
+}));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
-const requestedView = new URLSearchParams(window.location.search).get('view');
-if (requestedView === 'graph') {
-    document.querySelector('.tabs button[data-view="graph"]').click();
-} else {
-    refreshMap();
-}
+if (DASHBOARD_VIEW === 'graph') refreshGraph();
+else refreshMap();
 </script>
 </body>
 </html>

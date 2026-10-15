@@ -106,6 +106,14 @@
 
     "situation_views": {
       "enabled": true,
+      "dashboard": {
+        "subsystem": "news",
+        "window_days": 7,
+        "min_score": 6.0,
+        "min_support": 2,
+        "max_nodes": 80,
+        "keep_high_score_singletons": true
+      },
       "geocoding": {
         "enabled": true,
         "cache_file": "SituationViews/geocoding.sqlite",

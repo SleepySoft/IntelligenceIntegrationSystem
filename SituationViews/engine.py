@@ -32,7 +32,7 @@ ENTITY_TYPE_GROUPS = frozenset({
     "person", "organization", "geopolitical_entity", "location", "facility", "other",
 })
 
-# 独立视图的展示归类。Registry tag 优先；这里仅是可随实验删除的展示回退，
+# 独立视图的展示归类。Registry tag 优先；这里仅是展示层的兼容回退，
 # 不参与 Event V4 的抽取、校验、身份合并或持久化契约。
 PREDICATE_CATEGORIES = {
     "war": {"armed_conflict", "attack", "defend", "intercept"},

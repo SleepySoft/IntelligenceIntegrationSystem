@@ -1,4 +1,4 @@
-"""独立启动实验性态势视图，不修改或依赖 IIS Web 路由。"""
+"""独立启动“态势洞察”，不修改或依赖 IIS Web 路由。"""
 
 from __future__ import annotations
 
@@ -39,6 +39,8 @@ def create_app(config=None, *, subsystem_registry=None) -> Flask:
         ),
         geocoder=CachedNominatimGeocoder(
             Path(DATA_PATH) / "SituationViews" / "geocoding.sqlite"),
+        dashboard=config.get(
+            "intelligence_hub_web_service.situation_views.dashboard", {}),
     ).mount_to_app(app, url_prefix="/situation")
 
     @app.get("/")
@@ -49,7 +51,7 @@ def create_app(config=None, *, subsystem_registry=None) -> Flask:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IIS experimental situation views")
+    parser = argparse.ArgumentParser(description="IIS Situation Insight dashboards")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5010)
     args = parser.parse_args()

@@ -1,7 +1,16 @@
-# SituationViews
+# 态势洞察（SituationViews）
 
-实验性的 Event V4 地图与实体关系视图。该目录可整体移除；它只读取归档集合和派生事件
+Event V4 的只读地缘态势与实体关系看板。该目录可整体移除；它只读取归档集合和派生事件
 索引，不写数据库，也不参与采集、分析、评分、归档、聚合或图谱扩展。
+
+IIS 内提供两个独立展示页面：
+
+- `/situation/map`：地缘态势；
+- `/situation/entities`：实体关系。
+
+两个页面的子系统、滚动时间窗口、最低评分和图规模由服务端配置固定，页面不提供修改入口；
+事件类别和实体类型仍可通过右上角可折叠悬浮图例进行筛选。根路径 `/situation/` 保持兼容，
+默认展示地缘态势。
 
 独立运行（直接读取 `_config/config.json` 指向的真实 MongoDB）：
 
@@ -20,6 +29,14 @@ IIS 主站会把同一套只读视图挂载到 `/situation/`，复用主站的�
   "intelligence_hub_web_service": {
     "situation_views": {
       "enabled": true,
+      "dashboard": {
+        "subsystem": "news",
+        "window_days": 7,
+        "min_score": 6.0,
+        "min_support": 2,
+        "max_nodes": 80,
+        "keep_high_score_singletons": true
+      },
       "geocoding": {
         "enabled": true,
         "cache_file": "SituationViews/geocoding.sqlite"
@@ -32,6 +49,10 @@ IIS 主站会把同一套只读视图挂载到 `/situation/`，复用主站的�
 没有该配置段时默认启用，以兼容已有部署。模块初始化失败不会阻断 IIS 主服务；若仅地名
 解析初始化失败，国家级热点和实体关系图仍可使用。`SituationViewsService.mount_to_app()`
 仍可供独立程序或其他 Flask 应用直接挂载。
+
+未来把情报列表、地缘态势和实体关系组合成三个视图 Tab 时，应新建 IIS Core 之外的纯展示
+集成页面。集成页只组合通用情报查询接口、SituationViews API 和各自的前端展示组件；不得把
+地图或实体图逻辑移入 `IntelligenceHubWebService`，也不得让三个视图互相直接依赖。
 
 当前地图只使用 `event_location` 中明确给出的 ISO 两位 `country_code`，在国家中心显示
 热点；点击热点会按当前筛选条件加载对应的真实情报摘要，标题链接到主站详情页。单次最多
