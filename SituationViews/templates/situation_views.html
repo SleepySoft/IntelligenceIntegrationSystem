@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>态势实验视图 - IIS</title>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#f4f7fb, #0f172a);
+            --panel: light-dark(#ffffff, #172033);
+            --soft: light-dark(#eef3f9, #202c42);
+            --border: light-dark(#dbe4ef, #33435d);
+            --text: light-dark(#1f2937, #e5edf8);
+            --muted: light-dark(#64748b, #9baac0);
+            --accent: #4f7cff;
+            --danger: #db4b4b;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+        button, input, select { font: inherit; }
+        .shell { max-width: 1500px; margin: auto; padding: 20px; }
+        header { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 16px; }
+        h1 { margin: 0; font-size: 24px; }
+        header p { margin: 5px 0 0; color: var(--muted); }
+        .filters { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+        input, select, button { min-height: 38px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); color: var(--text); padding: 7px 9px; }
+        button { cursor: pointer; font-weight: 600; }
+        button.primary { align-self: end; background: var(--accent); color: white; border-color: transparent; }
+        .tabs { display: flex; gap: 8px; margin: 16px 0 10px; }
+        .tabs button[aria-selected="true"] { background: var(--accent); color: white; border-color: transparent; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; }
+        .canvas, .side { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .canvas { position: relative; min-height: 680px; overflow: hidden; }
+        .side { padding: 14px; min-height: 680px; overflow-wrap: anywhere; }
+        .side h2 { margin: 0 0 10px; font-size: 16px; }
+        .side h3 { margin: 18px 0 7px; font-size: 13px; }
+        .muted { color: var(--muted); }
+        .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+        .metric { padding: 8px; background: var(--soft); border-radius: 8px; }
+        .metric b { display: block; font-size: 17px; color: var(--text); }
+        .legend { display: flex; flex-wrap: wrap; gap: 7px 10px; margin-top: 12px; }
+        .legend span { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); font-size: 12px; }
+        .dot { width: 9px; height: 9px; border-radius: 50%; }
+        .list { margin: 0; padding-left: 18px; }
+        .list li { margin: 4px 0; }
+        .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+        .graph-controls label:last-child { grid-column: 1 / -1; }
+        .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
+        .status.show { display: grid; }
+        svg { width: 100%; height: 680px; display: block; touch-action: none; }
+        .sphere { fill: light-dark(#e7f1fb, #111c2e); stroke: var(--border); }
+        .country { fill: light-dark(#d8e4ef, #27364d); stroke: light-dark(#fff, #3a4961); stroke-width: .45px; }
+        .graticule { fill: none; stroke: light-dark(#c8d6e5, #2b3a50); stroke-width: .45px; }
+        .hotspot { stroke: color-mix(in srgb, var(--panel) 82%, transparent); stroke-width: 2px; cursor: pointer; }
+        .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+        .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
+        .arrow-head { fill: light-dark(#64748b, #8796aa); }
+        .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
+        .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+        .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
+        .warning { margin-top: 10px; padding: 9px; border-radius: 8px; background: color-mix(in srgb, #eab308 16%, var(--panel)); color: var(--text); }
+        @media (max-width: 950px) {
+            .filters { grid-template-columns: repeat(2, 1fr); }
+            .layout { grid-template-columns: 1fr; }
+            .side { min-height: auto; }
+        }
+        @media (max-width: 520px) {
+            .shell { padding: 10px; }
+            header { display: block; }
+            .filters { grid-template-columns: 1fr; }
+            .canvas, svg { min-height: 520px; height: 520px; }
+        }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <header>
+        <div>
+            <h1>态势实验视图</h1>
+            <p>独立只读原型；地图使用明确事件地点，实体图使用 Registry 主客角色。</p>
+        </div>
+    </header>
+
+    <section class="filters" aria-label="公共筛选条件">
+        <label>子系统
+            <select id="subsystem">
+                {% for subsystem in subsystems %}
+                <option value="{{ subsystem.name }}"{% if subsystem.is_default %} selected{% endif %}>{{ subsystem.display_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>开始时间<input id="start" type="datetime-local"></label>
+        <label>结束时间<input id="end" type="datetime-local"></label>
+        <label>最低评分<input id="min-score" type="number" min="0" max="10" step="0.5" value="6"></label>
+        <label>事件类别
+            <select id="category">
+                <option value="">全部类别</option>
+                {% for value, label in categories.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+        </label>
+        <button id="apply" class="primary" type="button">应用并刷新</button>
+    </section>
+
+    <nav class="tabs" aria-label="视图">
+        <button type="button" data-view="map" aria-selected="true">地图视图</button>
+        <button type="button" data-view="graph" aria-selected="false">实体关系图</button>
+    </nav>
+
+    <section id="map-view" class="view active">
+        <div class="layout">
+            <div class="canvas" id="map-canvas">
+                <div class="status" id="map-status">正在加载地图与事件…</div>
+                <svg id="map-svg" role="img" aria-label="事件热点地球视图"></svg>
+                <div class="tooltip" id="map-tooltip"></div>
+            </div>
+            <aside class="side" id="map-detail">
+                <h2>地图概览</h2>
+                <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+                <div id="map-summary"></div>
+                <div class="legend" id="map-legend"></div>
+            </aside>
+        </div>
+    </section>
+
+    <section id="graph-view" class="view">
+        <div class="layout">
+            <div class="canvas" id="graph-canvas">
+                <div class="status" id="graph-status">正在聚合实体关系…</div>
+                <svg id="graph-svg" role="img" aria-label="实体施受关系图"></svg>
+                <div class="tooltip" id="graph-tooltip"></div>
+            </div>
+            <aside class="side" id="graph-detail">
+                <h2>关系图设置</h2>
+                <div class="graph-controls">
+                    <label>最少独立事件数<input id="min-support" type="number" min="1" max="50" value="2"></label>
+                    <label>最多节点数<input id="max-nodes" type="number" min="10" max="300" value="80"></label>
+                    <label><span><input id="keep-singletons" type="checkbox" checked> 保留高评分单次关系</span></label>
+                </div>
+                <div id="graph-summary"></div>
+                <div class="legend" id="graph-legend"></div>
+            </aside>
+        </div>
+    </section>
+</main>
+
+<script>
+const CATEGORY_COLORS = {
+    war: '#dc3545', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
+    economy: '#2563eb', industry: '#0891b2', other: '#64748b'
+};
+const CATEGORY_LABELS = {{ categories|tojson }};
+const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+const COUNTRIES_URL = 'https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json';
+let activeView = 'map', mapData = null, graphData = null, worldResources = null;
+
+const $ = id => document.getElementById(id);
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const localInputValue = date => {
+    const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return shifted.toISOString().slice(0, 16);
+};
+const now = new Date();
+$('end').value = localInputValue(now);
+$('start').value = localInputValue(new Date(now.getTime() - 7 * 86400000));
+
+function queryParams(extra = {}) {
+    const params = new URLSearchParams({
+        subsystem: $('subsystem').value,
+        start: new Date($('start').value).toISOString(),
+        end: new Date($('end').value).toISOString(),
+        min_score: $('min-score').value,
+        category: $('category').value,
+        primary_only: 'true',
+        ...extra
+    });
+    if (!params.get('category')) params.delete('category');
+    return params;
+}
+
+function legendHtml() {
+    return Object.entries(CATEGORY_LABELS).map(([key, label]) =>
+        `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
+}
+$('map-legend').innerHTML = legendHtml();
+$('graph-legend').innerHTML = legendHtml();
+
+async function loadJson(url) {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    return data;
+}
+
+async function refreshMap() {
+    $('map-status').classList.add('show');
+    try {
+        const [data, resources] = await Promise.all([
+            loadJson(`api/map?${queryParams()}`),
+            worldResources || Promise.all([d3.json(WORLD_URL), d3.json(COUNTRIES_URL)])
+        ]);
+        mapData = data;
+        worldResources = resources;
+        renderMap();
+    } catch (error) {
+        $('map-status').textContent = `加载失败：${error.message}`;
+        return;
+    }
+    $('map-status').classList.remove('show');
+}
+
+function renderMap() {
+    const svg = d3.select('#map-svg');
+    svg.selectAll('*').remove();
+    const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
+    const [world, countries] = worldResources;
+    const features = topojson.feature(world, world.objects.countries).features;
+    const centers = new Map(countries.filter(c => c.cca2 && c.latlng?.length === 2)
+        .map(c => [c.cca2, [c.latlng[1], c.latlng[0]]]));
+    const names = new Map(countries.map(c => [c.cca2, c.translations?.zho?.common || c.name?.common || c.cca2]));
+    const projection = d3.geoOrthographic().fitExtent([[20, 20], [width - 20, height - 20]], {type:'Sphere'}).clipAngle(90);
+    const initialScale = projection.scale();
+    const path = d3.geoPath(projection);
+    const root = svg.append('g');
+    root.append('path').datum({type:'Sphere'}).attr('class','sphere');
+    root.append('path').datum(d3.geoGraticule10()).attr('class','graticule');
+    root.append('g').selectAll('path').data(features).join('path').attr('class','country');
+    const visible = mapData.hotspots.filter(d => centers.has(d.country_code));
+    const radius = d3.scaleSqrt().domain([1, d3.max(visible, d => d.event_count) || 1]).range([5, 24]);
+    const marks = root.append('g').selectAll('circle').data(visible).join('circle')
+        .attr('class','hotspot').attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+        .attr('r', d => radius(d.event_count))
+        .on('mouseenter', (event, d) => showTooltip('map-tooltip', event, `${names.get(d.country_code)} · ${d.event_count} 个事件`))
+        .on('mouseleave', () => hideTooltip('map-tooltip'))
+        .on('click', (_, d) => showMapDetail(d, names.get(d.country_code)));
+    const labels = root.append('g').selectAll('text').data(visible).join('text')
+        .attr('class','map-label').attr('text-anchor','middle')
+        .text(d => `${names.get(d.country_code)} ${d.event_count}`);
+
+    let zoomScale = 1;
+    function redraw() {
+        root.select('.sphere').attr('d', path);
+        root.select('.graticule').attr('d', path);
+        root.selectAll('.country').attr('d', path);
+        marks.attr('display', d => projection(centers.get(d.country_code)) ? null : 'none')
+            .attr('cx', d => projection(centers.get(d.country_code))?.[0])
+            .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
+        labels.attr('display', d => zoomScale >= 1.7 && projection(centers.get(d.country_code)) ? null : 'none')
+            .attr('x', d => projection(centers.get(d.country_code))?.[0])
+            .attr('y', d => (projection(centers.get(d.country_code))?.[1] || 0) - radius(d.event_count) - 5);
+    }
+    svg.call(d3.drag().on('drag', event => {
+        const rotate = projection.rotate();
+        const k = 75 / projection.scale();
+        projection.rotate([rotate[0] + event.dx * k, rotate[1] - event.dy * k]);
+        redraw();
+    }));
+    svg.call(d3.zoom().scaleExtent([1, 5]).filter(event => event.type === 'wheel')
+        .on('zoom', event => { zoomScale = event.transform.k; projection.scale(initialScale * zoomScale); redraw(); }));
+    redraw();
+
+    const m = mapData.meta;
+    $('map-summary').innerHTML = `<div class="meta">
+        <div class="metric"><b>${m.mapped_event_count}</b>已定位事件</div>
+        <div class="metric"><b>${(m.location_coverage * 100).toFixed(1)}%</b>地点覆盖率</div>
+        <div class="metric"><b>${m.hotspot_count}</b>国家热点</div>
+        <div class="metric"><b>${m.event_count}</b>候选事件</div></div>
+        ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
+}
+
+function showMapDetail(d, countryName) {
+    const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
+    const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
+    const predicates = Object.entries(d.predicates).map(([k,v]) => `<li>${escapeHtml(k)}：${v}</li>`).join('');
+    $('map-detail').innerHTML = `<h2>${escapeHtml(countryName || d.country_code)}</h2>
+        <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
+        <h3>类别</h3><ul class="list">${categories}</ul>
+        <h3>提取地点</h3><ul class="list">${locations}</ul>
+        <h3>谓词</h3><ul class="list">${predicates}</ul>
+        <p class="muted">标记位于国家中心；地点尚未经过城市级地理编码。</p>
+        <div class="legend">${legendHtml()}</div>`;
+}
+
+async function refreshGraph() {
+    $('graph-status').classList.add('show');
+    $('graph-status').textContent = '正在聚合实体关系…';
+    try {
+        graphData = await loadJson(`api/entity-graph?${queryParams({
+            min_support: $('min-support').value,
+            max_nodes: $('max-nodes').value,
+            keep_high_score_singletons: $('keep-singletons').checked
+        })}`);
+        renderGraph();
+    } catch (error) {
+        $('graph-status').textContent = `加载失败：${error.message}`;
+        return;
+    }
+    $('graph-status').classList.remove('show');
+}
+
+function renderGraph() {
+    const svg = d3.select('#graph-svg');
+    svg.selectAll('*').remove();
+    const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
+    const nodes = graphData.nodes.map(d => ({...d}));
+    const edges = graphData.edges.map(d => ({...d}));
+    const defs = svg.append('defs');
+    defs.append('marker').attr('id','arrow').attr('viewBox','0 -5 20 10').attr('refX',18).attr('refY',0)
+        .attr('markerWidth',10).attr('markerHeight',10).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
+        .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
+    const root = svg.append('g');
+    svg.call(d3.zoom().scaleExtent([.25, 4]).on('zoom', event => root.attr('transform', event.transform)));
+    const edgeScale = d3.scaleSqrt().domain([1, d3.max(edges, d => d.support) || 1]).range([1, 6]);
+    const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
+    const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
+        .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
+        .attr('stroke-width', d => edgeScale(d.support)).attr('marker-end', d => d.directed ? 'url(#arrow)' : null)
+        .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.predicate_label} · ${d.support} 个事件`))
+        .on('mouseleave', () => hideTooltip('graph-tooltip'))
+        .on('click', (_,d) => showEdgeDetail(d));
+    const edgeLabels = root.append('g').selectAll('text').data(edges.slice(0, 40)).join('text')
+        .attr('class','node-label').attr('text-anchor','middle')
+        .text(d => `${d.predicate_label} ×${d.support}`);
+    const circles = root.append('g').selectAll('circle').data(nodes).join('circle').attr('class','node')
+        .attr('r', d => radius(d.importance)).attr('fill', d => entityColor(d.type))
+        .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.name} · ${d.event_count} 个事件`))
+        .on('mouseleave', () => hideTooltip('graph-tooltip')).on('click', (_,d) => showNodeDetail(d));
+    const labels = root.append('g').selectAll('text').data(nodes).join('text').attr('class','node-label')
+        .attr('text-anchor','middle').attr('dy', d => radius(d.importance) + 13).text(d => d.name.length > 18 ? d.name.slice(0,17) + '…' : d.name);
+    const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(edges).id(d => d.id).distance(d => 80 + Math.min(80, 160 / d.support)).strength(.35))
+        .force('charge', d3.forceManyBody().strength(-240)).force('center', d3.forceCenter(width/2, height/2))
+        .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 22));
+    circles.call(d3.drag().on('start', (event,d) => { if (!event.active) simulation.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
+        .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
+        .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
+    simulation.on('tick', () => {
+        lines.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+        edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
+        circles.attr('cx',d=>d.x).attr('cy',d=>d.y);
+        labels.attr('x',d=>d.x).attr('y',d=>d.y);
+    });
+    const m = graphData.meta;
+    $('graph-summary').innerHTML = `<div class="meta">
+        <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
+        <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
+        <div class="warning">当前按名称、类型和国家临时归一化，不代表已完成实体消歧。</div>`;
+}
+
+function entityColor(type) {
+    const colors = {person:'#7c3aed', organization:'#2563eb', geopolitical_entity:'#dc3545', location:'#16a085', facility:'#e87924'};
+    return colors[type] || '#64748b';
+}
+function showNodeDetail(d) {
+    $('graph-detail').innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
+        <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
+        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>`;
+}
+function showEdgeDetail(d) {
+    $('graph-detail').innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
+        <div class="meta"><div class="metric"><b>${d.support}</b>独立事件</div><div class="metric"><b>${d.article_count}</b>文章</div>
+        <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>`;
+}
+function showTooltip(id, event, html) {
+    const tip = $(id), box = tip.parentElement.getBoundingClientRect();
+    tip.innerHTML = escapeHtml(html); tip.style.display = 'block';
+    tip.style.left = `${event.clientX - box.left + 12}px`; tip.style.top = `${event.clientY - box.top + 12}px`;
+}
+function hideTooltip(id) { $(id).style.display = 'none'; }
+
+document.querySelectorAll('.tabs button').forEach(button => button.addEventListener('click', () => {
+    activeView = button.dataset.view;
+    document.querySelectorAll('.tabs button').forEach(v => v.setAttribute('aria-selected', String(v === button)));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `${activeView}-view`));
+    if (activeView === 'graph' && !graphData) refreshGraph();
+}));
+$('apply').addEventListener('click', () => activeView === 'map' ? refreshMap() : refreshGraph());
+$('min-support').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('max-nodes').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('keep-singletons').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
+const requestedView = new URLSearchParams(window.location.search).get('view');
+if (requestedView === 'graph') {
+    document.querySelector('.tabs button[data-view="graph"]').click();
+} else {
+    refreshMap();
+}
+</script>
+</body>
+</html>

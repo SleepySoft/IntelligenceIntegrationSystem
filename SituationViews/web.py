@@ -1,0 +1,135 @@
+"""实验性态势视图的可拆卸 Flask 挂载层。"""
+
+from __future__ import annotations
+
+import datetime as dt
+from pathlib import Path
+
+from flask import Blueprint, jsonify, render_template, request
+
+from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
+from .engine import CATEGORY_LABELS, SituationViewEngine, ViewQuery
+
+
+class SituationViewsService:
+    def __init__(self, subsystem_registry, registry=None):
+        self.subsystem_registry = subsystem_registry
+        self.registry = registry or DEFAULT_EVENT_REGISTRY
+        self._engines = {}
+
+    def mount_to_app(self, app, *, wrapper=None, url_prefix="/experimental/situation"):
+        template_folder = str(Path(__file__).with_name("templates"))
+        bp = Blueprint("situation_views", __name__, template_folder=template_folder)
+        protect = wrapper or (lambda func: func)
+
+        @bp.get("/")
+        @protect
+        def index():
+            return render_template(
+                "situation_views.html",
+                categories=CATEGORY_LABELS,
+                subsystems=self.subsystem_registry.describe(),
+            )
+
+        @bp.get("/api/map")
+        @protect
+        def map_api():
+            try:
+                engine, query = self._request_context()
+                return jsonify(engine.map_view(query))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-graph")
+        @protect
+        def entity_graph_api():
+            try:
+                engine, query = self._request_context()
+                min_support = self._bounded_int("min_support", 2, 1, 50)
+                max_nodes = self._bounded_int("max_nodes", 80, 10, 300)
+                max_edges = self._bounded_int("max_edges", 240, 10, 1000)
+                keep_singletons = self._bool_arg("keep_high_score_singletons", True)
+                return jsonify(engine.entity_graph(
+                    query,
+                    min_support=min_support,
+                    max_nodes=max_nodes,
+                    max_edges=max_edges,
+                    keep_high_score_singletons=keep_singletons,
+                ))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        app.register_blueprint(bp, url_prefix=url_prefix)
+
+    def _request_context(self):
+        subsystem = request.args.get("subsystem")
+        ctx = self.subsystem_registry.resolve(subsystem)
+        if ctx is None:
+            raise ValueError(f"未知子系统: {subsystem}")
+        now = dt.datetime.now(dt.timezone.utc)
+        start = self._datetime_arg("start", now - dt.timedelta(days=7))
+        end = self._datetime_arg("end", now)
+        if start >= end:
+            raise ValueError("start 必须早于 end")
+        min_score = self._bounded_float("min_score", 6.0, 0, 10)
+        category = str(request.args.get("category") or "").strip() or None
+        if category and category not in CATEGORY_LABELS:
+            raise ValueError(f"未知事件类别: {category}")
+        query = ViewQuery(
+            start=start,
+            end=end,
+            min_score=min_score,
+            category=category,
+            primary_only=self._bool_arg("primary_only", True),
+            max_articles=self._bounded_int("max_articles", 5000, 100, 20000),
+        )
+        key = ctx.name
+        engine = self._engines.get(key)
+        if engine is None:
+            engine = SituationViewEngine(
+                ctx.event_v4_intelligence_collection,
+                ctx.event_v4_event_collection,
+                self.registry,
+            )
+            self._engines[key] = engine
+        return engine, query
+
+    @staticmethod
+    def _datetime_arg(name, default):
+        raw = str(request.args.get(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            value = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{name} 不是有效 ISO 时间") from exc
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.timezone.utc)
+        return value.astimezone(dt.timezone.utc)
+
+    @staticmethod
+    def _bounded_int(name, default, minimum, maximum):
+        try:
+            value = int(request.args.get(name, default))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} 必须是整数") from exc
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{name} 必须在 {minimum} 到 {maximum} 之间")
+        return value
+
+    @staticmethod
+    def _bounded_float(name, default, minimum, maximum):
+        try:
+            value = float(request.args.get(name, default))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} 必须是数字") from exc
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{name} 必须在 {minimum} 到 {maximum} 之间")
+        return value
+
+    @staticmethod
+    def _bool_arg(name, default):
+        raw = request.args.get(name)
+        if raw is None:
+            return default
+        return str(raw).strip().lower() not in {"0", "false", "no", "off"}
