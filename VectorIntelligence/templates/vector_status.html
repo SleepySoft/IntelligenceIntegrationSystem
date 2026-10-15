@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vector Intelligence - IIS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+    <h1 class="h3 mb-3">向量情报子系统</h1>
+    {% if vector_ready %}
+    <p><span class="badge bg-success">READY</span> 向量索引与检索服务已就绪。</p>
+    {% else %}
+    <p><span class="badge bg-warning text-dark">NOT READY</span> VectorDB 暂不可用，子系统后台将持续重试；主站采集、归档与普通搜索不受影响。</p>
+    {% endif %}
+    <ul class="list-group" style="max-width: 480px;">
+        <li class="list-group-item"><a href="{{ vector_base }}/search">向量搜索</a></li>
+        <li class="list-group-item"><a href="{{ vector_base }}/clusters">聚合情报</a></li>
+        <li class="list-group-item"><a href="{{ vector_base }}/graph">动态图谱</a></li>
+        <li class="list-group-item"><a href="{{ vector_base }}/api/status">API 状态（JSON）</a></li>
+    </ul>
+</body>
+</html>

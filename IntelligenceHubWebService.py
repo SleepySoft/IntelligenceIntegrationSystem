@@ -193,6 +193,10 @@ class IntelligenceHubWebService:
         )
         self._perf_logger: PerformanceLogger = get_performance_logger()
 
+        # 向量搜索 handler：由向量子系统（VectorIntelligence）挂载时注入；
+        # 未注入时走下方历史 fallback 实现（VectorDB 未配置时返回空结果）。
+        self._vector_search_handler = None
+
         # ---------------- RPC Service ----------------
 
         self.rpc_service = RPCService(
@@ -248,6 +252,10 @@ class IntelligenceHubWebService:
             return obj.isoformat()
         return obj
 
+    def set_vector_search_handler(self, handler) -> None:
+        """注入向量搜索实现（由 VectorIntelligence.iis_integration.mount_to_iis 调用）。"""
+        self._vector_search_handler = handler
+
     def _intelligence_detail_json(self, intelligence_uuid: str,
                                   subsystem: Optional[str] = None):
         """返回可 JSON 序列化的完整情报详情，包括 Mongo 嵌套 BSON 值。"""
@@ -269,8 +277,7 @@ class IntelligenceHubWebService:
             return jsonify({"error": "Server error"}), 500
 
     # ============================================ Subsystem Query Helpers ============================================
-    # 说明：根路径（默认子系统）的查询逻辑保留在 register_routers 内（历史实现，行为不变）；
-    # 以下方法供具名子系统 Blueprint 复用，二者保持逻辑一致。
+    # 说明：根路径（默认子系统）与具名子系统 Blueprint 共用以下同一套查询实现。
 
     def _get_client_ip(self) -> str:
         """从请求头中提取真实客户端 IP。"""
@@ -430,6 +437,9 @@ class IntelligenceHubWebService:
 
     def _do_vector_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
         """走向量召回 + 内存分页（向量检索当前仅默认子系统启用）"""
+        if self._vector_search_handler is not None:
+            return self._vector_search_handler(p, subsystem_name=subsystem_name)
+        # ---- 历史 fallback：向量子系统未挂载时使用（VectorDB 未配置则返回空） ----
         default_name = self.intelligence_hub.default_subsystem_name
         if subsystem_name and subsystem_name != default_name:
             raise ValueError("\u5411\u91cf\u68c0\u7d22\u6682\u4ec5\u652f\u6301\u9ed8\u8ba4\u5b50\u7cfb\u7edf\u3002")
@@ -501,6 +511,15 @@ class IntelligenceHubWebService:
 
     def _query_api(self, subsystem_name: Optional[str] = None) -> Any:
         """子系统情报查询接口（具名子系统与默认子系统共用）。"""
+        try:
+            params = self._get_combined_params()
+        except Exception as e:
+            logger.exception("intelligences_query_api param parsing error")
+            return jsonify({'error': str(e)}), 500
+        return self._query_api_with_params(params, subsystem_name)
+
+    def _query_api_with_params(self, params: Dict[str, Any], subsystem_name: Optional[str] = None) -> Any:
+        """在已解析参数上执行查询流程（供 /vector/ Blueprint 等外部入口复用）。"""
         client_ip = self._get_client_ip()
         is_logged_in = bool(session.get('logged_in', False))
         is_public = not is_logged_in
@@ -512,7 +531,6 @@ class IntelligenceHubWebService:
         }
 
         try:
-            params = self._get_combined_params()
             perf_extra['search_mode'] = params.get('search_mode', 'mongo')
             perf_extra['page'] = params.get('page', 1)
             perf_extra['per_page'] = params.get('per_page', 10)
@@ -1022,359 +1040,10 @@ class IntelligenceHubWebService:
 
         # ----------------------------------------------------------------------------------------
 
-        def _get_client_ip() -> str:
-            """从请求头中提取真实客户端 IP。"""
-            return (
-                request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
-                or request.headers.get('X-Real-IP', '').strip()
-                or request.remote_addr
-                or 'unknown'
-            )
-
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         def intelligences_query_api():
-            client_ip = _get_client_ip()
-            is_logged_in = bool(session.get('logged_in', False))
-            is_public = not is_logged_in
-            perf_extra = {
-                'client_ip': client_ip,
-                'is_public': is_public,
-                'path': '/intelligences/query',
-            }
-
-            try:
-                # 1. 获取参数
-                params = _get_combined_params()
-                perf_extra['search_mode'] = params.get('search_mode', 'mongo')
-                perf_extra['page'] = params.get('page', 1)
-                perf_extra['per_page'] = params.get('per_page', 10)
-
-                # 2. 应用未登录用户限制
-                if is_public:
-                    limit_err = _apply_public_search_limits(params, client_ip)
-                    if limit_err:
-                        self._perf_logger.record(
-                            'search_query_rejected',
-                            status='rejected',
-                            error=limit_err,
-                            extra=perf_extra,
-                        )
-                        return jsonify({'error': limit_err}), 429
-
-                # 3. 全局向量搜索并发控制（仅对未登录用户生效）
-                sem_acquired = False
-                if is_public and params['search_mode'].startswith('vector'):
-                    if not self._vector_search_concurrency.acquire(timeout=0):
-                        self._perf_logger.record(
-                            'search_query_rejected',
-                            status='rejected',
-                            error='Too many concurrent vector searches, please retry later.',
-                            extra=perf_extra,
-                        )
-                        return jsonify({
-                            'error': '服务器当前向量搜索压力过大，请稍后再试。',
-                            'retry_after': 5,
-                        }), 503
-                    sem_acquired = True
-
-                try:
-                    # 4. 执行业务逻辑并记录性能
-                    with self._perf_logger.timed('search_query', **perf_extra):
-                        data = _perform_search_logic(params)
-
-                    perf_extra['result_count'] = len(data.get('results', []))
-                    perf_extra['total'] = data.get('total', 0)
-                    return jsonify(data)
-
-                finally:
-                    if sem_acquired:
-                        self._vector_search_concurrency.release()
-
-            except Exception as e:
-                logger.exception("intelligences_query_api error")
-                self._perf_logger.record(
-                    'search_query',
-                    status='error',
-                    error=str(e),
-                    extra=perf_extra,
-                )
-                return jsonify({'error': str(e)}), 500
-
-        def _apply_public_search_limits(p: Dict[str, Any], client_ip: str) -> Optional[str]:
-            """
-            对未登录用户应用搜索限制。返回错误信息或 None。
-
-            游客模式统一按内容主时间搜索，忽略归档时间，避免双重过滤。
-            """
-            limits = self.public_search_limits
-            mode = p.get('search_mode', 'mongo')
-
-            # 速率限制（仅向量搜索）
-            if mode.startswith('vector'):
-                if not self._vector_search_rate_limiter.is_allowed(client_ip):
-                    return (
-                        f"未登录用户向量搜索过于频繁，"
-                        f"每分钟最多 {limits.get('requests_per_minute', 10)} 次，请稍后再试。"
-                    )
-
-            p['archive_start_time'] = ''
-            p['archive_end_time'] = ''
-
-            # Mongo 模式限制
-            if mode == 'mongo':
-                max_per_page = limits.get('mongo_max_per_page', 20)
-                if p.get('per_page', 10) > max_per_page:
-                    p['per_page'] = max_per_page
-
-                max_page = limits.get('mongo_max_page', 5)
-                if p.get('page', 1) > max_page:
-                    return f"未登录用户普通搜索仅支持前 {max_page} 页，请登录后查看更多。"
-
-                # 未登录用户强制最近 N 天内容主时间
-                if not p.get('start_time') or not p.get('end_time'):
-                    window_days = limits.get('mongo_default_window_days', 30)
-                    now = get_aware_time()
-                    start = now - datetime.timedelta(days=window_days)
-                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
-
-            # 向量模式限制
-            if mode.startswith('vector'):
-                # 禁止相似推荐
-                if mode == 'vector_similar' and not limits.get('vector_allow_similar', False):
-                    return "未登录用户暂不支持相似推荐，请登录后使用。"
-
-                # 禁止全文库
-                if p.get('in_fulltext') and not limits.get('vector_allow_fulltext', False):
-                    p['in_fulltext'] = False
-                    p['in_summary'] = True
-
-                # 每页/最大召回限制
-                max_per_page = limits.get('vector_max_per_page', 10)
-                max_top_n = limits.get('vector_max_top_n', 20)
-                max_page = limits.get('vector_max_page', 2)
-
-                if p.get('per_page', 10) > max_per_page:
-                    p['per_page'] = max_per_page
-                if p.get('page', 1) > max_page:
-                    return f"未登录用户向量搜索仅支持前 {max_page} 页，请登录后查看更多。"
-
-                # 强制最小相似度阈值
-                min_threshold = limits.get('vector_min_score_threshold', 0.6)
-                if p.get('score_threshold_min', 0) < min_threshold:
-                    p['score_threshold_min'] = min_threshold
-
-                # 限制召回总量
-                requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
-                p['_effective_top_n'] = min(requested_top_n, max_top_n)
-
-                # 未登录用户强制最近 N 天内容主时间
-                if not p.get('start_time') or not p.get('end_time'):
-                    window_days = limits.get('vector_default_window_days', 30)
-                    now = get_aware_time()
-                    start = now - datetime.timedelta(days=window_days)
-                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
-
-            return None
-
-        def _get_combined_params() -> Dict[str, Any]:
-            """
-            统一参数解析与清洗器。
-            优先级：URL Query (GET) > JSON Body > Form Data。
-
-            Returns:
-                Dict[str, Any]: 包含清洗和类型转换后的参数字典。
-
-            Param Details:
-                -------------------- 模式选择 (Mode) --------------------
-                search_mode (str): 搜索策略，默认为 'mongo'。
-                    - 'mongo': [普通搜索] 仅使用 MongoDB 字段精准/模糊筛选。
-                    - 'vector_text': [文本向量] 根据 'keywords' 进行自然语言语义搜索。
-                    - 'vector_similar': [相似推荐] 根据 'reference' (UUID) 寻找内容相似的文章。
-
-                --------------------- 通用 (General) ---------------------
-                page (int): 页码，默认为 1。
-                per_page (int): 每页数量，默认为 10 (最大限制 100)。
-                keywords (str): 搜索文本/关键词。
-                    - Mongo模式: 视底层实现用于文本匹配。
-                    - Vector模式: 作为语义搜索的 Embedding 输入。
-                start_time (str): 时间下限 (ISO 8601 格式字符串)。
-                end_time (str): 时间上限 (ISO 8601 格式字符串)。
-                    - Mongo模式: 对应数据库中的 period 或 archived_time。
-                    - Vector模式: 对应向量库 metadata 中的 timestamp。
-                threshold (float): 通用评分/过滤阈值，默认为 0。
-
-                --------------------- Mongo 专属 ------------------------
-                peoples (List[str]): 人物实体列表 (逗号分隔自动转列表)。
-                locations (List[str]): 地点实体列表。
-                organizations (List[str]): 组织实体列表。
-                    * 逻辑说明: 单字段内为 OR 关系 (包含任一即匹配)，字段间为 AND 关系。
-
-                --------------------- Vector 专属 -----------------------
-                in_summary (bool): 是否在摘要库中召回，默认为 True。
-                in_fulltext (bool): 是否在全文库中召回，默认为 False。
-                score_threshold (float): 向量相似度截断阈值，默认为 0.5。
-                reference (str): 目标文章 UUID。仅在 'vector_similar' 模式下必填。
-                """
-            combined = {}
-
-            # 1. 基础数据源获取
-            # 如果是 POST，尝试获取 Body
-            if request.method == 'POST':
-                json_data = request.get_json(silent=True)
-                if json_data:
-                    combined.update(json_data)
-                else:
-                    combined.update(request.form)
-
-            # 2. URL 参数覆盖 (优先级最高，保证分享链接的有效性)
-            # request.args 是 ImmutableMultiDict，转为 dict
-            combined.update(request.args.to_dict())
-
-            def _split(v: Any) -> List[str]:
-                if not v: return []
-                if isinstance(v, list): return v
-                return [x.strip() for x in v.split(',') if x.strip()]
-
-            # 3. 参数构造
-            # 兼容旧版 threshold / score_threshold
-            threshold_min = float(combined.get('threshold_min', combined.get('threshold', 0)))
-            threshold_max = float(combined.get('threshold_max', 10))
-            score_threshold_min = float(combined.get('score_threshold_min', combined.get('score_threshold', VECTOR_DEFAULT_SCORE_THRESHOLD)))
-            score_threshold_max = float(combined.get('score_threshold_max', 1.0))
-
-            params = {
-                'search_mode': combined.get('search_mode', 'mongo'),
-                'sort_by': ('content_time' if combined.get('sort_by') == 'content_time'
-                            else 'archived_at'),
-                'page': int(combined.get('page', 1)),
-                'per_page': int(combined.get('per_page', 10)),
-                # 保持原始字符串，在具体逻辑中再转 datetime，避免在此处 crash
-                'start_time': combined.get('start_time', ''),
-                'end_time': combined.get('end_time', ''),
-                'archive_start_time': combined.get('archive_start_time', ''),
-                'archive_end_time': combined.get('archive_end_time', ''),
-                'keywords': combined.get('keywords', '').strip(),  # 去除首尾空格
-
-                # Mongo 筛选字段
-                'peoples': _split(combined.get('peoples', '')),
-                'locations': _split(combined.get('locations', '')),
-                'organizations': _split(combined.get('organizations', '')),
-                'informant_domains': _split(combined.get('informant_domains', '')),
-                'threshold_min': threshold_min,
-                'threshold_max': threshold_max,
-
-                # Vector 字段
-                'in_summary': to_bool(combined.get('in_summary'), default=True),
-                'in_fulltext': to_bool(combined.get('in_fulltext'), default=False),
-                'score_threshold_min': score_threshold_min,
-                'score_threshold_max': score_threshold_max,
-                'reference': combined.get('reference', ''),
-            }
-
-            # 限制每页最大数量，防止恶意攻击
-            if params['per_page'] > 100:
-                params['per_page'] = 100
-
-            return params
-
-        def _perform_search_logic(params: Dict[str, Any]) -> Dict[str, Any]:
-            mode = params['search_mode']
-
-            if mode.startswith('vector'):
-                results, total = _do_vector_search(params)
-            else:
-                results, total = _do_mongo_search(params)
-
-            if not results:
-                return {'results': [], 'total': 0}
-            else:
-                summary_result = exclude_raw_data(results)
-                return {'results': summary_result, 'total': total}
-
-        def _do_mongo_search(p: dict) -> Tuple[List[dict], int]:
-            """走 Mongo 过滤"""
-            query = {}
-            if p['start_time'] and p['end_time']:
-                query['period'] = (
-                    datetime.datetime.fromisoformat(p['start_time']),
-                    datetime.datetime.fromisoformat(p['end_time'])
-                )
-            if p['archive_start_time'] and p['archive_end_time']:
-                query['archive_period'] = (
-                    datetime.datetime.fromisoformat(p['archive_start_time']),
-                    datetime.datetime.fromisoformat(p['archive_end_time'])
-                )
-            for field in ('locations', 'peoples', 'organizations', 'keywords', 'informant_domains'):
-                if p[field]:
-                    query[field] = p[field]
-
-            if p.get('threshold_min', 0) > 0:
-                query['threshold'] = p['threshold_min']
-            if p.get('threshold_max', 10) < 10:
-                query['threshold_max'] = p['threshold_max']
-
-            skip = (p['page'] - 1) * p['per_page']
-            return self.intelligence_hub.query_intelligence(
-                skip=skip, limit=p['per_page'], sort_by=p['sort_by'], **query)
-
-        def _do_vector_search(p: dict) -> Tuple[List[dict], int]:
-            """走向量召回 + 内存分页"""
-
-            text = ''
-            if p['search_mode'] == 'vector_text':
-                text = p.get('keywords', '')
-            elif p['search_mode'] == 'vector_similar':
-                if ref_uuids := p.get('reference', ''):
-                    intelligence = self.intelligence_hub.get_intelligence(ref_uuids)
-                    if intelligence:
-                        text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
-            if not text:
-                return [], 0
-
-            top_n = p.get('_effective_top_n') or min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
-            vector_kwargs = {
-                'text': text,
-                'in_summary': p['in_summary'],
-                'in_fulltext': p['in_fulltext'],
-                'top_n': top_n,
-                'score_threshold': p.get('score_threshold_min', VECTOR_DEFAULT_SCORE_THRESHOLD),
-                'score_threshold_max': p.get('score_threshold_max', 1.0),
-            }
-
-            if p['start_time'] and p['end_time']:
-                vector_kwargs['event_period'] = (
-                    datetime.datetime.fromisoformat(p['start_time']),
-                    datetime.datetime.fromisoformat(p['end_time'])
-                )
-            if p['archive_start_time'] and p['archive_end_time']:
-                vector_kwargs['archive_period'] = (
-                    datetime.datetime.fromisoformat(p['archive_start_time']),
-                    datetime.datetime.fromisoformat(p['archive_end_time'])
-                )
-
-            raw: List[Tuple[str, float, dict]] = self.intelligence_hub.vector_search_intelligence(**vector_kwargs)
-
-            # 分页
-            start = (p['page'] - 1) * p['per_page']
-            end = start + p['per_page']
-            page_items = raw[start:end]
-
-            uuids = []
-            score_map = {}
-            for doc_id, score, _ in page_items:
-                uuids.append(doc_id)
-                score_map[doc_id] = score
-            articles = self.intelligence_hub.get_intelligence(uuids)
-
-            for article in articles:
-                doc_id = str(article.get('UUID') or '')
-                article['vector_score'] = score_map.get(doc_id, 0.0)
-
-            articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
-
-            return articles, len(raw)
+            # 根路径（默认子系统）与具名子系统 Blueprint 共用同一实现（见 _query_api）。
+            return self._query_api(None)
 
         # --------------------------------------------------------------------------------------------
 

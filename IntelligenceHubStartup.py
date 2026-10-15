@@ -15,12 +15,11 @@ from GlobalConfig import *
 from ServiceComponent.HubApplication import HubApplication
 from ServiceComponent.adapters import (
     EventV4PipelinePorts, IISAsyncTranslationExtension,
-    IISUnarchivedReplayExtension, IISVectorExtension)
-from ServiceComponent.runtime import DeferredServicePlugin, ScheduledMaintenancePlugin, RuntimeControlState
+    IISUnarchivedReplayExtension)
+from ServiceComponent.runtime import ScheduledMaintenancePlugin, RuntimeControlState
 from ServiceComponent.runtime.status import HubStatusLogGate, format_hub_status
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
-from VectorDB.VectorDBClient import VectorDBClient
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
@@ -32,8 +31,8 @@ from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appe
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
 from AIClientCenter.core.observation import CallObservationSQLiteLogger
-from MyPythonUtility.proc_utils import find_processes, kill_processes
-from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
+from MyPythonUtility.proc_utils import find_processes
+from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager, exclude_raw_data
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
 from Tools.PerformanceLogger import setup_performance_logging, PERF_LOGGER_NAME
 
@@ -122,48 +121,6 @@ def build_ai_client_manager(config: EasyConfig):
         client_manager.set_group_limit(group, limit)
 
     return client_manager
-
-
-def check_start_vector_db_service(config: EasyConfig, force_restart: bool = False):
-    vector_enabled = config.get('intelligence_hub.vectordb.enabled', False)
-    vector_db_port = config.get('intelligence_hub.vectordb.vector_db_port', 8001)
-    vector_db_path = config.get('intelligence_hub.vectordb.vector_db_path', '')
-    embedding_model_name = config.get('intelligence_hub.vectordb.embedding_model_name', '')
-    vector_stores = config.get('intelligence_hub.vectordb.stores', [])
-
-    vector_db_client = None
-    if vector_enabled and vector_db_path and embedding_model_name:
-        vector_db_path_abs = vector_db_path \
-            if os.path.isabs(vector_db_path) \
-            else os.path.join(DATA_PATH, vector_db_path)
-
-        need_launch = False
-        pids = find_processes('VectorDBBService.py')
-        if pids:
-            if force_restart:
-                need_launch = True
-                killed_count = kill_processes(pids)
-                logger.info(f"Found running vector db service {', '.join(str(pids))}, killed {killed_count}.")
-            else:
-                logger.info(f"Found running vector db service {', '.join(str(pids))}, ignore.")
-        else:
-            need_launch = True
-
-        if need_launch:
-            # vector_db_service_path_abs = os.path.join(self_path, 'VectorDB', 'VectorDBBService.py')
-            # command_line = f"python "\
-            #                f"{vector_db_service_path_abs} "\
-            #                f"--host 127.0.0.1 "\
-            #                f"--port {str(vector_db_port)} "\
-            #                f"--db-path {vector_db_path_abs} "\
-            #                f"--model {embedding_model_name}"
-            # logger.info(f"Starting vector DB service, command: `{command_line}`")
-            # start_program(command_line, background=True, no_window=False)
-            pass
-
-        vector_db_client = VectorDBClient(f"http://localhost:{str(vector_db_port)}")
-
-    return vector_db_client
 
 
 def start_intelligence_hub_service(config) -> Tuple[HubApplication, IntelligenceHubWebService, AIClientManager]:
@@ -261,7 +218,6 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     )
     extensions.append(manual_debug_service)
     services["manual_debug_analysis"] = manual_debug_service
-    vector_search = None
     if config.get('intelligence_hub.replay_unarchived', True):
         replay_extension = IISUnarchivedReplayExtension(subsystem_registry)
         extensions.append(replay_extension)
@@ -292,61 +248,21 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         extensions.append(translation_extension)
         services["translation"] = translation_extension
 
-    vector_db_client = check_start_vector_db_service(config)
-    aggregation_extension = None
-    graph_extension = None
-    if vector_db_client is not None:
-        from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
-        from ServiceComponent.event_v4_archive import ArchivedDataV4
-
-        def event_v4_record_factory(payload):
-            document = dict(payload)
-            document.pop("_id", None)
-            document.pop("events", None)
-            document.pop("entities", None)
-            return ArchivedDataV4.model_validate(document)
-
-        vector_extension = IISVectorExtension(
-            vector_db_client,
-            default_subsystem=subsystem_registry.default_name,
-            engine_factory=IntelligenceVectorDBEngine,
-            record_factory=event_v4_record_factory,
-            skip_archive_predicate=(translation_extension.should_defer_index
-                                    if translation_extension else None),
-        )
-        extensions.append(vector_extension)
-        services["vector"] = vector_extension
-        vector_search = vector_extension.search
-
-        from ServiceComponent.IntelligenceAggregationEngine import (
-            IntelligenceAggregationEngine, generate_aggregation_plan)
-        from ServiceComponent.DynamicGraphEngine import DynamicGraphEngine
-
-        def create_aggregation_service():
-            service = IntelligenceAggregationEngine(
-                vector_db_client, generate_aggregation_plan(profile="agglomerative_strict"))
-            service.ensure_plan(overwrite=True)
-            return service
-
-        aggregation_extension = DeferredServicePlugin(
-            lambda: vector_extension.ready,
-            create_aggregation_service,
-            name="summary-aggregation",
-            on_ready=lambda _: run_aggregation(),
-        )
-        graph_extension = DeferredServicePlugin(
-            lambda: vector_extension.ready,
-            lambda: DynamicGraphEngine(
-                mongo_db=subsystem_registry.default().event_v4_intelligence_storage,
-                query_engine=subsystem_registry.default().event_v4_query_engine,
-                vector_engine=vector_extension.summary_engine,
-                ai_client=None,
-            ),
-            name="dynamic-graph",
-        )
-        extensions.extend((aggregation_extension, graph_extension))
-        services["aggregation"] = aggregation_extension
-        services["dynamic_graph"] = graph_extension
+    # ------------------------- 向量子系统（可拆卸装配） -------------------------
+    # 组合根只调用装配函数：VectorDB 客户端、索引扩展、聚合/图谱延迟服务、
+    # 集合创建与就绪重试均封装在 VectorIntelligence 包内。装配失败不影响主链路。
+    vector_search = None
+    vector_handles = None
+    try:
+        from VectorIntelligence.iis_integration import create_vector_intelligence
+        vector_handles = create_vector_intelligence(
+            config, subsystem_registry=subsystem_registry)
+    except Exception:
+        logger.exception("向量子系统装配失败，IIS 主服务继续运行（向量能力禁用）。")
+    if vector_handles is not None:
+        extensions.extend(vector_handles.plugins)
+        services.update(vector_handles.services)
+        vector_search = vector_handles.search
 
     # 实体统计、导出和聚合触发均为外围维护能力，不参与主处理链。
     from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
@@ -384,19 +300,9 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 time_field="created_at", add_timestamp=True)
 
     def run_aggregation():
-        if not aggregation_extension:
-            return
-        service = aggregation_extension.service
-        if service is None:
-            return
-        query_engine = subsystem_registry.default().event_v4_query_engine
-        latest = query_engine.get_latest_archive_timestamp()
-        period = None
-        if latest and datetime.datetime.now().timestamp() - latest >= 24 * 3600:
-            period = (latest - 24 * 3600, latest)
-        service.trigger_offline(
-            overrides=None, time_range=period,
-            doc_fetcher=lambda identifiers: query_engine.get_intelligence(identifiers, light_weight=True))
+        # 聚合调度逻辑（24h 窗口判定等）在向量子系统内部，此处仅转发。
+        if vector_handles is not None:
+            vector_handles.run_aggregation()
 
     def build_entity_frequency():
         end = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -467,6 +373,23 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     )
 
     hub_service.register_routers(wsgi_app)
+
+    # 向量子系统的 /vector/ Blueprint（页面与 API）。仅当向量子系统装配成功时挂载；
+    # 挂载同时把向量搜索的单一实现注入 Core Web 委托点，旧搜索入口行为不变。
+    if vector_handles is not None:
+        try:
+            from VectorIntelligence.iis_integration import mount_to_iis as mount_vector_intelligence
+            mount_vector_intelligence(
+                wsgi_app,
+                config=config,
+                hub=hub,
+                hub_service=hub_service,
+                wrapper=hub_service.access_manager.login_required,
+                doc_cleaner=exclude_raw_data,
+                handles=vector_handles,
+            )
+        except Exception:
+            logger.exception("向量子系统 Web 挂载失败，IIS 主服务继续运行。")
 
     # 态势视图是只读的可拆卸 Web 扩展：复用子系统注册表，但不进入 Hub 事件链。
     # 模块内部会隔离地名解析或路由初始化失败，避免影响 IIS 主服务启动。

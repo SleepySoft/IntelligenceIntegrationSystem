@@ -73,11 +73,20 @@
   - `event_v4_archive.py`：`ArchivedDataV4`、APPENDIX 构造与归档投影
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
   - `EventV4QueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
-  - `IntelligenceVectorDBEngine.py`：向量检索封装
-  - `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py`：情报聚合与态势图谱推演
+  - `IntelligenceVectorDBEngine.py` / `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py` / `adapters/iis_vector.py`：**兼容壳**，实现已迁至 `VectorIntelligence/`，仅 re-export
+  - `text_language.py`：语言判定启发式（`needs_translation`，翻译/向量等扩展共享）
   - `IntelligenceScoringEngine.py`：评分引擎
   - `UserManager.py`：用户认证管理（SQLite）
   - `PostManager.py` / `RSSPublisher.py`：文章发布与 RSS 生成
+
+- **`VectorIntelligence/`** — 向量情报子系统（低耦合，可整体禁用）
+  - `extension.py`：向量索引 Hub 扩展（订阅 `archive.completed` / `extension.translation.completed`，自有队列与后台线程，翻译等待基于 `text_language.needs_translation` 自判）
+  - `vector_engine.py` / `aggregation.py` / `graph.py`：向量检索、情报聚合、动态图谱引擎
+  - `search.py`：向量搜索业务（召回→Mongo 回填→`vector_score`→分页）；经 `IntelligenceHubWebService.set_vector_search_handler` 注入 Core，旧 `/intelligences/query?search_mode=vector_*` 入口委托同一实现
+  - `web.py`：`/vector/` Blueprint（`/vector/search`、`/vector/clusters`、`/vector/graph` 及 `/vector/api/*`），模板/静态资源在包内
+  - `iis_integration.py`：唯一装配入口（`create_vector_intelligence` + `mount_to_iis`），由组合根在 try/except 内调用
+  - `config.py`：集合名/chunk 参数单一事实源与 `intelligence_hub.vectordb` 配置读取
+  - 详细设计与迁移计划见 `doc/vector_intelligence_subsystem_refactor.md` 与 `doc/20261015_vector_subsystem_coupling_audit_and_plan.md`
 
 - **`VectorDB/`** — 向量数据库服务
   - `VectorDBBService.py`：独立 Flask 服务，提供向量存储、检索、聚类 API

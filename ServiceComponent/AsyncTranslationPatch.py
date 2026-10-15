@@ -14,6 +14,8 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_TRANSLATED_REVISION,
     appendix_path,
 )
+# 语言判定启发式已提取到中立模块；此处 re-export 保持既有 import 兼容。
+from ServiceComponent.text_language import looks_non_zh, needs_translation
 import datetime
 import itertools
 import threading
@@ -26,9 +28,6 @@ from AIClientCenter.core.manager import AIClientManager
 logger = logging.getLogger(__name__)
 
 DEFAULT_TRANSLATED_REV = "tr_patch_20260311"
-
-_CJK_RE = re.compile(r'[\u4e00-\u9fff]')
-_ASCII_RE = re.compile(r'[A-Za-z]')
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 _JSON_OBJ_RE = re.compile(r"(\{.*\})", re.DOTALL)
@@ -139,33 +138,6 @@ def _is_retryable_ai_error(resp: Dict[str, Any]) -> bool:
     if resp.get("api_error_code") == "HTTP_400":
         return False
     return True
-
-
-def _ratio(pat, s: str) -> float:
-    if not s:
-        return 0.0
-    return len(pat.findall(s)) / max(1, len(s))
-
-def looks_non_zh(s: Optional[str], cjk_th=0.18, ascii_th=0.12) -> bool:
-    """
-    Heuristic, fast and local.
-    """
-    if not s:
-        return False
-    t = str(s).strip()
-    if len(t) < 12:
-        return (_ratio(_CJK_RE, t) < 0.05) and (_ratio(_ASCII_RE, t) > 0.2)
-    return (_ratio(_CJK_RE, t) < cjk_th) and (_ratio(_ASCII_RE, t) > ascii_th)
-
-def needs_translation(doc: Dict[str, Any]) -> bool:
-    """
-    Decide if any of title/brief/text looks non-zh.
-    """
-    for k in ("EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT"):
-        v = doc.get(k)
-        if v and looks_non_zh(v):
-            return True
-    return False
 
 
 @dataclass(frozen=True)
