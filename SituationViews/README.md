@@ -9,8 +9,29 @@
 python -m SituationViews.standalone
 ```
 
-然后访问 `http://127.0.0.1:5010/situation/`。如果后续决定并入主站，可使用
-`SituationViewsService.mount_to_app()` 挂载；目前主站组合根不依赖本模块。
+然后访问 `http://127.0.0.1:5010/situation/`。
+
+IIS 主站会把同一套只读视图挂载到 `/situation/`，复用主站的登录保护和
+`SubsystemRegistry`，但不进入 Hub 事件链。可以在 `_config/config.json` 中单独关闭整个
+模块或地名解析：
+
+```json
+{
+  "intelligence_hub_web_service": {
+    "situation_views": {
+      "enabled": true,
+      "geocoding": {
+        "enabled": true,
+        "cache_file": "SituationViews/geocoding.sqlite"
+      }
+    }
+  }
+}
+```
+
+没有该配置段时默认启用，以兼容已有部署。模块初始化失败不会阻断 IIS 主服务；若仅地名
+解析初始化失败，国家级热点和实体关系图仍可使用。`SituationViewsService.mount_to_app()`
+仍可供独立程序或其他 Flask 应用直接挂载。
 
 当前地图只使用 `event_location` 中明确给出的 ISO 两位 `country_code`，在国家中心显示
 热点；点击热点会按当前筛选条件加载对应的真实情报摘要，标题链接到主站详情页。单次最多

@@ -468,6 +468,20 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     hub_service.register_routers(wsgi_app)
 
+    # 态势视图是只读的可拆卸 Web 扩展：复用子系统注册表，但不进入 Hub 事件链。
+    # 模块内部会隔离地名解析或路由初始化失败，避免影响 IIS 主服务启动。
+    try:
+        from SituationViews.iis_integration import mount_to_iis as mount_situation_views
+        mount_situation_views(
+            wsgi_app,
+            config=config,
+            subsystem_registry=subsystem_registry,
+            wrapper=hub_service.access_manager.login_required,
+            data_path=DATA_PATH,
+        )
+    except Exception:
+        logger.exception("态势视图模块加载失败，IIS 主服务继续运行。")
+
     # --------------------------------- End of Init ---------------------------------
 
     return hub, hub_service, client_manager

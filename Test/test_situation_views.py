@@ -5,6 +5,7 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME, APPENDIX_TOTAL_SCORE,
 )
 from SituationViews.engine import SituationViewEngine, ViewQuery
+from SituationViews.iis_integration import mount_to_iis
 from SituationViews.web import SituationViewsService
 
 
@@ -348,3 +349,99 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert intelligence_payload.get_json()["intelligences"][0]["uuid"] == "a"
     assert location_payload.status_code == 200
     assert location_payload.get_json()["locations"][0]["name"] == "基辅"
+
+
+def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
+    from flask import Flask
+    from functools import wraps
+
+    class Config:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.situation_views":
+                return {"enabled": True, "geocoding": {"enabled": False}}
+            return default
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    def require_login(func):
+        @wraps(func)
+        def protected(*args, **kwargs):
+            return "login required", 401
+        return protected
+
+    app = Flask(__name__)
+    service = mount_to_iis(
+        app,
+        config=Config(),
+        subsystem_registry=Registry(),
+        wrapper=require_login,
+        data_path=tmp_path,
+    )
+
+    assert service is not None
+    assert app.config["SITUATION_VIEWS_ENABLED"] is True
+    assert app.test_client().get("/situation/").status_code == 401
+    assert app.test_client().get("/situation/api/map").status_code == 401
+
+
+def test_iis_integration_can_be_disabled_without_registering_routes(tmp_path):
+    from flask import Flask
+
+    class Config:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.situation_views":
+                return {"enabled": False}
+            return default
+
+    app = Flask(__name__)
+    service = mount_to_iis(
+        app,
+        config=Config(),
+        subsystem_registry=object(),
+        wrapper=None,
+        data_path=tmp_path,
+    )
+
+    assert service is None
+    assert app.config["SITUATION_VIEWS_ENABLED"] is False
+    assert app.test_client().get("/situation/").status_code == 404
+
+
+def test_iis_integration_keeps_views_when_geocoder_initialization_fails(tmp_path):
+    from flask import Flask
+
+    class Config:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.situation_views":
+                return {
+                    "enabled": True,
+                    "geocoding": {
+                        "enabled": True,
+                        "request_interval_sec": "invalid",
+                    },
+                }
+            return default
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    app = Flask(__name__)
+    service = mount_to_iis(
+        app,
+        config=Config(),
+        subsystem_registry=Registry(),
+        wrapper=None,
+        data_path=tmp_path,
+    )
+
+    assert service is not None
+    assert service.geocoder is None
+    assert app.test_client().get("/situation/").status_code == 200

@@ -104,6 +104,16 @@
       ]
     },
 
+    "situation_views": {
+      "enabled": true,
+      "geocoding": {
+        "enabled": true,
+        "cache_file": "SituationViews/geocoding.sqlite",
+        "request_interval_sec": 1.05,
+        "timeout_sec": 12
+      }
+    },
+
     "public_search": {
       "mongo_max_per_page": 20,
       "mongo_max_page": 5,
