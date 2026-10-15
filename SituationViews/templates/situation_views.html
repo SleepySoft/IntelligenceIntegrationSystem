@@ -76,7 +76,7 @@
         .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
         .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
-        .arrow-head { fill: light-dark(#64748b, #8796aa); }
+        .arrow-head { fill: light-dark(#475569, #b8c6d9); stroke: var(--panel); stroke-width: .8px; }
         .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
         .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
         .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
@@ -512,8 +512,8 @@ function renderGraph() {
     const nodes = graphData.nodes.map(d => ({...d}));
     const edges = graphData.edges.map(d => ({...d}));
     const defs = svg.append('defs');
-    defs.append('marker').attr('id','arrow').attr('viewBox','0 -5 20 10').attr('refX',18).attr('refY',0)
-        .attr('markerWidth',10).attr('markerHeight',10).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
+    defs.append('marker').attr('id','arrow').attr('viewBox','0 -6 12 12').attr('refX',10).attr('refY',0)
+        .attr('markerWidth',12).attr('markerHeight',12).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
         .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
     const root = svg.append('g');
     svg.call(d3.zoom().scaleExtent([.25, 4]).on('zoom', event => root.attr('transform', event.transform)));
@@ -542,7 +542,18 @@ function renderGraph() {
         .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
         .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
     simulation.on('tick', () => {
-        lines.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+        lines.each(function(d) {
+            const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const ux = dx / distance, uy = dy / distance;
+            const sourcePadding = radius(d.source.importance) + 3;
+            const targetPadding = radius(d.target.importance) + (d.directed ? 5 : 3);
+            d3.select(this)
+                .attr('x1', d.source.x + ux * sourcePadding)
+                .attr('y1', d.source.y + uy * sourcePadding)
+                .attr('x2', d.target.x - ux * targetPadding)
+                .attr('y2', d.target.y - uy * targetPadding);
+        });
         edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
         circles.attr('cx',d=>d.x).attr('cy',d=>d.y);
         labels.attr('x',d=>d.x).attr('y',d=>d.y);
