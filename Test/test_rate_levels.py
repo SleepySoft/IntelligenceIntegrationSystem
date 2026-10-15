@@ -78,7 +78,7 @@ def test_v43_production_maps_levels_to_scores_end_to_end():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
-        analyzer=lambda *_: _v43_valuable(),
+        analyzer=lambda *_, **__: _v43_valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -99,7 +99,7 @@ def test_v43_production_maps_levels_to_scores_end_to_end():
 def test_v43_rejects_numeric_rate_with_retry():
     prompts = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
         payload = _v43_valuable()
         if len(prompts) == 1:

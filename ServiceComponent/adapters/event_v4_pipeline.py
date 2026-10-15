@@ -406,7 +406,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
             try:
                 service = ai_client.get_api_base_url()
                 model = ai_client.get_current_model()
-                raw_result = (analyzer or self._analyzer)(ai_client, prompt, original_data)
+                raw_result = (analyzer or self._analyzer)(
+                    ai_client, prompt, original_data,
+                    record_meta={
+                        "prompt_version": prompt_version,
+                        "uuid": original_data.get("UUID"),
+                    })
                 self._change_runtime_stat("responses")
             except Exception as exc:
                 self._change_runtime_stat("call_errors")

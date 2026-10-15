@@ -169,7 +169,7 @@ def test_analysis_pause_holds_worker_without_consuming_ai():
     control.pause("analysis", operator="test")
     calls = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         calls.append(prompt)
         return _valuable()
 

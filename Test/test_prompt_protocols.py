@@ -72,7 +72,7 @@ def test_catalog_sampling_and_selectable_views():
 def test_pipeline_uses_custom_catalog_and_prepare_hook():
     seen_prompts = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         seen_prompts.append(prompt)
         return _valuable()
 
@@ -104,7 +104,7 @@ def test_pipeline_rejects_shadow_version_missing_from_catalog():
             prompt_catalog=_catalog_with(),
             shadow_versions=[42],
             shadow_recorder=object(),
-            analyzer=lambda *_: _valuable(),
+            analyzer=lambda *_, **__: _valuable(),
             scorer_factory=lambda _: FakeScorer(),
             retry_wait=wait_none(),
         )
@@ -120,7 +120,7 @@ def test_legacy_table_params_still_build_catalog():
         prompt_table={41: "legacy full prompt"},
         extra_prompt_versions={42: "legacy subset prompt"},
         extraction_modes={41: "full", 42: "core_subset"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )

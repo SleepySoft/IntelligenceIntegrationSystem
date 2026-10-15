@@ -155,7 +155,7 @@ def _ports_for_intake(context=None):
         FakeRegistry(context), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     ), context
@@ -203,7 +203,7 @@ def test_v4_intake_rejects_blank_informant():
 def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     prompts = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
         return {"TAXONOMY": "政治与安全"} if len(prompts) == 1 else _valuable()
 
@@ -277,7 +277,7 @@ def test_v4_adapter_deprioritizes_api_failed_client_on_retry():
         FakeRegistry(FakeContext()), manager,
         archive_repository=FakeArchiveRepository(),
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: responses.pop(0),
+        analyzer=lambda *_, **__: responses.pop(0),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -296,7 +296,7 @@ def test_v4_adapter_removes_conversation_record_file_before_validation():
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: response,
+        analyzer=lambda *_, **__: response,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -315,7 +315,7 @@ def test_v4_adapter_resolves_repository_from_subsystem_context():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -335,7 +335,7 @@ def test_v4_analysis_deduplicates_archived_records_by_source_url():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -359,7 +359,7 @@ def test_v4_analysis_reassigns_internal_uuid_collision_for_another_source():
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -380,7 +380,7 @@ def test_v4_adapter_stores_non_intelligence_envelope_without_events():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "广告内容", "RATE": {}},
+        analyzer=lambda *_, **__: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "广告内容", "RATE": {}},
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -423,7 +423,7 @@ def test_v4_transient_analysis_returns_events_without_archive_writes():
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -447,7 +447,7 @@ def test_v4_transient_analysis_does_not_require_archive_repository():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         prompt_table={41: "v41 prompt"},
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -467,7 +467,7 @@ def test_v4_transient_non_intelligence_is_not_saved():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "测试广告", "RATE": {}},
+        analyzer=lambda *_, **__: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "测试广告", "RATE": {}},
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -488,7 +488,7 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
     repository = FakeArchiveRepository()
     prompts = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
         return _valuable()
 
@@ -539,7 +539,7 @@ def test_v4_adapter_completes_core_subset_before_archiving():
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
         prompt_table={42: "core subset prompt"},
-        analyzer=lambda *_: _valuable_core_subset(),
+        analyzer=lambda *_, **__: _valuable_core_subset(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -561,7 +561,7 @@ def test_v4_adapter_completes_core_subset_before_archiving():
 def test_v4_adapter_core_subset_validation_failure_retries_with_feedback():
     prompts = []
 
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
         if len(prompts) == 1:
             # 已登记谓词不得携带 frame，桥接层拒绝后重试。
@@ -593,7 +593,7 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
-        analyzer=lambda *_: _valuable(),
+        analyzer=lambda *_, **__: _valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -630,7 +630,7 @@ def _ports_with_shadow(analyzer, shadow_recorder):
 
 
 def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
 
     shadow_recorder = FakeShadowRecorder()
@@ -658,7 +658,7 @@ def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
 
 
 def test_v4_shadow_failure_does_not_affect_primary_chain():
-    def analyzer(client, prompt, original):
+    def analyzer(client, prompt, original, record_meta=None):
         if prompt == "shadow prompt":
             raise RuntimeError("shadow ai unavailable")
         return _valuable()
@@ -693,7 +693,7 @@ def test_v4_shadow_versions_must_be_configured():
             archive_repository=FakeArchiveRepository(),
             shadow_versions=[99],
             shadow_recorder=FakeShadowRecorder(),
-            analyzer=lambda *_: _valuable(),
+            analyzer=lambda *_, **__: _valuable(),
             scorer_factory=lambda _: FakeScorer(),
             retry_wait=wait_none(),
         )
