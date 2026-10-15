@@ -324,22 +324,7 @@ class SituationViewEngine:
         events, meta = self._load_events(query)
         node_data: dict[str, dict[str, Any]] = {}
         edge_data: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
-        prepared_events = []
-        country_hints: dict[tuple[str, str], set[str]] = defaultdict(set)
-
-        for event in events:
-            category = self._category(event)
-            if query.categories is not None and category not in query.categories:
-                continue
-            relations = self._entity_relations(event)
-            if not relations:
-                continue
-            prepared_events.append((event, category, relations))
-            for source, target, _ in relations:
-                for entity in (source, target):
-                    name, entity_type, country = self._entity_identity_parts(entity)
-                    if name and country:
-                        country_hints[(name, entity_type)].add(country)
+        prepared_events, country_hints = self._prepare_graph_events(events, query)
 
         inferred_country_nodes = set()
         for event, category, relations in prepared_events:
@@ -458,6 +443,183 @@ class SituationViewEngine:
             "entity_types": sorted(entity_types) if entity_types is not None else None,
         })
         return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
+
+    def entity_graph_intelligences(
+        self,
+        query: ViewQuery,
+        *,
+        selection_type: str,
+        entity_id: str | None = None,
+        source_id: str | None = None,
+        target_id: str | None = None,
+        predicate: str | None = None,
+        directed: bool = True,
+        role: str = "all",
+        entity_types: frozenset[str] | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """返回支撑所选图节点或边的真实情报，不受图规模裁剪参数影响。"""
+        if selection_type not in {"node", "edge"}:
+            raise ValueError("selection_type 必须是 node 或 edge")
+        if selection_type == "node" and not entity_id:
+            raise ValueError("节点查询需要 entity_id")
+        if selection_type == "edge" and not all((source_id, target_id, predicate)):
+            raise ValueError("边查询需要 source_id、target_id 和 predicate")
+        if role not in {"all", "subject", "object", "participant"}:
+            raise ValueError("role 必须是 all、subject、object 或 participant")
+
+        events, meta = self._load_events(query)
+        prepared_events, country_hints = self._prepare_graph_events(events, query)
+        articles: dict[str, dict[str, Any]] = {}
+        selection = {"type": selection_type}
+
+        for event, category, relations in prepared_events:
+            article_uuid = str(event.get("intelligence_uuid") or "").strip()
+            if not article_uuid:
+                continue
+            event_uuid = str(event.get("event_uuid") or "")
+            predicate_id = self._predicate_id(event)
+            predicate_label = self._canonical_predicate_label(event)
+            for source, target, relation_directed in relations:
+                if entity_types is not None and (
+                    self._entity_type_group(source) not in entity_types
+                    or self._entity_type_group(target) not in entity_types
+                ):
+                    continue
+                source_key, _ = self._graph_entity_key(source, country_hints)
+                target_key, _ = self._graph_entity_key(target, country_hints)
+                if not source_key or not target_key or source_key == target_key:
+                    continue
+                if not relation_directed and target_key < source_key:
+                    source, target = target, source
+                    source_key, target_key = target_key, source_key
+
+                matched_role = None
+                counterpart = None
+                if selection_type == "node":
+                    if entity_id == source_key:
+                        matched_role = "subject" if relation_directed else "participant"
+                        counterpart = target
+                        selected_entity = source
+                    elif entity_id == target_key:
+                        matched_role = "object" if relation_directed else "participant"
+                        counterpart = source
+                        selected_entity = target
+                    else:
+                        continue
+                    if role != "all" and matched_role != role:
+                        continue
+                    selection.update({
+                        "entity_id": entity_id,
+                        "name": str(selected_entity.get("name") or "").strip(),
+                        "entity_type": self._entity_type_group(selected_entity),
+                        "country_code": self._country_from_graph_key(entity_id),
+                        "role": role,
+                    })
+                else:
+                    if (
+                        source_key != source_id or target_key != target_id
+                        or predicate_id != predicate
+                        or relation_directed != directed
+                    ):
+                        continue
+                    selection.update({
+                        "source_id": source_id,
+                        "source_name": str(source.get("name") or "").strip(),
+                        "target_id": target_id,
+                        "target_name": str(target.get("name") or "").strip(),
+                        "predicate": predicate,
+                        "predicate_label": predicate_label,
+                        "directed": directed,
+                    })
+
+                item = articles.setdefault(article_uuid, {
+                    "uuid": article_uuid,
+                    "title": str(event.get("_view_title") or "未命名情报"),
+                    "score": float(event.get("_view_score") or 0),
+                    "content_time": event.get("_view_content_time"),
+                    "event_ids": set(),
+                    "relation_keys": set(),
+                    "predicates": Counter(),
+                    "counterparts": Counter(),
+                    "role_events": defaultdict(set),
+                    "categories": Counter(),
+                })
+                relation_key = (
+                    event_uuid, source_key, target_key, predicate_id, relation_directed)
+                if relation_key in item["relation_keys"]:
+                    continue
+                item["relation_keys"].add(relation_key)
+                item["event_ids"].add(event_uuid)
+                item["predicates"][predicate_label] += 1
+                item["categories"][category] += 1
+                if matched_role:
+                    item["role_events"][matched_role].add(event_uuid)
+                if counterpart:
+                    name = str(counterpart.get("name") or "").strip()
+                    if name:
+                        item["counterparts"][name] += 1
+
+        ordered = sorted(
+            articles.values(),
+            key=lambda item: (
+                -self._time_sort_value(item["content_time"]),
+                -item["score"],
+                item["uuid"],
+            ),
+        )
+        page = ordered[offset:offset + limit]
+        results = []
+        role_order = ("subject", "object", "participant")
+        for item in page:
+            results.append({
+                "uuid": item["uuid"],
+                "title": item["title"],
+                "score": round(item["score"], 2),
+                "content_time": self._json_time(item["content_time"]),
+                "event_count": len(item["event_ids"]),
+                "predicates": [
+                    {"label": label, "count": count}
+                    for label, count in item["predicates"].most_common(6)
+                ],
+                "counterparts": [
+                    {"name": name, "count": count}
+                    for name, count in item["counterparts"].most_common(6)
+                ],
+                "roles": [
+                    {"role": value, "event_count": len(item["role_events"][value])}
+                    for value in role_order if item["role_events"].get(value)
+                ],
+            })
+
+        meta.update({
+            "selection": selection,
+            "total": len(ordered),
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + len(results) < len(ordered),
+            "entity_types": sorted(entity_types) if entity_types is not None else None,
+        })
+        return {"intelligences": results, "meta": meta}
+
+    def _prepare_graph_events(self, events, query):
+        prepared_events = []
+        country_hints: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for event in events:
+            category = self._category(event)
+            if query.categories is not None and category not in query.categories:
+                continue
+            relations = self._entity_relations(event)
+            if not relations:
+                continue
+            prepared_events.append((event, category, relations))
+            for source, target, _ in relations:
+                for entity in (source, target):
+                    name, entity_type, country = self._entity_identity_parts(entity)
+                    if name and country:
+                        country_hints[(name, entity_type)].add(country)
+        return prepared_events, country_hints
 
     def _load_events(self, query: ViewQuery) -> tuple[list[dict], dict[str, Any]]:
         archive_filter = {
@@ -605,6 +767,11 @@ class SituationViewEngine:
                 country = next(iter(candidates))
                 inferred = True
         return f"{entity_type}|{country}|{name}", inferred
+
+    @staticmethod
+    def _country_from_graph_key(value: str) -> str | None:
+        parts = str(value or "").split("|", 2)
+        return (parts[1] or None) if len(parts) == 3 else None
 
     @staticmethod
     def _touch_node(store, key, entity, event_uuid, article_uuid, score):

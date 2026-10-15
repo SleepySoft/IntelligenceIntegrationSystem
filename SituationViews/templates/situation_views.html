@@ -64,6 +64,10 @@
         .intelligence-card a:hover { text-decoration: underline; }
         .intelligence-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; color: var(--muted); font-size: 12px; }
         .predicate-tags { color: var(--muted); font-size: 12px; }
+        .evidence-controls { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+        .evidence-controls button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+        .evidence-controls button.active { color: white; background: var(--accent); border-color: transparent; }
+        .evidence-footer { display: flex; justify-content: center; margin-top: 12px; }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
         .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
@@ -76,9 +80,14 @@
         .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
         .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
+        .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; cursor: pointer; }
+        .edge.graph-selected { stroke-opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
         .arrow-head { fill: light-dark(#475569, #b8c6d9); stroke: var(--panel); stroke-width: .8px; }
         .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
+        .node.graph-selected { stroke: var(--accent); stroke-width: 4px; }
+        .graph-dim { opacity: .12 !important; }
         .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+        .edge-label { pointer-events: auto; cursor: pointer; }
         .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
         .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
         .map-attribution a { color: inherit; }
@@ -171,6 +180,18 @@
                 <div class="legend" id="graph-legend"></div>
             </aside>
         </div>
+        <section class="intelligence-panel" id="graph-intelligence-panel" hidden>
+            <h2 id="graph-intelligence-title">对应情报</h2>
+            <p class="muted" id="graph-intelligence-description">点击节点或关系边查看支撑它的真实情报。</p>
+            <div class="evidence-controls" id="graph-role-filters" hidden>
+                <button type="button" data-graph-role="all" class="active">全部</button>
+                <button type="button" data-graph-role="subject">作为施事</button>
+                <button type="button" data-graph-role="object">作为受事</button>
+                <button type="button" data-graph-role="participant">无向参与</button>
+            </div>
+            <div id="graph-intelligences" class="intelligence-list"></div>
+            <div class="evidence-footer"><button type="button" id="graph-load-more" hidden>加载更多</button></div>
+        </section>
     </section>
 </main>
 
@@ -197,6 +218,7 @@ const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 const COUNTRIES_URL = 'https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json';
 let activeView = 'map', mapData = null, graphData = null, worldResources = null, selectedCountry = null;
+let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -487,6 +509,7 @@ function intelligenceDetailUrl(uuid) {
 }
 
 async function refreshGraph() {
+    clearGraphSelection();
     $('graph-status').classList.add('show');
     $('graph-status').textContent = '正在聚合实体关系…';
     try {
@@ -517,25 +540,33 @@ function renderGraph() {
         .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
     const root = svg.append('g');
     svg.call(d3.zoom().scaleExtent([.25, 4]).on('zoom', event => root.attr('transform', event.transform)));
+    svg.on('click', () => clearGraphSelection());
     const edgeScale = d3.scaleSqrt().domain([1, d3.max(edges, d => d.support) || 1]).range([1, 6]);
     const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
     const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
         .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
         .attr('stroke-width', d => edgeScale(d.support)).attr('marker-end', d => d.directed ? 'url(#arrow)' : null)
+        .style('pointer-events', 'none');
+    const hitLines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge-hit')
         .on('mouseenter', (event,d) => {
             const surfaces = d.surface_labels?.slice(0, 3).map(item => item.label).join('、');
             showTooltip('graph-tooltip', event,
                 `${d.predicate_label} (${d.predicate})${surfaces ? ` · 原文：${surfaces}` : ''} · ${d.support} 个事件`);
         })
         .on('mouseleave', () => hideTooltip('graph-tooltip'))
-        .on('click', (_,d) => showEdgeDetail(d));
+        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
     const edgeLabels = root.append('g').selectAll('text').data(edges.slice(0, 40)).join('text')
-        .attr('class','node-label').attr('text-anchor','middle')
-        .text(d => `${d.predicate_label} ×${d.support}`);
+        .attr('class','node-label edge-label').attr('text-anchor','middle')
+        .text(d => `${d.predicate_label} ×${d.support}`)
+        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
     const circles = root.append('g').selectAll('circle').data(nodes).join('circle').attr('class','node')
         .attr('r', d => radius(d.importance)).attr('fill', d => entityColor(d.type))
         .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.name} · ${d.event_count} 个事件`))
-        .on('mouseleave', () => hideTooltip('graph-tooltip')).on('click', (_,d) => showNodeDetail(d));
+        .on('mouseleave', () => hideTooltip('graph-tooltip'))
+        .on('click', (event,d) => {
+            event.stopPropagation();
+            if (!event.defaultPrevented) selectGraphNode(d);
+        });
     const labels = root.append('g').selectAll('text').data(nodes).join('text').attr('class','node-label')
         .attr('text-anchor','middle').attr('dy', d => radius(d.importance) + 13).text(d => d.name.length > 18 ? d.name.slice(0,17) + '…' : d.name);
     const simulation = d3.forceSimulation(nodes)
@@ -558,6 +589,8 @@ function renderGraph() {
                 .attr('x2', d.target.x - ux * targetPadding)
                 .attr('y2', d.target.y - uy * targetPadding);
         });
+        hitLines.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
         edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
         circles.attr('cx',d=>d.x).attr('cy',d=>d.y);
         labels.attr('x',d=>d.x).attr('y',d=>d.y);
@@ -567,10 +600,143 @@ function renderGraph() {
         <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
         <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
         <div class="warning">当前按名称、类型和国家临时归一化；同名同类型且国家唯一时，会在投影中补齐缺失国家。别名尚未合并。</div>`;
+    if (selectedGraphElement) updateGraphSelectionStyles();
 }
 
 function entityColor(type) {
     return ENTITY_COLORS[type] || ENTITY_COLORS.other;
+}
+function graphNodeId(value) {
+    return typeof value === 'object' ? value.id : value;
+}
+function graphEdgeMatches(edge, selection) {
+    return graphNodeId(edge.source) === selection.source_id
+        && graphNodeId(edge.target) === selection.target_id
+        && edge.predicate === selection.predicate
+        && Boolean(edge.directed) === Boolean(selection.directed);
+}
+function selectGraphNode(d) {
+    selectedGraphRole = 'all';
+    selectedGraphElement = {type: 'node', entity_id: d.id, name: d.name};
+    graphEvidenceOffset = 0;
+    syncGraphRoleFilters();
+    $('graph-role-filters').hidden = false;
+    $('graph-intelligence-panel').hidden = false;
+    $('graph-intelligence-title').textContent = `${d.name} · 对应情报`;
+    $('graph-intelligence-description').textContent = '显示该投影实体在当前筛选条件下参与关系的情报。';
+    showNodeDetail(d);
+    updateGraphSelectionStyles();
+    loadGraphIntelligences(false);
+}
+function selectGraphEdge(d) {
+    selectedGraphRole = 'all';
+    selectedGraphElement = {
+        type: 'edge', source_id: graphNodeId(d.source), target_id: graphNodeId(d.target),
+        source_name: d.source.name || graphNodeId(d.source), target_name: d.target.name || graphNodeId(d.target),
+        predicate: d.predicate, predicate_label: d.predicate_label, directed: Boolean(d.directed)
+    };
+    graphEvidenceOffset = 0;
+    $('graph-role-filters').hidden = true;
+    $('graph-intelligence-panel').hidden = false;
+    const arrow = d.directed ? '→' : '—';
+    $('graph-intelligence-title').textContent = `${selectedGraphElement.source_name} —${d.predicate_label}${arrow} ${selectedGraphElement.target_name} · 对应情报`;
+    $('graph-intelligence-description').textContent = '仅显示直接支撑这条实体关系、谓词和方向的情报。';
+    showEdgeDetail(d);
+    updateGraphSelectionStyles();
+    loadGraphIntelligences(false);
+}
+function clearGraphSelection() {
+    selectedGraphElement = null;
+    selectedGraphRole = 'all';
+    graphEvidenceOffset = 0;
+    graphEvidenceRequest += 1;
+    const panel = $('graph-intelligence-panel');
+    if (panel) panel.hidden = true;
+    d3.select('#graph-svg').selectAll('.graph-selected').classed('graph-selected', false);
+    d3.select('#graph-svg').selectAll('.graph-dim').classed('graph-dim', false);
+}
+function updateGraphSelectionStyles() {
+    if (!selectedGraphElement) return;
+    const selected = selectedGraphElement;
+    const relatedNodes = new Set();
+    if (selected.type === 'node') {
+        relatedNodes.add(selected.entity_id);
+        graphData.edges.forEach(edge => {
+            const source = graphNodeId(edge.source), target = graphNodeId(edge.target);
+            if (source === selected.entity_id) relatedNodes.add(target);
+            if (target === selected.entity_id) relatedNodes.add(source);
+        });
+    } else {
+        relatedNodes.add(selected.source_id);
+        relatedNodes.add(selected.target_id);
+    }
+    const edgeRelevant = edge => selected.type === 'node'
+        ? graphNodeId(edge.source) === selected.entity_id || graphNodeId(edge.target) === selected.entity_id
+        : graphEdgeMatches(edge, selected);
+    d3.select('#graph-svg').selectAll('.node')
+        .classed('graph-selected', d => selected.type === 'node' && d.id === selected.entity_id)
+        .classed('graph-dim', d => !relatedNodes.has(d.id));
+    d3.select('#graph-svg').selectAll('.edge')
+        .classed('graph-selected', edgeRelevant)
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-hit')
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-label')
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('g > .node-label:not(.edge-label)')
+        .classed('graph-dim', d => d?.id && !relatedNodes.has(d.id));
+}
+function syncGraphRoleFilters() {
+    document.querySelectorAll('[data-graph-role]').forEach(button => {
+        button.classList.toggle('active', button.dataset.graphRole === selectedGraphRole);
+    });
+}
+async function loadGraphIntelligences(append) {
+    if (!selectedGraphElement) return;
+    const selection = selectedGraphElement;
+    const requestId = ++graphEvidenceRequest;
+    const target = $('graph-intelligences');
+    if (!append) target.innerHTML = '<span class="muted">正在加载真实情报…</span>';
+    $('graph-load-more').hidden = true;
+    const selectionParams = selection.type === 'node'
+        ? {selection_type: 'node', entity_id: selection.entity_id, role: selectedGraphRole}
+        : {
+            selection_type: 'edge', source_id: selection.source_id, target_id: selection.target_id,
+            predicate: selection.predicate, directed: selection.directed
+        };
+    try {
+        const data = await loadJson(`api/entity-graph/intelligences?${queryParams({
+            ...selectionParams,
+            entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+                ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__'),
+            offset: append ? graphEvidenceOffset : 0,
+            limit: 20
+        })}`);
+        if (requestId !== graphEvidenceRequest || selectedGraphElement !== selection) return;
+        const cards = data.intelligences.map(item => {
+            const time = item.content_time ? new Date(item.content_time).toLocaleString() : '时间未知';
+            const predicates = item.predicates.map(value => value.label).join('、') || '未分类谓词';
+            const counterparts = item.counterparts.map(value => value.name).join('、');
+            const roleNames = {subject: '施事', object: '受事', participant: '无向参与'};
+            const roles = item.roles.map(value => roleNames[value.role] || value.role).join('、');
+            const reason = [roles, counterparts ? `对方：${counterparts}` : '', predicates].filter(Boolean).join(' · ');
+            return `<article class="intelligence-card">
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+                <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个匹配事件</span></div>
+                <div class="predicate-tags">${escapeHtml(reason)}</div>
+            </article>`;
+        }).join('');
+        if (append) target.insertAdjacentHTML('beforeend', cards);
+        else target.innerHTML = cards || '<span class="muted">当前筛选条件下没有对应情报。</span>';
+        graphEvidenceOffset = data.meta.offset + data.intelligences.length;
+        $('graph-intelligence-description').textContent = `共 ${data.meta.total} 篇，按内容时间从新到旧排列。`;
+        $('graph-load-more').hidden = !data.meta.has_more;
+    } catch (error) {
+        if (requestId === graphEvidenceRequest) {
+            const message = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
+            if (append) target.insertAdjacentHTML('beforeend', message); else target.innerHTML = message;
+        }
+    }
 }
 function showNodeDetail(d) {
     $('graph-detail').innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
@@ -639,6 +805,15 @@ document.addEventListener('click', event => {
 $('min-support').addEventListener('change', () => activeView === 'graph' && refreshGraph());
 $('max-nodes').addEventListener('change', () => activeView === 'graph' && refreshGraph());
 $('keep-singletons').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('graph-role-filters').addEventListener('click', event => {
+    const button = event.target.closest('[data-graph-role]');
+    if (!button || !selectedGraphElement || selectedGraphElement.type !== 'node') return;
+    selectedGraphRole = button.dataset.graphRole;
+    graphEvidenceOffset = 0;
+    syncGraphRoleFilters();
+    loadGraphIntelligences(false);
+});
+$('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
 const requestedView = new URLSearchParams(window.location.search).get('view');
 if (requestedView === 'graph') {

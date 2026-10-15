@@ -65,6 +65,32 @@ class SituationViewsService:
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
+        @bp.get("/api/entity-graph/intelligences")
+        @protect
+        def entity_graph_intelligences_api():
+            try:
+                engine, query = self._request_context()
+                selection_type = str(request.args.get("selection_type") or "").strip()
+                role = str(request.args.get("role") or "all").strip()
+                entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
+                offset = self._bounded_int("offset", 0, 0, 100000)
+                limit = self._bounded_int("limit", 50, 1, 100)
+                return jsonify(engine.entity_graph_intelligences(
+                    query,
+                    selection_type=selection_type,
+                    entity_id=str(request.args.get("entity_id") or "").strip() or None,
+                    source_id=str(request.args.get("source_id") or "").strip() or None,
+                    target_id=str(request.args.get("target_id") or "").strip() or None,
+                    predicate=str(request.args.get("predicate") or "").strip() or None,
+                    directed=self._bool_arg("directed", True),
+                    role=role,
+                    entity_types=entity_types,
+                    offset=offset,
+                    limit=limit,
+                ))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
         @bp.get("/api/map/intelligences")
         @protect
         def map_intelligences_api():

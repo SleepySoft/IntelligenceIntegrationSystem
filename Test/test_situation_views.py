@@ -283,6 +283,70 @@ def test_entity_graph_filters_relationships_by_both_entity_type_groups():
     assert result["meta"]["entity_types"] == ["organization"]
 
 
+def test_entity_graph_node_intelligences_support_role_filtering():
+    now = datetime.now(timezone.utc)
+    events = [
+        _attack("e1", "a", "行动方", "目标一"),
+        _attack("e2", "b", "行动方", "目标二"),
+    ]
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection(events),
+        DEFAULT_EVENT_REGISTRY,
+    )
+    query = ViewQuery(now - timedelta(days=1), now + timedelta(days=1))
+
+    result = engine.entity_graph_intelligences(
+        query,
+        selection_type="node",
+        entity_id="organization|RU|行动方",
+        role="subject",
+    )
+    excluded = engine.entity_graph_intelligences(
+        query,
+        selection_type="node",
+        entity_id="organization|RU|行动方",
+        role="object",
+    )
+
+    assert result["meta"]["total"] == 2
+    assert result["intelligences"][0]["uuid"] in {"a", "b"}
+    assert result["intelligences"][0]["roles"] == [
+        {"role": "subject", "event_count": 1},
+    ]
+    assert result["intelligences"][0]["counterparts"][0]["name"] in {"目标一", "目标二"}
+    assert excluded["meta"]["total"] == 0
+
+
+def test_entity_graph_edge_intelligences_match_exact_direction_and_predicate():
+    now = datetime.now(timezone.utc)
+    exact = _attack("e1", "a", "行动方", "目标")
+    other_predicate = _attack("e2", "b", "行动方", "目标")
+    other_predicate["predicate"] = {"id": "sanction", "label": "制裁"}
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([exact, other_predicate]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph_intelligences(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        selection_type="edge",
+        source_id="organization|RU|行动方",
+        target_id="facility|UA|目标",
+        predicate="attack",
+        directed=True,
+    )
+
+    assert result["meta"]["total"] == 1
+    assert result["intelligences"][0]["uuid"] == "a"
+    assert result["intelligences"][0]["predicates"] == [
+        {"label": "攻击", "count": 1},
+    ]
+    assert result["meta"]["selection"]["source_name"] == "行动方"
+    assert result["meta"]["selection"]["target_name"] == "目标"
+
+
 def test_web_service_serves_both_views_with_injected_collections():
     from flask import Flask
     from types import SimpleNamespace
@@ -328,6 +392,15 @@ def test_web_service_serves_both_views_with_injected_collections():
     page = client.get("/situation/")
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
+    graph_intelligences = client.get(
+        "/situation/api/entity-graph/intelligences",
+        query_string={
+            **params,
+            "selection_type": "node",
+            "entity_id": "organization|RU|行动方",
+            "role": "subject",
+        },
+    )
     intelligence_payload = client.get(
         "/situation/api/map/intelligences",
         query_string={**params, "country_code": "UA"},
@@ -345,6 +418,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
+    assert graph_intelligences.status_code == 200
+    assert graph_intelligences.get_json()["intelligences"][0]["uuid"] == "a"
     assert intelligence_payload.status_code == 200
     assert intelligence_payload.get_json()["intelligences"][0]["uuid"] == "a"
     assert location_payload.status_code == 200
