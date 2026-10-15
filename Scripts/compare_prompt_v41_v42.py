@@ -148,8 +148,9 @@ def main() -> None:
     print(f"样本数: {len(records)}")
 
     client_manager = AIClientManager()
+    excludes = [s.strip().lower() for s in args.exclude.split(",") if s.strip()]
     for name, client in AI_CLIENTS.items():
-        if args.exclude and args.exclude.lower() in name.lower():
+        if any(ex in name.lower() for ex in excludes):
             continue
         client_manager.register_client(client)
     for group, limit in AI_CLIENT_LIMIT.items():
