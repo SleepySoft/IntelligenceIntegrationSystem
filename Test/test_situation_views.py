@@ -92,6 +92,35 @@ def test_map_intelligences_returns_real_article_summaries_for_country():
     assert result["intelligences"][0]["title"] == "event-a"
     assert result["intelligences"][0]["predicates"] == ["攻击"]
 
+    filtered = engine.map_intelligences(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        "UA", location_name="哈尔科夫")
+    assert filtered["meta"]["total"] == 1
+    assert filtered["intelligences"][0]["uuid"] == "b"
+
+
+def test_map_locations_aggregates_explicit_places_for_visible_countries():
+    now = datetime.now(timezone.utc)
+    archives = [_archive("a", now, 7), _archive("b", now, 8)]
+    events = [
+        _attack("e1", "a", "甲方", "设施一", location="基辅"),
+        _attack("e2", "b", "乙方", "设施二", location="基辅"),
+    ]
+    engine = SituationViewEngine(
+        FakeCollection(archives), FakeCollection(events), DEFAULT_EVENT_REGISTRY)
+
+    result = engine.map_locations(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)), {"UA"})
+
+    assert result == [{
+        "name": "基辅",
+        "country_code": "UA",
+        "event_count": 2,
+        "article_count": 2,
+        "max_score": 8.0,
+        "dominant_category": "war",
+    }]
+
 
 def test_entity_graph_aggregates_subject_object_and_filters_weak_edges():
     now = datetime.now(timezone.utc)
@@ -160,8 +189,18 @@ def test_web_service_serves_both_views_with_injected_collections():
         def describe():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
+    class Geocoder:
+        @staticmethod
+        def resolve_many(values):
+            return {
+                "locations": [{**value, "latitude": 50.45, "longitude": 30.52}
+                              for value in values],
+                "pending_count": 0,
+            }
+
     app = Flask(__name__)
-    SituationViewsService(Registry()).mount_to_app(app, url_prefix="/situation")
+    SituationViewsService(Registry(), geocoder=Geocoder()).mount_to_app(
+        app, url_prefix="/situation")
     client = app.test_client()
     params = {
         "subsystem": "news",
@@ -177,6 +216,12 @@ def test_web_service_serves_both_views_with_injected_collections():
         "/situation/api/map/intelligences",
         query_string={**params, "country_code": "UA"},
     )
+    location_payload = client.post("/situation/api/map/locations", json={
+        "locations": [{
+            "name": "基辅", "country_code": "UA", "event_count": 1,
+            "dominant_category": "war",
+        }],
+    })
 
     assert page.status_code == 200
     assert "态势实验视图" in page.get_data(as_text=True)
@@ -186,3 +231,5 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
     assert intelligence_payload.status_code == 200
     assert intelligence_payload.get_json()["intelligences"][0]["uuid"] == "a"
+    assert location_payload.status_code == 200
+    assert location_payload.get_json()["locations"][0]["name"] == "基辅"

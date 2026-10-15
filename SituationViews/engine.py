@@ -157,6 +157,7 @@ class SituationViewEngine:
         query: ViewQuery,
         country_code: str,
         *,
+        location_name: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> dict[str, Any]:
@@ -164,6 +165,7 @@ class SituationViewEngine:
         code = str(country_code or "").strip().upper()
         if not re.fullmatch(r"[A-Z]{2}", code):
             raise ValueError("country_code 必须是 ISO 两位国家代码")
+        normalized_location = " ".join(str(location_name or "").casefold().split())
 
         events, meta = self._load_events(query)
         articles: dict[str, dict[str, Any]] = {}
@@ -176,6 +178,12 @@ class SituationViewEngine:
                 item for item in locations
                 if str(item.get("country_code") or "").strip().upper() == code
             ]
+            if normalized_location:
+                matched_locations = [
+                    item for item in matched_locations
+                    if " ".join(str(item.get("name") or "").casefold().split())
+                    == normalized_location
+                ]
             if not matched_locations:
                 continue
 
@@ -228,12 +236,74 @@ class SituationViewEngine:
             })
         meta.update({
             "country_code": code,
+            "location_name": str(location_name or "").strip() or None,
             "total": len(ordered),
             "offset": offset,
             "limit": limit,
             "has_more": offset + len(results) < len(ordered),
         })
         return {"intelligences": results, "meta": meta}
+
+    def map_locations(
+        self,
+        query: ViewQuery,
+        country_codes: set[str],
+        *,
+        limit: int = 80,
+    ) -> list[dict[str, Any]]:
+        """聚合当前视野国家的明确地点名称，坐标由独立地名解析器补充。"""
+        codes = {
+            str(value or "").strip().upper() for value in country_codes
+            if re.fullmatch(r"[A-Za-z]{2}", str(value or "").strip())
+        }
+        if not codes:
+            return []
+        events, _ = self._load_events(query)
+        locations: dict[tuple[str, str], dict[str, Any]] = {}
+        for event in events:
+            category = self._category(event)
+            if query.category and category != query.category:
+                continue
+            event_uuid = str(event.get("event_uuid") or "")
+            article_uuid = str(event.get("intelligence_uuid") or "")
+            for location in self._unique_entities(event.get("event_location") or []):
+                code = str(location.get("country_code") or "").strip().upper()
+                name = str(location.get("name") or "").strip()
+                if code not in codes or not name:
+                    continue
+                key = (code, " ".join(name.casefold().split()))
+                item = locations.setdefault(key, {
+                    "name": name,
+                    "country_code": code,
+                    "event_ids": set(),
+                    "article_ids": set(),
+                    "categories": Counter(),
+                    "score_max": 0.0,
+                })
+                if event_uuid in item["event_ids"]:
+                    continue
+                item["event_ids"].add(event_uuid)
+                item["article_ids"].add(article_uuid)
+                item["categories"][category] += 1
+                item["score_max"] = max(
+                    item["score_max"], float(event.get("_view_score") or 0))
+
+        ordered = sorted(
+            locations.values(),
+            key=lambda item: (-len(item["event_ids"]), -item["score_max"], item["name"]),
+        )[:limit]
+        result = []
+        for item in ordered:
+            categories = dict(item["categories"].most_common())
+            result.append({
+                "name": item["name"],
+                "country_code": item["country_code"],
+                "event_count": len(item["event_ids"]),
+                "article_count": len(item["article_ids"]),
+                "max_score": round(item["score_max"], 2),
+                "dominant_category": next(iter(categories), "other"),
+            })
+        return result
 
     def entity_graph(
         self,

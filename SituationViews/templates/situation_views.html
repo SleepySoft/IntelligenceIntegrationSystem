@@ -68,12 +68,15 @@
         .country { fill: light-dark(#b9d99b, #3c6b4a); stroke: light-dark(#f6fff0, #83aa8d); stroke-width: .55px; }
         .graticule { fill: none; stroke: light-dark(#78b8e5, #39749b); stroke-width: .45px; opacity: .72; }
         .hotspot { stroke: color-mix(in srgb, var(--panel) 82%, transparent); stroke-width: 2px; cursor: pointer; }
+        .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
         .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
         .arrow-head { fill: light-dark(#64748b, #8796aa); }
         .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
         .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
         .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
+        .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
+        .map-attribution a { color: inherit; }
         .warning { margin-top: 10px; padding: 9px; border-radius: 8px; background: color-mix(in srgb, #eab308 16%, var(--panel)); color: var(--text); }
         @media (max-width: 950px) {
             .filters { grid-template-columns: repeat(2, 1fr); }
@@ -129,6 +132,7 @@
                 <div class="status" id="map-status">正在加载地图与事件…</div>
                 <svg id="map-svg" role="img" aria-label="事件热点地球视图"></svg>
                 <div class="tooltip" id="map-tooltip"></div>
+                <div class="map-attribution">细化坐标 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></div>
             </div>
             <aside class="side" id="map-detail">
                 <h2>地图概览</h2>
@@ -208,8 +212,8 @@ function legendHtml() {
 $('map-legend').innerHTML = legendHtml();
 $('graph-legend').innerHTML = legendHtml();
 
-async function loadJson(url) {
-    const response = await fetch(url);
+async function loadJson(url, options = undefined) {
+    const response = await fetch(url, options);
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || response.statusText);
     return data;
@@ -261,27 +265,108 @@ function renderMap() {
     const labels = root.append('g').selectAll('text').data(visible).join('text')
         .attr('class','map-label').attr('text-anchor','middle')
         .text(d => `${names.get(d.country_code)} ${d.event_count}`);
+    const fineMarkLayer = root.append('g');
+    const fineLabelLayer = root.append('g');
 
-    let zoomScale = 1;
+    let zoomScale = 1, fineLocations = [], locationRequestTimer = null, locationRequestActive = false;
+    const isFront = coordinates => {
+        const center = projection.invert([width / 2, height / 2]);
+        return center && d3.geoDistance(coordinates, center) < Math.PI / 2 - 0.015;
+    };
+
+    function renderFineLocations() {
+        const fineRadius = d3.scaleSqrt()
+            .domain([1, d3.max(fineLocations, d => d.event_count) || 1]).range([4, 11]);
+        const fineMarks = fineMarkLayer.selectAll('circle').data(
+            fineLocations, d => `${d.country_code}|${d.name}`
+        ).join('circle').attr('class', 'fine-hotspot')
+            .attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+            .attr('r', d => fineRadius(d.event_count))
+            .on('mouseenter', (event, d) => showTooltip(
+                'map-tooltip', event, `${d.name} · ${d.event_count} 个事件`))
+            .on('mouseleave', () => hideTooltip('map-tooltip'))
+            .on('click', (_, d) => {
+                const hotspot = visible.find(item => item.country_code === d.country_code);
+                if (hotspot) showMapDetail(hotspot, names.get(d.country_code), d.name);
+            });
+        const fineLabels = fineLabelLayer.selectAll('text').data(
+            fineLocations, d => `${d.country_code}|${d.name}`
+        ).join('text').attr('class', 'map-label').attr('text-anchor', 'middle')
+            .text(d => `${d.name} ${d.event_count}`);
+        redrawFine(fineMarks, fineLabels, fineRadius);
+    }
+
+    function redrawFine(fineMarks, fineLabels, fineRadius) {
+        fineMarks = fineMarks || fineMarkLayer.selectAll('circle');
+        fineLabels = fineLabels || fineLabelLayer.selectAll('text');
+        fineRadius = fineRadius || (value => 7);
+        const coordinates = d => [Number(d.longitude), Number(d.latitude)];
+        fineMarks.attr('display', d => zoomScale >= 1.7 && isFront(coordinates(d)) ? null : 'none')
+            .attr('cx', d => projection(coordinates(d))?.[0])
+            .attr('cy', d => projection(coordinates(d))?.[1]);
+        fineLabels.attr('display', d => zoomScale >= 2.15 && isFront(coordinates(d)) ? null : 'none')
+            .attr('x', d => projection(coordinates(d))?.[0])
+            .attr('y', d => (projection(coordinates(d))?.[1] || 0) - fineRadius(d.event_count) - 4);
+    }
+
+    function scheduleFineLocations(delay = 250) {
+        clearTimeout(locationRequestTimer);
+        if (zoomScale < 1.7) return;
+        locationRequestTimer = setTimeout(loadFineLocations, delay);
+    }
+
+    async function loadFineLocations() {
+        if (locationRequestActive || zoomScale < 1.7) return;
+        const candidates = visible.filter(d => isFront(centers.get(d.country_code)))
+            .flatMap(hotspot => hotspot.locations.map(location => ({
+                name: location.name,
+                country_code: hotspot.country_code,
+                event_count: location.count,
+                dominant_category: hotspot.dominant_category
+            }))).sort((a, b) => b.event_count - a.event_count).slice(0, 80);
+        if (!candidates.length) return;
+        locationRequestActive = true;
+        try {
+            const data = await loadJson('api/map/locations', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({locations: candidates})
+            });
+            fineLocations = data.locations || [];
+            renderFineLocations();
+            if (data.pending_count > 0) scheduleFineLocations(1400);
+        } catch (error) {
+            console.warn('具体地点加载失败', error);
+        } finally {
+            locationRequestActive = false;
+        }
+    }
+
     function redraw() {
         root.select('.sphere').attr('d', path);
         root.select('.graticule').attr('d', path);
         root.selectAll('.country').attr('d', path);
-        marks.attr('display', d => projection(centers.get(d.country_code)) ? null : 'none')
+        marks.attr('display', d => isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('cx', d => projection(centers.get(d.country_code))?.[0])
             .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
-        labels.attr('display', d => zoomScale >= 1.7 && projection(centers.get(d.country_code)) ? null : 'none')
+        labels.attr('display', d => zoomScale >= 1.25 && zoomScale < 2.15 && isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('x', d => projection(centers.get(d.country_code))?.[0])
             .attr('y', d => (projection(centers.get(d.country_code))?.[1] || 0) - radius(d.event_count) - 5);
+        redrawFine();
     }
     svg.call(d3.drag().on('drag', event => {
         const rotate = projection.rotate();
         const k = 75 / projection.scale();
         projection.rotate([rotate[0] + event.dx * k, rotate[1] - event.dy * k]);
         redraw();
-    }));
+    }).on('end', () => scheduleFineLocations()));
     svg.call(d3.zoom().scaleExtent([1, 5]).filter(event => event.type === 'wheel')
-        .on('zoom', event => { zoomScale = event.transform.k; projection.scale(initialScale * zoomScale); redraw(); }));
+        .on('zoom', event => {
+            zoomScale = event.transform.k;
+            projection.scale(initialScale * zoomScale);
+            redraw();
+            scheduleFineLocations();
+        }));
     redraw();
 
     const m = mapData.meta;
@@ -293,10 +378,10 @@ function renderMap() {
         ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
 }
 
-function showMapDetail(d, countryName) {
-    selectedCountry = d.country_code;
+function showMapDetail(d, countryName, locationName = null) {
+    selectedCountry = `${d.country_code}|${locationName || ''}`;
     $('map-intelligence-panel').hidden = false;
-    $('map-intelligence-title').textContent = `${countryName || d.country_code} · 对应情报`;
+    $('map-intelligence-title').textContent = `${locationName || countryName || d.country_code} · 对应情报`;
     $('map-intelligences').innerHTML = '<span class="muted">正在加载真实情报…</span>';
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
     const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
@@ -306,19 +391,21 @@ function showMapDetail(d, countryName) {
         <h3>类别</h3><ul class="list">${categories}</ul>
         <h3>提取地点</h3><ul class="list">${locations}</ul>
         <h3>谓词</h3><ul class="list">${predicates}</ul>
-        <p class="muted">标记位于国家中心；地点尚未经过城市级地理编码。</p>
+        <p class="muted">国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。</p>
         <div class="legend">${legendHtml()}</div>`;
-    loadMapIntelligences(d.country_code);
+    loadMapIntelligences(d.country_code, locationName);
 }
 
-async function loadMapIntelligences(countryCode) {
+async function loadMapIntelligences(countryCode, locationName = null) {
+    const selectionKey = `${countryCode}|${locationName || ''}`;
     try {
         const data = await loadJson(`api/map/intelligences?${queryParams({
             country_code: countryCode,
+            ...(locationName ? {location_name: locationName} : {}),
             offset: 0,
             limit: 50
         })}`);
-        if (selectedCountry !== countryCode) return;
+        if (selectedCountry !== selectionKey) return;
         const target = $('map-intelligences');
         if (!data.intelligences.length) {
             target.innerHTML = '<span class="muted">当前筛选条件下没有对应情报。</span>';
@@ -334,7 +421,7 @@ async function loadMapIntelligences(countryCode) {
             </article>`;
         }).join('') + (data.meta.has_more ? `<div class="warning">共 ${data.meta.total} 条，仅显示最新 50 条。</div>` : '');
     } catch (error) {
-        if (selectedCountry === countryCode) {
+        if (selectedCountry === selectionKey) {
             $('map-intelligences').innerHTML = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
         }
     }

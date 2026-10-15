@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 from pathlib import Path
 
 from flask import Blueprint, jsonify, render_template, request
@@ -12,10 +13,11 @@ from .engine import CATEGORY_LABELS, SituationViewEngine, ViewQuery
 
 
 class SituationViewsService:
-    def __init__(self, subsystem_registry, registry=None, *, detail_origin=""):
+    def __init__(self, subsystem_registry, registry=None, *, detail_origin="", geocoder=None):
         self.subsystem_registry = subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
+        self.geocoder = geocoder
         self._engines = {}
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/experimental/situation"):
@@ -67,10 +69,45 @@ class SituationViewsService:
             try:
                 engine, query = self._request_context()
                 country_code = request.args.get("country_code")
+                location_name = str(request.args.get("location_name") or "").strip() or None
                 offset = self._bounded_int("offset", 0, 0, 100000)
                 limit = self._bounded_int("limit", 50, 1, 100)
                 return jsonify(engine.map_intelligences(
-                    query, country_code, offset=offset, limit=limit))
+                    query, country_code, location_name=location_name,
+                    offset=offset, limit=limit))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.post("/api/map/locations")
+        @protect
+        def map_locations_api():
+            try:
+                values = []
+                raw_values = (request.get_json(silent=True) or {}).get("locations") or []
+                for item in raw_values[:120]:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip()[:200]
+                    code = str(item.get("country_code") or "").strip().upper()
+                    if not name or not re.fullmatch(r"[A-Z]{2}", code):
+                        continue
+                    try:
+                        event_count = max(1, int(item.get("event_count") or 1))
+                    except (TypeError, ValueError):
+                        event_count = 1
+                    values.append({
+                        "name": name,
+                        "country_code": code,
+                        "event_count": event_count,
+                        "dominant_category": str(
+                            item.get("dominant_category") or "other"),
+                    })
+                if self.geocoder is None:
+                    return jsonify({
+                        "locations": [], "pending_count": 0,
+                        "unavailable": True,
+                    })
+                return jsonify(self.geocoder.resolve_many(values))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 

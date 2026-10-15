@@ -15,7 +15,9 @@ python -m SituationViews.standalone
 当前地图只使用 `event_location` 中明确给出的 ISO 两位 `country_code`，在国家中心显示
 热点；点击热点会按当前筛选条件加载对应的真实情报摘要，标题链接到主站详情页。单次最多
 返回最新 50 条，避免热点数据量增大后拖慢地图首屏。具体地点名称会随热点详情展示，但在
-接入地名解析器以前不会伪造城市坐标。
+放大到区域级别后才会由独立后台任务按需解析坐标并逐步显示。解析结果缓存在
+`_data/SituationViews/geocoding.sqlite`，外部坐标来自 OpenStreetMap Nominatim；解析失败的
+地点不会伪造坐标，也不会影响国家级热点和其他功能。
 
 实体关系图依据 Event Registry 的 `ArgumentRoleSpec` 将 subject 指向 object。关系型多方
 事件使用无向投影，并限制参与方数量。节点当前按 `(名称, 类型, 国家)` 临时归一化，因此

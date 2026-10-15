@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from flask import Flask, redirect
 
-from GlobalConfig import DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
+from GlobalConfig import DATA_PATH, DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
 from MyPythonUtility.easy_config import EasyConfig
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from SituationViews.web import SituationViewsService
+from SituationViews.geocoding import CachedNominatimGeocoder
 
 
 def create_app(config=None, *, subsystem_registry=None) -> Flask:
@@ -35,6 +37,8 @@ def create_app(config=None, *, subsystem_registry=None) -> Flask:
             "intelligence_hub_web_service.service.host_url",
             "http://127.0.0.1:5000",
         ),
+        geocoder=CachedNominatimGeocoder(
+            Path(DATA_PATH) / "SituationViews" / "geocoding.sqlite"),
     ).mount_to_app(app, url_prefix="/situation")
 
     @app.get("/")
