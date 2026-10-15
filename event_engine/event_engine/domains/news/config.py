@@ -49,6 +49,10 @@ PREDICATE_ARGUMENT_SPECS = {
     "cooperate": _arguments("party", "topic"),
     "release": _arguments("releaser", "object recipient"),
     "armed_conflict": _arguments("belligerent"),
+    "kill": _arguments("actor", "target"),
+    "assault": _arguments("actor", "target"),
+    "kidnap": _arguments("actor", "target"),
+    "rob": _arguments("actor", "target object"),
     "attack": _arguments("actor", "target"),
     "defend": _arguments("actor", "target"),
     "intercept": _arguments("actor", "target"),
@@ -81,8 +85,36 @@ IDENTITIES = {
         location_mode="strict", repeatability="high",
         max_time_uncertainty=timedelta(days=1),
     ),
+    # 犯罪类：以行为人+受害者为身份，单次发生，地点严格；
+    # 与 attack 同级别收紧，防止不同案件被误合并。
+    "kill": IdentitySpec(
+        identity_roles=("actor", "target"), discriminator_roles=("instrument",),
+        time_mode="occurrence", time_tolerance=timedelta(hours=24),
+        location_mode="strict", repeatability="high",
+        role_weight=.40, time_weight=.25, location_weight=.25,
+        attribute_weight=.10, lifecycle_weight=0,
+        auto_merge_threshold=.90, review_threshold=.72,
+        max_time_uncertainty=timedelta(days=1),
+    ),
+    "assault": IdentitySpec(
+        identity_roles=("actor", "target"), time_mode="occurrence",
+        time_tolerance=timedelta(hours=24), location_mode="strict",
+        repeatability="high", max_time_uncertainty=timedelta(days=1),
+    ),
+    "kidnap": IdentitySpec(
+        identity_roles=("actor", "target"), time_mode="occurrence",
+        time_tolerance=timedelta(days=2), location_mode="strict",
+        repeatability="medium", max_time_uncertainty=timedelta(days=1),
+    ),
+    "rob": IdentitySpec(
+        identity_roles=("actor", "target"), discriminator_roles=("object",),
+        time_mode="occurrence", time_tolerance=timedelta(hours=24),
+        location_mode="strict", repeatability="high",
+        max_time_uncertainty=timedelta(days=1),
+    ),
 }
-TAGS = {"attack": {"war"}, "armed_conflict": {"war"}}
+TAGS = {"attack": {"war"}, "armed_conflict": {"war"},
+        "kill": {"crime"}, "assault": {"crime"}, "kidnap": {"crime"}, "rob": {"crime"}}
 
 FRAMES = frame_specs(
     ("exist capable", _frame("state", "intrinsic", "unknown")),
@@ -90,7 +122,8 @@ FRAMES = frame_specs(
     ("possess control member_of located_at depend_on connected_to", _frame("state", "relational", "unknown")),
     ("increase decrease improve deteriorate terminate gain lose restore", _frame("change", "intrinsic", "unknown")),
     ("create damage casualty discover appoint remove adjudicate detain seize sanction restrict violate", _frame("change", "targeted")),
-    ("inspect investigate protest regulate attack defend intercept observe disrupt", _frame("process", "targeted")),
+    ("inspect investigate protest regulate attack defend intercept observe disrupt assault", _frame("process", "targeted")),
+    ("kill kidnap rob", _frame("change", "targeted")),
     ("negotiate cooperate armed_conflict", _frame("process", "relational")),
     ("agree elect", _frame("change", "relational")),
     ("transfer aid release", _frame("change", "transfer")),
@@ -100,4 +133,4 @@ FRAMES = frame_specs(
     ("natural_hazard outbreak", _frame("process", "intrinsic", "non_agentive")),
 )
 PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, NEWS_PREDICATE_METADATA)
-PACK = DomainPack("news", "1.2", PREDICATE_SPECS)
+PACK = DomainPack("news", "1.3", PREDICATE_SPECS)

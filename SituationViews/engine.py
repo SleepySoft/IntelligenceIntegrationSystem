@@ -34,6 +34,7 @@ PREDICATE_CATEGORIES = {
     "security": {
         "damage", "casualty", "sanction", "restrict", "violate", "detain",
         "seize", "observe", "disrupt", "control",
+        "kill", "assault", "kidnap", "rob",
     },
     "politics": {
         "appoint", "remove", "elect", "adjudicate", "protest", "negotiate",
@@ -470,6 +471,8 @@ class SituationViewEngine:
         tags = set(getattr(spec, "tags", ()) or ())
         if "war" in tags:
             return "war"
+        if "crime" in tags:
+            return "security"
         for category, predicates in PREDICATE_CATEGORIES.items():
             if predicate in predicates:
                 return category
