@@ -5,7 +5,7 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME, APPENDIX_TOTAL_SCORE,
 )
 from SituationViews.engine import SituationViewEngine, ViewQuery
-from SituationViews.standalone import create_app
+from SituationViews.web import SituationViewsService
 
 
 class FakeCursor(list):
@@ -118,12 +118,33 @@ def test_entity_graph_keeps_high_score_singleton_for_review():
     assert result["meta"]["high_score_singleton_cutoff"] == 8.0
 
 
-def test_demo_app_serves_both_views_without_mongodb():
-    app = create_app(demo=True)
-    client = app.test_client()
+def test_web_service_serves_both_views_with_injected_collections():
+    from flask import Flask
+    from types import SimpleNamespace
+
     now = datetime.now(timezone.utc)
+    archives = [_archive("a", now, 8)]
+    events = [_attack("e1", "a", "行动方", "目标")]
+    context = SimpleNamespace(
+        name="news",
+        event_v4_intelligence_collection=FakeCollection(archives),
+        event_v4_event_collection=FakeCollection(events),
+    )
+
+    class Registry:
+        @staticmethod
+        def resolve(name=None):
+            return context if not name or name == "news" else None
+
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    app = Flask(__name__)
+    SituationViewsService(Registry()).mount_to_app(app, url_prefix="/situation")
+    client = app.test_client()
     params = {
-        "subsystem": "demo",
+        "subsystem": "news",
         "start": (now - timedelta(days=7)).isoformat(),
         "end": (now + timedelta(minutes=1)).isoformat(),
         "min_score": "6",
@@ -136,6 +157,6 @@ def test_demo_app_serves_both_views_without_mongodb():
     assert page.status_code == 200
     assert "态势实验视图" in page.get_data(as_text=True)
     assert map_payload.status_code == 200
-    assert map_payload.get_json()["meta"]["hotspot_count"] == 4
+    assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200
-    assert graph_payload.get_json()["meta"]["edge_count"] == 2
+    assert graph_payload.get_json()["meta"]["edge_count"] == 1
