@@ -35,7 +35,7 @@ PREDICATE_CATEGORIES = {
     "security": {
         "damage", "casualty", "sanction", "restrict", "violate", "detain",
         "seize", "observe", "disrupt", "control",
-        "kill", "assault", "kidnap", "rob",
+        "kill", "assault", "kidnap", "rob",  # kill/rob 已并入 assault（registry 1.5），保留映射兼容旧数据
     },
     "politics": {
         "appoint", "remove", "elect", "adjudicate", "protest", "negotiate",
