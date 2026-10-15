@@ -49,7 +49,11 @@
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
-        .intelligence-list { display: grid; gap: 9px; margin-top: 10px; }
+        .intelligence-panel { margin-top: 12px; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .intelligence-panel[hidden] { display: none; }
+        .intelligence-panel h2 { margin: 0; font-size: 16px; }
+        .intelligence-panel > p { margin: 4px 0 0; }
+        .intelligence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 9px; margin-top: 12px; }
         .intelligence-card { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--soft); }
         .intelligence-card a { color: light-dark(#2457c5, #a9c4ff); font-weight: 650; text-decoration: none; }
         .intelligence-card a:hover { text-decoration: underline; }
@@ -80,6 +84,7 @@
             .shell { padding: 10px; }
             header { display: block; }
             .filters { grid-template-columns: 1fr; }
+            .intelligence-list { grid-template-columns: 1fr; }
             .canvas, svg { min-height: 520px; height: 520px; }
         }
     </style>
@@ -132,6 +137,11 @@
                 <div class="legend" id="map-legend"></div>
             </aside>
         </div>
+        <section class="intelligence-panel" id="map-intelligence-panel" hidden>
+            <h2 id="map-intelligence-title">对应情报</h2>
+            <p class="muted">按内容时间从新到旧排列，点击标题打开完整情报。</p>
+            <div id="map-intelligences" class="intelligence-list"></div>
+        </section>
     </section>
 
     <section id="graph-view" class="view">
@@ -207,6 +217,8 @@ async function loadJson(url) {
 
 async function refreshMap() {
     $('map-status').classList.add('show');
+    selectedCountry = null;
+    $('map-intelligence-panel').hidden = true;
     try {
         const [data, resources] = await Promise.all([
             loadJson(`api/map?${queryParams()}`),
@@ -283,6 +295,9 @@ function renderMap() {
 
 function showMapDetail(d, countryName) {
     selectedCountry = d.country_code;
+    $('map-intelligence-panel').hidden = false;
+    $('map-intelligence-title').textContent = `${countryName || d.country_code} · 对应情报`;
+    $('map-intelligences').innerHTML = '<span class="muted">正在加载真实情报…</span>';
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
     const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
     const predicates = Object.entries(d.predicates).map(([k,v]) => `<li>${escapeHtml(k)}：${v}</li>`).join('');
@@ -291,7 +306,6 @@ function showMapDetail(d, countryName) {
         <h3>类别</h3><ul class="list">${categories}</ul>
         <h3>提取地点</h3><ul class="list">${locations}</ul>
         <h3>谓词</h3><ul class="list">${predicates}</ul>
-        <h3>对应情报</h3><div id="map-intelligences" class="intelligence-list"><span class="muted">正在加载真实情报…</span></div>
         <p class="muted">标记位于国家中心；地点尚未经过城市级地理编码。</p>
         <div class="legend">${legendHtml()}</div>`;
     loadMapIntelligences(d.country_code);
