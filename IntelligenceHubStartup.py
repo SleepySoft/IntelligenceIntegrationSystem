@@ -413,6 +413,16 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         scheduler.add_monthly_task(export_monthly, task_id="export_mongodb_monthly_task", day=1, use_new_thread=True)
         scheduler.add_hourly_task(run_aggregation, task_id="summary_aggregation_hourly", use_new_thread=True)
         scheduler.add_hourly_task(build_entity_frequency, task_id="entity_frequency_hourly", use_new_thread=True)
+        # 对话记录按周归档：散文件保留 7 天，周日将超过保留期的记录 append 进其所在周的 zip。
+        retention_days = config.get('intelligence_hub.conversation_retention_days', 7)
+
+        def compact_conversations():
+            from ServiceComponent.conversation_compaction import compact_conversation_records
+            compact_conversation_records(
+                os.path.join(self_path, 'conversation'), older_than_days=retention_days)
+
+        scheduler.add_weekly_task(compact_conversations, task_id="compact_conversation_weekly",
+                                  day_of_week="sun", use_new_thread=True)
 
     extensions.append(ScheduledMaintenancePlugin(
         lambda: AdvancedScheduler(logger=logging.getLogger("Scheduler")),
