@@ -338,8 +338,7 @@ class ArticleRenderer {
             const g = Math.round(165 - ratio * (165 - 242));
             const b = Math.round(0 - ratio * (0 - 253));
             el.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-            // 原始代码没有变色逻辑，如果你想要完全还原，可以删掉下面这行
-            el.style.color = ratio < 0.3 ? '#fff' : '#5f6368';
+            el.style.color = '#fff';
         });
     }
 

@@ -158,11 +158,8 @@ body {
 
 .article-time.time-sort-active {
     order: -1;
+    color: #fff;
     font-weight: 650;
-    border: 1px solid rgba(30, 136, 229, 0.65);
-    box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.42),
-        0 2px 7px rgba(37, 99, 235, 0.2);
 }
 
 .article-source {
