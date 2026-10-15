@@ -124,14 +124,22 @@ class SituationViewsService:
         if start >= end:
             raise ValueError("start 必须早于 end")
         min_score = self._bounded_float("min_score", 6.0, 0, 10)
-        category = str(request.args.get("category") or "").strip() or None
-        if category and category not in CATEGORY_LABELS:
-            raise ValueError(f"未知事件类别: {category}")
+        raw_categories = str(request.args.get("category") or "").strip()
+        if not raw_categories:
+            categories = None
+        elif raw_categories == "__none__":
+            categories = frozenset()
+        else:
+            categories = frozenset(
+                value.strip() for value in raw_categories.split(",") if value.strip())
+            unknown = categories.difference(CATEGORY_LABELS)
+            if unknown:
+                raise ValueError(f"未知事件类别: {', '.join(sorted(unknown))}")
         query = ViewQuery(
             start=start,
             end=end,
             min_score=min_score,
-            category=category,
+            categories=categories,
             primary_only=self._bool_arg("primary_only", True),
             max_articles=self._bounded_int("max_articles", 5000, 100, 20000),
         )

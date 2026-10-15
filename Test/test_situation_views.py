@@ -73,6 +73,27 @@ def test_map_view_uses_explicit_event_locations_and_reports_coverage():
     assert result["meta"]["location_coverage"] == 0.5
 
 
+def test_map_view_accepts_multiple_event_categories():
+    now = datetime.now(timezone.utc)
+    war = _attack("e1", "a", "甲方", "设施一")
+    security = _attack("e2", "b", "乙方", "设施二")
+    security["predicate"] = {"id": "sanction", "label": "制裁"}
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([war, security]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.map_view(ViewQuery(
+        now - timedelta(days=1), now + timedelta(days=1),
+        categories=frozenset({"war", "security"}),
+    ))
+
+    assert result["meta"]["eligible_event_count"] == 2
+    assert result["meta"]["categories"] == ["security", "war"]
+    assert result["hotspots"][0]["categories"] == {"war": 1, "security": 1}
+
+
 def test_map_intelligences_returns_real_article_summaries_for_country():
     now = datetime.now(timezone.utc)
     archives = [_archive("a", now, 7), _archive("b", now - timedelta(hours=1), 8)]

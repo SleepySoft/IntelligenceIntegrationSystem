@@ -117,10 +117,7 @@
         <label>结束时间<input id="end" type="datetime-local"></label>
         <label>最低评分<input id="min-score" type="number" min="0" max="10" step="0.5" value="6"></label>
         <label>事件类别
-            <select id="category">
-                <option value="">全部类别</option>
-                {% for value, label in categories.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-            </select>
+            <button id="category-all" type="button">全部已选</button>
         </label>
         <button id="apply" class="primary" type="button">应用并刷新</button>
     </section>
@@ -175,7 +172,7 @@
 
 <script>
 const CATEGORY_COLORS = {
-    war: '#dc3545', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
+    war: '#dc3545', terror: '#b42358', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
     economy: '#2563eb', industry: '#0891b2', other: '#64748b'
 };
 const ENTITY_COLORS = {
@@ -187,6 +184,8 @@ const ENTITY_LABELS = {
     location: '地点', facility: '设施', other: '其他实体'
 };
 const CATEGORY_LABELS = {{ categories|tojson }};
+const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
+const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const SUBSYSTEMS = {{ subsystems|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
@@ -204,12 +203,14 @@ $('end').value = localInputValue(now);
 $('start').value = localInputValue(new Date(now.getTime() - 7 * 86400000));
 
 function queryParams(extra = {}) {
+    const categoryValue = selectedCategories.size === ALL_CATEGORY_KEYS.length
+        ? '' : (selectedCategories.size ? [...selectedCategories].join(',') : '__none__');
     const params = new URLSearchParams({
         subsystem: $('subsystem').value,
         start: new Date($('start').value).toISOString(),
         end: new Date($('end').value).toISOString(),
         min_score: $('min-score').value,
-        category: $('category').value,
+        category: categoryValue,
         primary_only: 'true',
         ...extra
     });
@@ -218,9 +219,8 @@ function queryParams(extra = {}) {
 }
 
 function legendHtml() {
-    const selected = $('category').value;
     return Object.entries(CATEGORY_LABELS).map(([key, label]) =>
-        `<button type="button" class="category-filter${selected === key ? ' active' : ''}" data-category="${key}" aria-pressed="${selected === key}">
+        `<button type="button" class="category-filter${selectedCategories.has(key) ? ' active' : ''}" data-category="${key}" aria-pressed="${selectedCategories.has(key)}">
             <i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}
         </button>`).join('');
 }
@@ -235,12 +235,13 @@ function graphLegendHtml() {
 }
 
 function syncCategoryFilters() {
-    const selected = $('category').value;
     document.querySelectorAll('.category-filter').forEach(button => {
-        const active = button.dataset.category === selected;
+        const active = selectedCategories.has(button.dataset.category);
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', String(active));
     });
+    $('category-all').textContent = selectedCategories.size === ALL_CATEGORY_KEYS.length
+        ? '全部已选' : `全选（已选 ${selectedCategories.size}/${ALL_CATEGORY_KEYS.length}）`;
 }
 
 async function loadJson(url, options = undefined) {
@@ -559,12 +560,18 @@ document.querySelectorAll('.tabs button').forEach(button => button.addEventListe
     if (activeView === 'graph' && !graphData) refreshGraph();
 }));
 $('apply').addEventListener('click', () => activeView === 'map' ? refreshMap() : refreshGraph());
-$('category').addEventListener('change', syncCategoryFilters);
+$('category-all').addEventListener('click', () => {
+    selectedCategories.clear();
+    ALL_CATEGORY_KEYS.forEach(category => selectedCategories.add(category));
+    syncCategoryFilters();
+    activeView === 'map' ? refreshMap() : refreshGraph();
+});
 document.addEventListener('click', event => {
     const button = event.target.closest('.category-filter');
     if (!button) return;
     const category = button.dataset.category;
-    $('category').value = $('category').value === category ? '' : category;
+    if (selectedCategories.has(category)) selectedCategories.delete(category);
+    else selectedCategories.add(category);
     syncCategoryFilters();
     activeView === 'map' ? refreshMap() : refreshGraph();
 });

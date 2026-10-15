@@ -59,7 +59,7 @@ class ViewQuery:
     start: dt.datetime
     end: dt.datetime
     min_score: float = 6.0
-    category: str | None = None
+    categories: frozenset[str] | None = None
     primary_only: bool = True
     max_articles: int = 5000
 
@@ -79,7 +79,7 @@ class SituationViewEngine:
 
         for event in events:
             category = self._category(event)
-            if query.category and category != query.category:
+            if query.categories is not None and category not in query.categories:
                 continue
             event_uuid = str(event.get("event_uuid") or "")
             locations = self._unique_entities(event.get("event_location") or [])
@@ -144,7 +144,7 @@ class SituationViewEngine:
 
         eligible = sum(
             1 for event in events
-            if not query.category or self._category(event) == query.category
+            if query.categories is None or self._category(event) in query.categories
         )
         meta.update({
             "eligible_event_count": eligible,
@@ -173,7 +173,7 @@ class SituationViewEngine:
         articles: dict[str, dict[str, Any]] = {}
         for event in events:
             category = self._category(event)
-            if query.category and category != query.category:
+            if query.categories is not None and category not in query.categories:
                 continue
             locations = self._unique_entities(event.get("event_location") or [])
             matched_locations = [
@@ -264,7 +264,7 @@ class SituationViewEngine:
         locations: dict[tuple[str, str], dict[str, Any]] = {}
         for event in events:
             category = self._category(event)
-            if query.category and category != query.category:
+            if query.categories is not None and category not in query.categories:
                 continue
             event_uuid = str(event.get("event_uuid") or "")
             article_uuid = str(event.get("intelligence_uuid") or "")
@@ -324,7 +324,7 @@ class SituationViewEngine:
 
         for event in events:
             category = self._category(event)
-            if query.category and category != query.category:
+            if query.categories is not None and category not in query.categories:
                 continue
             relations = self._entity_relations(event)
             if not relations:
@@ -474,6 +474,7 @@ class SituationViewEngine:
             "end": self._json_time(query.end),
             "min_score": query.min_score,
             "primary_only": query.primary_only,
+            "categories": sorted(query.categories) if query.categories is not None else None,
             "article_count": len(archives),
             "event_count": len(events),
             "article_limit": query.max_articles,
