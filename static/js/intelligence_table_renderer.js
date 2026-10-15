@@ -32,8 +32,12 @@ class ArticleRenderer {
         return times
             .map(([key, label, value]) => {
                 const active = key === selectedKey ? ' time-sort-active' : '';
+                // 内容时间排序时直接使用当前来源标签的时间。这样即使旧数据没有
+                // 物化 content_time，只要发布/采集时间存在，仍能获得与归档时间
+                // 排序相同的时效高亮。
                 const sortTime = key === selectedKey
-                    ? (this.sortBy === 'content_time' ? article.content_time : article.archived_at)
+                    ? (value || (this.sortBy === 'content_time'
+                        ? article.content_time : article.archived_at))
                     : '';
                 const sortData = sortTime
                     ? ` data-sort-time="${this.escapeHTML(sortTime)}"` : '';
