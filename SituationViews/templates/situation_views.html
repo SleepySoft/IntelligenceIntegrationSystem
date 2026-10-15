@@ -46,6 +46,7 @@
         .metric b { display: block; font-size: 17px; color: var(--text); }
         .legend { display: flex; flex-wrap: wrap; gap: 7px 10px; margin-top: 12px; }
         .legend span { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); font-size: 12px; }
+        .legend .legend-heading { flex-basis: 100%; color: var(--text); font-weight: 650; margin-top: 3px; }
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
@@ -174,6 +175,14 @@ const CATEGORY_COLORS = {
     war: '#dc3545', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
     economy: '#2563eb', industry: '#0891b2', other: '#64748b'
 };
+const ENTITY_COLORS = {
+    person: '#7c3aed', organization: '#2563eb', geopolitical_entity: '#dc3545',
+    location: '#16a085', facility: '#e87924', other: '#64748b'
+};
+const ENTITY_LABELS = {
+    person: '人物', organization: '组织', geopolitical_entity: '政治地理实体',
+    location: '地点', facility: '设施', other: '其他实体'
+};
 const CATEGORY_LABELS = {{ categories|tojson }};
 const SUBSYSTEMS = {{ subsystems|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
@@ -210,7 +219,14 @@ function legendHtml() {
         `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
 }
 $('map-legend').innerHTML = legendHtml();
-$('graph-legend').innerHTML = legendHtml();
+$('graph-legend').innerHTML = graphLegendHtml();
+
+function graphLegendHtml() {
+    const nodes = Object.entries(ENTITY_LABELS).map(([key, label]) =>
+        `<span><i class="dot" style="background:${ENTITY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
+    return `<span class="legend-heading">节点颜色 · 实体类型</span>${nodes}
+        <span class="legend-heading">边颜色 · 事件类别</span>${legendHtml()}`;
+}
 
 async function loadJson(url, options = undefined) {
     const response = await fetch(url, options);
@@ -500,8 +516,7 @@ function renderGraph() {
 }
 
 function entityColor(type) {
-    const colors = {person:'#7c3aed', organization:'#2563eb', geopolitical_entity:'#dc3545', location:'#16a085', facility:'#e87924'};
-    return colors[type] || '#64748b';
+    return ENTITY_COLORS[type] || ENTITY_COLORS.other;
 }
 function showNodeDetail(d) {
     $('graph-detail').innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
