@@ -102,7 +102,8 @@
         .dashboard .layout { display: block; position: relative; }
         .dashboard .canvas { min-height: calc(100vh - 94px); }
         .dashboard svg { height: calc(100vh - 94px); min-height: 620px; }
-        .dashboard .side { position: absolute; top: 12px; right: 12px; z-index: 8; width: min(330px, calc(100% - 72px)); min-height: 0; max-height: calc(100vh - 140px); overflow: auto; box-shadow: 0 14px 38px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); }
+        .dashboard .side { position: absolute; top: 12px; right: 12px; z-index: 8; width: min(330px, calc(100% - 72px)); min-height: 0; max-height: calc(100vh - 140px); overflow: auto; background: color-mix(in srgb, var(--panel) 78%, transparent); opacity: .78; box-shadow: 0 14px 38px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); transition: opacity .18s ease, background-color .18s ease; }
+        .dashboard .side:hover, .dashboard .side:focus-within { background: var(--panel); opacity: 1; }
         .dashboard .side.is-collapsed { display: none; }
         .side-toggle { display: none; }
         .dashboard .side-toggle { display: block; position: absolute; top: 12px; right: 12px; z-index: 9; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
@@ -353,7 +354,10 @@ function renderMap() {
     const centers = new Map(countries.filter(c => c.cca2 && c.latlng?.length === 2)
         .map(c => [c.cca2, [c.latlng[1], c.latlng[0]]]));
     const names = new Map(countries.map(c => [c.cca2, c.translations?.zho?.common || c.name?.common || c.cca2]));
-    const projection = d3.geoOrthographic().fitExtent([[20, 20], [width - 20, height - 20]], {type:'Sphere'}).clipAngle(90);
+    // 桌面端为右侧悬浮图例预留空间，使地球保持完整并略向左显示。
+    const panelReserve = width >= 760 ? Math.min(360, width * 0.34) : 0;
+    const projection = d3.geoOrthographic().fitExtent(
+        [[20, 20], [width - panelReserve - 20, height - 20]], {type:'Sphere'}).clipAngle(90);
     const initialScale = projection.scale();
     const path = d3.geoPath(projection);
     const root = svg.append('g');
@@ -376,7 +380,7 @@ function renderMap() {
 
     let zoomScale = 1, fineLocations = [], locationRequestTimer = null, locationRequestActive = false;
     const isFront = coordinates => {
-        const center = projection.invert([width / 2, height / 2]);
+        const center = projection.invert(projection.translate());
         return center && d3.geoDistance(coordinates, center) < Math.PI / 2 - 0.015;
     };
 
