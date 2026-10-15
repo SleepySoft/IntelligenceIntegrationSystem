@@ -73,6 +73,26 @@ def test_map_view_uses_explicit_event_locations_and_reports_coverage():
     assert result["meta"]["location_coverage"] == 0.5
 
 
+def test_map_intelligences_returns_real_article_summaries_for_country():
+    now = datetime.now(timezone.utc)
+    archives = [_archive("a", now, 7), _archive("b", now - timedelta(hours=1), 8)]
+    events = [
+        _attack("e1", "a", "甲方", "设施一"),
+        _attack("e2", "b", "乙方", "设施二", location="哈尔科夫"),
+    ]
+    engine = SituationViewEngine(
+        FakeCollection(archives), FakeCollection(events), DEFAULT_EVENT_REGISTRY)
+
+    result = engine.map_intelligences(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)), "ua")
+
+    assert result["meta"]["country_code"] == "UA"
+    assert result["meta"]["total"] == 2
+    assert result["intelligences"][0]["uuid"] == "a"
+    assert result["intelligences"][0]["title"] == "event-a"
+    assert result["intelligences"][0]["predicates"] == ["攻击"]
+
+
 def test_entity_graph_aggregates_subject_object_and_filters_weak_edges():
     now = datetime.now(timezone.utc)
     archives = [
@@ -153,6 +173,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     page = client.get("/situation/")
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
+    intelligence_payload = client.get(
+        "/situation/api/map/intelligences",
+        query_string={**params, "country_code": "UA"},
+    )
 
     assert page.status_code == 200
     assert "态势实验视图" in page.get_data(as_text=True)
@@ -160,3 +184,5 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
     assert graph_payload.status_code == 200
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
+    assert intelligence_payload.status_code == 200
+    assert intelligence_payload.get_json()["intelligences"][0]["uuid"] == "a"

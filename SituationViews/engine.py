@@ -152,6 +152,89 @@ class SituationViewEngine:
         })
         return {"hotspots": hotspots, "meta": meta, "categories": CATEGORY_LABELS}
 
+    def map_intelligences(
+        self,
+        query: ViewQuery,
+        country_code: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """返回一个地图热点对应的真实情报摘要，供点击热点后按需加载。"""
+        code = str(country_code or "").strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", code):
+            raise ValueError("country_code 必须是 ISO 两位国家代码")
+
+        events, meta = self._load_events(query)
+        articles: dict[str, dict[str, Any]] = {}
+        for event in events:
+            category = self._category(event)
+            if query.category and category != query.category:
+                continue
+            locations = self._unique_entities(event.get("event_location") or [])
+            matched_locations = [
+                item for item in locations
+                if str(item.get("country_code") or "").strip().upper() == code
+            ]
+            if not matched_locations:
+                continue
+
+            article_uuid = str(event.get("intelligence_uuid") or "").strip()
+            if not article_uuid:
+                continue
+            item = articles.setdefault(article_uuid, {
+                "uuid": article_uuid,
+                "title": str(event.get("_view_title") or "未命名情报"),
+                "score": float(event.get("_view_score") or 0),
+                "content_time": event.get("_view_content_time"),
+                "event_ids": set(),
+                "categories": Counter(),
+                "predicates": Counter(),
+                "locations": Counter(),
+            })
+            event_uuid = str(event.get("event_uuid") or "")
+            if event_uuid in item["event_ids"]:
+                continue
+            item["event_ids"].add(event_uuid)
+            item["categories"][category] += 1
+            item["predicates"][self._predicate_label(event)] += 1
+            for location in matched_locations:
+                name = str(location.get("name") or "").strip()
+                if name:
+                    item["locations"][name] += 1
+
+        ordered = sorted(
+            articles.values(),
+            key=lambda item: (
+                -self._time_sort_value(item["content_time"]),
+                -item["score"],
+                item["uuid"],
+            ),
+        )
+        page = ordered[offset:offset + limit]
+        results = []
+        for item in page:
+            categories = dict(item["categories"].most_common())
+            results.append({
+                "uuid": item["uuid"],
+                "title": item["title"],
+                "score": round(item["score"], 2),
+                "content_time": self._json_time(item["content_time"]),
+                "event_count": len(item["event_ids"]),
+                "dominant_category": next(iter(categories), "other"),
+                "categories": categories,
+                "predicates": [name for name, _ in item["predicates"].most_common(6)],
+                "locations": [name for name, _ in item["locations"].most_common(6)],
+            })
+        meta.update({
+            "country_code": code,
+            "total": len(ordered),
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + len(results) < len(ordered),
+        })
+        return {"intelligences": results, "meta": meta}
+
     def entity_graph(
         self,
         query: ViewQuery,
@@ -397,3 +480,11 @@ class SituationViewEngine:
         if isinstance(value, dt.datetime):
             return value.isoformat()
         return value
+
+    @staticmethod
+    def _time_sort_value(value) -> float:
+        if not isinstance(value, dt.datetime):
+            return 0.0
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.timezone.utc)
+        return value.timestamp()

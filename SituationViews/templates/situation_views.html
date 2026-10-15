@@ -49,6 +49,12 @@
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
+        .intelligence-list { display: grid; gap: 9px; margin-top: 10px; }
+        .intelligence-card { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--soft); }
+        .intelligence-card a { color: light-dark(#2457c5, #a9c4ff); font-weight: 650; text-decoration: none; }
+        .intelligence-card a:hover { text-decoration: underline; }
+        .intelligence-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; color: var(--muted); font-size: 12px; }
+        .predicate-tags { color: var(--muted); font-size: 12px; }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
         .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
@@ -155,9 +161,11 @@ const CATEGORY_COLORS = {
     economy: '#2563eb', industry: '#0891b2', other: '#64748b'
 };
 const CATEGORY_LABELS = {{ categories|tojson }};
+const SUBSYSTEMS = {{ subsystems|tojson }};
+const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 const COUNTRIES_URL = 'https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json';
-let activeView = 'map', mapData = null, graphData = null, worldResources = null;
+let activeView = 'map', mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -274,6 +282,7 @@ function renderMap() {
 }
 
 function showMapDetail(d, countryName) {
+    selectedCountry = d.country_code;
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
     const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
     const predicates = Object.entries(d.predicates).map(([k,v]) => `<li>${escapeHtml(k)}：${v}</li>`).join('');
@@ -282,8 +291,45 @@ function showMapDetail(d, countryName) {
         <h3>类别</h3><ul class="list">${categories}</ul>
         <h3>提取地点</h3><ul class="list">${locations}</ul>
         <h3>谓词</h3><ul class="list">${predicates}</ul>
+        <h3>对应情报</h3><div id="map-intelligences" class="intelligence-list"><span class="muted">正在加载真实情报…</span></div>
         <p class="muted">标记位于国家中心；地点尚未经过城市级地理编码。</p>
         <div class="legend">${legendHtml()}</div>`;
+    loadMapIntelligences(d.country_code);
+}
+
+async function loadMapIntelligences(countryCode) {
+    try {
+        const data = await loadJson(`api/map/intelligences?${queryParams({
+            country_code: countryCode,
+            offset: 0,
+            limit: 50
+        })}`);
+        if (selectedCountry !== countryCode) return;
+        const target = $('map-intelligences');
+        if (!data.intelligences.length) {
+            target.innerHTML = '<span class="muted">当前筛选条件下没有对应情报。</span>';
+            return;
+        }
+        target.innerHTML = data.intelligences.map(item => {
+            const time = item.content_time ? new Date(item.content_time).toLocaleString() : '时间未知';
+            const predicates = item.predicates.length ? item.predicates.join('、') : '未分类谓词';
+            return `<article class="intelligence-card">
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+                <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个事件</span></div>
+                <div class="predicate-tags">${escapeHtml(predicates)}</div>
+            </article>`;
+        }).join('') + (data.meta.has_more ? `<div class="warning">共 ${data.meta.total} 条，仅显示最新 50 条。</div>` : '');
+    } catch (error) {
+        if (selectedCountry === countryCode) {
+            $('map-intelligences').innerHTML = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
+        }
+    }
+}
+
+function intelligenceDetailUrl(uuid) {
+    const subsystem = SUBSYSTEMS.find(item => item.name === $('subsystem').value);
+    const prefix = String(subsystem?.url_prefix || '').replace(/\/$/, '');
+    return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`;
 }
 
 async function refreshGraph() {

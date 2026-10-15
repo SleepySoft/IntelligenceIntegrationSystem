@@ -12,9 +12,10 @@ from .engine import CATEGORY_LABELS, SituationViewEngine, ViewQuery
 
 
 class SituationViewsService:
-    def __init__(self, subsystem_registry, registry=None):
+    def __init__(self, subsystem_registry, registry=None, *, detail_origin=""):
         self.subsystem_registry = subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
+        self.detail_origin = str(detail_origin or "").rstrip("/")
         self._engines = {}
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/experimental/situation"):
@@ -29,6 +30,7 @@ class SituationViewsService:
                 "situation_views.html",
                 categories=CATEGORY_LABELS,
                 subsystems=self.subsystem_registry.describe(),
+                detail_origin=self.detail_origin,
             )
 
         @bp.get("/api/map")
@@ -56,6 +58,19 @@ class SituationViewsService:
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
                 ))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/map/intelligences")
+        @protect
+        def map_intelligences_api():
+            try:
+                engine, query = self._request_context()
+                country_code = request.args.get("country_code")
+                offset = self._bounded_int("offset", 0, 0, 100000)
+                limit = self._bounded_int("limit", 50, 1, 100)
+                return jsonify(engine.map_intelligences(
+                    query, country_code, offset=offset, limit=limit))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 

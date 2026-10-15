@@ -29,7 +29,13 @@ def create_app(config=None, *, subsystem_registry=None) -> Flask:
         db_name="IntelligenceIntegrationSystem",
     )
     app = Flask(__name__)
-    SituationViewsService(registry).mount_to_app(app, url_prefix="/situation")
+    SituationViewsService(
+        registry,
+        detail_origin=config.get(
+            "intelligence_hub_web_service.service.host_url",
+            "http://127.0.0.1:5000",
+        ),
+    ).mount_to_app(app, url_prefix="/situation")
 
     @app.get("/")
     def root():
