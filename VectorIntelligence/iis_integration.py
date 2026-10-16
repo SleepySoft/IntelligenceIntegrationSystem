@@ -33,6 +33,7 @@ class VectorIntelligenceHandles(NamedTuple):
     services: Dict[str, Any]
     search: Callable[..., list]
     run_aggregation: Callable[[], None]
+    vector_client: Any  # VectorDBClient，供 EntityAlias 等其它子系统复用
 
 
 def _event_v4_record_factory(payload: Dict[str, Any]) -> ArchivedDataV4:
@@ -109,6 +110,7 @@ def create_vector_intelligence(config, *, subsystem_registry) -> Optional[Vector
         },
         search=vector_extension.search,
         run_aggregation=run_aggregation,
+        vector_client=vector_db_client,
     )
 
 

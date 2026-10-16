@@ -385,6 +385,18 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         except Exception:
             logger.exception("向量子系统 Web 挂载失败，IIS 主服务继续运行。")
 
+    # 实体别名子系统（独立模块）：标准名/别名解析 API，可复用 VectorDB 做语义召回。
+    try:
+        from EntityAlias.iis_integration import mount_to_iis as mount_entity_alias
+        mount_entity_alias(
+            wsgi_app,
+            config=config,
+            wrapper=hub_service.access_manager.login_required,
+            vector_client=vector_handles.vector_client if vector_handles else None,
+        )
+    except Exception:
+        logger.exception("实体别名模块加载失败，IIS 主服务继续运行。")
+
     intelligence_views_settings = config.get(
         "intelligence_hub_web_service.intelligence_views", {}) or {}
     situation_scope = (

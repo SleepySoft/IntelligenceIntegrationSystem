@@ -89,6 +89,13 @@
   - `config.py`：集合名/chunk 参数单一事实源与 `intelligence_hub.vectordb` 配置读取
   - 详细设计与迁移计划见 `doc/vector_intelligence_subsystem_refactor.md` 与 `doc/20261015_vector_subsystem_coupling_audit_and_plan.md`
 
+- **`EntityAlias/`** — 实体别名子系统（标准名 ⇄ 别名映射，相对独立，可作独立项目）
+  - `service.py`：解析（精确→模糊/部分→可选向量）、批量接口、CRUD 门面
+  - `store.py`：JSONL 文本存储（事实源，git 管理，按类型分文件、按标准名排序、原子重写）
+  - `index.py` / `normalize.py`：内存精确索引与归一化；`vector.py`：可选最近名向量召回（IIS 集成时复用 VectorDB 独立集合 `entity_alias_names`，模块不 import VectorDB）
+  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；`iis_integration.py`：装配入口（`entity_alias.enabled` 配置门控）
+  - `data/`：git 管理的别名数据（JSONL）；`skill/SKILL.md`：AI 调用方指南
+
 - **`VectorDB/`** — 向量数据库服务
   - `VectorDBBService.py`：独立 Flask 服务，提供向量存储、检索、聚类 API
   - `VectorStorageEngine.py`：底层存储引擎（基于 ChromaDB）
