@@ -1,9 +1,17 @@
 import time
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from uuid import UUID
 
 from ServiceComponent.adapters import IISUnarchivedReplayExtension
 from ServiceComponent.pipeline import ANALYSIS_REQUESTED
 from ServiceComponent.runtime import HubRuntime
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_FIELD,
+    APPENDIX_RETRY_FIRST_FAILED_AT,
+    APPENDIX_RETRY_LEVEL,
+    APPENDIX_RETRY_NEXT_AT,
+)
 
 
 class Collection:
@@ -15,6 +23,8 @@ class Collection:
         self.updates = []
 
     def find(self, query):
+        if query.get("APPENDIX.__ARCHIVED__") == "R":
+            return []
         assert query == {
             "$and": [
                 {"__ARCHIVED__": {"$exists": False}},
@@ -25,6 +35,10 @@ class Collection:
 
     def update_one(self, query, update):
         self.updates.append((query, update))
+        return SimpleNamespace(modified_count=1)
+
+    def update_many(self, query, update):
+        return SimpleNamespace(modified_count=0)
 
 
 class Cache:
@@ -63,6 +77,70 @@ def test_replay_extension_resumes_unarchived_cache_at_analysis_stage():
     assert all(str(UUID(item["UUID"])) == item["UUID"] for item in received)
     assert len(registry.context.mongo_db_cache.collection.updates) == 2
     assert extension.replayed == 2
+
+
+class RetryCollection(Collection):
+    def __init__(self):
+        now = datetime.now(timezone.utc)
+        self.records = [{
+            "_id": "retry-id",
+            "UUID": "30eb0459-998d-486f-8eac-470b9dfd98ec",
+            "informant": "https://example.test/retry",
+            APPENDIX_FIELD: {
+                "__ARCHIVED__": "R",
+                APPENDIX_RETRY_LEVEL: 1,
+                APPENDIX_RETRY_FIRST_FAILED_AT: now - timedelta(hours=2),
+                APPENDIX_RETRY_NEXT_AT: now - timedelta(minutes=1),
+            },
+        }]
+        self.updates = []
+
+    def find(self, query):
+        if query.get("APPENDIX.__ARCHIVED__") == "R":
+            return self.records
+        return []
+
+
+def test_retry_records_use_dedicated_lowest_priority_lane():
+    registry = Registry()
+    registry.context.mongo_db_cache.collection = RetryCollection()
+    extension = IISUnarchivedReplayExtension(
+        registry, poll_interval=60, batch_size=10)
+    runtime = HubRuntime()
+    received = []
+    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload))
+
+    extension._replay_due_retries(runtime)
+    assert runtime.stats["queued_by_lane"] == {"retry": 1}
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+
+    assert received[0]["informant"] == "https://example.test/retry"
+    assert extension.retried == 1
+
+
+def test_legacy_terminal_errors_are_migrated_once_to_r1():
+    class LegacyCollection(Collection):
+        def update_many(self, query, update):
+            self.migration = (query, update)
+            return SimpleNamespace(modified_count=4)
+
+    registry = Registry()
+    collection = LegacyCollection()
+    registry.context.mongo_db_cache.collection = collection
+    extension = IISUnarchivedReplayExtension(registry)
+
+    extension._migrate_legacy_errors()
+
+    query, update = collection.migration
+    assert query == {
+        "APPENDIX.__ARCHIVED__": "E",
+        "APPENDIX.__RETRY_LEVEL__": {"$exists": False},
+    }
+    assert update["$set"]["APPENDIX.__ARCHIVED__"] == "R"
+    assert update["$set"]["APPENDIX.__RETRY_LEVEL__"] == 1
+    assert extension.migrated_legacy_errors == 4
 
 
 def _wait_until(predicate, timeout=1.0):

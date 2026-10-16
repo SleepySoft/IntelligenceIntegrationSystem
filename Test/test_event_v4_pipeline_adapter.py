@@ -1,10 +1,17 @@
 from tenacity import wait_none
+from datetime import datetime, timezone
 from uuid import UUID
 
 from ServiceComponent.adapters import EventV4PipelinePorts
 from ServiceComponent.IntelligenceHubDefines_v4 import validate_analysis_result_v4
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_FIELD,
+    APPENDIX_RETRY_FIRST_FAILED_AT,
+    APPENDIX_RETRY_LEVEL,
+    APPENDIX_RETRY_NEXT_AT,
+)
 from ServiceComponent.pipeline import ARCHIVE_REQUESTED
 from ServiceComponent.runtime import HubEvent
 
@@ -331,6 +338,76 @@ def test_v4_adapter_deprioritizes_api_failed_client_on_retry():
     assert analyzed.accepted
     assert manager.requests[0]["avoid_client_names"] == set()
     assert manager.requests[1]["avoid_client_names"] == {"fake-client"}
+
+
+def test_v4_analysis_uses_three_persistent_retry_rounds_before_terminal_error():
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: (_ for _ in ()).throw(RuntimeError("network down")),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    first_failed_at = None
+
+    for expected_level in (1, 2, 3):
+        result = ports.analyze(HubEvent("analysis.requested", original, "news"))
+        assert not result.accepted
+        assert result.reason.startswith(f"analysis_r{expected_level}:")
+        update = context.mongo_db_cache.updated[-1][1]["$set"]
+        assert update["APPENDIX.__ARCHIVED__"] == "R"
+        assert update[f"APPENDIX.{APPENDIX_RETRY_LEVEL}"] == expected_level
+        if first_failed_at is None:
+            first_failed_at = update[f"APPENDIX.{APPENDIX_RETRY_FIRST_FAILED_AT}"]
+        original[APPENDIX_FIELD] = {
+            APPENDIX_RETRY_LEVEL: expected_level,
+            APPENDIX_RETRY_FIRST_FAILED_AT: first_failed_at,
+            APPENDIX_RETRY_NEXT_AT: update[f"APPENDIX.{APPENDIX_RETRY_NEXT_AT}"],
+        }
+
+    assert original[APPENDIX_FIELD][APPENDIX_RETRY_NEXT_AT] == (
+        first_failed_at + ports.PERSISTENT_RETRY_OFFSETS[3])
+    assert original[APPENDIX_FIELD][APPENDIX_RETRY_NEXT_AT] - first_failed_at == (
+        datetime(2026, 1, 3, tzinfo=timezone.utc)
+        - datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    terminal = ports.analyze(HubEvent("analysis.requested", original, "news"))
+    assert not terminal.accepted
+    assert terminal.reason.startswith("analysis_e:")
+    terminal_update = context.mongo_db_cache.updated[-1][1]
+    assert terminal_update["$set"]["APPENDIX.__ARCHIVED__"] == "E"
+    assert terminal_update["$set"][f"APPENDIX.{APPENDIX_RETRY_LEVEL}"] == 3
+
+
+def test_v4_archive_failure_continues_existing_persistent_retry_round():
+    class FailingArchiveRepository(FakeArchiveRepository):
+        def commit(self, record, events):
+            raise RuntimeError("mongodb temporarily unavailable")
+
+    context = FakeContext()
+    repository = FailingArchiveRepository()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(), archive_repository=repository,
+        prompt_table={41: "v41 prompt"}, analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none())
+    original = _original()
+    original[APPENDIX_FIELD] = {
+        APPENDIX_RETRY_LEVEL: 1,
+        APPENDIX_RETRY_FIRST_FAILED_AT: datetime.now(timezone.utc),
+    }
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", original, "news"))
+    archived = ports.archive(HubEvent(ARCHIVE_REQUESTED, analyzed.payload, "news"))
+
+    assert not archived.accepted
+    assert archived.reason.startswith("archive_r2:")
+    update = context.mongo_db_cache.updated[-1][1]["$set"]
+    assert update["APPENDIX.__ARCHIVED__"] == "R"
+    assert update[f"APPENDIX.{APPENDIX_RETRY_LEVEL}"] == 2
+    assert APPENDIX_FIELD not in analyzed.payload.archive.APPENDIX["RAW_DATA"]
 
 
 def test_v4_adapter_removes_conversation_record_file_before_validation():

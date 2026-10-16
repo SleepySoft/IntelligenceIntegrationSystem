@@ -50,7 +50,8 @@ intake.received
 
 主链按执行资源分为互不争抢 worker 的队列组：
 
-- `analysis`：AI 分析 worker；组内实时输入与启动回放使用独立 lane，实时优先。
+- `analysis`：AI 分析 worker；组内使用 continuation、live、replay、retry 四条
+  独立 lane，优先级依次降低，保证新情报和未处理恢复始终先于失败重试。
 - `postprocess`：分析结果转换、数据库归档 worker，不受 AI 调用阻塞。
 - `default`：轻量 intake、终态通知和扩展事件分发。
 
@@ -85,7 +86,9 @@ translation、vector、situation 等属于可选子系统，不属于情报域�
 - `EventV4PipelinePorts` 是所有 Event V4 情报域的生产适配器，负责 V4 输入校验、分析、
   事件转换、评分和幂等归档；运行时本身仍不解析 payload。
 - `IISUnarchivedReplayExtension` 从 cache 恢复未归档记录，并从分析阶段续接，避免
-  被 intake 去重规则拦截。
+  被 intake 去重规则拦截；持久失败使用独立 Retry lane，按首次失败后的 1 小时、
+  8 小时、48 小时依次执行 R1/R2/R3，R3 仍失败才进入 E。旧版无重试轮次的 E
+  会在首次启动时迁移为 R1，重启不会清空重试状态。
 - 翻译补丁发布 `extension.translation.completed`；向量扩展订阅归档和翻译完成事件。
   因而外文记录仅在翻译完成后索引，中文记录直接索引。
 - 聚合、图谱、实体频率、导出和定时调度都在 `IntelligenceHubStartup` 组合，而不在

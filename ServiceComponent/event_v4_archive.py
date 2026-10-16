@@ -77,7 +77,10 @@ class EventV4ArchiveRepository(Protocol):
 def sanitize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
     """生成可长期保存的采集快照，排除凭据、路由和临时控制字段。"""
 
-    excluded = {"token", "prompt", "temp_data", "UUID", "informant", "subsystem"}
+    excluded = {
+        "token", "prompt", "temp_data", "UUID", "informant", "subsystem",
+        APPENDIX_FIELD,
+    }
     return {key: value for key, value in data.items() if key not in excluded}
 
 

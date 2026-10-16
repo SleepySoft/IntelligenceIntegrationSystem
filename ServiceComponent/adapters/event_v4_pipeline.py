@@ -8,7 +8,7 @@ import random
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from pydantic import ValidationError
@@ -49,10 +49,17 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME,
     APPENDIX_CONTENT_TIME_SOURCE,
     APPENDIX_EXTRACTION_QUALITY,
+    APPENDIX_FIELD,
     APPENDIX_RAW_DATA,
+    APPENDIX_RETRY_FIRST_FAILED_AT,
+    APPENDIX_RETRY_LAST_ERROR,
+    APPENDIX_RETRY_LEASE_UNTIL,
+    APPENDIX_RETRY_LEVEL,
+    APPENDIX_RETRY_NEXT_AT,
     APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
+    appendix_path,
 )
 from ServiceComponent.intelligence_time import resolve_content_time
 from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
@@ -67,6 +74,7 @@ logger = logging.getLogger(__name__)
 class PreparedValuableV4:
     archive: ArchivedDataV4
     conversion: EventConversionResult
+    retry_metadata: Mapping[str, Any]
 
 
 class EventV4PipelinePorts(BasePipelinePorts):
@@ -74,6 +82,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
     分析结果、评分、事件转换和归档全部使用 V4 契约。
     """
+
+    # R1/R2/R3 分别在首次失败后的 1h、8h、48h 到期；R3 仍失败才进入 E。
+    PERSISTENT_RETRY_OFFSETS = {
+        1: timedelta(hours=1),
+        2: timedelta(hours=8),
+        3: timedelta(days=2),
+    }
 
     def __init__(
         self,
@@ -316,7 +331,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     result, subsystem=ctx.name, transient=True, low_value=False,
                 )
             return StageResult.allow(
-                PreparedValuableV4(archive=archive, conversion=conversion),
+                PreparedValuableV4(
+                    archive=archive,
+                    conversion=conversion,
+                    retry_metadata=dict(original_data.get(APPENDIX_FIELD) or {}),
+                ),
                 subsystem=ctx.name,
             )
         except _SensitiveAnalysisError as exc:
@@ -328,8 +347,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
         except Exception as exc:
             self._change_runtime_stat("failed")
             if persist:
-                self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.ERROR, ctx)
+                retry_state = self._schedule_retry(
+                    ctx, original_data.get("UUID", ""), original_data, exc)
                 self._increment_stat(ctx, "error")
+                return StageResult.reject(
+                    f"analysis_{retry_state.lower()}:{type(exc).__name__}:{exc}")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
 
     def archive(self, event: HubEvent) -> StageResult:
@@ -357,9 +379,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
             )
         except Exception as exc:
             source_uuid = prepared.archive.UUID
-            self._mark_cache(source_uuid, CacheArchiveState.ERROR, ctx)
+            retry_state = self._schedule_retry(
+                ctx, source_uuid, {APPENDIX_FIELD: prepared.retry_metadata}, exc)
             self._increment_stat(ctx, "error")
-            return StageResult.reject(f"archive_exception:{type(exc).__name__}:{exc}")
+            return StageResult.reject(
+                f"archive_{retry_state.lower()}:{type(exc).__name__}:{exc}")
 
     def _require_archive_repository(self, ctx: Any) -> EventV4ArchiveRepository:
         repository = (
@@ -375,6 +399,57 @@ class EventV4PipelinePorts(BasePipelinePorts):
         if not uuid or not ctx.mongo_db_cache:
             return
         ctx.mongo_db_cache.update({"UUID": uuid}, {CACHE_ARCHIVED_FLAG_FIELD: state.value})
+
+    def _schedule_retry(
+            self, ctx: Any, uuid: str, original_data: Mapping[str, Any], error: Exception,
+    ) -> str:
+        """把可恢复失败推进到 R1/R2/R3；R3 再失败后才标记 E。"""
+        if not uuid or not ctx.mongo_db_cache:
+            return CacheArchiveState.ERROR.value
+        appendix = original_data.get(APPENDIX_FIELD) or {}
+        try:
+            current_level = int(appendix.get(APPENDIX_RETRY_LEVEL) or 0)
+        except (TypeError, ValueError):
+            current_level = 0
+        now = datetime.now(timezone.utc)
+        first_failed_at = appendix.get(APPENDIX_RETRY_FIRST_FAILED_AT)
+        if not isinstance(first_failed_at, datetime):
+            first_failed_at = now
+        error_text = f"{type(error).__name__}: {error}"[:1000]
+
+        if current_level >= 3:
+            ctx.mongo_db_cache.update(
+                {"UUID": uuid},
+                {
+                    "$set": {
+                        CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.ERROR.value,
+                        appendix_path(APPENDIX_RETRY_LEVEL): 3,
+                        appendix_path(APPENDIX_RETRY_LAST_ERROR): error_text,
+                    },
+                    "$unset": {
+                        appendix_path(APPENDIX_RETRY_NEXT_AT): "",
+                        appendix_path(APPENDIX_RETRY_LEASE_UNTIL): "",
+                    },
+                },
+            )
+            return CacheArchiveState.ERROR.value
+
+        next_level = current_level + 1
+        next_at = first_failed_at + self.PERSISTENT_RETRY_OFFSETS[next_level]
+        ctx.mongo_db_cache.update(
+            {"UUID": uuid},
+            {
+                "$set": {
+                    CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.RETRY.value,
+                    appendix_path(APPENDIX_RETRY_LEVEL): next_level,
+                    appendix_path(APPENDIX_RETRY_FIRST_FAILED_AT): first_failed_at,
+                    appendix_path(APPENDIX_RETRY_NEXT_AT): next_at,
+                    appendix_path(APPENDIX_RETRY_LAST_ERROR): error_text,
+                },
+                "$unset": {appendix_path(APPENDIX_RETRY_LEASE_UNTIL): ""},
+            },
+        )
+        return f"R{next_level}"
 
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,

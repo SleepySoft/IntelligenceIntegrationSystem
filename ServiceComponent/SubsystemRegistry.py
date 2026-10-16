@@ -23,13 +23,19 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
+from pymongo import ASCENDING
 
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
-from ServiceComponent.intelligence_contracts import EventV4CollectionSuffix
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_RETRY_NEXT_AT,
+    CACHE_ARCHIVED_FLAG_FIELD,
+    EventV4CollectionSuffix,
+    appendix_path,
+)
 from ServiceComponent.event_v4_repositories import MongoEventV4ArchiveRepository
 
 
@@ -272,7 +278,11 @@ class SubsystemRegistry:
                 db_name=db_name,
                 username=mongodb_params.get('username'),
                 password=mongodb_params.get('password'),
-                collection_name=ctx.collection_name('cached'))
+                collection_name=ctx.collection_name('cached'),
+                indexes=[[
+                    (CACHE_ARCHIVED_FLAG_FIELD, ASCENDING),
+                    (appendix_path(APPENDIX_RETRY_NEXT_AT), ASCENDING),
+                ]])
             # -------- Event V4 存储 --------
             database = ctx.mongo_db_cache.db
             ctx.event_v4_intelligence_collection = database[

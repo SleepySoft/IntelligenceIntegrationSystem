@@ -18,6 +18,7 @@ from ServiceComponent.pipeline import (
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_MANUAL_RATING,
+    APPENDIX_RETRY_LEVEL,
     CACHE_ARCHIVED_FLAG_FIELD,
     CACHE_LEGACY_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
@@ -121,19 +122,33 @@ class HubApplication:
                 cache_collection = ctx.mongo_db_cache.collection
                 state_rows = cache_collection.aggregate([{
                     "$group": {
-                        "_id": {"$ifNull": [
-                            f"${CACHE_ARCHIVED_FLAG_FIELD}",
-                            {"$ifNull": [
-                                f"${CACHE_LEGACY_ARCHIVED_FLAG_FIELD}", "__PENDING__"
+                        "_id": {
+                            "state": {"$ifNull": [
+                                f"${CACHE_ARCHIVED_FLAG_FIELD}",
+                                {"$ifNull": [
+                                    f"${CACHE_LEGACY_ARCHIVED_FLAG_FIELD}", "__PENDING__"
+                                ]},
                             ]},
-                        ]},
+                            "retry_level": {"$ifNull": [
+                                f"${appendix_path(APPENDIX_RETRY_LEVEL)}", 0]},
+                        },
                         "count": {"$sum": 1},
                     }
                 }])
-                states = {
-                    str(item.get("_id")): int(item.get("count", 0))
-                    for item in state_rows
-                }
+                states = {}
+                retry_levels = {1: 0, 2: 0, 3: 0}
+                for item in state_rows:
+                    identity = item.get("_id")
+                    if isinstance(identity, dict):
+                        state = str(identity.get("state"))
+                        retry_level = int(identity.get("retry_level") or 0)
+                    else:  # 兼容测试桩和迁移期间的旧聚合结果。
+                        state = str(identity)
+                        retry_level = 0
+                    count = int(item.get("count", 0))
+                    states[state] = states.get(state, 0) + count
+                    if state == CacheArchiveState.RETRY.value and retry_level in retry_levels:
+                        retry_levels[retry_level] += count
                 outcomes.append({
                     "name": ctx.name,
                     "display_name": ctx.display_name or ctx.name,
@@ -145,6 +160,9 @@ class HubApplication:
                     "sensitive": states.get(CacheArchiveState.SENSITIVE.value, 0),
                     "duplicated": states.get(CacheArchiveState.DUPLICATED.value, 0),
                     "retry": states.get(CacheArchiveState.RETRY.value, 0),
+                    "retry_r1": retry_levels[1],
+                    "retry_r2": retry_levels[2],
+                    "retry_r3": retry_levels[3],
                     "deprecated": states.get(CacheArchiveState.DEPRECATED.value, 0),
                 })
             except Exception as exc:

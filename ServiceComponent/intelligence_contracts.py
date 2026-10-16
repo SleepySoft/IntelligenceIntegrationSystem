@@ -35,6 +35,11 @@ APPENDIX_TRANSLATED_REVISION = "__TRANSLATED_REVISION__"
 APPENDIX_SCHEMA_VERSION = "__SCHEMA_VERSION__"
 APPENDIX_VECTOR_SCORE = "__VECTOR_SCORE__"  # 查询时临时字段，不写回权威归档
 APPENDIX_EXTRACTION_QUALITY = "__EXTRACTION_QUALITY__"  # 抽取质量统计（仅参考，不影响归档判定）
+APPENDIX_RETRY_LEVEL = "__RETRY_LEVEL__"
+APPENDIX_RETRY_FIRST_FAILED_AT = "__RETRY_FIRST_FAILED_AT__"
+APPENDIX_RETRY_NEXT_AT = "__RETRY_NEXT_AT__"
+APPENDIX_RETRY_LAST_ERROR = "__RETRY_LAST_ERROR__"
+APPENDIX_RETRY_LEASE_UNTIL = "__RETRY_LEASE_UNTIL__"
 
 
 def appendix_path(key: str) -> str:
@@ -68,6 +73,19 @@ def unarchived_cache_query() -> dict:
         {CACHE_LEGACY_ARCHIVED_FLAG_FIELD: {"$exists": False}},
         {CACHE_ARCHIVED_FLAG_FIELD: {"$exists": False}},
     ]}
+
+
+def retry_cache_query(now) -> dict:
+    """返回已到期且没有有效租约的持久 Retry 记录查询。"""
+
+    return {
+        CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.RETRY.value,
+        appendix_path(APPENDIX_RETRY_NEXT_AT): {"$lte": now},
+        "$or": [
+            {appendix_path(APPENDIX_RETRY_LEASE_UNTIL): {"$exists": False}},
+            {appendix_path(APPENDIX_RETRY_LEASE_UNTIL): {"$lte": now}},
+        ],
+    }
 
 
 class EventV4CollectionSuffix(StrEnum):

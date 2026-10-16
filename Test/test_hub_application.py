@@ -176,5 +176,8 @@ def test_application_reports_persistent_workflow_outcomes():
         "sensitive": 1,
         "duplicated": 0,
         "retry": 0,
+        "retry_r1": 0,
+        "retry_r2": 0,
+        "retry_r3": 0,
         "deprecated": 0,
     }

@@ -156,6 +156,21 @@ def test_runtime_prioritizes_live_events_over_replay_backlog():
     assert received == ["new", "old-1", "old-2"]
 
 
+def test_runtime_prioritizes_new_and_unprocessed_events_over_retry_backlog():
+    runtime = HubRuntime(worker_count=1)
+    received = []
+    runtime.subscribe("work", lambda event, _: received.append(event.payload))
+    runtime.emit(HubEvent("work", "retry"), priority=EventPriority.RETRY)
+    runtime.emit(HubEvent("work", "unprocessed"), priority=EventPriority.REPLAY)
+    runtime.emit(HubEvent("work", "new"), priority=EventPriority.LIVE)
+
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=1)
+    runtime.stop()
+
+    assert received == ["new", "unprocessed", "retry"]
+
+
 def test_runtime_prioritizes_derived_stage_over_replay_backlog():
     runtime = HubRuntime(worker_count=1)
     received = []

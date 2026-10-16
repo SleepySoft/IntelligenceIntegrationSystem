@@ -26,12 +26,14 @@ class EventPriority(IntEnum):
     CONTINUATION = 0
     LIVE = 10
     REPLAY = 20
+    RETRY = 30
 
 
 _PRIORITY_LANES = {
     EventPriority.CONTINUATION: "continuation",
     EventPriority.LIVE: "live",
     EventPriority.REPLAY: "replay",
+    EventPriority.RETRY: "retry",
 }
 
 
@@ -48,6 +50,7 @@ class _LaneQueue:
             "continuation": deque(),
             "live": deque(),
             "replay": deque(),
+            "retry": deque(),
         }
         self._condition = threading.Condition()
 
@@ -72,7 +75,7 @@ class _LaneQueue:
         with self._condition:
             while not self.qsize_unlocked():
                 self._condition.wait()
-            for lane in ("continuation", "live", "replay"):
+            for lane in ("continuation", "live", "replay", "retry"):
                 values = self._lanes.get(lane)
                 if values:
                     item = values.popleft()

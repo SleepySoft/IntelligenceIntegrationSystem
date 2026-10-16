@@ -50,7 +50,7 @@ def test_status_is_a_single_line_with_pipeline_stage_counts():
 
     assert "\n" not in line
     assert "queued total=2 [intake=0/analysis=1/result=1/archive=0" in line
-    assert "queues general=0/analysis=1(live=0/replay=1)/post=1" in line
+    assert "queues general=0/analysis=1(live=0/replay=1/retry=0)/post=1" in line
     assert "active total=1 [intake=0/analysis=0/result=0/archive=1" in line
     assert "ai wait=1/run=1/validate=0 attempt=3/response=2/retry=1/valid=0/fail=0" in line
     assert "latency_ms(last=35000/avg=30000)" in line

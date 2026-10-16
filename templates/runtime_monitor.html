@@ -24,7 +24,7 @@
                    border-radius: 12px; padding: 18px; margin-bottom: 20px; }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
                  gap: 12px; margin-bottom: 12px; }
-        .hub-queue-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+        .hub-queue-row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         .hub-result-row { grid-template-columns: repeat(8, minmax(0, 1fr)); }
         .card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px; }
         .card .value { font-size: 22px; font-weight: 700; }
@@ -168,6 +168,7 @@ async function loadHub() {
         const analysis = data.hub?.analysis || {};
         const shadow = data.hub?.shadow || {};
         const processed = runtime.processed_by_type || {};
+        const lanes = runtime.queued_by_lane || {};
         const terminalFailures = (processed['analysis.failed'] || 0) +
                                  (processed['archive.failed'] || 0);
         const vErr = analysis.validation_errors || 0;
@@ -175,6 +176,8 @@ async function loadHub() {
             metricCard('事件 已发/已分派', `${runtime.emitted ?? 0} / ${runtime.processed ?? 0}`),
             metricCard('队列积压', runtime.pending_events ?? 0,
                        (runtime.pending_events ?? 0) > 100 ? 'warn' : ''),
+            metricCard('队列 新/未处理/Retry',
+                       `${lanes.live ?? 0} / ${lanes.replay ?? 0} / ${lanes.retry ?? 0}`),
             metricCard('在途提交', runtime.in_flight_submissions ?? 0),
             metricCard('活动 Handler', runtime.active_handlers ?? 0),
             metricCard('AI 等待/运行/校验',
@@ -214,18 +217,22 @@ async function loadHub() {
             metricCard('彻底失败', sum('failed'), sum('failed') > 0 ? 'bad' : ''),
             metricCard('敏感内容', sum('sensitive'), sum('sensitive') > 0 ? 'warn' : ''),
             metricCard('重复提交', sum('duplicated')),
+            metricCard('Retry R1/R2/R3',
+                       `${sum('retry_r1')} / ${sum('retry_r2')} / ${sum('retry_r3')}`,
+                       sum('retry') > 0 ? 'warn' : ''),
             metricCard('主动弃用', sum('deprecated')),
         ].join('');
         document.getElementById('workflow-table').innerHTML =
             '<tr><th>子系统</th><th>接收</th><th>待处理</th><th>归档</th><th>无价值</th>' +
-            '<th>失败</th><th>敏感</th><th>重复</th><th>待重试</th><th>弃用</th></tr>' +
+            '<th>失败</th><th>敏感</th><th>重复</th><th>Retry R1/R2/R3</th><th>弃用</th></tr>' +
             outcomes.map(item => item.error
                 ? `<tr><td>${esc(item.display_name || item.name)}</td><td colspan="9" style="color:var(--danger)">${esc(item.error)}</td></tr>`
                 : `<tr><td>${esc(item.display_name || item.name)}</td>` +
                   `<td>${item.received || 0}</td><td>${item.pending || 0}</td>` +
                   `<td>${item.archived || 0}</td><td>${item.low_value || 0}</td>` +
                   `<td>${item.failed || 0}</td><td>${item.sensitive || 0}</td>` +
-                  `<td>${item.duplicated || 0}</td><td>${item.retry || 0}</td>` +
+                  `<td>${item.duplicated || 0}</td>` +
+                  `<td>${item.retry_r1 || 0}/${item.retry_r2 || 0}/${item.retry_r3 || 0}</td>` +
                   `<td>${item.deprecated || 0}</td></tr>`).join('');
         showError('workflow-error', outcomes.some(item => item.error)
             ? '部分子系统累计结果查询失败，详见表格。' : null);
