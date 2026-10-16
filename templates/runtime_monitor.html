@@ -24,6 +24,8 @@
                    border-radius: 12px; padding: 18px; margin-bottom: 20px; }
         .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
                  gap: 12px; margin-bottom: 12px; }
+        .hub-queue-row { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+        .hub-result-row { grid-template-columns: repeat(8, minmax(0, 1fr)); }
         .card { background: var(--bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px; }
         .card .value { font-size: 22px; font-weight: 700; }
         .card .label { color: var(--muted); font-size: 12px; }
@@ -49,6 +51,11 @@
         .thread-scroll { max-height: 420px; overflow-y: auto; border: 1px solid var(--card-border);
                          border-radius: 8px; }
         .thread-scroll table th { position: sticky; top: 0; background: var(--bg); }
+        @media (max-width: 1100px) {
+            .hub-queue-row, .hub-result-row {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+        }
     </style>
 </head>
 <body>
@@ -73,7 +80,10 @@
         <div class="subtitle" style="margin-bottom:12px">
             “已分派”表示事件已从队列取出并完成 Handler 调用，无论业务成功、拒绝或异常；它不是成功归档数量。
         </div>
-        <div class="cards" id="hub-cards"></div>
+        <div class="subtitle" style="margin-bottom:6px">队列情况</div>
+        <div class="cards hub-queue-row" id="hub-queue-cards"></div>
+        <div class="subtitle" style="margin-bottom:6px">本次启动后的运行结果</div>
+        <div class="cards hub-result-row" id="hub-result-cards"></div>
         <div class="subtitle" style="margin-bottom:6px">子系统结果（本次进程生命周期）</div>
         <table id="subsystem-table"></table>
         <div class="error" id="hub-error" style="display:none"></div>
@@ -161,11 +171,16 @@ async function loadHub() {
         const terminalFailures = (processed['analysis.failed'] || 0) +
                                  (processed['archive.failed'] || 0);
         const vErr = analysis.validation_errors || 0;
-        document.getElementById('hub-cards').innerHTML = [
+        document.getElementById('hub-queue-cards').innerHTML = [
             metricCard('事件 已发/已分派', `${runtime.emitted ?? 0} / ${runtime.processed ?? 0}`),
             metricCard('队列积压', runtime.pending_events ?? 0,
                        (runtime.pending_events ?? 0) > 100 ? 'warn' : ''),
             metricCard('在途提交', runtime.in_flight_submissions ?? 0),
+            metricCard('活动 Handler', runtime.active_handlers ?? 0),
+            metricCard('AI 等待/运行/校验',
+                       `${analysis.waiting_client ?? 0} / ${analysis.ai_running ?? 0} / ${analysis.validation_running ?? 0}`),
+        ].join('');
+        document.getElementById('hub-result-cards').innerHTML = [
             metricCard('本次归档完成', processed['archive.completed'] || 0),
             metricCard('本次分析/归档失败', terminalFailures,
                        terminalFailures > 0 ? 'bad' : ''),
@@ -176,7 +191,6 @@ async function loadHub() {
             metricCard('校验失败', vErr, vErr > 0 ? 'warn' : ''),
             metricCard('AI 错误', (analysis.call_errors ?? 0) + (analysis.api_errors ?? 0)),
             metricCard('影子分析 记录/失败', `${shadow.recorded ?? 0} / ${shadow.failed ?? 0}`),
-            metricCard('活动 Handler', runtime.active_handlers ?? 0),
         ].join('');
         const subs = data.hub?.subsystems || [];
         document.getElementById('subsystem-table').innerHTML =
