@@ -6,7 +6,7 @@
 
 #### Intelligence
 
-+ [Intelligence List](/intelligences?per_page=50)
++ [Intelligence List](/views)
 
 + [Aggregated Intelligence](/intelligences/clusters)
 

@@ -620,7 +620,7 @@ class IntelligenceHubWebService:
                 'intelligence_list.html',
                 base_path=base_path,
                 subsystem_name=subsystem_name,
-                vector_enabled=is_default,
+                vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
@@ -634,7 +634,7 @@ class IntelligenceHubWebService:
                 public_limits=self.public_search_limits if is_public else {},
                 base_path=base_path,
                 subsystem_name=subsystem_name,
-                vector_enabled=is_default,
+                vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
@@ -650,7 +650,7 @@ class IntelligenceHubWebService:
                 uuid=intelligence_uuid,
                 base_path=base_path,
                 subsystem_name=subsystem_name,
-                vector_enabled=is_default,
+                vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
@@ -1008,6 +1008,7 @@ class IntelligenceHubWebService:
         @app.route('/intelligences', methods=['GET'])
         def intelligences_view():
             return render_template('intelligence_list.html',
+                                   vector_enabled=self.intelligence_hub.vector_search_available,
                                    **self._default_subsystem_plugin_params())
 
         @app.route('/recommendations', methods=['GET'])
@@ -1028,6 +1029,7 @@ class IntelligenceHubWebService:
                 'intelligence_search.html',
                 public_mode=is_public,
                 public_limits=self.public_search_limits if is_public else {},
+                vector_enabled=self.intelligence_hub.vector_search_available,
                 **self._default_subsystem_plugin_params()
             )
 
@@ -1174,6 +1176,7 @@ class IntelligenceHubWebService:
         @app.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):
             return render_template('intelligence_detail.html', uuid=intelligence_uuid,
+                                   vector_enabled=self.intelligence_hub.vector_search_available,
                                    **self._default_subsystem_plugin_params())
 
         # ---------------------------------------------- Management Pages ----------------------------------------------

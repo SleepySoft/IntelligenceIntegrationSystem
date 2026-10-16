@@ -72,6 +72,7 @@ class VectorWebService:
                 'intelligence_search.html',
                 public_mode=is_public,
                 public_limits=hub_service.public_search_limits if is_public else {},
+                vector_enabled=True,  # 本蓝图仅在向量已配置时挂载
                 **hub_service._default_subsystem_plugin_params()
             )
 

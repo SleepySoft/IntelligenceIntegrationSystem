@@ -173,6 +173,11 @@ class HubApplication:
             {"$set": {appendix_path(APPENDIX_MANUAL_RATING): rating}})
         return True
 
+    @property
+    def vector_search_available(self) -> bool:
+        """向量搜索是否已配置（门面已注入）。供 Web 层控制相似情报入口显隐。"""
+        return self._vector_search is not None
+
     def vector_search_intelligence(self, **kwargs) -> List[Tuple[str, float, dict]]:
         return self._vector_search(**kwargs) if self._vector_search else []
 
