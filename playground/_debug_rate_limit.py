@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from AIClientCenter.configuration import build_manager, load_config
+from AIClientCenter.factory_engine import build_manager, load_config
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_V44
 
 clients, limits = load_config("_config/ai_clients.yaml")

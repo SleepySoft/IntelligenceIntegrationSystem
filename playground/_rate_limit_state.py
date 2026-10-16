@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from AIClientCenter.configuration import load_config
+from AIClientCenter.factory_engine import load_config
 
 clients, _ = load_config("_config/ai_clients.yaml")
 

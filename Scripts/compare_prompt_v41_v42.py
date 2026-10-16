@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pymongo
 
-from AIClientCenter.configuration import build_manager, load_config
+from AIClientCenter.factory_engine import build_manager, load_config
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     DEFAULT_EVENT_REGISTRY,

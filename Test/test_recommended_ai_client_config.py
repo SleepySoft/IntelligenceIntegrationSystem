@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from AIClientCenter.configuration import load_config, validate_config
+from AIClientCenter.factory_engine import load_config, validate_config
 
 
 CONFIG_PATH = Path(__file__).parents[1] / "_config" / "ai_clients_recommended_example.yaml"
