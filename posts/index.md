@@ -12,13 +12,13 @@
 
 + [Intelligence Search](/intelligences/search)
 
-+ [Intelligence Views](/views/)
-
 + [Intelligence Graph](/intelligence/graph/view)
 
 -----------------------------------------------
 
 #### Statistics
+
++ [Runtime Monitor](/monitor/runtime)
 
 + [Statistics Overview](/statistics/overview)
 
@@ -28,18 +28,15 @@
 
 #### Maintenance
 
-+ [Runtime Monitor](/monitor/runtime)
-
-+ [Runtime Control](/control)
-
-+ [Manual Intelligence Debug](/debug/intelligence)
-
 + [Log Viewer](/logger/log_viewer)
 
 + [Logger Config](/logger/logger_config)
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
++ [Runtime Control](/control)
+
++ [Manual Intelligence Debug](/debug/intelligence)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 
