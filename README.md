@@ -7,7 +7,7 @@
 
 ## Event V4 版本说明
 
-当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。所有子系统共享
+当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。现有情报域共享
 `CollectedData → AnalysisResultV4 → ArchivedDataV4` 契约。归档文档内嵌
 `EVENT_EXTRACTION` 作为权威数据；事件集合只是可重建的查询索引，实体和地域以名称
 快照直接保存在事件中。查询、翻译、向量化、聚合、图谱和 Web 展示均读取该契约。
@@ -274,7 +274,7 @@ python CrawlerServiceEngine.py
 + 登录后台后可打开 [localhost:5000/debug/intelligence](http://localhost:5000/debug/intelligence)
   人工粘贴正文并调试 AI 分析。该入口自动补齐 `CollectedData` 元数据，将 `source` 固定为
   `__IIS_MANUAL_TEST__`，结果仅保存在当前进程的有界内存列表中，不写入 cache、archive、
-  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可分别选择业务子系统与
+  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可分别选择情报域与
   V2 / Event V4 分析机制，再选择对应的正式 Prompt 版本；Prompt 可编辑并仅对本次任务覆盖，
   日期、正文等占位符仍由正式分析消息构造器拼接。
 
@@ -332,7 +332,7 @@ python CrawlerServiceEngine.py
 + [IntelligenceHub.py](IntelligenceHub.py)（IHub）：兼容导出入口。核心运行时位于 `ServiceComponent/runtime/`，应用门面位于 `ServiceComponent/HubApplication.py`；两者不直接依赖 MongoDB、AI、向量或 Flask。
 + [IntelligenceHubWebService.py](IntelligenceHubWebService.py)：为IHub提供网络服务的模块，包括API、网页发布和鉴权。
 + 
-+ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：组合根。它初始化子系统和 AI 管理器，并按配置安装主流程、cache 恢复、翻译、向量索引、定时维护、聚合和图谱等扩展。
++ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：组合根。它初始化情报域和 AI 管理器，并按配置安装主流程、cache 恢复、翻译、向量索引、定时维护、聚合和图谱等可选子系统。
 + [IntelligenceHubLauncher.py](IntelligenceHubStartup.py)：IHub的**启动**器，选用合适的backend载入IntelligenceHubWebService的wsgi_app，
   > [20250910] 提供Flask原生、waitress、gunicorn三种WSGI服务器，默认服务器为waitress。
   > 

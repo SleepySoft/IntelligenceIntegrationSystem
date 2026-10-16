@@ -13,12 +13,12 @@ HubRuntime（标准库事件内核）
 IntelligenceHubStartup
 ```
 
-运行时不理解 MongoDB、AIClientCenter、VectorDB、Flask、Prompt 或任何子系统的
-数据结构。事件的 `payload` 保持不透明，`subsystem` 仅作为路由标签。
+运行时不理解 MongoDB、AIClientCenter、VectorDB、Flask、Prompt 或任何情报域的
+数据结构。事件的 `payload` 保持不透明，历史字段 `subsystem` 仅作为情报域路由标签。
 
 ## 非目标
 
-- 不要求各子系统的 AI 输出或归档数据立即归一化。
+- 不要求各情报域的 AI 输出或归档数据立即归一化。
 - 不在 Hub 内决定页面应是通用标签、区块扩展还是独立页面。
 - 不保留旧 `IntelligenceHub` 的构造方式或内部实现兼容层。
 
@@ -57,12 +57,16 @@ intake.received
 向量化不属于 post-process worker：`IISVectorExtension` 仅在收到归档或翻译完成
 事件后，将记录投入自身 `_pending` 队列，由 `IISVectorIndexer` 独立线程执行索引。
 
-## 子系统与页面
+## 情报域与页面
 
-子系统是领域插件，不是 Hub 的分支。领域插件未来可提供输入校验、Prompt、输出
+情报域是领域插件，不是 Hub 的分支。领域插件未来可提供输入校验、Prompt、输出
 处理、评分和页面贡献。Web adapter 提供通用列表/详情外壳及字段区块插槽；如需
 完整定制页面，领域插件在受控 `/subsystems/<name>/...` 命名空间提供页面贡献。
 两类页面可并存，Hub 不持有页面模型。
+
+translation、vector、situation 等属于可选子系统，不属于情报域。两类对象的当前能力
+边界及命名迁移见
+[情报域扩展能力调查](20261016_intelligence_domain_extensibility_audit.md)。
 
 ## 提交顺序
 
@@ -78,7 +82,7 @@ intake.received
 
 - `HubApplication` 只接受已构造的 `pipeline_ports`、运行时和插件；它不选择
   IIS 的 schema、AI 分析器或存储实现。
-- `EventV4PipelinePorts` 是所有情报子系统的生产适配器，负责 V4 输入校验、分析、
+- `EventV4PipelinePorts` 是所有 Event V4 情报域的生产适配器，负责 V4 输入校验、分析、
   事件转换、评分和幂等归档；运行时本身仍不解析 payload。
 - `IISUnarchivedReplayExtension` 从 cache 恢复未归档记录，并从分析阶段续接，避免
   被 intake 去重规则拦截。
