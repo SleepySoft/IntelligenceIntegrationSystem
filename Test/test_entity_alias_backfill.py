@@ -6,6 +6,7 @@ from EntityAlias.wikidata import WikidataSuggester
 from Scripts.entity_alias_backfill import (
     _register_wikidata_item,
     _select_exact_wikidata,
+    count_document_entities,
 )
 
 
@@ -48,3 +49,32 @@ def test_register_wikidata_item_is_idempotent_and_adds_input_alias(tmp_path):
     assert second["refs"] == {"wikidata": "Q159"}
     assert service.resolve("俄罗斯联邦")["entity_id"] == first["id"]
     assert service.status()["entities"] == 1
+
+
+def test_count_document_entities_prefers_extraction_without_double_counting():
+    from collections import Counter
+    counters = {}
+
+    # 新结构：遍历 EVENT_EXTRACTION.entities 全部类型，速查字段不重复计数
+    doc = {
+        "EVENT_EXTRACTION": {"entities": [
+            {"name": "甲军", "type": "organization"},
+            {"name": "某设施", "type": "facility"},
+        ]},
+        "PEOPLE": ["张三"],          # 速查字段应与抽取结果重复，不得再计
+        "ORGANIZATION": ["甲军"],
+    }
+    assert count_document_entities(doc, counters) == "extraction"
+    assert counters["organization"]["甲军"] == 1
+    assert counters["facility"]["某设施"] == 1
+    assert "person" not in counters
+
+    # 旧文档缺少抽取结构 → 回退三个速查字段
+    legacy = {"PEOPLE": ["张三"], "LOCATION": ["某地"], "ORGANIZATION": ["乙公司"]}
+    assert count_document_entities(legacy, counters) == "fallback"
+    assert counters["person"]["张三"] == 1
+    assert counters["location"]["某地"] == 1
+    assert counters["organization"]["乙公司"] == 1
+
+    # EVENT_EXTRACTION 为 None（NonIntelligence）→ 也走回退
+    assert count_document_entities({"EVENT_EXTRACTION": None}, counters) == "none"

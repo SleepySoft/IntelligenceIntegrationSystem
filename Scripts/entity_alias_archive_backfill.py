@@ -15,8 +15,10 @@ PEOPLE/LOCATION/ORGANIZATION 速查字段、outbox 和 v4_events。
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 import logging
 import os
 import sys
@@ -27,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bson import json_util  # noqa: E402
 
 from EntityAlias import EntityAliasService, JSONLStore  # noqa: E402
+from EntityAlias.normalize import normalize_name  # noqa: E402
 from GlobalConfig import (  # noqa: E402
     DEFAULT_ALTER_CONFIG_FILE,
     DEFAULT_CONFIG_FILE,
@@ -52,19 +55,27 @@ class ArchiveNormalizationPlan:
     record: ArchivedDataV4
     changes: tuple[dict[str, str], ...]
     resolve_errors: int = 0
+    already_canonical: int = 0            # 已是标准名（无需替换）
+    replaceable_aliases: int = 0          # 可替换别名（会被换成标准名）
+    unmatched: tuple[str, ...] = ()       # 别名库未匹配的名字
 
 
 def normalize_archive_document(
     document: dict[str, Any],
     resolver: Callable[[str], str | None],
 ) -> ArchiveNormalizationPlan:
-    """生成规范化后的归档模型；未命中或解析异常均保留原名。"""
+    """生成规范化后的归档模型；未命中或解析异常均保留原名。
+
+    实体逐项分类：已是标准名 / 可替换别名 / 未匹配 / 解析异常。"""
     payload = dict(document)
     payload.pop("_id", None)
     original = ArchivedDataV4.model_validate(payload)
     updated = original.model_dump(mode="python", by_alias=True)
     changes: list[dict[str, str]] = []
+    unmatched: list[str] = []
     resolve_errors = 0
+    already_canonical = 0
+    replaceable_aliases = 0
 
     extraction = updated.get("EVENT_EXTRACTION")
     if extraction is not None:
@@ -76,7 +87,14 @@ def normalize_archive_document(
                 resolve_errors += 1
                 logger.warning("实体名解析失败 %r，保留原名。", before, exc_info=True)
                 continue
-            if not after or after == before:
+            if not after:
+                unmatched.append(before)
+                continue
+            if normalize_name(after) == normalize_name(before):
+                already_canonical += 1
+            else:
+                replaceable_aliases += 1
+            if after == before:
                 continue
             entity["name"] = after
             changes.append({
@@ -91,6 +109,9 @@ def normalize_archive_document(
         record=record,
         changes=tuple(changes),
         resolve_errors=resolve_errors,
+        already_canonical=already_canonical,
+        replaceable_aliases=replaceable_aliases,
+        unmatched=tuple(unmatched),
     )
 
 
@@ -164,17 +185,22 @@ def run(args) -> dict[str, Any]:
 
     backup_path = args.backup or _default_backup_path(context.name)
     backup_file = None
+    unmatched_counter: Counter = Counter()
     stats: dict[str, Any] = {
         "subsystem": context.name,
         "mode": "apply" if args.apply else "dry-run",
         "scanned": 0,
         "changed_documents": 0,
         "changed_names": 0,
+        "already_canonical_names": 0,
+        "replaceable_alias_names": 0,
+        "unmatched_names": 0,
         "unchanged": 0,
         "invalid": 0,
         "resolve_errors": 0,
         "event_index_pending": 0,
         "backup": backup_path if args.apply else None,
+        "unmatched_report": None,
     }
     sample_left = max(0, args.sample)
 
@@ -188,6 +214,9 @@ def run(args) -> dict[str, Any]:
                 logger.error("跳过非法归档 UUID=%s: %s", document.get("UUID"), exc)
                 continue
             stats["resolve_errors"] += plan.resolve_errors
+            stats["already_canonical_names"] += plan.already_canonical
+            stats["replaceable_alias_names"] += plan.replaceable_aliases
+            unmatched_counter.update(plan.unmatched)
             if not plan.changes:
                 stats["unchanged"] += 1
                 continue
@@ -230,6 +259,23 @@ def run(args) -> dict[str, Any]:
 
     if args.apply and stats["changed_documents"] == 0:
         stats["backup"] = None
+
+    # 未匹配名称清单（报告，dry-run 也输出；可直接作为别名库补录的输入参考）
+    stats["unmatched_names"] = sum(unmatched_counter.values())
+    if unmatched_counter:
+        unmatched_path = args.unmatched_out or os.path.join(
+            EXPORT_PATH,
+            f"entity_alias_unmatched_{context.name}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        )
+        os.makedirs(os.path.dirname(os.path.abspath(unmatched_path)), exist_ok=True)
+        report = [
+            {"name": name, "count": count}
+            for name, count in unmatched_counter.most_common()
+        ]
+        with open(unmatched_path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        stats["unmatched_report"] = unmatched_path
     return stats
 
 
@@ -250,6 +296,8 @@ def main():
                         help="最多打印多少篇变更样例")
     parser.add_argument("--backup", default="",
                         help="--apply 时的原始文档备份路径")
+    parser.add_argument("--unmatched-out", default="",
+                        help="未匹配名称清单输出路径（默认 _export/entity_alias_unmatched_*.json）")
     args = parser.parse_args()
     if args.limit < 0 or args.batch_size <= 0 or args.sample < 0:
         parser.error("limit/sample 不能为负数，batch-size 必须大于 0")

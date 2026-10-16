@@ -5,14 +5,15 @@
 #
 # 用法：
 #   python Scripts/entity_alias_backfill.py scan [--min-count 2] [--limit 500] [--out _export/entity_alias_worklist.json]
-#       扫描默认子系统归档的 PEOPLE/LOCATION/ORGANIZATION 字段，统计频次，
-#       批量查询 EntityAlias，可选查 Wikidata；唯一精确匹配自动补录，
-#       其余输出工作清单（含候选）供 AI 填写。
+#       扫描默认子系统归档：优先遍历 EVENT_EXTRACTION.entities 的全部实体类型；
+#       仅当旧文档缺少抽取结构时回退 PEOPLE/LOCATION/ORGANIZATION 三个速查字段，
+#       两者不重复计数。统计频次后批量查询 EntityAlias，可选查 Wikidata；
+#       唯一精确匹配自动补录，其余输出工作清单（含候选）供 AI 填写。
 #   python Scripts/entity_alias_backfill.py register <filled_worklist.json> [--data-dir EntityAlias/data]
 #       读取 AI 填写后的工作清单并执行注册/加别名/忽略。
 #
 # 工作清单格式（scan 产出，AI 填写 action 部分）：
-#   [{"name": "...", "count": 12, "field": "ORGANIZATION",
+#   [{"name": "...", "count": 12, "type": "organization",
 #     "candidates": [...],                # lookup 候选，供 AI 判断
 #     "action": {                          # AI 填写其一：
 #       "op": "register",                 #   注册新实体（附 canonical/lang/type/aliases/description）
@@ -36,7 +37,34 @@ from EntityAlias.normalize import normalize_name  # noqa: E402
 
 logger = logging.getLogger("entity_alias_backfill")
 
+# 旧文档（缺少 EVENT_EXTRACTION 抽取结构）的回退速查字段
 ENTITY_FIELDS = ("PEOPLE", "LOCATION", "ORGANIZATION")
+
+
+def count_document_entities(doc: dict, counters: dict) -> str:
+    """统计单篇归档的实体名，返回计数来源（"extraction" / "fallback" / "none"）。
+
+    优先使用 EVENT_EXTRACTION.entities（覆盖全部实体类型）；仅当文档缺少
+    抽取结构时回退三个速查字段，避免同一实体被重复计数。
+    """
+    extraction = doc.get("EVENT_EXTRACTION")
+    entities = extraction.get("entities") if isinstance(extraction, dict) else None
+    if isinstance(entities, list):
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            name = str(entity.get("name") or "").strip()
+            etype = str(entity.get("type") or "").strip() or "other"
+            if name:
+                counters.setdefault(etype, Counter())[name] += 1
+        return "extraction"
+    counted = False
+    for field in ENTITY_FIELDS:
+        for value in doc.get(field) or []:
+            if isinstance(value, str) and value.strip():
+                counters.setdefault(_field_to_type(field), Counter())[value.strip()] += 1
+                counted = True
+    return "fallback" if counted else "none"
 
 DEFAULT_WORKLIST = os.path.join("_export", "entity_alias_worklist.json")
 
@@ -96,7 +124,7 @@ def _find_by_wikidata_qid(service, qid):
 
 
 def _wikidata_type(item, candidate):
-    return _field_to_type(item.get("field"))
+    return item.get("type") or _field_to_type(item.get("field"))
 
 
 def _register_wikidata_item(service, item, qid, candidate=None, overrides=None):
@@ -121,21 +149,23 @@ def cmd_scan(args):
     collection = _open_default_collection(config)
     service = _open_alias_service(args.data_dir, with_suggester=args.enrich)
 
-    counters = {field: Counter() for field in ENTITY_FIELDS}
-    cursor = collection.find({}, {"_id": 0, **{f: 1 for f in ENTITY_FIELDS}})
+    counters: dict = {}
+    cursor = collection.find(
+        {}, {"_id": 0, "EVENT_EXTRACTION.entities": 1,
+             **{f: 1 for f in ENTITY_FIELDS}})
     scanned = 0
+    source_stats = Counter()
     for doc in cursor:
         scanned += 1
-        for field in ENTITY_FIELDS:
-            for value in doc.get(field) or []:
-                if isinstance(value, str) and value.strip():
-                    counters[field][value.strip()] += 1
-    logger.info("扫描归档 %d 篇", scanned)
+        source_stats[count_document_entities(doc, counters)] += 1
+    logger.info("扫描归档 %d 篇（extraction=%d, fallback=%d, none=%d）",
+                scanned, source_stats["extraction"],
+                source_stats["fallback"], source_stats["none"])
 
     worklist = []
     auto_registered = 0
-    for field in ENTITY_FIELDS:
-        for name, count in counters[field].most_common():
+    for entity_type in sorted(counters):
+        for name, count in counters[entity_type].most_common():
             if count < args.min_count:
                 continue
             if service.resolve(name):
@@ -144,7 +174,7 @@ def cmd_scan(args):
             item = {
                 "name": name,
                 "count": count,
-                "field": field,
+                "type": entity_type,
                 "candidates": lookup["candidates"],
                 "action": None,
             }
@@ -197,7 +227,8 @@ def cmd_register(args):
                 service.create_entity(
                     action["canonical"],
                     lang=action.get("lang", "zh"),
-                    type=action.get("type") or _field_to_type(item.get("field")),
+                    type=action.get("type") or item.get("type")
+                         or _field_to_type(item.get("field")),
                     aliases=action.get("aliases") or [{"name": name, "lang": action.get("name_lang", "")}],
                     description=action.get("description", ""),
                 )

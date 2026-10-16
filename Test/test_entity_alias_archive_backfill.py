@@ -31,18 +31,27 @@ def test_normalize_archive_document_rebuilds_projection_and_keeps_unknown_name()
         "甲军", "B设施"]
     assert plan.record.ORGANIZATION == ["甲军"]
     assert plan.resolve_errors == 0
+    # 分类：A军=可替换别名；B设施=未匹配
+    assert plan.replaceable_aliases == 1
+    assert plan.unmatched == ("B设施",)
+    assert plan.already_canonical == 0
 
 
-def test_normalize_archive_document_keeps_original_on_resolver_error():
-    def resolver(name):
-        raise RuntimeError("offline")
-
-    plan = normalize_archive_document(_archive_document(), resolver)
+def test_normalize_archive_document_classifies_already_canonical():
+    document = _archive_document()
+    # 所有名字都按原名返回 → 已是标准名，无变更
+    plan = normalize_archive_document(document, lambda name: name)
 
     assert plan.changes == ()
-    assert [entity.name for entity in plan.record.EVENT_EXTRACTION.entities] == [
-        "A军", "B设施"]
-    assert plan.resolve_errors == 2
+    assert plan.already_canonical == 2
+    assert plan.replaceable_aliases == 0
+    assert plan.unmatched == ()
+
+    # 混合：一个已是标准名，一个可替换，一个未匹配
+    mapping = {"A军": "A军", "B设施": None}
+    plan = normalize_archive_document(document, mapping.get)
+    assert plan.already_canonical == 1
+    assert plan.unmatched == ("B设施",)
 
 
 def test_normalize_archive_document_keeps_original_on_resolver_error():
