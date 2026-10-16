@@ -64,8 +64,8 @@ NVIDIA NIM 免费端点只适合作为研发和测试资源。官方条款明确
 - https://www.modelscope.cn/posts/435591
 - https://www.modelscope.cn/docs/model-service/API-Inference/intro
 
-注意：`_config/ai_client_config_example.py` 和
-`AIClientCenter/config/example.py` 当前仍保留“每日 2,000 次”的旧注释，后续更新配置样例时
+注意：`_config/ai_clients_example.yaml` 和
+`AIClientCenter/config/example.yaml` 当前仍保留“每日 2,000 次”的旧注释，后续更新配置样例时
 应改为动态政策提示，不再写死调用数。
 
 ### 2.3 Google Gemini API
@@ -213,7 +213,7 @@ NVIDIA Developer Program 提供免费的托管 NIM API Endpoint，并使用
 
 ```powershell
 python Scripts/benchmark_ai_clients.py `
-  --config _config/ai_client_config.py `
+  --config _config/ai_clients.yaml `
   --suite _config/ai_benchmark_suite_example.json `
   --clients "groq_free,gemini_free" `
   --repeat 3
@@ -225,7 +225,7 @@ python Scripts/benchmark_ai_clients.py `
 python Scripts/benchmark_ai_clients.py --clients "groq_free,gemini_free" --repeat 3 --execute
 ```
 
-`--clients` 同时接受 `AI_CLIENTS` 字典键和 Client 的 `name`；省略时测试配置中的全部
+`--clients` 同时接受配置引擎生成的 Client 键和 Client 的 `name`；省略时测试配置中的全部
 Client。每个服务内部配置的模型轮换会照常发生，因此逐次记录中的 `model` 可以用于比较
 同一服务的不同模型。
 

@@ -55,7 +55,7 @@
   - 支持多厂商、多账号、Token 轮询、余额监控、故障切换
   - 关键类：`AIClientManager`, `BaseAIClient`, `StandardOpenAIClient`, `OuterTokenRotatingOpenAIClient`
   - 另支持基于本机命令行 Agent 的客户端（`harness/cli.py`：`CodexCLIClient` / `KimiCLIClient`），分 stateless（模拟单次调用）与 session（沿上下文续接、利用缓存省 Token）两种模式，调研见 `AIClientCenter/doc/AgentCLIResearch.md`
-  - 独立入口配置方式：复制 `AIClientCenter/config/example.py` 为 `AIClientCenter/config/config.py` 并修改；IIS 集成仍使用 `_config/ai_client_config.py`
+  - 配置引擎位于 `AIClientCenter/configuration.py`：标准 Client 使用 YAML 工厂配置，内置工厂从 `AIClientCenter.presets` 注册；复杂定制可使用实现 `build_ai_client_config()` 的 Python 配置。独立入口使用 `AIClientCenter/config/config.yaml`，IIS 使用 `_config/ai_clients.yaml`
 
 - **`CrawlTasks/`** — 具体抓取任务模块
   - 每个文件对应一个媒体源的抓取逻辑（如 `task_crawl_bbc.py`, `task_crawl_nhk_ic.py`）
@@ -167,9 +167,8 @@ pip install -r requirements_freeze.txt
 1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
    - 修改 MongoDB 地址、Token、向量库路径等
    - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、最大页码、时间窗口、向量 `top_n`、速率限制、并发上限等。未登录用户仅允许按内容主时间（发布时间优先，否则采集时间）搜索，避免与归档时间形成双重过滤。
-2. **AI 服务配置**：复制 `_config/ai_client_config_example.py` → `_config/ai_client_config.py`
-   - 填入实际 API Key、模型地址、优先级、分组限制等；本机 harness 可使用
-     `AIClientCenter/config/config.py` 的独立配置进行手动验证。
+2. **AI 服务配置**：复制 `_config/ai_clients_example.yaml` → `_config/ai_clients.yaml`
+   - 每项仅保留 `factory`、`name`、`group` 三个公共字段，其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
 
 ### 4.4 启动服务
@@ -297,7 +296,7 @@ pytest Test/
 
 | 现象 | 排查方向 |
 |------|----------|
-| AI 分析线程一直等待客户端 | 检查 `_config/ai_client_config.py` 是否配置正确；检查 AI 服务余额/网络 |
+| AI 分析线程一直等待客户端 | 检查 `_config/ai_clients.yaml` 是否配置正确；检查 AI 服务余额/网络 |
 | VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log` |
 | 向量搜索慢/超时/503 | 检查 VectorDB 的 `logs/vector_perf.log`（或 `VECTOR_PERF_LOG` 指定路径）中 `vectordb_async_search` 耗时；确认 `VECTOR_MAX_CONCURRENT_SEARCHES` 与 `VECTOR_JOB_MAX_WORKERS` 是否满足并发需求；查看 `/api/status/memory` 中 `jobs.search` 指标 |
 | 爬虫不执行 | 检查 `CrawlerServiceEngine.py` 是否启动；检查 `CrawlTasks/` 目录下模块是否有语法错误 |

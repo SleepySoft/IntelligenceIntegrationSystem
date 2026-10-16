@@ -23,8 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pymongo
 
-from AIClientCenter.core.manager import AIClientManager
-from _config.ai_client_config import AI_CLIENTS, AI_CLIENT_LIMIT
+from AIClientCenter.configuration import build_manager, load_config
 from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     DEFAULT_EVENT_REGISTRY,
@@ -147,14 +146,18 @@ def main() -> None:
         records[uuid] = raw
     print(f"样本数: {len(records)}")
 
-    client_manager = AIClientManager()
+    clients, group_limits = load_config("_config/ai_clients.yaml")
     excludes = [s.strip().lower() for s in args.exclude.split(",") if s.strip()]
-    for name, client in AI_CLIENTS.items():
-        if any(ex in name.lower() for ex in excludes):
-            continue
-        client_manager.register_client(client)
-    for group, limit in AI_CLIENT_LIMIT.items():
-        client_manager.set_group_limit(group, limit)
+    clients = {
+        name: client for name, client in clients.items()
+        if not any(ex in name.lower() for ex in excludes)
+    }
+    used_groups = {client.group_id for client in clients.values()}
+    group_limits = {
+        group: limit for group, limit in group_limits.items()
+        if group in used_groups
+    }
+    client_manager = build_manager(clients, group_limits)
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)

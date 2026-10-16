@@ -60,7 +60,7 @@ Batch 应只处理可延迟任务。当前 Hub 是逐事件请求/响应链路�
 ### 3.2 一个 Client 对象只有一个并发槽
 
 `BaseAIClient` 使用单个 `in_use` 状态，一个 `Gemini Free Pool` 即使 Provider 允许高并发，
-在 IIS 中也只能同时执行一个请求。只提高 `AI_CLIENT_LIMIT` 不会凭空增加 Client 对象的
+在 IIS 中也只能同时执行一个请求。只提高 `group_limits` 不会凭空增加 Client 对象的
 并发能力。
 
 ### 3.3 校验重试可能仍命中同一模型

@@ -20,7 +20,7 @@ from ServiceComponent.ai_client_benchmark import (  # noqa: E402
 from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE  # noqa: E402
 
 
-DEFAULT_CONFIG = PROJECT_ROOT / "_config" / "ai_client_config.py"
+DEFAULT_CONFIG = PROJECT_ROOT / "_config" / "ai_clients.yaml"
 DEFAULT_SUITE = PROJECT_ROOT / "_config" / "ai_benchmark_suite_example.json"
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "_data" / "ai_benchmarks"
 
@@ -34,7 +34,7 @@ def parse_args(argv=None):
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE,
                         help="基准测试集 JSON")
     parser.add_argument("--clients", default="",
-                        help="逗号分隔的 AI_CLIENTS 键或 Client name；默认全部")
+                        help="逗号分隔的配置 Client 键或 Client name；默认全部")
     parser.add_argument("--repeat", type=int, default=1, help="每个 Client/样本重复次数")
     parser.add_argument("--prompt-version", type=int,
                         default=max(EVENT_ANALYSIS_PROMPT_TABLE), help="生产 Prompt 版本")

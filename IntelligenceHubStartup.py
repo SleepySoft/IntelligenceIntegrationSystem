@@ -64,25 +64,20 @@ def show_intelligence_hub_statistics_forever(
 
 
 def build_ai_client_manager(config: EasyConfig):
-    try:
-        from _config.ai_client_config import AI_CLIENTS, AI_CLIENT_LIMIT
-    except Exception:
-        logger.exception(
-            "\n"
-            "==================== AI Client Configuration Load Failed ====================\n"
-            "Unable to import: _config.ai_client_config\n"
-            "Falling back to example config: _config.ai_client_config_example (placeholder)\n"
-            "\n"
-            "How to fix:\n"
-            "  - Copy _config/ai_client_config_example.py to _config/ai_client_config.py\n"
-            "  - Then review and adjust the settings for your environment.\n"
-            "=============================================================================\n"
-        )
-        from _config.ai_client_config_example import AI_CLIENTS, AI_CLIENT_LIMIT
+    from AIClientCenter import build_manager, load_config, validate_config
+
+    ai_config_path = Path(os.getenv(
+        "AI_CLIENT_CONFIG", os.path.join(CONFIG_PATH, "ai_clients.yaml")))
+    clients, group_limits = load_config(ai_config_path)
+    errors, warnings = validate_config(clients, group_limits)
+    for warning in warnings:
+        logger.warning("AI Client 配置: %s", warning)
+    if errors:
+        raise ValueError("AI Client 配置无效: " + "; ".join(errors))
 
     sqlite_db_file = config.get('ai_client_center.sqlite_db_file', 'ai_client_state_log.db')
     heartbeat_interval_sec = config.get('ai_client_center.heartbeat_interval_sec', 30)
-    heartbeat_grace_sec = config.get('heartbeat_grace_sec', 120)
+    heartbeat_grace_sec = config.get('ai_client_center.heartbeat_grace_sec', 120)
 
     state_logger = ClientStateSQLiteLogger(
         sqlite_db_path=os.path.join(DATA_PATH, sqlite_db_file),
@@ -106,19 +101,15 @@ def build_ai_client_manager(config: EasyConfig):
         except Exception:
             logger.exception("AI Client 调用观测初始化失败，主调用链继续运行。")
 
-    client_manager = AIClientManager(
+    client_manager = build_manager(
+        clients,
+        group_limits,
         state_logger=state_logger,
         call_observer=call_observer,
     )
 
-    logger.info(f"AI clients count: {len(AI_CLIENTS)}).")
-    logger.info(f"AI group limit count: {len(AI_CLIENT_LIMIT)}).")
-
-    for client in AI_CLIENTS.values():
-        client_manager.register_client(client)
-
-    for group, limit in AI_CLIENT_LIMIT.items():
-        client_manager.set_group_limit(group, limit)
+    logger.info("AI clients count: %s.", len(clients))
+    logger.info("AI group limit count: %s.", len(group_limits))
 
     return client_manager
 

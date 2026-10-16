@@ -1,22 +1,29 @@
-This folder is used for placing config files.
-The purpose is to facilitate the mapping of non-external directories during deployment.
+This directory contains deployment configuration kept separate from program code.
 
-In the future, scattered configuration files will be gradually centralized in this directory.
+AI Client configuration
+-----------------------
 
-Recommended AI pool:
+1. Copy ``ai_clients_example.yaml`` or another factory-based example to
+   ``ai_clients.yaml``.
+2. Each client item reserves only ``factory``, ``name`` and ``group``. Every
+   other field is passed directly to the selected factory as a keyword argument.
+3. Group concurrency is configured once in the top-level ``group_limits`` map.
+4. Built-in factories come from ``AIClientCenter.presets``. API keys should be
+   supplied through the environment variables referenced by each factory.
+5. For a client that cannot be expressed by a registered factory, use a Python
+   configuration defining ``build_ai_client_config()`` and point the
+   ``AI_CLIENT_CONFIG`` environment variable to that file.
 
-1. Copy ``ai_client_config_recommended_example.py`` to ``ai_client_config.py``.
-2. Set provider API keys with the environment variables documented in that file.
-3. Preview the independent Event V4 benchmark with
-   ``python Scripts/benchmark_ai_clients.py`` and add ``--execute`` only after checking the plan.
+Examples:
 
-Gemini Flash 80% quota pool:
+- ``ai_clients_recommended_example.yaml``: recommended Gemini/Groq/NVIDIA pools.
+- ``ai_clients_gemini_80_example.yaml``: Gemini free-tier quota preset.
+- ``AIClientCenter/config/custom_example.py``: custom Python configuration.
 
-1. Copy ``ai_client_config_gemini_80_example.py`` to ``ai_client_config.py``.
-2. Set ``GEMINI_API_KEY`` (and optional ``GEMINI_PROXY``).
-3. The defaults create two slots per primary Flash Lite model and one per reserve model.
-   Use ``GEMINI_PRIMARY_SLOTS`` / ``GEMINI_RESERVE_SLOTS`` to match Hub workers.
-4. ``GEMINI_QUOTA_SAFETY_RATIO`` defaults to 0.8. ``GEMINI_MODELS`` can restrict the
-   model list after the standalone benchmark confirms the model IDs and Event V4 quality.
-5. Rolling RPM/TPM/RPD usage is stored in ``_data/ai_rate_limits.sqlite3`` by default.
-   ``GEMINI_RATE_LIMIT_DB`` can override the path; expired rows are removed automatically.
+Validate without sending requests:
+
+    python -m AIClientCenter --config _config/ai_clients.yaml --validate-only
+
+Preview the Event V4 benchmark plan:
+
+    python Scripts/benchmark_ai_clients.py

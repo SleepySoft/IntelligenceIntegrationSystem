@@ -210,27 +210,26 @@ python CrawlerServiceEngine.py
 
 + AI服务配置
 > 
-> 如果想使用AI进行情报分析，需要配置 [ai_client_config.py](_config/ai_client_config.py) 。由于AI服务配置比较复杂，因此直接使用python文件而非json文件。
+> 如果想使用 AI 进行情报分析，需要配置 [ai_clients.yaml](_config/ai_clients.yaml)。
+> 标准 Client 使用工厂式 YAML：`factory`、`name`、`group` 之外的字段直接传给工厂，
+> 分组并发统一写在顶层 `group_limits`。无法由内置工厂表达的 Client 才使用自定义 Python 配置。
 > 
-> 配置请参考：[ai_client_config_example.py](_config/ai_client_config_example.py) ，复制为
-> `ai_client_config.py` 后按需要修改对应项即可。AIClientCenter 的独立 CLI/harness
+> 配置请参考：[ai_clients_example.yaml](_config/ai_clients_example.yaml) ，复制为
+> `ai_clients.yaml` 后按需要修改对应项即可。AIClientCenter 的独立 CLI/harness
 > 配置请参阅 [AIClientCenter/README.md](AIClientCenter/README.md)。
 > 免费 API 服务的当前额度、使用边界，以及针对 Event V4 的 Client 能力/性能基准方案见
 > [免费 LLM API 资源池与 Client 基准验证方案](doc/free_llm_api_and_client_benchmark.md)。
 > Gemini/Groq/NVIDIA 的限额配置可直接复制
-> [_config/ai_client_config_gemini_80_example.py](_config/ai_client_config_gemini_80_example.py)，
-> 在 Python 文件的 `GEMINI_API_KEYS`、`GROQ_API_KEYS`、`NVIDIA_API_KEYS` 映射中
-> 配置一个或多个 Key；
-> 每个 Key 使用独立额度账本，明文不会写入日志或账本。映射为空时仍兼容对应的单 Key
-> 环境变量。主配置通过 `compose_presets()` 组合服务商预置，无需重复模型、限额和并发
-> 参数；这些推荐值统一维护在 AIClientCenter 的对应 Provider 文件中。
+> [_config/ai_clients_gemini_80_example.yaml](_config/ai_clients_gemini_80_example.yaml)，
+> 并通过对应环境变量提供 Key。`gemini_free`、`groq_free`、`nvidia_free` 等工厂直接复用
+> AIClientCenter 的 Provider preset；模型、额度和恢复策略仍由 Provider 维护，组并发由 YAML 明确配置。
 > 调用观测默认写入 `_data/ai_client_observations.db`，只保存模型、耗时、次数、逻辑
 > 字节量及估算/服务商实报 Token 等元数据，不保存请求和回复正文；可在
 > `ai_client_center.call_observation` 中关闭或调整保留期。登录后台后可从 AI Client
 > Manager 进入 Usage 页面，查看总览、趋势、切片排行和最近调用。
 > 准备组合多个免费服务时，也可复制
-> [_config/ai_client_config_recommended_example.py](_config/ai_client_config_recommended_example.py)
-> 为 `_config/ai_client_config.py`，然后按文件顶部说明填写环境变量。
+> [_config/ai_clients_recommended_example.yaml](_config/ai_clients_recommended_example.yaml)
+> 为 `_config/ai_clients.yaml`，然后按文件顶部说明填写环境变量。
 > 不启动主程序即可预览 Event V4 Client 基准计划：
 > `python Scripts/benchmark_ai_clients.py`；确认 Client 和调用次数后增加 `--execute`
 > 才会发送真实请求，结果写入 `_data/ai_benchmarks/`。

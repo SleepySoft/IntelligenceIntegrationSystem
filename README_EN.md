@@ -36,6 +36,6 @@ pages without changing the core runtime. See
 ## Configuration
 
 Copy `_config/config_example.json` to `_config/config.json`. For AI clients,
-copy `_config/ai_client_config_example.py` to `_config/ai_client_config.py`.
+copy `_config/ai_clients_example.yaml` to `_config/ai_clients.yaml`.
 AIClientCenter also provides an independent CLI/harness configuration documented
 in [AIClientCenter/README.md](AIClientCenter/README.md).

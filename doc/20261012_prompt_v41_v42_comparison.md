@@ -34,7 +34,7 @@ v42 仍未给计划中的抗议加 `intention=planned` 限定词，且把计划�
 
 ## 附带发现（基础设施）
 
-部分已配置客户端的模型已失效，产生 404：`gemini-3-flash`、`gemini-2.5-flash`、`gemini-2.5-flash-lite`；另有间歇性 503（高负载）。建议清理 `_config/ai_client_config.py` 中失效模型。
+部分已配置客户端的模型已失效，产生 404：`gemini-3-flash`、`gemini-2.5-flash`、`gemini-2.5-flash-lite`；另有间歇性 503（高负载）。建议清理 `_config/ai_clients.yaml` 中失效模型。
 
 ## 结论与限制
 

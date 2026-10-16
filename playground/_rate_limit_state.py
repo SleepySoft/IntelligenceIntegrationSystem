@@ -3,9 +3,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from _config.ai_client_config import AI_CLIENTS
+from AIClientCenter.configuration import load_config
 
-for name, client in AI_CLIENTS.items():
+clients, _ = load_config("_config/ai_clients.yaml")
+
+for name, client in clients.items():
     snapshot = None
     getter = getattr(client, 'get_rate_limit_snapshot', None)
     if getter:
