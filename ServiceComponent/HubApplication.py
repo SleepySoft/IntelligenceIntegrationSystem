@@ -18,6 +18,9 @@ from ServiceComponent.pipeline import (
 from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_MANUAL_RATING,
+    CACHE_ARCHIVED_FLAG_FIELD,
+    CACHE_LEGACY_ARCHIVED_FLAG_FIELD,
+    CacheArchiveState,
     appendix_path,
 )
 
@@ -103,7 +106,55 @@ class HubApplication:
             "analysis": dict(getattr(self._pipeline_ports, "statistics", {}) or {}),
             "shadow": dict(getattr(self._pipeline_ports, "shadow_statistics", {}) or {}),
             "subsystems": self.subsystem_registry.describe(),
+            "workflow_outcomes": self._workflow_outcomes(),
         }
+
+    def _workflow_outcomes(self) -> List[Dict[str, Any]]:
+        """从持久集合汇总整个工作流结果，不受进程重启影响。"""
+        enabled_subsystems = getattr(self.subsystem_registry, "enabled_subsystems", None)
+        if not callable(enabled_subsystems):
+            return []
+
+        outcomes = []
+        for ctx in enabled_subsystems():
+            try:
+                cache_collection = ctx.mongo_db_cache.collection
+                state_rows = cache_collection.aggregate([{
+                    "$group": {
+                        "_id": {"$ifNull": [
+                            f"${CACHE_ARCHIVED_FLAG_FIELD}",
+                            {"$ifNull": [
+                                f"${CACHE_LEGACY_ARCHIVED_FLAG_FIELD}", "__PENDING__"
+                            ]},
+                        ]},
+                        "count": {"$sum": 1},
+                    }
+                }])
+                states = {
+                    str(item.get("_id")): int(item.get("count", 0))
+                    for item in state_rows
+                }
+                outcomes.append({
+                    "name": ctx.name,
+                    "display_name": ctx.display_name or ctx.name,
+                    "received": int(cache_collection.count_documents({})),
+                    "pending": states.get("__PENDING__", 0),
+                    "archived": int(ctx.event_v4_intelligence_collection.count_documents({})),
+                    "low_value": int(ctx.event_v4_low_value_collection.count_documents({})),
+                    "failed": states.get(CacheArchiveState.ERROR.value, 0),
+                    "sensitive": states.get(CacheArchiveState.SENSITIVE.value, 0),
+                    "duplicated": states.get(CacheArchiveState.DUPLICATED.value, 0),
+                    "retry": states.get(CacheArchiveState.RETRY.value, 0),
+                    "deprecated": states.get(CacheArchiveState.DEPRECATED.value, 0),
+                })
+            except Exception as exc:
+                outcomes.append({
+                    "name": getattr(ctx, "name", "unknown"),
+                    "display_name": getattr(ctx, "display_name", None)
+                                    or getattr(ctx, "name", "unknown"),
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+        return outcomes
 
     def submit_collected_data(self, data: dict) -> bool:
         subsystem = str(data.get("subsystem") or "").strip() or self.default_subsystem_name

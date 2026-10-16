@@ -180,6 +180,9 @@ class SubsystemRegistry:
             'is_default': ctx.is_default,
             'url_prefix': ctx.url_prefix,
             'enabled': ctx.enabled,
+            # 本次进程生命周期内的领域结果；持久累计结果由 HubApplication
+            # 直接从各 V4 集合与 cache 状态汇总。
+            'stats': dict(ctx.stats),
         } for ctx in self.enabled_subsystems()]
 
     # ------------------------------------------------------------- Build

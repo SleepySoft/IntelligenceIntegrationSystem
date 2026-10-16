@@ -56,7 +56,7 @@
     <header>
         <div>
             <h1>运行监控</h1>
-            <div class="subtitle">Hub 事件流 · AI 客户端 · 进程与系统资源（实时内存数据，5s 刷新）</div>
+            <div class="subtitle">实时事件调度 · 持久工作流结果 · AI 客户端 · 进程与系统资源（5s 刷新）</div>
         </div>
         <div>
             <span class="refresh-note" id="refresh-note"></span>&nbsp;&nbsp;
@@ -67,12 +67,27 @@
         </div>
     </header>
 
-    <!-- Hub 状态（分析展示） -->
+    <!-- Hub 状态（本次启动） -->
     <div class="section">
-        <h2>Hub 事件流</h2>
+        <h2>Hub 事件调度（本次启动）</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            “已分派”表示事件已从队列取出并完成 Handler 调用，无论业务成功、拒绝或异常；它不是成功归档数量。
+        </div>
         <div class="cards" id="hub-cards"></div>
+        <div class="subtitle" style="margin-bottom:6px">子系统结果（本次进程生命周期）</div>
         <table id="subsystem-table"></table>
         <div class="error" id="hub-error" style="display:none"></div>
+    </div>
+
+    <!-- 持久工作流结果 -->
+    <div class="section">
+        <h2>工作流累计结果（持久数据库）</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            从采集缓存、V4 归档集合和低价值集合实时汇总，服务重启后不会清零。
+        </div>
+        <div class="cards" id="workflow-cards"></div>
+        <table id="workflow-table"></table>
+        <div class="error" id="workflow-error" style="display:none"></div>
     </div>
 
     <!-- AI 客户端 -->
@@ -142,12 +157,21 @@ async function loadHub() {
         const runtime = data.hub?.runtime || {};
         const analysis = data.hub?.analysis || {};
         const shadow = data.hub?.shadow || {};
+        const processed = runtime.processed_by_type || {};
+        const terminalFailures = (processed['analysis.failed'] || 0) +
+                                 (processed['archive.failed'] || 0);
         const vErr = analysis.validation_errors || 0;
         document.getElementById('hub-cards').innerHTML = [
-            metricCard('事件 已发/已处理', `${runtime.emitted ?? 0} / ${runtime.processed ?? 0}`),
+            metricCard('事件 已发/已分派', `${runtime.emitted ?? 0} / ${runtime.processed ?? 0}`),
             metricCard('队列积压', runtime.pending_events ?? 0,
                        (runtime.pending_events ?? 0) > 100 ? 'warn' : ''),
             metricCard('在途提交', runtime.in_flight_submissions ?? 0),
+            metricCard('本次归档完成', processed['archive.completed'] || 0),
+            metricCard('本次分析/归档失败', terminalFailures,
+                       terminalFailures > 0 ? 'bad' : ''),
+            metricCard('本次入口拒绝', processed['intake.rejected'] || 0),
+            metricCard('Handler 异常', runtime.handler_failures ?? 0,
+                       (runtime.handler_failures ?? 0) > 0 ? 'bad' : ''),
             metricCard('AI 调用/重试', `${analysis.attempts ?? 0} / ${analysis.retries ?? 0}`),
             metricCard('校验失败', vErr, vErr > 0 ? 'warn' : ''),
             metricCard('AI 错误', (analysis.call_errors ?? 0) + (analysis.api_errors ?? 0)),
@@ -164,6 +188,33 @@ async function loadHub() {
                        `<td style="color:${(stats.error ?? 0) > 0 ? 'var(--danger)' : 'inherit'}">${stats.error ?? 0}</td></tr>`;
             }).join('');
         showError('hub-error', null);
+
+        const outcomes = data.hub?.workflow_outcomes || [];
+        const available = outcomes.filter(item => !item.error);
+        const sum = key => available.reduce((total, item) => total + (item[key] || 0), 0);
+        document.getElementById('workflow-cards').innerHTML = [
+            metricCard('缓存接收记录', sum('received')),
+            metricCard('待处理', sum('pending'), sum('pending') > 0 ? 'warn' : ''),
+            metricCard('已归档', sum('archived')),
+            metricCard('无价值', sum('low_value')),
+            metricCard('彻底失败', sum('failed'), sum('failed') > 0 ? 'bad' : ''),
+            metricCard('敏感内容', sum('sensitive'), sum('sensitive') > 0 ? 'warn' : ''),
+            metricCard('重复提交', sum('duplicated')),
+            metricCard('主动弃用', sum('deprecated')),
+        ].join('');
+        document.getElementById('workflow-table').innerHTML =
+            '<tr><th>子系统</th><th>接收</th><th>待处理</th><th>归档</th><th>无价值</th>' +
+            '<th>失败</th><th>敏感</th><th>重复</th><th>待重试</th><th>弃用</th></tr>' +
+            outcomes.map(item => item.error
+                ? `<tr><td>${esc(item.display_name || item.name)}</td><td colspan="9" style="color:var(--danger)">${esc(item.error)}</td></tr>`
+                : `<tr><td>${esc(item.display_name || item.name)}</td>` +
+                  `<td>${item.received || 0}</td><td>${item.pending || 0}</td>` +
+                  `<td>${item.archived || 0}</td><td>${item.low_value || 0}</td>` +
+                  `<td>${item.failed || 0}</td><td>${item.sensitive || 0}</td>` +
+                  `<td>${item.duplicated || 0}</td><td>${item.retry || 0}</td>` +
+                  `<td>${item.deprecated || 0}</td></tr>`).join('');
+        showError('workflow-error', outcomes.some(item => item.error)
+            ? '部分子系统累计结果查询失败，详见表格。' : null);
     } catch (e) { showError('hub-error', `加载失败: ${e.message}`); }
 }
 
