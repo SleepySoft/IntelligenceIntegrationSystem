@@ -55,7 +55,7 @@
   - 支持多厂商、多账号、Token 轮询、余额监控、故障切换
   - 关键类：`AIClientManager`, `BaseAIClient`, `StandardOpenAIClient`, `OuterTokenRotatingOpenAIClient`
   - 另支持基于本机命令行 Agent 的客户端（`harness/cli.py`：`CodexCLIClient` / `KimiCLIClient`），分 stateless（模拟单次调用）与 session（沿上下文续接、利用缓存省 Token）两种模式，调研见 `AIClientCenter/doc/AgentCLIResearch.md`
-  - 配置工厂引擎位于 `AIClientCenter/factory_engine.py`：标准 Client 使用 YAML 工厂配置，内置短名称直接调用 `providers/`（及 harness）中的预置；自定义工厂可通过 `module:callable` 或宿主显式注册扩展，无需修改引擎。独立入口使用 `AIClientCenter/config/config.yaml`，IIS 使用 `_config/ai_clients.yaml`
+  - 配置工厂引擎位于 `AIClientCenter/factory_engine.py`：标准 Client 使用 YAML 工厂配置，内置短名称直接调用 `providers/`（及 harness）中的 `create_*_preset()` 预置；`providers/` 因而同时包含底层适配器与配置预置。自定义工厂可通过 `module:callable`、相对于 YAML 的 `./file.py:callable` 或宿主显式注册扩展，无需修改引擎。独立入口使用 `AIClientCenter/config/config.yaml`，IIS 使用 `_config/ai_clients.yaml`
 
 - **`CrawlTasks/`** — 具体抓取任务模块
   - 每个文件对应一个媒体源的抓取逻辑（如 `task_crawl_bbc.py`, `task_crawl_nhk_ic.py`）

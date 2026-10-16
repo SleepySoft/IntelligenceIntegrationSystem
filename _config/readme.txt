@@ -12,8 +12,10 @@ AI Client configuration
    (or ``harness`` for local CLI clients). API keys should be supplied through
    the environment variables referenced by each factory.
 5. For a custom Client, set ``factory`` to an importable
-   ``module:callable``. The callable accepts ``name``, ``group`` and the
-   remaining YAML fields, and returns a Client or Client mapping.
+   ``module:callable``, or use ``./file.py:callable`` for a file relative to
+   the YAML directory. The callable accepts ``name``, ``group`` and the
+   remaining YAML fields, and returns a Client or Client mapping. Refer to
+   ``AIClientCenter/providers`` functions named ``create_*_preset``.
 
 Examples:
 
