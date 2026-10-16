@@ -18,9 +18,6 @@
         body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
         .shell { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
         header { display: flex; align-items: center; gap: 18px; min-height: 66px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
-        .identity { min-width: 220px; }
-        h1 { margin: 0; font-size: 19px; }
-        .scope { margin-top: 2px; color: var(--muted); font-size: 12px; }
         .tabs { display: flex; align-self: stretch; gap: 6px; }
         .tab { min-width: 104px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
         .tab:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -33,7 +30,6 @@
         .loading[hidden] { display: none; }
         @media (max-width: 720px) {
             header { gap: 7px; padding: 7px; flex-wrap: wrap; }
-            .identity { min-width: 100%; }
             .tabs { min-height: 42px; flex: 1; }
             .tab { min-width: 0; flex: 1; }
             .open-view { display: none; }
@@ -44,10 +40,6 @@
 <body>
 <div class="shell">
     <header>
-        <div class="identity">
-            <h1>情报视图</h1>
-            <div class="scope" id="scope"></div>
-        </div>
         <nav class="tabs" aria-label="情报展示方式">
             <button class="tab" type="button" data-view="list">情报列表</button>
             <button class="tab" type="button" data-view="map">地域视图</button>
@@ -64,11 +56,6 @@
 </div>
 <script>
 const FRAME_URLS = {{ frame_urls|tojson }};
-const VIEW_SCOPES = {
-    list: '完整情报列表；筛选、排序与分页保持原页面行为。',
-    map: {{ (profile.situation.subsystem_display_name ~ ' · 最近 ' ~ profile.situation.window_days ~ ' 天 · 评分 ≥ ' ~ profile.situation.min_score)|tojson }},
-    entities: {{ (profile.situation.subsystem_display_name ~ ' · 最近 ' ~ profile.situation.window_days ~ ' 天 · 评分 ≥ ' ~ profile.situation.min_score)|tojson }}
-};
 let activeView = {{ profile.active_view|tojson }};
 
 function activate(view, updateHistory = true) {
@@ -89,7 +76,6 @@ function activate(view, updateHistory = true) {
         }
     });
     document.getElementById('open-view').href = FRAME_URLS[view];
-    document.getElementById('scope').textContent = VIEW_SCOPES[view];
     if (updateHistory) {
         const url = new URL(window.location.href);
         url.searchParams.set('view', view);

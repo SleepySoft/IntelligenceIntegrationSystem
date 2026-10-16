@@ -63,7 +63,8 @@ def test_integration_page_limits_only_situation_views_from_configuration():
         "window_days": 14,
         "min_score": 7.5,
     }
-    assert "完整情报列表；筛选、排序与分页保持原页面行为。" in html
+    assert "情报视图</h1>" not in html
+    assert "完整情报列表；筛选、排序与分页保持原页面行为。" not in html
 
     urls = _frame_urls(html)
     assert urls["list"] == "/intelligences"
