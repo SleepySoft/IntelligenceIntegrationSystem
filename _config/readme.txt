@@ -7,6 +7,11 @@ Copy ``iis_example.yaml`` to ``iis.yaml`` and only set deployment differences.
 Defaults and strict validation live in ``IISConfig.py``. AI clients and the
 collector intentionally use their own files below.
 
+Optional components are configured under ``optional_subsystems``. Each child
+key is the subsystem name and contains its own ``enabled`` flag and settings;
+for example, ``translation.client_group`` selects a group from
+``ai_clients.yaml``.
+
 AI Client configuration
 -----------------------
 

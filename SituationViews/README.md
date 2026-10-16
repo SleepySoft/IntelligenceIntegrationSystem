@@ -25,7 +25,7 @@ IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，复用主�
 模块或地名解析：
 
 ```yaml
-features:
+optional_subsystems:
   situation:
     enabled: true
     subsystem: news

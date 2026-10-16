@@ -193,8 +193,10 @@ python CrawlerServiceEngine.py
 + 重要：将 [iis_example.yaml](_config/iis_example.yaml) 复制为 `_config/iis.yaml`，只填写部署差异。
 >
 > [IISConfig.py](IISConfig.py) 负责默认值、严格 schema 校验以及运行时组件装配。主配置
-> 只分为 `server`、`database`、`hub`、`access`、`features` 和可选的 `web`，不会要求
+> 只分为 `server`、`database`、`hub`、`access`、`optional_subsystems` 和可选的 `web`，不会要求
 > 用户复制大量默认参数。未知字段会在启动时直接报错，避免“写了但实际没有生效”。
+> `optional_subsystems` 下的键是子系统名，每个子系统自带 `enabled` 及必要参数；
+> 例如翻译子系统用 `client_group` 选择 `ai_clients.yaml` 中的 Client 分组。
 >
 > AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
 > 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。

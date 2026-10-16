@@ -171,6 +171,7 @@ class AsyncTranslationPatch:
                  shutdown_flag: threading.Event,
                  on_patched: Optional[Callable[[Dict[str, Any]], None]] = None,
                  translated_revision: str = DEFAULT_TRANSLATED_REV,
+                 translation_group_id: str = "translate_small",
                  max_queue: int = 4000,
                  backfill_enabled: bool = True,
                  backfill_scan_limit_per_round: int = 200,
@@ -181,6 +182,7 @@ class AsyncTranslationPatch:
         self.ai_client_manager = ai_client_manager
         self.shutdown_flag = shutdown_flag
         self.on_patched = on_patched
+        self.translation_group_id = translation_group_id
 
         self.rev = translated_revision
 

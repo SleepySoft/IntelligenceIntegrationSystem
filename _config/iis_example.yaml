@@ -28,8 +28,12 @@ access:
   rpc_tokens: []
   collector_tokens: []
 
-features:
-  translation: true
+optional_subsystems:
+  # 每个键都是一个可独立关闭、装配失败也不阻塞主链路的子系统。
+  translation:
+    enabled: true
+    # 对应 ai_clients.yaml 中客户端的 group。
+    client_group: translate_small
   vector:
     enabled: false
     endpoint: http://127.0.0.1:8001
@@ -40,7 +44,8 @@ features:
     subsystem: news
     window_days: 7
     min_score: 6
-  intelligence_views: true
+  intelligence_views:
+    enabled: true
 
 # 常用高级项只在需要覆盖默认值时添加：
 # hub:

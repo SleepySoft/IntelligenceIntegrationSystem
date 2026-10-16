@@ -214,6 +214,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         extensions.append(replay_extension)
         services["unarchived_replay"] = replay_extension
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)
+    translation_client_group = config.get(
+        'intelligence_hub.translation.client_group', 'translate_small')
     translation_extension = None
     if translation_enabled:
         from ServiceComponent.AsyncTranslationPatch import AsyncTranslationPatch, needs_translation
@@ -226,6 +228,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 shutdown_flag=shutdown_flag,
                 on_patched=on_patched,
                 translated_revision="tr_patch_20260311",
+                translation_group_id=translation_client_group,
                 backfill_enabled=True,
                 backfill_scan_limit_per_round=200,
                 backfill_interval_sec=600,

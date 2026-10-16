@@ -104,6 +104,18 @@ class VectorSettings(_StrictModel):
         return self
 
 
+class TranslationSettings(_StrictModel):
+    enabled: bool = True
+    client_group: str = "translate_small"
+
+    @field_validator("client_group")
+    @classmethod
+    def _client_group_not_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("client_group 不能为空")
+        return value.strip()
+
+
 class SituationSettings(_StrictModel):
     enabled: bool = True
     subsystem: str | None = None
@@ -112,11 +124,15 @@ class SituationSettings(_StrictModel):
     geocoding: bool = True
 
 
-class FeatureSettings(_StrictModel):
-    translation: bool = True
+class ToggleSettings(_StrictModel):
+    enabled: bool = True
+
+
+class OptionalSubsystemSettings(_StrictModel):
+    translation: TranslationSettings = Field(default_factory=TranslationSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
     situation: SituationSettings = Field(default_factory=SituationSettings)
-    intelligence_views: bool = True
+    intelligence_views: ToggleSettings = Field(default_factory=ToggleSettings)
 
 
 class AccessSettings(_StrictModel):
@@ -148,7 +164,8 @@ class IISSettings(_StrictModel):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     hub: HubSettings = Field(default_factory=HubSettings)
     access: AccessSettings = Field(default_factory=AccessSettings)
-    features: FeatureSettings = Field(default_factory=FeatureSettings)
+    optional_subsystems: OptionalSubsystemSettings = Field(
+        default_factory=OptionalSubsystemSettings)
     web: WebSettings = Field(default_factory=WebSettings)
 
 
@@ -196,8 +213,10 @@ class IISConfig:
             raise ValueError(
                 f"默认子系统 {default_name!r} 不在 hub.subsystems.enabled 中。")
 
-        vector = settings.features.vector
-        situation = settings.features.situation
+        optional_subsystems = settings.optional_subsystems
+        translation = optional_subsystems.translation
+        vector = optional_subsystems.vector
+        situation = optional_subsystems.situation
         situation_subsystem = situation.subsystem or default_name
         search = settings.web.public_search
         origin = settings.server.origin()
@@ -227,7 +246,10 @@ class IISConfig:
                     "max_files": 500,
                 },
                 "manual_debug": {"max_results": 50, "worker_count": 1},
-                "translation": {"enabled": settings.features.translation},
+                "translation": {
+                    "enabled": translation.enabled,
+                    "client_group": translation.client_group,
+                },
                 "subsystems": {
                     "default": default_name,
                     "list": subsystem_entries,
@@ -255,7 +277,7 @@ class IISConfig:
                     },
                 },
                 "intelligence_views": {
-                    "enabled": settings.features.intelligence_views,
+                    "enabled": optional_subsystems.intelligence_views.enabled,
                     "url_prefix": "/views",
                     "situation_prefix": "/situation",
                     "default_view": "list",

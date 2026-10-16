@@ -15,6 +15,7 @@ def test_example_is_valid_and_projects_component_settings():
 
     assert config.get("mongodb.host") == "localhost"
     assert config.get("intelligence_hub.ai_analysis_thread") == 1
+    assert config.get("intelligence_hub.translation.client_group") == "translate_small"
     assert config.get("intelligence_hub.subsystems.default") == "news"
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.situation.min_score"
@@ -72,7 +73,7 @@ def test_vector_endpoint_and_subsystem_detail_are_projected(tmp_path):
         "    default: finance\n"
         "    enabled:\n"
         "      finance: Finance\n"
-        "features:\n"
+        "optional_subsystems:\n"
         "  vector:\n"
         "    enabled: true\n"
         "    endpoint: http://vector.example:9000\n"
@@ -91,6 +92,22 @@ def test_vector_endpoint_and_subsystem_detail_are_projected(tmp_path):
         "embedding_model_name": "model",
     }
     assert entries[0]["config_file"] == str(detail)
+
+
+def test_translation_subsystem_projects_selected_client_group(tmp_path):
+    path = tmp_path / "iis.yaml"
+    path.write_text(
+        "optional_subsystems:\n"
+        "  translation:\n"
+        "    enabled: true\n"
+        "    client_group: translator_pool\n",
+        encoding="utf-8",
+    )
+
+    config = load_iis_config(path)
+
+    assert config.get("intelligence_hub.translation.enabled") is True
+    assert config.get("intelligence_hub.translation.client_group") == "translator_pool"
 
 
 def test_log_dump_redacts_credentials(tmp_path):
