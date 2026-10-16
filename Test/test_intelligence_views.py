@@ -67,10 +67,11 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     assert "完整情报列表；筛选、排序与分页保持原页面行为。" not in html
 
     urls = _frame_urls(html)
-    assert urls["list"] == "/intelligences"
+    assert urls["list"] == "/intelligences?threshold=6"
     assert urls["map"] == "/situation/embed/map"
     assert urls["entities"] == "/situation/embed/entities"
-    assert all(not urlparse(url).query for url in urls.values())
+    assert not urlparse(urls["map"]).query
+    assert not urlparse(urls["entities"]).query
 
 
 def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():

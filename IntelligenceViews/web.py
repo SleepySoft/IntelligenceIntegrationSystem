@@ -73,7 +73,7 @@ class IntelligenceViewsService:
 
     def _frame_urls(self, _profile):
         return {
-            "list": "/intelligences",
+            "list": "/intelligences?threshold=6",
             "map": f"{self.situation_prefix}/embed/map",
             "entities": f"{self.situation_prefix}/embed/entities",
         }
