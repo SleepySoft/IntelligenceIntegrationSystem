@@ -76,6 +76,19 @@
         <table id="dist-top" style="margin-top:12px"></table>
     </div>
 
+    <!-- 来源提交趋势 -->
+    <div class="section" id="source-submissions">
+        <h2>网站来源提交趋势</h2>
+        <div class="subtitle" style="margin-bottom:12px">最近 24 小时，按采集提交时间统计并展示全部网站来源，便于发现提交量偏低的数据源。</div>
+        <div class="cards">
+            <div class="card"><div class="value" id="source-total">-</div><div class="label">提交总量</div></div>
+            <div class="card"><div class="value" id="source-count">-</div><div class="label">网站来源数</div></div>
+        </div>
+        <div class="chart" id="source-chart"></div>
+        <div class="error" id="source-error" style="display:none"></div>
+        <table id="source-ranking" style="margin-top:12px"></table>
+    </div>
+
     <!-- 评分分布 -->
     <div class="section" id="score">
         <h2>评分分布</h2>
@@ -183,6 +196,40 @@ async function loadDistribution(days) {
 }
 bindRange('data-dist-range', loadDistribution);
 
+/* ---------- 网站来源提交趋势 ---------- */
+async function loadSourceSubmissions() {
+    const start = isoDaysAgo(1), end = new Date().toISOString();
+    try {
+        const data = await fetchJson(
+            `/statistics/api/source_submissions?start_time=${start}&end_time=${end}`);
+        const sources = data.sources || [];
+        const series = data.series || {};
+        document.getElementById('source-total').textContent = data.total_count ?? '-';
+        document.getElementById('source-count').textContent = data.source_count ?? '-';
+        const totals = data.totals || {};
+        chart('source-chart').setOption({
+            backgroundColor: 'transparent',
+            tooltip: {trigger: 'axis'},
+            legend: {type: 'scroll', data: sources, bottom: 0},
+            xAxis: {type: 'category', boundaryGap: false, data: data.slots || [],
+                    axisLabel: {formatter: value => value.slice(5)}},
+            yAxis: {type: 'value', minInterval: 1},
+            series: sources.map(source => ({
+                name: source, type: 'line', smooth: true,
+                symbol: 'none', areaStyle: {opacity: 0.12}, data: series[source] || [],
+            })),
+            grid: {left: 50, right: 20, top: 20, bottom: 70},
+        }, true);
+        document.getElementById('source-ranking').innerHTML =
+            '<tr><th>网站来源（提交量从少到多）</th><th>近24小时提交量</th></tr>' +
+            Object.entries(totals)
+                .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+                .map(([source, count]) => `<tr><td>${source}</td><td>${count}</td></tr>`)
+                .join('');
+        showError('source-error', null);
+    } catch (e) { showError('source-error', `加载失败: ${e.message}`); }
+}
+
 /* ---------- 评分分布 ---------- */
 async function loadScore(days) {
     const start = isoDaysAgo(days), end = new Date().toISOString();
@@ -231,6 +278,7 @@ document.getElementById('entity-type').addEventListener('change',
                               ?.getAttribute('data-entity-range') || '30')));
 
 loadDistribution(1);
+loadSourceSubmissions();
 loadScore(30);
 loadEntity(30);
 </script>

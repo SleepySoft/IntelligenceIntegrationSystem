@@ -1374,6 +1374,26 @@ class IntelligenceHubWebService:
                 "top_informants": informant_stats
             })
 
+        @app.route('/statistics/api/source_submissions', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def get_source_submission_stats():
+            """查询各网站来源按小时统计的采集提交量。"""
+            try:
+                start_time, end_time = self.get_time_range_params()
+                top_n_value = request.args.get('top_n')
+                top_n = max(1, int(top_n_value)) if top_n_value else None
+                if end_time - start_time > datetime.timedelta(days=31):
+                    return jsonify({"error": "小时统计范围不能超过31天"}), 400
+                stat_engine = self.intelligence_hub.get_statistics_engine()
+                return jsonify(stat_engine.get_hourly_source_submissions(
+                    start_time, end_time, top_n=top_n))
+            except (TypeError, ValueError) as exc:
+                return jsonify({"error": str(exc)}), 400
+            except Exception as exc:
+                logger.error("Error querying source submission statistics: %s", exc,
+                             exc_info=True)
+                return jsonify({"error": str(exc)}), 500
+
         @app.route('/statistics/intelligence_dashboard_data', methods=['GET'])
         @WebServiceAccessManager.login_required
         def get_intelligence_dashboard_data():
@@ -1975,8 +1995,10 @@ class IntelligenceHubWebService:
         Extract and validate time range parameters from request
         Returns start_time and end_time as datetime objects
         """
-        start_str = request.args.get('start')
-        end_str = request.args.get('end')
+        # 历史分布页使用 start/end，合并统计页和其它统计 API 使用
+        # start_time/end_time；两种参数均接受，避免页面迁移后静默退回 24 小时。
+        start_str = request.args.get('start') or request.args.get('start_time')
+        end_str = request.args.get('end') or request.args.get('end_time')
 
         if start_str:
             start_time = dateutil.parser.parse(start_str)
