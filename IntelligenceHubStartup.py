@@ -388,12 +388,16 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     # 实体别名子系统（独立模块）：标准名/别名解析 API，可复用 VectorDB 做语义召回。
     try:
         from EntityAlias.iis_integration import mount_to_iis as mount_entity_alias
-        mount_entity_alias(
+        entity_alias_service = mount_entity_alias(
             wsgi_app,
             config=config,
             wrapper=hub_service.access_manager.login_required,
             vector_client=vector_handles.vector_client if vector_handles else None,
         )
+        # 查询时别名展开：实体过滤条件自动展开为该实体的全部已知名字。
+        if entity_alias_service is not None:
+            for _ctx in subsystem_registry.enabled_subsystems():
+                _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
     except Exception:
         logger.exception("实体别名模块加载失败，IIS 主服务继续运行。")
 

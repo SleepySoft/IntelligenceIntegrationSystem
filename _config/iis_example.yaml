@@ -46,6 +46,18 @@ optional_subsystems:
     min_score: 6
   intelligence_views:
     enabled: true
+  entity_alias:
+    enabled: true
+    url_prefix: /entity-alias
+    # data_dir: EntityAlias/data   # 空 = 包内 data/（git 管理的 JSONL）
+    vector_enabled: true           # 复用 vector 子系统的 VectorDB 做语义召回
+    wikidata:                      # 本地查不到时的在线建议源
+      enabled: true
+      # user_agent: "MyTool/1.0 ([email protected])"  # 建议部署时填写
+      # proxy: ""                  # 空 = 默认代理；socks 需 PySocks
+      min_interval_sec: 0.5
+      timeout_sec: 10
+      langs: zh,en
 
 # 常用高级项只在需要覆盖默认值时添加：
 # hub:

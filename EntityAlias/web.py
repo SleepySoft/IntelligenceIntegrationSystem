@@ -50,15 +50,19 @@ class EntityAliasWebService:
             name = request.args.get("name", "").strip()
             if not name:
                 return jsonify({"error": "缺少 name 参数"}), 400
-            return jsonify({"name": name, "found": service.resolve(name) is not None,
-                            **(service.resolve(name) or {})})
+            lang = request.args.get("lang", "").strip()
+            hit = service.resolve(name, lang=lang)
+            return jsonify({"name": name, "found": hit is not None,
+                            **(hit or {})})
 
         @bp.route("/api/resolve_batch", methods=["POST"])
         def api_resolve_batch():
-            names = (request.get_json(silent=True) or {}).get("names", [])
+            data = request.get_json(silent=True) or {}
+            names = data.get("names", [])
             if not isinstance(names, list):
                 return jsonify({"error": "names 必须是数组"}), 400
-            return jsonify({"results": service.resolve_batch(names)})
+            return jsonify({"results": service.resolve_batch(
+                names, lang=str(data.get("lang", "") or ""))})
 
         @bp.route("/api/lookup", methods=["GET"])
         def api_lookup():
@@ -85,6 +89,39 @@ class EntityAliasWebService:
                 use_vector=bool(data.get("vector", True)),
             )})
 
+        # ------------------------------ 在线建议（本地优先） ------------------------------
+
+        @bp.route("/api/suggest", methods=["GET"])
+        def api_suggest():
+            name = request.args.get("name", "").strip()
+            if not name:
+                return jsonify({"error": "缺少 name 参数"}), 400
+            return jsonify(service.suggest(
+                name,
+                lang=request.args.get("lang", "zh"),
+                limit=int(request.args.get("limit", 5)),
+                online=request.args.get("online", "1") not in ("0", "false"),
+            ))
+
+        @bp.route("/api/entities/from_wikidata", methods=["POST"])
+        @protect
+        def api_register_from_wikidata():
+            data = request.get_json(silent=True) or {}
+            qid = str(data.get("qid", "")).strip()
+            if not qid:
+                return jsonify({"error": "缺少 qid 参数"}), 400
+            overrides = {k: v for k, v in data.items()
+                         if k in ("type", "status", "description", "aliases",
+                                  "native_lang", "canonical", "lang")}
+            try:
+                return jsonify(service.register_from_wikidata(
+                    qid,
+                    primary_lang=str(data.get("primary_lang", "zh")),
+                    overrides=overrides,
+                )), 201
+            except AliasError as exc:
+                return _error_response(exc)
+
         # ------------------------------ 状态 ------------------------------
 
         @bp.route("/api/status", methods=["GET"])
@@ -92,7 +129,6 @@ class EntityAliasWebService:
             return jsonify(service.status())
 
         # ------------------------------ CRUD（写操作需登录保护） ------------------------------
-
         @bp.route("/api/entities", methods=["GET"])
         def api_list_entities():
             return jsonify(service.list_entities(
@@ -112,6 +148,10 @@ class EntityAliasWebService:
                     lang=data.get("lang", "zh"),
                     type=data.get("type", "other"),
                     aliases=data.get("aliases"),
+                    description=data.get("description", ""),
+                    status=data.get("status", "unverified"),
+                    localized=data.get("localized"),
+                    native_lang=data.get("native_lang", ""),
                 )), 201
             except AliasError as exc:
                 return _error_response(exc)

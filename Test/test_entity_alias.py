@@ -142,6 +142,109 @@ def test_crud_and_conflict(tmp_path):
     assert svc.resolve("人民网") is None
 
 
+# ---------------------------------------------------------------- meta 字段与展开
+
+def test_meta_fields_and_roles(tmp_path):
+    svc = _make_service(tmp_path)
+    entity = svc.create_entity(
+        "纽约时报", lang="zh", type="organization", status="verified",
+        description="美国主流媒体",
+        aliases=[{"name": "The New York Times", "lang": "en", "role": "native"},
+                 {"name": "NYT", "lang": "en", "role": "abbr"}])
+    assert entity["status"] == "verified" and entity["description"] == "美国主流媒体"
+    assert entity["aliases"][1]["role"] == "abbr"
+
+    # lookup 候选携带 description/status（供 AI 判断是否同一实体）
+    result = svc.lookup("NYTimes")
+    assert result["candidates"][0]["description"] == "美国主流媒体"
+
+    # 非法 role / status 被拒绝
+    with pytest.raises(AliasError):
+        svc.create_entity("X社", aliases=[{"name": "X", "role": "bogus"}])
+    with pytest.raises(AliasError):
+        svc.create_entity("Y社", status="bogus")
+
+    # 重启后 meta 保持
+    svc2 = _make_service(tmp_path)
+    assert svc2.resolve("NYT")["status"] == "verified"
+
+
+def test_expand_names(tmp_path):
+    svc = _make_service(tmp_path)
+    svc.create_entity("纽约时报", aliases=[{"name": "NYT", "lang": "en"},
+                                           {"name": "The New York Times", "lang": "en"}])
+    assert sorted(svc.expand_names("NYT")) == sorted(
+        ["纽约时报", "NYT", "The New York Times"])
+    assert svc.expand_names("未注册名字") == ["未注册名字"]
+
+
+# ---------------------------------------------------------------- 多语言标准名
+
+def test_localized_canonical(tmp_path):
+    svc = _make_service(tmp_path)
+    entity = svc.create_entity(
+        "纽约时报", lang="zh", type="organization", native_lang="en",
+        localized={"en": "The New York Times"},
+        aliases=[{"name": "NYT", "lang": "en", "role": "abbr"}])
+
+    # 英文标准名不是别名：可解析，且按语言返回对应标准名
+    hit = svc.resolve("The New York Times")
+    assert hit and hit["canonical"] == "纽约时报"
+    assert svc.resolve("NYT", lang="en")["display"] == "The New York Times"
+    # 母语模式：native_lang=en → 母语标准名
+    assert svc.resolve("NYT", lang="native")["display"] == "The New York Times"
+    # 无对应语言版本时回落主标准名
+    assert svc.resolve("NYT", lang="fr")["display"] == "纽约时报"
+    # 默认不指定语言 → 主标准名
+    assert svc.resolve("NYT")["canonical"] == "纽约时报"
+
+    # 语言标准名进唯一性索引：其它实体占用即 409
+    with pytest.raises(AliasError) as exc_info:
+        svc.create_entity("另一个报社", aliases=[{"name": "The New York Times"}])
+    assert exc_info.value.code == "conflict"
+
+    # 查询时展开覆盖语言标准名
+    assert sorted(svc.expand_names("NYT")) == sorted(
+        ["纽约时报", "The New York Times", "NYT"])
+
+    # 重启后 localized 保持
+    svc2 = _make_service(tmp_path)
+    assert svc2.resolve("NYT", lang="en")["display"] == "The New York Times"
+
+    # localized 与主标准名重复被拒绝
+    with pytest.raises(AliasError):
+        svc.create_entity("新华社", localized={"zh": "新华社"})
+
+
+# ---------------------------------------------------------------- 查询时展开（方案 A）
+
+def test_query_engine_alias_expansion():
+    from ServiceComponent.EventV4QueryEngine import EventV4QueryEngine
+
+    class FakeCursor:
+        def sort(self, *a): return self
+        def skip(self, *a): return self
+        def limit(self, *a): return self
+        def __iter__(self): return iter([])
+
+    class FakeCollection:
+        def __init__(self): self.last_query = None
+        def count_documents(self, q): self.last_query = q; return 0
+        def find(self, q, projection=None): self.last_query = q; return FakeCursor()
+
+    collection = FakeCollection()
+    engine = EventV4QueryEngine(collection, None)
+
+    # 未注入 expander：原样 $in
+    engine.query_intelligence(organizations=["NYT"])
+    assert collection.last_query["$and"][0]["ORGANIZATION"]["$in"] == ["NYT"]
+
+    # 注入后：展开为实体的全部已知名字
+    engine.alias_expander = lambda name: {"NYT": ["NYT", "纽约时报"]}.get(name, [name])
+    engine.query_intelligence(organizations=["NYT"])
+    assert collection.last_query["$and"][0]["ORGANIZATION"]["$in"] == ["NYT", "纽约时报"]
+
+
 # ---------------------------------------------------------------- API
 
 @pytest.fixture
@@ -155,15 +258,21 @@ def api_client(tmp_path):
 def test_api_resolve_and_lookup(api_client):
     api_client.post("/entity-alias/api/entities", json={
         "canonical": "人民日报", "type": "organization",
-        "aliases": [{"name": "People's Daily", "lang": "en"}]})
+        "localized": {"en": "People's Daily"},
+        "aliases": [{"name": "人民日报社", "lang": "zh", "role": "full"}]})
 
     r = api_client.get("/entity-alias/api/resolve?name=People's Daily")
     assert r.status_code == 200 and r.get_json()["canonical"] == "人民日报"
 
+    # 语言切换：返回该语言标准名
+    r = api_client.get("/entity-alias/api/resolve?name=人民日报社&lang=en")
+    assert r.get_json()["display"] == "People's Daily"
+
     r = api_client.post("/entity-alias/api/resolve_batch",
-                        json={"names": ["人民日报", "未知"]})
+                        json={"names": ["人民日报", "未知"], "lang": "en"})
     results = r.get_json()["results"]
-    assert results[0]["found"] and not results[1]["found"]
+    assert results[0]["found"] and results[0]["display"] == "People's Daily"
+    assert not results[1]["found"]
 
     r = api_client.get("/entity-alias/api/lookup?name=人民日")
     assert r.get_json()["candidates"][0]["canonical"] == "人民日报"
@@ -191,3 +300,17 @@ def test_mount_to_iis(tmp_path):
     assert client.get("/entity-alias/api/status").status_code == 200
     # 向量未配置时 status 反映不可用
     assert client.get("/entity-alias/api/status").get_json()["vector_available"] is False
+
+
+def test_iis_config_projection():
+    """optional_subsystems.entity_alias 经 IISConfig 投影为 entity_alias.* 运行时键。"""
+    import os
+    from IISConfig import load_iis_config
+
+    example = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "_config", "iis_example.yaml")
+    config = load_iis_config(example)
+    assert config.get("entity_alias.enabled") is True
+    assert config.get("entity_alias.url_prefix") == "/entity-alias"
+    assert config.get("entity_alias.wikidata.min_interval_sec") == 0.5
+    assert config.get("entity_alias.wikidata.langs") == "zh,en"

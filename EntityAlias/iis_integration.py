@@ -17,6 +17,35 @@ DEFAULT_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dat
 VECTOR_COLLECTION_NAME = "entity_alias_names"
 
 
+def _build_suggester(config, data_dir: str):
+    """按配置构造 Wikidata 在线建议源；未启用或构造失败返回 None。"""
+    if not config.get("entity_alias.wikidata.enabled", True):
+        return None
+    try:
+        from GlobalConfig import DEFAULT_PROXY
+        from EntityAlias.wikidata import DEFAULT_UA, WikidataSuggester
+
+        proxy = config.get("entity_alias.wikidata.proxy", "") or DEFAULT_PROXY or ""
+        if proxy.startswith("socks"):
+            try:
+                import socks  # noqa: F401（PySocks 未安装则 socks 代理不可用）
+            except ImportError:
+                logger.warning("代理为 socks 但 PySocks 未安装，Wikidata 建议源将直连。")
+                proxy = ""
+        langs = config.get("entity_alias.wikidata.langs", "zh,en")
+        return WikidataSuggester(
+            user_agent=config.get("entity_alias.wikidata.user_agent", "") or DEFAULT_UA,
+            proxy=proxy,
+            min_interval=float(config.get("entity_alias.wikidata.min_interval_sec", 0.5)),
+            timeout=float(config.get("entity_alias.wikidata.timeout_sec", 10.0)),
+            cache_path=os.path.join(data_dir, ".cache", "wikidata_cache.sqlite"),
+            langs=tuple(x.strip() for x in str(langs).split(",") if x.strip()),
+        )
+    except Exception:
+        logger.warning("Wikidata 建议源构造失败，在线建议关闭。", exc_info=True)
+        return None
+
+
 def mount_to_iis(app, *, config, wrapper, vector_client=None,
                  url_prefix: str = None) -> EntityAliasService | None:
     """把实体别名子系统挂载到 IIS Flask app。失败只记日志，返回 None。"""
@@ -38,7 +67,8 @@ def mount_to_iis(app, *, config, wrapper, vector_client=None,
             except Exception:
                 logger.warning("EntityAlias 向量集合创建失败，向量能力关闭。", exc_info=True)
 
-        service = EntityAliasService(JSONLStore(data_dir), vector_index)
+        service = EntityAliasService(JSONLStore(data_dir), vector_index,
+                                     suggester=_build_suggester(config, data_dir))
 
         from EntityAlias.web import EntityAliasWebService
         EntityAliasWebService(service).mount_to_app(app, wrapper=wrapper, url_prefix=prefix)

@@ -33,11 +33,21 @@ def fuzzy_score(query: str, candidate: str) -> float:
 
 
 class AliasIndex:
-    """归一化名 -> 实体 的精确索引 + 全量名称列表（供模糊扫描）。"""
+    """归一化名 -> 实体 的精确索引 + 模糊扫描预过滤。
+
+    - ``_exact``：norm_key -> (entity_id, 原始名, lang, is_canonical)
+    - ``_by_entity``：entity_id -> set(norm_key)，保证 remove 为 O(名字数)
+    - ``_bigram_postings``：bigram -> set(norm_key)，名字数超过阈值后模糊查询
+      先按 bigram 重叠度预过滤，再对小候选集跑 SequenceMatcher
+    """
+
+    _PREFILTER_MIN_NAMES = 20000  # 低于此规模全表扫描已足够快
 
     def __init__(self):
-        # norm_key -> (entity_id, 原始名, lang, is_canonical)
         self._exact: Dict[str, Tuple[str, str, str, bool]] = {}
+        self._by_entity: Dict[str, set] = {}
+        self._bigram_postings: Dict[str, set] = {}
+        self._postings_on = False
 
     # ------------------------------------------------------------------ 精确
 
@@ -55,8 +65,10 @@ class AliasIndex:
         key = normalize_name(name)
         if not key:
             return []
+        candidate_keys = self._prefilter_keys(key)
         scored: List[Tuple[float, str, str, str, bool]] = []
-        for cand_key, (entity_id, raw, lang, is_canonical) in self._exact.items():
+        for cand_key in candidate_keys:
+            entity_id, raw, lang, is_canonical = self._exact[cand_key]
             score = fuzzy_score(key, cand_key)
             if score >= min_score:
                 scored.append((score, entity_id, raw, lang, is_canonical))
@@ -73,25 +85,82 @@ class AliasIndex:
             for score, entity_id, raw, lang, is_canonical in scored[:limit]
         ]
 
+    def _prefilter_keys(self, key: str):
+        """返回候选 norm_key 集合。小规模全扫；大规模用 bigram 倒排预过滤。"""
+        if len(self._exact) < self._PREFILTER_MIN_NAMES:
+            return list(self._exact.keys())
+        q_bigrams = _bigrams(key)
+        if not q_bigrams:
+            return [key] if key in self._exact else []
+        overlap: Dict[str, int] = {}
+        for bigram in q_bigrams:
+            for cand_key in self._bigram_postings.get(bigram, ()):
+                overlap[cand_key] = overlap.get(cand_key, 0) + 1
+        # 阈值：至少覆盖查询 bigram 的 1/3；包含关系（部分匹配）恒入选
+        threshold = max(1, len(q_bigrams) // 3)
+        candidates = [k for k, cnt in overlap.items() if cnt >= threshold]
+        candidates.extend(k for k in self._exact if (key in k or k in key))
+        if key in self._exact:
+            candidates.append(key)
+        return list(set(candidates))
+
     # ------------------------------------------------------------------ 维护
 
     def rebuild(self, entities: List[Entity]) -> None:
         self._exact.clear()
+        self._by_entity.clear()
+        self._bigram_postings.clear()
+        self._postings_on = False
         for entity in entities:
-            self.add_entity(entity)
+            self._add_entity_names(entity)
+        self._maybe_enable_postings()
 
     def add_entity(self, entity: Entity) -> None:
         self.remove_entity(entity.id)
+        self._add_entity_names(entity)
+        self._maybe_enable_postings()
+
+    def _add_entity_names(self, entity: Entity) -> None:
+        keys = set()
         for entry in entity.all_names():
             key = normalize_name(entry.name)
-            if key:
-                self._exact[key] = (entity.id, entry.name, entry.lang,
-                                    entry.name == entity.canonical)
+            if not key:
+                continue
+            self._exact[key] = (entity.id, entry.name, entry.lang,
+                                entry.name == entity.canonical)
+            keys.add(key)
+        self._by_entity[entity.id] = keys
+        if self._postings_on:
+            for key in keys:
+                for bigram in _bigrams(key):
+                    self._bigram_postings.setdefault(bigram, set()).add(key)
+
+    def _maybe_enable_postings(self) -> None:
+        """规模超过阈值时启用预过滤，并对全量名字补建倒排（一次性）。"""
+        if not self._postings_on and len(self._exact) >= self._PREFILTER_MIN_NAMES:
+            for key in self._exact:
+                for bigram in _bigrams(key):
+                    self._bigram_postings.setdefault(bigram, set()).add(key)
+            self._postings_on = True
+        elif self._postings_on and len(self._exact) < self._PREFILTER_MIN_NAMES // 2:
+            # 规模回落明显时释放倒排（迟滞避免抖动）
+            self._bigram_postings.clear()
+            self._postings_on = False
 
     def remove_entity(self, entity_id: str) -> None:
-        stale = [k for k, v in self._exact.items() if v[0] == entity_id]
-        for k in stale:
-            del self._exact[k]
+        keys = self._by_entity.pop(entity_id, None)
+        if keys is None:
+            return
+        for key in keys:
+            self._exact.pop(key, None)
+        if self._postings_on:
+            for key in keys:
+                for bigram in _bigrams(key):
+                    posting = self._bigram_postings.get(bigram)
+                    if posting is not None:
+                        posting.discard(key)
+                        if not posting:
+                            del self._bigram_postings[bigram]
 
     @property
     def name_count(self) -> int:

@@ -18,44 +18,89 @@ logger = logging.getLogger(__name__)
 
 
 class EntityAliasService:
-    def __init__(self, store: JSONLStore, vector_index=None):
+    def __init__(self, store: JSONLStore, vector_index=None, suggester=None):
         self.store = store
         self.vector = vector_index if vector_index is not None else NullNearestIndex()
+        self.suggester = suggester  # 可选在线建议源（WikidataSuggester）
         self._index = AliasIndex()
         self._lock = threading.RLock()
         self._index.rebuild(self.store.all())
 
     # ------------------------------------------------------------------ 解析
 
-    def resolve(self, name: str) -> Optional[Dict[str, Any]]:
-        """传入一个名字，返回其标准名；未注册返回 None。"""
+    def resolve(self, name: str, *, lang: str = "") -> Optional[Dict[str, Any]]:
+        """传入一个名字，返回其标准名；未注册返回 None。
+
+        lang 非空时附 display（该语言的标准名；'native' 表示母语标准名）。"""
         hit = self._index.resolve(name)
         if not hit:
             return None
-        entity_id, matched_name, lang, _ = hit
+        entity_id, matched_name, lang_tag, _ = hit
         entity = self.store.get(entity_id)
         if entity is None:
             return None
-        return {
+        result = {
             "entity_id": entity.id,
             "canonical": entity.canonical,
             "lang": entity.lang,
             "type": entity.type,
+            "localized": dict(entity.localized),
+            "native_lang": entity.native_lang,
+            "description": entity.description,
+            "status": entity.status,
             "matched_name": matched_name,
             "match": "exact",
         }
+        if lang:
+            result["display"] = entity.display_name(lang)
+        return result
 
-    def resolve_batch(self, names: List[str]) -> List[Dict[str, Any]]:
+    def resolve_batch(self, names: List[str], *, lang: str = "") -> List[Dict[str, Any]]:
         """批量解析：每个输入名字返回 found/canonical 等。"""
         results = []
         for name in names:
-            hit = self.resolve(name)
+            hit = self.resolve(name, lang=lang)
             results.append({
                 "name": name,
                 "found": hit is not None,
                 **(hit or {}),
             })
         return results
+
+    def expand_names(self, name: str) -> List[str]:
+        """查询时展开：名字 → 其所属实体的全部已知名字（含自身）。未注册则原样返回。"""
+        hit = self._index.resolve(name)
+        if not hit:
+            return [name]
+        entity = self.store.get(hit[0])
+        if entity is None:
+            return [name]
+        return [entry.name for entry in entity.all_names()]
+
+    # ------------------------------------------------------------------ 在线建议
+
+    def suggest(self, name: str, *, lang: str = "zh", limit: int = 5,
+                online: bool = True) -> Dict[str, Any]:
+        """本地优先：已注册直接命中；否则本地候选 + 可选在线 Wikidata 建议。"""
+        local = self.lookup(name, limit=limit)
+        result: Dict[str, Any] = {"name": name, "local": local, "wikidata": []}
+        if local["found"] or not online or self.suggester is None:
+            return result
+        result["wikidata"] = self.suggester.suggest(name, lang=lang, limit=limit)
+        return result
+
+    def register_from_wikidata(self, qid: str, *, primary_lang: str = "zh",
+                               overrides: Dict[str, Any] = None) -> Dict[str, Any]:
+        """用 Wikidata 实体的多语言数据预填并注册到本地（AI 确认后调用）。"""
+        if self.suggester is None:
+            raise AliasError("在线建议源未配置", "bad_request")
+        prefill = self.suggester.prefill(qid, primary_lang=primary_lang)
+        if prefill is None:
+            raise AliasError(f"Wikidata 实体不存在或拉取失败：{qid}", "not_found")
+        for key, value in (overrides or {}).items():
+            if value is not None:
+                prefill[key] = value
+        return self.create_entity(prefill.pop("canonical"), **prefill)
 
     # ------------------------------------------------------------------ 模糊查询
 
@@ -71,6 +116,8 @@ class EntityAliasService:
                 if entity:
                     c["canonical"] = entity.canonical
                     c["type"] = entity.type
+                    c["description"] = entity.description
+                    c["status"] = entity.status
             if use_vector and self.vector.available:
                 candidates = self._merge_vector(name, candidates, limit)
             candidates.sort(key=lambda c: c["score"], reverse=True)
@@ -109,6 +156,8 @@ class EntityAliasService:
                 "is_canonical": hit["matched_name"] == entity.canonical,
                 "canonical": entity.canonical,
                 "type": entity.type,
+                "description": entity.description,
+                "status": entity.status,
                 "score": hit["score"],
                 "source": "vector",
             }
@@ -118,10 +167,17 @@ class EntityAliasService:
 
     def create_entity(self, canonical: str, *, lang: str = "zh",
                       type: str = "other",
-                      aliases: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      aliases: List[Dict[str, Any]] = None,
+                      description: str = "",
+                      status: str = "unverified",
+                      localized: Dict[str, str] = None,
+                      native_lang: str = "",
+                      refs: Dict[str, str] = None) -> Dict[str, Any]:
         entity = Entity.new(
             canonical, lang=lang, type=type,
-            aliases=[AliasEntry.from_dict(a) for a in (aliases or [])])
+            aliases=[AliasEntry.from_dict(a) for a in (aliases or [])],
+            description=description, status=status,
+            localized=localized, native_lang=native_lang, refs=refs)
         entity.validate()
         with self._lock:
             self._check_name_conflicts(entity)
@@ -145,6 +201,19 @@ class EntityAliasService:
                 entity.type = str(fields["type"]).strip().lower()
             if "aliases" in fields:
                 entity.aliases = [AliasEntry.from_dict(a) for a in fields["aliases"]]
+            if "description" in fields:
+                entity.description = str(fields["description"] or "").strip()
+            if "status" in fields:
+                entity.status = str(fields["status"]).strip().lower()
+            if "localized" in fields:
+                entity.localized = {str(k).strip().lower(): str(v).strip()
+                                    for k, v in (fields["localized"] or {}).items()}
+            if "native_lang" in fields:
+                entity.native_lang = str(fields["native_lang"] or "").strip().lower()
+            if "refs" in fields:
+                # refs 合并而非替换（允许多个外部来源共存）
+                for k, v in (fields["refs"] or {}).items():
+                    entity.refs[str(k).strip().lower()] = str(v).strip()
             entity.touch()
             entity.validate()
             self._check_name_conflicts(entity)
@@ -222,6 +291,7 @@ class EntityAliasService:
             "entities": self.store.count(),
             "names_indexed": self._index.name_count,
             "vector_available": bool(self.vector.available),
+            "online_suggest": self.suggester is not None,
             "data_files": list(self.store.files()),
         }
 

@@ -90,11 +90,17 @@
   - 详细设计与迁移计划见 `doc/vector_intelligence_subsystem_refactor.md` 与 `doc/20261015_vector_subsystem_coupling_audit_and_plan.md`
 
 - **`EntityAlias/`** — 实体别名子系统（标准名 ⇄ 别名映射，相对独立，可作独立项目）
-  - `service.py`：解析（精确→模糊/部分→可选向量）、批量接口、CRUD 门面
+  - `service.py`：解析（精确→模糊/部分→可选向量）、批量接口、CRUD、查询时别名展开（`expand_names`）
   - `store.py`：JSONL 文本存储（事实源，git 管理，按类型分文件、按标准名排序、原子重写）
   - `index.py` / `normalize.py`：内存精确索引与归一化；`vector.py`：可选最近名向量召回（IIS 集成时复用 VectorDB 独立集合 `entity_alias_names`，模块不 import VectorDB）
-  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；`iis_integration.py`：装配入口（`entity_alias.enabled` 配置门控）
+  - `model.py`：实体 = 主标准名+`localized`（lang→该语言标准名）+别名（带 `lang`/`role`: abbr/full/former）+ `native_lang` + `type`（person/organization/country/location/animal/commodity/other/uncertain）+ `status`（unverified/verified）+ `description` + `refs`（外部标识，如 wikidata QID）；`resolve` 支持 `lang=<代码>|native` 返回对应语言标准名
+  - `wikidata.py`：在线建议源（本地未命中时查 Wikidata；描述性 UA、0.5s 节流、429 退避、SQLite 缓存 7 天、代理可配）；`register_from_wikidata` 预填多语言数据补录回本地
+  - `index.py`：精确索引 + bigram 倒排预过滤（≥2 万名字自动启用）；容量实测与拐点见 README
+  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；`iis_integration.py`：装配入口（`optional_subsystems.entity_alias` 配置门控，经 IISConfig 投影为 `entity_alias.*` 运行时键）
+  - 设计/容量/改进文档：`doc/20261016_entity_alias_subsystem.md`
   - `data/`：git 管理的别名数据（JSONL）；`skill/SKILL.md`：AI 调用方指南
+  - 查询时展开：挂载后组合根把 `expand_names` 注入各子系统 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
+  - 历史补录：`Scripts/entity_alias_backfill.py scan` 产出未注册实体工作清单 → AI 填写 `action` → `register` 执行
 
 - **`VectorDB/`** — 向量数据库服务
   - `VectorDBBService.py`：独立 Flask 服务，提供向量存储、检索、聚类 API

@@ -25,6 +25,9 @@ class EventV4QueryEngine:
     def __init__(self, intelligence_collection: Any, event_collection: Any):
         self.intelligence_collection = intelligence_collection
         self.event_collection = event_collection
+        # 可选别名展开器（由组合根在 EntityAlias 挂载后注入）：
+        # Callable[[str], List[str]]，名字 → 所属实体的全部已知名字。
+        self.alias_expander = None
 
     def get_intelligence(self, intelligence_uuid: str | Iterable[str],
                          light_weight: bool = False, include_appendix: bool = False):
@@ -116,6 +119,11 @@ class EventV4QueryEngine:
         }
         for field, raw_values in direct_groups.items():
             values = self._as_list(raw_values)
+            if values and self.alias_expander:
+                # 查询时别名展开：每个实体名展开为其所属实体的全部已知名字，
+                # 未注册的名字原样保留。归档数据零改动，别名表更新即时生效。
+                values = sorted({alias for value in values
+                                 for alias in self.alias_expander(value)})
             if values:
                 clauses.append({field: {"$in": values}})
 

@@ -16,7 +16,13 @@ curl -c cookies.txt -X POST {IIS}/login -d "username=<user>&password=<pass>"
 
 ## 核心概念
 
-- 每个实体有且仅有一个**标准名**（canonical，带 `lang` 标签），可有任意多个**别名**（各带 `lang`）
+- 每个实体有：主标准名 `canonical`（带 `lang`）+ 各语言标准名 `localized`（如 `{"en": "The New York Times"}`）+ 任意多别名（各带 `lang` 和可选 `role`）
+- **外语/母语的标准名放 `localized`，不是别名**；该语言内的非正式叫法才是别名
+- `native_lang`：母语代码；请求带 `lang=native` 时返回母语标准名
+- 类型 `type`：person / organization / country / location / animal / commodity / other / uncertain
+- 状态 `status`：`unverified`（AI 注册默认）/ `verified`（核实后升级）
+- 别名 `role`：空 / `abbr` 简称 / `full` 全称 / `former` 旧称
+- `description`：简介，会在 lookup 候选中返回，**专门供你判断“是否同一实体”**
 - 归一化（大小写/全半角/标点/空白不敏感）后的名字全库唯一，冲突返回 409
 - 语言标签约定：标准名取系统权威展示名（通常 `zh`）；英文名、母语本名作为别名（`en` / 实际语言）
 
@@ -26,10 +32,33 @@ curl -c cookies.txt -X POST {IIS}/login -d "username=<user>&password=<pass>"
 curl "{BASE}/api/resolve?name=People%27s%20Daily"
 # => {"name": "People's Daily", "found": true, "entity_id": "ent_...",
 #     "canonical": "人民日报", "lang": "zh", "type": "organization",
-#     "matched_name": "People's Daily", "match": "exact"}
+#     "localized": {"en": "People's Daily"}, ...}
+
+# 语言切换：lang=<代码> 返回该语言标准名，lang=native 返回母语标准名
+curl "{BASE}/api/resolve?name=People%27s%20Daily&lang=en"
+# => 同上 + "display": "People's Daily"
 ```
 
 `found=false` 表示未注册。**不要**在未注册时编造标准名——转入场景 2。
+
+## 场景 1.5：本地查不到 → 在线建议 → 补录回本地
+
+```bash
+# 本地优先，未命中时自动附带 Wikidata 候选（online=0 可关闭）
+curl "{BASE}/api/suggest?name=NYT&lang=en"
+# => {"local": {...本地模糊/向量候选...},
+#     "wikidata": [{"qid": "Q9684", "label": "The New York Times",
+#                   "description": "American daily newspaper", ...}]}
+
+# AI 确认某个 qid 就是目标实体后，一键拉取多语言数据补录：
+curl -b cookies.txt -X POST "{BASE}/api/entities/from_wikidata" \
+  -H "Content-Type: application/json" \
+  -d '{"qid": "Q9684", "type": "organization"}'
+# => 201：canonical=纽约时报（zh label）、localized=en label、别名、简介、refs.wikidata 全部预填
+#    可用 canonical/lang/type/status/description/aliases/native_lang 覆盖预填值
+```
+
+注意：Wikidata 候选只是参考，**确认责任在你**；wikidata 查不到不代表实体不存在（长尾实体它覆盖不到）。
 
 ## 场景 2：注册新实体（先查相似，再决定）
 
@@ -52,18 +81,21 @@ curl -X POST "{BASE}/api/lookup_batch" -H "Content-Type: application/json" -d '{
 对每个名字判断（这是你的职责，服务不做自动合并）：
 
 - `found=true` → 直接用返回的 `canonical`，无需注册
-- candidates 中有明确同一实体（如高分 vector/partial 命中）→ 把新名字**加为已有实体的别名**：
+- candidates 中有明确同一实体（结合 `description`、`status`、分数判断）→ 把新名字**加为已有实体的别名**：
   ```bash
   curl -b cookies.txt -X POST "{BASE}/api/entities/{entity_id}/aliases" \
-    -H "Content-Type: application/json" -d '{"name": "NYT", "lang": "en"}'
+    -H "Content-Type: application/json" -d '{"name": "NYT", "lang": "en", "role": "abbr"}'
   ```
-- 确认是新实体 → 注册：
+- 确认是新实体 → 注册（description 必填，供后续 AI 消歧）：
   ```bash
   curl -b cookies.txt -X POST "{BASE}/api/entities" -H "Content-Type: application/json" -d '{
     "canonical": "纽约时报",
     "lang": "zh",
     "type": "organization",
-    "aliases": [{"name": "The New York Times", "lang": "en"}, {"name": "NYT", "lang": "en"}]
+    "native_lang": "en",
+    "description": "美国主流媒体，总部位于纽约",
+    "localized": {"en": "The New York Times"},
+    "aliases": [{"name": "NYT", "lang": "en", "role": "abbr"}]
   }'
   ```
   成功返回 201 + 完整实体 JSON（含分配的 `id`）。
@@ -101,3 +133,5 @@ curl "{BASE}/api/status"
 3. 别名 `lang` 用 BCP-47 短码（`zh`/`en`/`ja`/`ru`...）；不确定时留空
 4. 批量接口单次建议 ≤ 200 个名字
 5. 数据实时写入 git 管理的 JSONL 文本；不要手工编辑数据文件后指望运行中的服务自动感知——重启或等待后续版本的 reload 接口
+6. 历史归档中的未注册实体由运维脚本产出工作清单：`python Scripts/entity_alias_backfill.py scan`，
+   你填写每个条目的 `action`（register / alias / ignore）后由 `register` 子命令批量执行

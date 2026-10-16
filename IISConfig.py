@@ -128,11 +128,39 @@ class ToggleSettings(_StrictModel):
     enabled: bool = True
 
 
+class EntityAliasWikidataSettings(_StrictModel):
+    """Wikidata 在线建议源（本地查不到时的回落）。"""
+    enabled: bool = True
+    user_agent: str = ""          # 空 = 内置 UA；建议部署时填工具名+联系方式
+    proxy: str = ""               # 空 = GlobalConfig.DEFAULT_PROXY
+    min_interval_sec: float = Field(0.5, ge=0)
+    timeout_sec: float = Field(10.0, gt=0)
+    langs: str = "zh,en"          # prefill 拉取的语言集，逗号分隔
+
+
+class EntityAliasSettings(_StrictModel):
+    enabled: bool = True
+    url_prefix: str = "/entity-alias"
+    data_dir: str = ""            # 空 = 包内 EntityAlias/data
+    vector_enabled: bool = True   # 复用 vector 子系统的 VectorDB 做语义召回
+    wikidata: EntityAliasWikidataSettings = Field(
+        default_factory=EntityAliasWikidataSettings)
+
+    @field_validator("url_prefix")
+    @classmethod
+    def _valid_prefix(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith("/"):
+            raise ValueError("url_prefix 必须以 / 开头")
+        return value
+
+
 class OptionalSubsystemSettings(_StrictModel):
     translation: TranslationSettings = Field(default_factory=TranslationSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
     situation: SituationSettings = Field(default_factory=SituationSettings)
     intelligence_views: ToggleSettings = Field(default_factory=ToggleSettings)
+    entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings)
 
 
 class AccessSettings(_StrictModel):
@@ -305,6 +333,20 @@ class IISConfig:
             "monitor": {
                 "update_interval_sec": 5.0,
                 "thread_stats_interval_sec": 10.0,
+            },
+            "entity_alias": {
+                "enabled": optional_subsystems.entity_alias.enabled,
+                "url_prefix": optional_subsystems.entity_alias.url_prefix,
+                "data_dir": optional_subsystems.entity_alias.data_dir,
+                "vector_enabled": optional_subsystems.entity_alias.vector_enabled,
+                "wikidata": {
+                    "enabled": optional_subsystems.entity_alias.wikidata.enabled,
+                    "user_agent": optional_subsystems.entity_alias.wikidata.user_agent,
+                    "proxy": optional_subsystems.entity_alias.wikidata.proxy,
+                    "min_interval_sec": optional_subsystems.entity_alias.wikidata.min_interval_sec,
+                    "timeout_sec": optional_subsystems.entity_alias.wikidata.timeout_sec,
+                    "langs": optional_subsystems.entity_alias.wikidata.langs,
+                },
             },
             "ai_client_center": {
                 "sqlite_db_file": "ai_client_state_log.db",
