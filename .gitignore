@@ -182,7 +182,6 @@ requirements.txt.bak
 
 # config file
 config.json
-ai_client_config.py
 ai_clients.yaml
 
 # Not-project folders
@@ -192,7 +191,7 @@ _export
 _products
 
 # Real config files are ignored; example configs are tracked in git.
-# 真实配置不入库（config.json / collector.json / ai_client_config.py / Authentication.db / 密钥文件），
+# 真实配置不入库（config.json / collector.json / ai_clients.yaml / Authentication.db / 密钥文件），
 # 示例文件（*_example.* / readme.txt / subsystems/ 模板）正常提交。
 _config/*
 !_config/readme.txt
