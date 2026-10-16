@@ -1,0 +1,70 @@
+{
+  "name": "event-v4-smoke",
+  "cases": [
+    {
+      "id": "non-intelligence-lifestyle-zh",
+      "tags": ["zh", "non_intelligence", "short"],
+      "collected_data": {
+        "UUID": "benchmark-non-intelligence-001",
+        "token": "benchmark-local",
+        "source": "__IIS_BENCHMARK__",
+        "target": "benchmark",
+        "title": "周末家庭烘焙心得",
+        "authors": ["测试作者"],
+        "content": "作者分享了周末在家制作普通面包的个人心得，包括揉面、发酵和烘烤时间，没有涉及公共政策、市场变化、安全风险或重大社会事件。",
+        "pub_time": "2026-10-10T08:00:00+08:00",
+        "collect_time": "2026-10-10T08:05:00+08:00",
+        "informant": "benchmark://non-intelligence-001",
+        "subsystem": "news"
+      },
+      "expected": {
+        "route": "non_intelligence",
+        "forbidden_claims": ["发生爆炸", "政府宣布"]
+      }
+    },
+    {
+      "id": "valuable-attack-en",
+      "tags": ["en", "valuable", "event", "attack"],
+      "collected_data": {
+        "UUID": "benchmark-attack-001",
+        "token": "benchmark-local",
+        "source": "__IIS_BENCHMARK__",
+        "target": "benchmark",
+        "title": "Port radar station attacked",
+        "authors": ["Benchmark Desk"],
+        "content": "The defense ministry of Country A said its forces attacked a military radar station operated by Country B near Port Delta at 03:00 local time on October 9, 2026. Country B confirmed damage to the radar building and said no casualties were reported. Neither side announced further operations.",
+        "pub_time": "2026-10-09T06:00:00+00:00",
+        "collect_time": "2026-10-09T06:05:00+00:00",
+        "informant": "benchmark://attack-001",
+        "subsystem": "news"
+      },
+      "expected": {
+        "route": "valuable",
+        "required_event_predicates": ["attack"],
+        "forbidden_claims": ["人员死亡", "和平协议"]
+      }
+    },
+    {
+      "id": "valuable-capacity-zh",
+      "tags": ["zh", "valuable", "economic", "capacity"],
+      "collected_data": {
+        "UUID": "benchmark-capacity-001",
+        "token": "benchmark-local",
+        "source": "__IIS_BENCHMARK__",
+        "target": "benchmark",
+        "title": "北港电池厂宣布扩产",
+        "authors": ["基准测试编辑部"],
+        "content": "北港能源公司10月8日宣布，将投资20亿元扩建其动力电池工厂，计划在2027年底前把年产能从20吉瓦时提高到35吉瓦时。公司称项目已获得当地建设许可，施工将在下月开始，但尚未披露设备供应商。",
+        "pub_time": "2026-10-08T10:00:00+08:00",
+        "collect_time": "2026-10-08T10:03:00+08:00",
+        "informant": "benchmark://capacity-001",
+        "subsystem": "news"
+      },
+      "expected": {
+        "route": "valuable",
+        "required_event_predicates": ["expand_capacity"],
+        "forbidden_claims": ["已经完成扩建", "设备供应商为"]
+      }
+    }
+  ]
+}

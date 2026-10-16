@@ -1,0 +1,46 @@
+# Event V4 情报域设计
+
+本文只描述 **Event V4 同构情报域**：所有启用的情报域共享 Event V4 数据契约和 Prompt
+机制，但拥有独立的数据集合、URL 前缀、AI 客户端分组、评分配置和可选 UI 插件。
+
+这里的 `news`、`finance`、`industry` 称为“情报域”，不要与配置中的
+`optional_subsystems` 混淆；后者指 translation、vector、situation 等可整体启停的外围
+能力。自定义 Prompt、自定义 Schema 和按情报域启用地域/实体视图的现状与改造方案见
+[IIS 情报域扩展能力调查与重构建议](20261016_intelligence_domain_extensibility_audit.md)。
+
+## 配置
+
+当前情报域入口仍位于 `_config/iis.yaml` 的历史键 `hub.subsystems`，详细参数仍分离在
+`_config/subsystems/`：
+
+```yaml
+hub:
+  subsystems:
+    default: news
+    enabled:
+      news: 国际新闻
+      finance: 财经情报
+```
+
+详细配置支持：`collection_prefix`、`url_prefix`、`ai_client_group`、`scoring`、`ui_plugin`
+和 `detail_page`。Prompt 不再由各情报域加载旧式 `prompt_v*.md`；所有情报域从
+`prompts_event_v4.EVENT_ANALYSIS_PROMPT_TABLE` 选择版本，人工调试可在单次请求中覆盖 Prompt。
+
+## 资源隔离
+
+`SubsystemRegistry` 为每个情报域构造独立的 cache、V4 intelligence、low-value、event、entity
+和 outbox 集合，并注册 `EventV4QueryEngine`、统计引擎、实体解析器和归档仓库。
+
+默认情报域挂载根 URL；其他情报域通常挂载 `/{name}`。UI 插件入口为
+`_config/subsystems/{name}/ui_plugin.js`，插件接收的文档只使用 V4 字段。
+
+## 新增同构情报域
+
+1. 在主配置 `hub.subsystems.enabled` 中登记名称和显示名。
+2. 设置唯一 `collection_prefix` 与 `url_prefix`。
+3. 如有需要，设置 AI 客户端分组和 V4 评分权重。
+4. 如需定制展示，新增读取 V4 DTO 的 `ui_plugin.js`。
+5. 使用人工情报调试页验证正式 Prompt 拼接、覆盖 Prompt 和 V4 校验结果。
+
+以上步骤不能创建任意 Schema 的异构情报域。当前 `schema.json` 只是 UI 元数据，生产
+pipeline 仍固定校验 `AnalysisResultV4` 并归档 `ArchivedDataV4`。

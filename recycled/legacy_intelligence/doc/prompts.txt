@@ -1,0 +1,4035 @@
+作为一个专业的python程序员，接下来你需要使用简洁及优雅的代码实现我的需求，所有函数必须有标准的英文注释，并且考虑错误处理及可测试性。理解请回复“OK”。
+
+
+我希望实现一个类，它能够根据rss订阅列表，对其中的每一个rss feed，下载其中所有的文章内容，包括：
+1. 文章标题
+2. 发布时间
+3. 文章链接
+4. 文章内容
+其中rss feed列表会通过读取json文件输入，json格式如下：
+```
+{
+  "theme": "科技",
+  "focus": "AI",
+  "prompt": "",
+  "feeds": {
+    "青柠学术": "https://qnscholar.github.io//feed.xml",
+    "MOOC中国": "https://www.cmooc.com/feed",
+    "知乎日报": "https://feeds.feedburner.com/zhihu-daily",
+    "知乎每日精选": "https://www.zhihu.com/rss"
+  }
+}
+```
+请将读取json文件、遍历feeds、对每个feed下载、对feed中其中一篇文章的链接下载各写在不同函数里。
+
+对于上面的需求有不清楚之处清进一步询问，如果有更多的建议也请提出。
+
+
+
+
+我希望将正文转换为markdown格式以减少复杂度。
+
+
+
+
+在这个函数里面，调用另一个函数，用来将不同feed的文章分文件夹存储为<标题>.md文件。注意需要保证目录存在，且<标题>作为文件名有效，否则将其中非法字符进行清洗。
+不要在最后一起写入，而是拉取一个写一个，这是为了防止中途出错。另外请考虑这么一种机制：成功拉取文章后记录一个“URL” - "文件"的持久性存储表，在每次拉取时，不要拉取已经拉取过的文章。
+
+
+
+
+
+帮我写一个FeedsValidation的python脚本，提供本地API，WebAPI，命令行和界面四种界面。
+本地API行为如下：
+    传入一个URL，同步验证其是否能得到一个合法的RSS XML数据。
+    传入一个Feeds字典，异步验证其中每一个URL能得到一个合法的RSS XML数据。
+    维护一个 {Feed URL：状态} 字典，用户可以调用对应接口查询Feed的状态（未知，有效，无效，Busy等等）。
+    提供另一个接口，清除Feed状态字典。
+WebAPI则支持提交一个Feeds字典，同样更新到{Feed URL：状态} 字典，通过另一个wei api查询状态。
+    同时给出调用该服务的测试代码。
+命令行则接受一个url，同步验证其是否能得到一个合法的RSS XML数据，返回结果并退出。
+界面则使用pyqt5，左侧输入单个链接或json，右侧则以列表显示每个feed链接的状态，feed状态的更新必须是异步的。
+    用户可以勾选列表项，列表下方根据勾选项目动态生成json。程序提供“全选/全不选/仅选有效Feed/清除无效Feed”功能
+如果不带命令行参数，默认启动界面，如果参数为url，则使用命令行。你来指定一个参数让可以启动web api服务。
+将上面的功能实现在同一个py文件里，注意每个功能的独立性，比如pyqt5不存在不影响命令行的使用。
+
+接受的JSON的格式如下：
+"""
+{
+  "other keys just ignore": "........",
+  "feeds": {
+    "feed name 1": "feed url 1",
+    "feed name 2": "feed url 2",
+  }
+}
+"""
+
+其中：
+    列表要分列显示，列包括：Feed Name, Feed URL, Status
+    动态生成的json项为  Feed Name: Feed URL，而非状态。
+
+
+
+
+
+这个函数会遇到403的问题，我想，既然是验证RSS，那么正确的方法应该是利用标准的RSS请求来获取RSS资源，而非直接request爬取。
+请帮我改造这段代码，在保持现有逻辑的前提下，使用标准的RSS请求来验证feed是否有效。
+
+
+
+
+
+
+我使用feedparser库拉取并分析rss feed，但我发现该库反爬能力太弱，以致于对于很多feed根本拉取不到。
+所以我希望通过无头浏览器拉取内容，再通过feedparser分析feed内容。
+请帮我实现一个基于无头浏览器的强大网页内容获取程序，要求支持包括socks5在内的代理。
+
+
+
+
+
+帮我实现一个parse_feed函数，参数是从rss feed返回的内容（content），你需要使用合适的库和工具对其进行解析。
+该程序需要应对各种复杂和错误的情况，并且对每rss中的每一条数据，重新组织和返回关键字段的内容（请想一下rss的关键信息有哪些）。
+注意不要出现语法错误和示实现的引用，不要简单的拼接代码，而是分析其功能和适用性，将其融合到自己的代码中。
+
+
+
+
+
+我先给出requirements.txt中的内容，再给出所有python文件中import的内容，
+帮我检查requirements.txt中是否有多余的依赖，或者缺失的依赖，最终输出完整且移除多余引用的requirements.txt内容。
+
+requirements.txt :
+"""
+"""
+
+Imports :
+"""
+"""
+
+
+
+
+
+
+
+作为一个专业的python程序员，接下来你需要使用简洁及优雅的代码实现我的需求，所有函数必须有标准的英文注释，并且考虑错误处理及可测试性。
+
+我希望通过url抓取一个网页，其中url来自RSS feed的XML文章描述。
+帮我实现一个能应对大多数反爬情况的网页抓取模块，需要支持包括socks5在内的代理，但不需要考虑过于复杂的挑战的情况。
+即尽可能地模拟浏览器浏览和渲染过程，需要考虑抓取的成功率，而不需要过多考虑抓取的效率。
+需要考虑抓取函数可重入或抓取模块多实例化，以便多线程抓取。
+请审视编写的代码，确定没有任何的引用未被实现。
+在其它模块中使用了playwright，如果合适，你也可以考虑使用它。
+
+
+
+
+
+
+
+
+我使用sync_playwright和requests实现不同模块来抓取网页，但它们的代理配置似乎不一样。
+
+sync_playwright的格式是：
+
+    proxy_config = {
+        "server": "socks5://127.0.0.1:10808",
+        "username": "",
+        "password": ""
+    }
+
+
+而requests的格式是：
+
+
+    proxies = {
+        "http": "socks5://user:password@proxy_host:port",
+        "https": "socks5://user:password@proxy_host:port"
+    }
+
+
+我希望它们能使用同样的格式，或者通过适配函数将格式转成一致。
+注意要考虑到代理不需要认证，即username和password不存在的情况，一个函数要能同时处理有认证的情况和无认证的情况。
+各个函数需要有标准英文注释，包括描述输入格式，输出格式。
+
+
+
+
+
+针对 parse_proxy，to_playwright，to_requests，考虑各种情况，包括非法输入情况，为它们各自编写测试函数。
+不需要使用任何测试框架，只需要使用assert进行断言即可。
+
+
+
+
+
+
+在我的情报采集系统中，我想写一个prompt让AI给网络信息进行评分，分制为0 - 10分。
+很显然，广告和完全无效的内容评分为0分。反之，诸如911和特朗普遇袭这类国际重大事件评为10分。
+但对于中间具体的评分标准，我还没有思路。能不能帮助我制定关于情报价值评分标准的描述？如果有现成的成熟通用标准，那么最好。
+
+
+
+
+
+
+
+帮我实现一个名为IntelligenceHub的类，它采用多线程实现以下功能：
+1. 信息收集模块：提供WEB API，接受POST请求，参数是DICT，除UUID必须有之外，其余字段皆不限制，将收集信息放入待处理队列中。
+    同时提供调用该WEB API的本地API（proxy）
+2. 信息处理模块：从队列中获取待处理数据，通过POST请求调用WEB接口。该接口参数同样是DICT，除UUID外其余字段皆不限制。
+   它将采用UUID作为消息的唯一标识，当消息异步处理结束后，该UUID将用来匹配之前的请求。
+   如果一个数据在一定时间内未得到处理，将作为超时处理，将其放回待处理列表中，根据重试次数决定它的优先度。
+3. 信息处理反馈模块
+    提供WEB API，接受处理之后的消息，使用UUID匹配源消息。将源消息和处理后的消息一起放入队列中给后处理和归档模块。
+    同时提供调用该WEB API的本地API（proxy）。
+4. 后处理和归档模块：
+    归档：将处理后的结果放入mongodb中，并建立指向它的向量数据库索引。
+    后处理暂时未定，有可能采用插件的方式实现。
+以上只是一个大概的框架，细节部分请加上TODO标记，由后续逐步实现。
+一定一定要注意并发场景及效率，不要出现资源冲突的情况。
+
+
+
+我实现了一个名为IntelligenceHub的类，它采用多线程实现以下功能：
+1. 信息收集模块：提供WEB API，接受POST请求，参数是DICT，除UUID必须有之外，其余字段皆不限制，将收集信息放入待处理队列中。
+    同时提供调用该WEB API的本地API（post_collected_intelligence）
+2. 信息处理模块：从队列中获取待处理数据，通过POST请求调用WEB接口。该接口参数同样是DICT，除UUID外其余字段皆不限制。
+   它将采用UUID作为消息的唯一标识，当消息异步处理结束后，该UUID将用来匹配之前的请求。
+   如果一个数据在一定时间内未得到处理，将作为超时处理，将其放回待处理列表中，根据重试次数决定它的优先度。
+3. 信息处理反馈模块
+    提供WEB API，接受处理之后的消息，使用UUID匹配源消息。将源消息和处理后的消息一起放入队列中给后处理和归档模块。
+    同时提供调用该WEB API的本地API（post_processed_intelligence）。
+4. 后处理和归档模块：
+    归档：将处理后的结果放入mongodb中，并建立指向它的向量数据库索引。
+    后处理暂时未定，有可能采用插件的方式实现。
+
+请一步步地分析该程序，帮我实现和改进你认为可以进一步实现或改进的地方。
+
+
+
+
+请分析IntelligenceHub的功能和行为，并为IntelligenceHub编写包括Collector模拟, IntelligenceProcessor模拟在内的测试辅助模块。
+
+
+
+
+
+基于它们编写测试用例，先测试整个处理流程，然后分条列出测试各种情况以及测试性能的测试用例简要描述。先不要输出测试代码。
+先不要输出testcase的实现。
+
+
+
+
+
+
+processor_thread是一个IO线程，因为等待超时所以会成为性能瓶颈。我希望按照CPU数除以2创建一个线程池，由该线程池来进行数据处理。
+注意不要频繁创建和退出线程，而是通过信号里让线程等待数据，并且不影响检查退出标记。相关代码如下：
+
+
+
+
+
+
+
+
+理解下面一段代码，增加一个类，功能如下：
+    提供一个接口，参数与load_json_config()一样，名字请根据功能自行推测。
+    调用该函数在读取json配置后，会创建一个线程以polling_interval周期循环执行processor.process_all_feeds()。
+    要注意使用线程退出标志让线程有优雅退出的机会，以文件名为索引可以找到并管理线程。
+    如果发现参数中的文件名已存在线程列表中，如果指定force，则关闭旧线程开启新线程，否则返回错误并忽略。
+    该类同时还要提供统计信息获取接口，并注意多线程资源访问问题。
+
+
+
+
+
+
+
+写一个函数，接受两个参数：key属性表，待检查的dict。
+key属性表类似下面的例子：
+
+COLLECTOR_DATA_FIELDS = {
+    'UUID': 'M',
+    'source': 'O',
+}
+
+基中M代表MUST，O代表OPTIONAL。函数返回 (MUST字段的缺失数，OPTIONAL字段的存在数，不在属性表中的字段数)
+
+
+
+
+
+
+python有没有可能实现这样一种机制：
+当我向特定文件夹放入一个python文件时，这个新加入文件会被服务识别并从指定的函数启动。
+当我从这个文件夹中移除一个文件时，服务会在该文件对应的任务执行完毕后移除该任务（移除文件对程序运行本身没有影响）。
+请仔细分析这个需求，分析其中的问题及实现可能性，给出上面提到的“服务”程序的代码。
+
+
+
+
+
+
+
+python有没有这样的机制：开辟一个有P个线程的线程池，执行T个任务（T可能大于P）。
+里面的任务不会发生抢占
+
+
+
+
+
+
+
+下面这段代码，由于一个sql连接无法在线程间共享，因此我希望将整个save_content做成异步的。
+即在该单例初始化时创建一个线程，调用save_content时仅把数据放入队列中，并通知线程做后续操作。
+该类需提供优雅退出线程的方法，并且注意线程安全问题。
+
+
+
+使用crawl4ai实现以下接口，要求能对抗大部分常用的反爬手段，并且提供分析抓取失败的诊断手段。
+
+
+class ProxyConfig(TypedDict):
+    http: str
+    https: str
+
+
+class ScraperResult(TypedDict):
+    content: str
+    errors: List[str]
+
+
+def fetch_content(
+    url: str,
+    timeout_ms: int,
+    proxy: Optional[ProxyConfig] = None,
+    **kwargs
+) -> ScraperResult:
+
+
+
+
+写一段python程序，使用openai的接口调用硅基流动的API接口（是不是理论上可以支持所有openai like接口？）。
+token可以在构造时从外界传入，如果没有，则去环境变量中获取。
+可以选择采用同步或异步的方式获取结果。
+所有函数都需要标准注释，且关键地方也需要注释说明意图和数据格式，所有注释必须为英文。
+
+
+
+
+
+
+
+
+
+
+
+
+
+基于我们的对话上下文，请分析并理解我的需求，基于上面的AI接口，编写一个函数实现下面描述的功能：
+
+输入：主prompt，结构化的数据（json，其中主要内容是content字段，其它比如title字段等等为可选），对话上下文（可选）
+输出：按prompt输出的json格式。
+函数功能：将输入的prompt和结构化数据传递给AI，等待输出。输出应当为json格式，将其转为dict输出。
+
+主prompt示例如下：
+
+
+
+
+
+
+
+
+
+程序中已通过以下代码初始化好了mongodb client：
+
+"""
+def _setup_mongo_db(self) -> bool:
+    """初始化MongoDB连接并创建必要索引"""
+    try:
+        # 连接配置
+        self.mongo_client = pymongo.MongoClient(
+            self.mongo_db_uri,
+            maxPoolSize=100,
+            serverSelectionTimeoutMS=5000
+        )
+
+        # 验证连接
+        self.mongo_client.admin.command('ping')
+        self.db = self.mongo_client["intelligence_db"]
+        self.archive_col = self.db["processed_data"]
+
+        # 定义索引规范（名称、字段、选项）
+        index_specs = [
+            {
+                "name": "created_at_idx",
+                "keys": [("metadata.created_at", pymongo.ASCENDING)],
+                "description": "基于创建时间的时间范围查询加速"
+            },
+            {
+                "name": "vector_dim_idx",
+                "keys": [("vector.dim", pymongo.ASCENDING)],
+                "options": {
+                    "partialFilterExpression": {"vector": {"$exists": True}},
+                    "background": True  # 后台创建避免阻塞
+                },
+                "description": "向量维度查询优化（仅当存在vector字段时建立）"
+            },
+            {
+                "name": "content_text_idx",
+                "keys": [("raw_data.value", "text")],
+                "options": {
+                    "weights": {"raw_data.value": 5},
+                    "default_language": "english",
+                    "language_override": "language"
+                },
+                "description": "全文检索索引（字段权重优化）"
+            }
+        ]
+
+        # 检查并创建索引
+        existing_indexes = {idx["name"]: idx for idx in self.archive_col.list_indexes()}
+
+        for spec in index_specs:
+            index_name = spec["name"]
+            index_model = pymongo.IndexModel(spec["keys"], **spec.get("options", {}))
+
+            # 索引存在性检查
+            if index_name in existing_indexes:
+                existing = existing_indexes[index_name]
+                # 检查索引定义是否一致
+                if (existing["key"] == index_model.document['key'] and
+                        existing.get("partialFilterExpression") == spec.get("options", {}).get(
+                            "partialFilterExpression")):
+                    logger.info(f"索引 {index_name} 已存在，跳过创建")
+                    continue
+
+                # 删除不一致的旧索引
+                logger.warning(f"检测到不一致索引 {index_name}，重新创建...")
+                self.archive_col.drop_index(index_name)
+
+            # 创建新索引
+            logger.info(f"创建索引 {index_name}：{spec['description']}")
+            self.archive_col.create_indexes([index_model])
+
+        return True
+    except pymongo.errors.OperationFailure as e:
+        logger.critical(f"MongoDB索引操作失败: {str(e)}")
+        return False
+    except Exception as e:
+        logger.critical(f"MongoDB连接失败: {str(e)}")
+        return False
+"""
+
+
+请写一个函数将dict写入该数据库。dict示例如下（省略部分数据）：
+
+"""
+C:\D\Code\git\IntelligenceIntegrationSystem\.venv\Scripts\python.exe -X pycache_prefix=C:\Users\yq1061170\AppData\Local\JetBrains\PyCharmCE2024.2\cpython-cache "C:/Program Files/JetBrains/PyCharm Community Edition 2024.2.3/plugins/python-ce/helpers/pydev/pydevd.py" --multiprocess --qt-support=auto --client 127.0.0.1 --port 50471 --file C:\D\Code\git\IntelligenceIntegrationSystem\Tools\IntelligenceAnalyzerProxy.py
+Connected to pydev debugger (build 242.23339.19)
+AI response spends 94.8275637626648 s
+{
+  "UUID": "55eebb04-1400-4b33-9800-7fdb43ad4689",
+  "TIME": "2024-07-19",
+  "LOCATION": "",
+  "PEOPLE": [],
+  "ORGANIZATION": [
+    "Netflix",
+    "Paramount",
+    "Disney",
+    "Amazon",
+    "Corus",
+    "Global TV",
+    "",
+    "Motion Picture Association-Canada"
+  ],
+  "EVENT_BRIEF": "",
+  "EVENT_TEXT": ",
+  "RATE": {
+    "战略相关性": 6,
+    "国际关联度": 4,
+    "金融影响力": 6,
+    "政策关联度": 8,
+    "科技前瞻性": 2,
+    "投资价值": 6,
+    "内容准确率": 8
+  },
+  "IMPACT": "",
+  "TIPS": "流媒体与传统媒体就加拿大内容资金义务产生政策博弈"
+}
+
+Process finished with exit code 0
+
+"""
+
+
+
+
+作为一个资深专业的python程序员，帮我实现一个mongodb存储类，要求如下：
+1. 存储通用的dict，而不要去管dict中的键值。
+2. 提供基本的查询接口。
+3. 良好的可配置性，如服务地址，数据库名，登录认证等等，参数配置需配上详细说明。
+4. 多线程访问安全，保证资源不泄露。
+5. 适度通用的优化，以增加访问速度，优化需要配上详细说明。
+6.注释必须标准且为英文，所有文字都需要是标准专业的英文。
+
+
+
+
+使用并改造以下的类，实现以下功能：
+1. 增加一个update的方法，指定一个或多个字段以及值（dict），并指定需要更新或增加的字段（dict），更新对应记录。
+2. 增加一个查询接口，指定，指定一个或多个字段以及值（dict），返回记录的dict列表（转成dict，而非原始的查询记录）
+
+
+
+
+
+
+
+
+
+
+
+使用python，基于faiss实现一个向量数据库类，提供以下功能：
+
+1. 能指定存储路径或数据库名
+2. 指定一个id(str)和一段文本，为文本生成相应的向量并与id关联存储
+3. 支持查询功能，提供一段文本和topN，返回匹配的id list。
+
+要求使用合适的尽可能简单和轻量的实现，不要使用过于重型和收费的库。
+
+
+
+
+
+
+
+
+
+帮我检查这段代码，一步步分析代码的功能和作者的用意，从以下角度思考：
+1. 代码是否有问题或漏洞
+2. 代码是否健壮
+3. 代码是否有可以改进的地方
+4. 考虑多线程的问题
+综合以上分析，最终给出你的改进建议。
+
+
+
+
+
+现在（2025年）python接入微信聊天（非小程序）的方案有哪些？分别有什么限制和特点？
+
+
+有什么开源或开放的IM软件，满足以下需求：
+1. 包含Android客户端和PC客户端
+2. 支持python接入
+3. 国内易于访问
+
+
+
+
+
+
+使用python写一个RSS的发布程序，一方面接收远程或本地的调用请求，根据提供的信息建立RSS信息库，另一方面将这个信息按指定端口提供标准的RSS Feed。
+注意要考虑到信息的滚动更新，并且需要考虑到在被调用和进行推送之前，启动时的初始Feed列表如何建立。究竟是使用推送的方式，还是使用类似代理的方式，由你统筹考虑后决定。
+注意核心代码中不要涉及任何有关webservice的代码，核心类仅提供API供webservice调用。webservice在测试代码中实现，并独立于RSS核心类。
+注意所有文本，包括注释需要使用英文。
+
+
+MongoDB里存储了一系列dict数据，key的描述如下：
+
+"""
+    UUID: str
+    TIME: str | None = None
+    LOCATION: list | None = None
+    PEOPLE: list | None = None
+    ORGANIZATION: list | None = None
+    EVENT_BRIEF: str | None = None
+    EVENT_TEXT: str | None = None
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+"""
+
+基于以上信息，请理解并根据以下函数的参数，构造查询
+
+"""
+    def query_intelligence(self,
+                           *,
+                           db: str = 'cache',
+                           period:      Optional[Tuple[datetime.date, datetime.date]] = None,
+                           locations:   Optional[str, List[str]] = None,
+                           peoples:     Optional[str, List[str]] = None,
+                           organizations: Optional[str, List[str]] = None,
+                           keywords: Optional[str] = None
+                           ):
+        pass
+"""
+
+另一个涉及查询的历史参考代码如下：
+
+> 说明：以下片段记录的是重构前的 queue 恢复实现，保留用于理解旧数据标记。
+> 当前实现由 `IISUnarchivedReplayExtension` 在启动时扫描 cache，并直接发布
+> `analysis.requested` 事件；不再使用 `original_queue`。
+
+"""
+    def _load_unarchived_data(self):
+        """Load unarchived data into a queue."""
+        if not self.mongo_db_cache:
+            return
+
+        try:
+            # 1. Build query
+            query = {APPENDIX_ARCHIVED_FLAG: {"$exists": False}}
+
+            # 2. Stream processing
+            cursor = self.mongo_db_cache.collection.find(query)
+            for doc in cursor:
+                # Convert ObjectId to string
+                doc['_id'] = str(doc['_id'])
+
+                # 3. Handle queue with timeout
+                try:
+                    self.original_queue.put(doc, block=True, timeout=5)
+                except queue.Full:
+                    logger.error("Queue full, failed to add document")
+                    break
+
+            logger.info(f'Previous unprocessed data loaded, item count: {self.original_queue.qsize()}')
+
+        except pymongo.errors.PyMongoError as e:
+            logger.error(f"Database operation failed: {str(e)}")
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+使用python写一个函数 default_article_render() ，传入下面这样的一个dict，内容描述如下。要求将其内容组织为易于阅读且美观的HTML，便于用户浏览。其中使用的css最好是网上通用的在线格式。
+
+{
+  "UUID": "将输入的UUID原封不动地放在这里",
+  "INFORMANT": "如果输入包含URL，则将输入的URL放在这里，否则查找来源信息，如果没有相关信息，则为空"
+  "TIME": "YYYY-MM-DD格式，无则null",
+  "LOCATION": ["文章主体中涉及的 国家/省/市/具体地址，无则为空列表"],
+  "PEOPLE": ["文章主体中涉及的 姓名列表, 无则为空列表"],
+  "ORGANIZATION": ["文章主体中涉及的 国家/公司/宗教/机构/组织名称等, 无则为空列表"],
+  "EVENT_TITLE": "20字内描述核心内容的标题",
+  "EVENT_BRIEF": "50字内描述核心事实",
+  "EVENT_TEXT": "去除广告及主题无关信息后，干净简洁的文章内容",
+  "RATE": {
+    "战略相关性": "0-10分偶数",
+    "国际关联度": "0-10分偶数",
+    "金融影响力": "0-10分偶数",
+    "政策关联度": "0-10分偶数",
+    "科技前瞻性": "0-10分偶数",
+    "投资价值": "0-10分偶数",
+    "内容准确率": "0-10分偶数",
+  },
+  "IMPACT": "该事件可能的影响及推论，主要是对资产的影响，如无明显影响，则为空",
+  "TIPS": "你给用户的备注信息，不要超过50个字"
+}
+
+
+
+
+
+
+实现以下函数：
+
+def dump_text(self) -> str:
+    pass
+
+这个函数用以将 self.config_data 这个dict dump为易读的文本。
+关键点在于：self.config_data会嵌套其它dict，对于嵌套的dict，输出的key以"."分隔。例如：
+
+```
+{
+  "intelligence_hub": {
+
+    "ai_service": {
+      "url": "http://localhost:11434",
+      "token": "SleepySoft",
+      "model": "qwen3:14b"
+    }
+}
+```
+
+dump示例为：
+
+intelligence_hub.ai_service.url: "http://localhost:11434"
+intelligence_hub.ai_service.token: "SleepySoft"
+intelligence_hub.ai_service.model: "qwen3:14b"
+
+你可以自由调整对齐和分隔符等使得输出更加好看易读。
+
+
+
+
+
+
+
+我有以下prompt，但其在规模较小的模型上表现不稳定，请分析原因和优化以下的prompt，使其表述更精辟和精确，同时在较小的模型上有同样好的表现。
+要求检查原prompt中的错误，细化"RATE"中的评分标准，给出更典型的输出示例，以准确指导模型准确输出内容。
+
+
+DEFAULT_ANALYSIS_PROMPT = """# 角色设定
+你是一个专业情报分析师，需对输入文本进行结构化解析与价值评分
+
+注意：对于文学性，介绍性等没有情报价值，或情报价值较低的文章，不要犹豫，直接返回以下json字符串：
+
+{
+  "UUID": "将输入的UUID原封不动地放在这里"
+}
+
+排除没有情报价值的文章后，按下面的要对文章进行分析。
+
+# 处理流程
+1. 按字段顺序提取五要素
+2. 生成信息浓缩的标题
+3. 按评分标准进行维度评分
+4. 输出严格符合JSON格式
+5. 无论原文章是什么语言，处理后的结果必须是中文
+
+# 输出要求
+{
+  "UUID": "将输入的UUID原封不动地放在这里",
+  "INFORMANT": "如果输入包含URL，则将输入的URL放在这里，否则查找来源信息，如果没有相关信息，则为空"
+  "TIME": "YYYY-MM-DD格式，无则null",
+  "LOCATION": ["文章主体中涉及的 国家/省/市/具体地址，无则为空列表"],
+  "PEOPLE": ["文章主体中涉及的 姓名列表, 无则为空列表"],
+  "ORGANIZATION": ["文章主体中涉及的 国家/公司/宗教/机构/组织名称等, 无则为空列表"],
+  "EVENT_TITLE": "20字内描述核心内容的标题",
+  "EVENT_BRIEF": "50字内描述核心事实",
+  "EVENT_TEXT": "去除广告及主题无关信息后，干净简洁的文章内容。对于翻译的内容，注意语言流畅及本地化，禁止翻译腔",
+  "RATE": {
+    "战略相关性": "0-10分偶数",
+    "国际关联度": "0-10分偶数",
+    "金融影响力": "0-10分偶数",
+    "政策关联度": "0-10分偶数",
+    "科技前瞻性": "0-10分偶数",
+    "投资价值": "0-10分偶数",
+    "内容准确率": "0-10分偶数",
+  },
+  "IMPACT": "该事件可能的影响及推论，主要是对资产的影响，如无明显影响，则为空",
+  "TIPS": "你给用户的备注信息，不要超过50个字"
+}
+
+# 评分细则（仅取整数分）
+## 战略相关性（25%权重）
+10分：改变国际力量格局（如战争、科技封锁）
+8分：引发区域经济重构（如自贸区建立）
+6分：国家战略级政策发布（国家级别）
+4分：行业标准变更（行业级别）
+2分：地方性政策
+
+## 国际关联度（20%权重）
+10分：涉及3+主要经济体
+8分：双边协议影响供应链
+6分：单边政策全球波及
+4分：跨国企业重大调整
+
+## 金融影响力（15%权重）
+10分：引发全球市场剧烈波动
+8分：改变大宗商品定价
+6分：资本流动规则变更
+4分：融资环境重大变化
+
+## 政策关联度（15%权重）
+10分：国家级产业政策突破
+8分：监管框架重构
+6分：税收/补贴调整
+4分：地方试点推广
+
+## 科技前瞻性（10%权重）
+10分：颠覆性技术突破
+8分：卡脖子技术进展
+6分：专利格局变化
+4分：科研投入转向
+
+## 投资价值（10%权重）
+10分：创造新产业赛道
+8分：改变估值逻辑
+6分：影响资产配置
+4分：催生金融产品
+
+## 内容准确率（5%权重）
+10分：多方权威验证
+8分：含原始数据
+6分：逻辑自洽推测
+4分：部分数据存疑
+
+# 输出示例
+输入："
+- UUID: 218bd628-33c4-401a-b081-313f9da653a9
+- title: 新华社消息
+- authors: ['胡锡桧']
+- pub_time: published
+- informant: https://www.cbc.ca/news/science
+
+## 正文内容
+2024年7月19日，中美在APEC峰会达成人工智能芯片出口管制协议，涉及英伟达、AMD等企业
+"
+
+输出：
+{
+  "UUID": "218bd628-33c4-401a-b081-313f9da653a9",
+  "INFORMANT": "https://www.cbc.ca/news/science",
+  "TIME": "2024-07-19",
+  "LOCATION": "APEC峰会",
+  "PEOPLE": [],
+  "ORGANIZATION": ["中国","美国","英伟达","AMD"],
+  "EVENT_TITLE": "中美达成AI芯片出口管制协议",
+  "EVENT_BRIEF": "中美在APEC峰会上达成AI芯片出口管制协议",
+  "EVENT_TEXT": "2024年7月19日，中美在APEC峰会达成人工智能芯片出口管制协议，涉及英伟达、AMD等企业",
+  "RATE": {
+    "战略相关性":6,
+    "国际关联度":8,
+    "金融影响力":8,
+    "政策关联度":8,
+    "科技前瞻性":6,
+    "投资价值":8,
+    "内容准确率":10
+  }
+  "IMPACT": "该事件有可能影响AI相关芯片的价格",
+  "TIPS": ""
+}
+
+# 异常处理
+- 存在矛盾信息时取最低维度分
+- 广告内容所有维度均计0分
+- 无法判断的字段用null表示
+"""
+
+
+
+
+
+
+
+我先给出一份requirements.txt中的内容，里面会列出依赖的库，但并没有具体的版本信息。
+接下来我会给出pip freeze的输出，毫无疑问，其中会包含详细的版本信息，但也会包含不需要的库，或间接依赖的库。
+我希望：
+1. 参考 requirements.txt ，并且根据 pip freeze的输出，给出一份精简但包含正确版本信息的 requirements.txt 信息。
+2. 对于输出的 requirements.txt 中的每一项，加上对齐的注释，说明其主要用途，以及有需要的，任何附加说明。
+3. 输出的 requirements.txt 最好能注意分组和美观性。
+
+```requirements.txt
+lxml
+chardet
+fastapi
+uvicorn
+cryptography
+bs4~=0.0.1
+Flask>=2.0.3
+PyQt5>=5.15.6
+tenacity>=8.2.3
+feedparser==6.0.10
+markdownify~=1.1.0
+brotli
+requests[socks]>=2.26.0
+pymongo
+pytest
+werkzeug
+html2text
+watchdog
+pytest-asyncio
+tldextract
+
+urllib3>=1.26.9,<1.27
+beautifulsoup4>=4.12
+playwright>=1.49.0					            # Then run: playwright install chromium
+crawl4ai==0.6.3
+
+numpy
+pandas
+
+# transformers==4.36.0
+# sentence-transformers
+# hnswlib
+
+faiss-cpu           # Windows
+# faiss-gpu           # Linux/Mac with NVIDIA card
+huggingface_hub[hf_xet]
+
+
+typing_extensions
+tortoise-orm
+
+PyRSS2Gen
+```
+
+
+```pip freeze
+aiofiles==24.1.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.2
+aiosignal==1.3.2
+aiosqlite==0.21.0
+annotated-types==0.7.0
+anyio==4.9.0
+async-timeout==5.0.1
+attrs==25.3.0
+beautifulsoup4==4.13.4
+blinker==1.9.0
+Brotli==1.1.0
+bs4==0.0.2
+certifi==2025.4.26
+cffi==1.17.1
+chardet==5.2.0
+charset-normalizer==3.4.2
+click==8.2.1
+colorama==0.4.6
+Crawl4AI==0.6.3
+cryptography==45.0.3
+cssselect==1.3.0
+distro==1.9.0
+dnspython==2.7.0
+exceptiongroup==1.3.0
+faiss-cpu==1.11.0
+fake-http-header==0.3.5
+fake-useragent==2.2.0
+fastapi==0.115.12
+feedparser==6.0.10
+filelock==3.18.0
+Flask==3.1.1
+frozenlist==1.6.0
+fsspec==2025.5.1
+greenlet==3.2.2
+h11==0.16.0
+hnswlib==0.8.0
+html2text==2025.4.15
+httpcore==1.0.9
+httpx==0.28.1
+httpx-aiohttp==0.1.4
+huggingface-hub==0.32.2
+humanize==4.12.3
+idna==3.10
+importlib_metadata==8.7.0
+iniconfig==2.1.0
+iso8601==2.1.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+jiter==0.10.0
+joblib==1.5.1
+jsonschema==4.24.0
+jsonschema-specifications==2025.4.1
+litellm==1.71.1
+lxml==5.4.0
+markdown-it-py==3.0.0
+markdownify==1.1.0
+MarkupSafe==3.0.2
+mdurl==0.1.2
+mpmath==1.3.0
+multidict==6.4.4
+networkx==3.4.2
+nltk==3.9.1
+numpy==2.2.6
+openai==1.82.0
+packaging==25.0
+pandas==2.2.3
+pillow==10.4.0
+playwright==1.52.0
+pluggy==1.6.0
+propcache==0.3.1
+psutil==7.0.0
+pycparser==2.22
+pydantic==2.11.5
+pydantic_core==2.33.2
+pyee==13.0.0
+Pygments==2.19.1
+pymongo==4.13.0
+pyOpenSSL==25.1.0
+pyperclip==1.9.0
+pypika-tortoise==0.6.1
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+PyQt5_sip==12.17.0
+PyRSS2Gen==1.1
+PySocks==1.7.1
+pytest==8.3.5
+pytest-asyncio==1.0.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.0
+pytz==2025.2
+PyYAML==6.0.2
+rank-bm25==0.2.2
+referencing==0.36.2
+regex==2024.11.6
+requests==2.32.3
+requests-file==2.1.0
+rich==14.0.0
+rpds-py==0.25.1
+safetensors==0.5.3
+scikit-learn==1.6.1
+scipy==1.15.3
+sentence-transformers==3.0.1
+sgmllib3k==1.0.0
+six==1.17.0
+sniffio==1.3.1
+snowballstemmer==2.2.0
+soupsieve==2.7
+starlette==0.46.2
+sympy==1.14.0
+tenacity==9.1.2
+tf-playwright-stealth==1.1.2
+threadpoolctl==3.6.0
+tiktoken==0.9.0
+tldextract==5.3.0
+tokenizers==0.15.2
+tomli==2.2.1
+torch==2.7.0
+tortoise-orm==0.25.0
+tqdm==4.67.1
+transformers==4.36.0
+typing-inspection==0.4.1
+typing_extensions==4.13.2
+tzdata==2025.2
+urllib3==1.26.20
+uvicorn==0.34.2
+watchdog==6.0.0
+Werkzeug==3.1.3
+xxhash==3.5.0
+yarl==1.20.0
+zipp==3.22.0
+```
+
+
+
+
+
+分析并理解以下代码，做以下重构：
+
+所有注释和文本皆为英文
+query_intelligence增加条数限制参数
+除非有重大问题，否则代码不要大改，否则难以比对你所更新的地方。
+
+
+
+
+
+
+
+分析以下代码，增加几个函数，注意增加的函数注释及文本需要使用英文，下面提供的函数名仅供参考，请根据语义取更合适的名字：
+
+get_intelligence_count_and_base: 获取当前所有的条目数据，同时返回首条索引，作为base
+get_intelligence_by_base_offset: 将base，offset，count传入，获取以base为基准，offset后的count条数据（用做数据浏览，指定base以免新增条目引起跳动）
+
+
+
+
+
+
+
+使用python写一个函数 default_article_list_render() ，传入下面这样的dict列表，dict内容描述如下。要求：
+1. 将列表内容组织为易于阅读且美观的HTML，便于用户浏览。其中使用的css最好是网上通用的在线格式。
+2. 标题显示超链接，格式为：'/intelligence/<string:intelligence_uuid>'。暂时使用相对路径url，点击在新页面打开该url。
+3. 下方显示翻页按钮，当前页面的参数为“/intelligences?offset=100,count=20”，则上一页的url为“/intelligences?offset=80,count=20”，下一页为“/intelligences?offset=120,count=20”，以此类推。尽可能使用简单的方法实现这一功能。
+4. 返回HTML，可以带有简单的样式表和脚本，不得过于复杂。
+5. 注意该功能不使用前后端，如描述所示，所有页面由服务器生成。
+
+{
+  "UUID": "将输入的UUID原封不动地放在这里",
+  "INFORMANT": "如果输入包含URL，则将输入的URL放在这里，否则查找来源信息，如果没有相关信息，则为空"
+  "TIME": "YYYY-MM-DD格式，无则null",,
+  "EVENT_TITLE": "20字内描述核心内容的标题",
+  "EVENT_BRIEF": "50字内描述核心事实",
+}
+
+
+
+
+
+
+
+请分析以下函数，分析其各参数的类型（字符或列表，时间等）及关系（与/或，同时存在或互斥），写一个网页表单对其进行查询，并完善路由函数。
+
+注意：
+1. 所有文本需要使用英文，并考虑查询结果过多需要分页的问题。
+2. 当访问/intelligences/query时，展示该网页。上半部分为表单（包括页码选择），下半部分为结果列表。所有内容由服务端生成，不要使用动态网页。
+
+```
+
+    def query_intelligence(
+            self,
+            *,
+            period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+            locations: Optional[Union[str, List[str]]] = None,
+            peoples: Optional[Union[str, List[str]]] = None,
+            organizations: Optional[Union[str, List[str]]] = None,
+            keywords: Optional[str] = None,
+            skip: Optional[int] = None,
+            limit: Optional[int] = None
+    ) -> List[dict]:
+        """Execute intelligence query
+
+        Args:
+            period: UTC time range (start, end)
+            locations: Location ID(s) (str or str list)
+            peoples: Person ID(s) (str or str list)
+            organizations: Organization ID(s) (str or str list)
+            keywords: Full-text keywords
+            skip: Number of documents to skip
+            limit: Maximum number of results to return
+
+        Returns:
+            List of matching intelligence documents
+        """
+        # Get specified database collection
+        collection = self.__mongo_db.collection
+
+        try:
+            # Build MongoDB query
+            query = self.build_intelligence_query(
+                period=period,
+                locations=locations,
+                peoples=peoples,
+                organizations=organizations,
+                keywords=keywords
+            )
+
+            # Execute query and return results with limit
+            return self.execute_query(collection, query, skip=skip, limit=limit)
+
+        except pymongo.errors.PyMongoError as e:
+            logger.error(f"Intelligence query failed: {str(e)}")
+            return []
+        except Exception as e:
+            logger.error(f"Intelligence query error: {str(e)}", stack_info=True)
+            return []
+
+
+    def build_intelligence_query(
+            self,
+            period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+            locations: Optional[Union[str, List[str]]] = None,
+            peoples: Optional[Union[str, List[str]]] = None,
+            organizations: Optional[Union[str, List[str]]] = None,
+            keywords: Optional[str] = None
+    ) -> dict:
+        query_conditions = []
+
+        if period:
+            query_conditions.append(self.build_time_condition(*period))
+
+        if locations:
+            query_conditions.append(self.build_list_condition("LOCATION", locations))
+
+        if peoples:
+            query_conditions.append(self.build_list_condition("PEOPLE", peoples))
+
+        if organizations:
+            query_conditions.append(self.build_list_condition("ORGANIZATION", organizations))
+
+        if keywords:
+            query_conditions.append(self.build_keyword_or_condition(keywords))
+
+        return {"$and": query_conditions} if query_conditions else {}
+```
+
+
+```
+@self.app.route('/intelligences/query', methods=['GET', 'POST'])
+def intelligences_query_api():
+    # TODO: self.intelligence_hub.query_intelligence(...)
+    pass
+```
+
+
+
+
+
+帮我写一个文章管理的功能，当有请求到来时，检查对应的markdown文件，并生成对应的html文件到template目录下。
+
+为了避免反复生成，在转换成html时会记录markdown文件的hash，如果hash相同且对应html文件存在，则不会重新生成。
+
+为了避免和手写的template混淆，生成的html位于generated子目录下，生成文件之前要确保该目录存在。
+
+
+
+
+
+
+
+
+
+
+mongodb的记录中有RATE字段，内容为{ "评分维度": "评分" }。评分维度非固定，评分统一为0 - 10分。
+我想筛选出只要一个评分维度大于阈值N分的记录，这个查询语句应该怎么写？
+
+
+
+
+
+
+
+
+
+有没有python的log，分类浏览，统计，网页仪表盘的整合解决方案。
+
+
+
+
+
+
+分析我的意图并帮我完善代码，注意注释文本都需要使用英文：
+
+class CrawlStatistics:
+    # TODO: Singleton with multi-thread protecting
+
+    def __init__(self):
+        self._counter_log_lock = threading.Lock()
+        self._counter_log_record = {}
+
+        self._sub_item_log_lock = threading.Lock()
+        self._sub_item_log_record = {}
+
+    def counter_log(self, leveled_names: List[str], counter_item_name: str, log_text: str):
+        with self._counter_log_lock:
+            # TODO: Create leveled item and +1
+            pass
+
+    def get_classified_counter(self, leveled_names: List[str]) -> dict:
+        # TODO: Return all { counter_item_name: count }
+        pass
+
+    def sub_item_log(self, leveled_names: List[str], sub_item, status: str):
+        with self._sub_item_log_lock:
+            # TODO: Create leveled item and set status
+            pass
+
+    def get_sub_item_statistics(self, leveled_names: List[str]):
+        # TODO: Return { status: subitem }
+        pass
+
+
+
+
+
+
+
+
+
+请理解为该类编写测试用例，请考虑各种情况，且准备足够的数据。注意：不要使用随机数据进行测试
+
+
+
+
+
+
+
+
+
+
+
+python的requests和playwright使用的proxy参数格式是不同的，一个是
+        {
+            "http": "socks5://user:password@proxy_host:port",
+            "https": "socks5://user:password@proxy_host:port"
+        }
+另一个是
+            {
+                "server": "proto://host:port",
+                "username": "",  # Explicit empty string if no auth
+                "password": ""   # Explicit empty string if no auth
+            }
+
+我希望对于一个给定的代理，无论是什么格式，先转换成一个中间格式，再用两个函数分别转成requests及playwright格式。这个函数需要考虑到常见的代理格式及异常和错误格式处理，可以打印错误信息，但不能抛出异常。所有注释及文本需要使用英文。
+
+
+
+
+
+
+
+
+
+为我给这个类增加一个sub_item_log的限制功能，这个限制对所有子项生效，且限制的是子项的总数而非各个状态分类下的数量。
+如果item数量超过设置的限制，则从头删除数据（删除最旧的），直到符合限制。注意考虑dict是否有序，如何保证删除的必然是先记录的。
+
+注释和文本需要使用英文，只需要输出修改的函数代码，不要输出部分代码或无关代码。。
+
+
+
+
+
+
+
+
+
+APPENDIX_MAX_RATE_CLASS = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE = '__MAX_RATE_SCORE__'
+
+分析以下代码，为该查询增加一个threshold参数，用以筛选'APPENDIX'字段下APPENDIX_MAX_RATE_SCORE（使用该变量，不要硬编码）大于threshold的记录。
+如果没有需要，不要对原有代码进行过多改动。所有注释和文本需要使用英文。
+
+
+
+
+
+
+
+
+请分析该网页生成的模板，做以下更改：
+
+1. 归档时间：article['APPENDIX'][APPENDIX_TIME_ARCHIVED]。注意字符串和常量的区别，而且这个字段和它的父字段可能不存在。
+2. 最高分的分类及该类的评分：article['APPENDIX'][APPENDIX_MAX_RATE_CLASS],article['APPENDIX'][APPENDIX_MAX_RATE_SCORE]
+> 可以参考下面文章页面对评分的示例代码。
+3. 移除“IIS URL”
+注意美观和设计，所有注释和文本使用英文。
+
+
+
+
+
+
+
+
+写一个python程序，用以遍历mongodb指定记录的所有documents，找到'RATE'字段这个dict中除APPENDIX_MAX_RATE_CLASS_EXCLUDE项外，其value最大的一项。
+分别将对应的key和value放入'APPENDIX'下的APPENDIX_MAX_RATE_CLASS和APPENDIX_MAX_RATE_SCORE中。
+
+
+
+
+
+
+
+
+
+请改造下面这个函数，增加以下功能：
+1. 选择器可以指定多个，按顺序以此提取内容，并组合在一起
+2. 可以指定排除的选择器，通过选择器选择后，再排除子项中所有排除器指定的标签
+3. 说明中详细描述选择器/排除器的格式
+4. 所有文本和注释需要使用英文
+
+
+
+
+
+
+
+
+
+
+
+用python写一个名为CrawlRecord的类，用以记录抓取的结果。功能如下：
+
+1. 使用sqlite永久存储，启动时载入一定数量的记录作为快速查询，该数量同时也是内存缓存数据的限制（到达上限移除index最小的数据）。
+2. 记录的字段包括：自动递增的index，url，结果，计数，附加信息，创建时间，更新时间
+3. 提供的接口包括：
+    记录url的状态
+    获取url的状态（默认内存/查数据库则需要显示指定）
+    指定url错误计数 +1
+    获取url的错误计数（默认内存/查数据库则需要显示指定）
+    清除url的错误计数
+4. 状态包括（使用整数减少存储和计算量）：
+    不存在 - -1
+
+    未知 - 0
+    数据库查询失败 - 1
+
+    (抓取)错误 - 10
+
+    (抓取)成功 - 100
+    (抓取)忽略 - 110
+
+    用户可以自行设置10及以上的值，只需要定义常量即可。10以下的值供返回结果用，不能直接写入。
+
+构造参数如下：
+    字符串数组，以其最后一项作为数据库名，前面的项依次作为目录，在创建数据库时要确保各级目录建立。
+    启动时载入内存的项数，注意要载入index最大的top N。
+    自动检查数据库存在性并建立。
+    错误可以打印信息，但不能对外抛出异常。
+
+注意：代码中的注释和文本需要使用英文。
+
+请先检查根据你的经验，还有什么改进和修改建议可以提出来。
+
+
+
+
+
+
+
+    def test_large_rw_and_reload(self):
+        # TODO: 构造2000条数据，随机更新状态和错误计数
+
+        # 释放并重新构造CrawlRecord
+        self.record.close()
+        self.record = None
+
+        gc.collect()
+
+        self.record = CrawlRecord([self.db_dir, self.db_name])
+
+        # TODO: 检查构造后载入的是否最后1000条
+
+        # TODO: 重复几次上述操作。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+用python实现一个基于sqlite的用户权限管理系统。请仔细思考表需要哪些字段，以及为了安全考虑需要哪些特性。就我而言，需要保证代码满足以下要求：
+
+1. 密码不得存储明文
+2. 需要至少两张表：用户账号密码表和登录操作记录表
+3. 用户表至少需要以下字段：ID，用户名，密码，权限（数量未定，希望可扩展，你提供设计思路）
+4. 登录操作记录表表至少需要以下字段：ID，用户，用户主机（IP），尝试的错误密码，结果
+5. 考虑多线程保护
+6. 采用成熟的设计方案
+7. 目标是一个小型系统，可以保留扩展性，但不得过度设计
+8. Log及文本需要使用英文
+
+表设计参考如下（可自行选择删减、修改或扩展）：
+
+CREATE TABLE user_account (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,  -- bcrypt 哈希值
+    is_active INTEGER DEFAULT 1,  -- 1=激活, 0=禁用
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    permission_mask (尽可能多的位域)
+);
+
+
+CREATE TABLE login_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,              -- 可为空（用户不存在时）
+    username TEXT NOT NULL,       -- 记录输入的用户名
+    client_ip TEXT NOT NULL,
+    attempted_password_hash TEXT, -- SHA256(错误密码)
+    result TEXT CHECK(result IN ('SUCCESS', 'FAILURE')) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES user_account(id)
+);
+
+
+
+
+
+
+
+
+
+仔细阅读分析下面这个类，为其增加获取出所有用户信息、获取所有角色信息，获取所有权限信息的功能。
+
+仔细阅读分析下面这个类，为其增加获取登录日志的功能。
+
+仔细阅读分析下面这个类，为其增加删除角色的功能。
+
+
+
+
+
+为UserManager写一个基于控制台的程序，提供易于用户操作的界面(菜单界面，非命令行)，功能包括：
+
+1. 列出（考虑分页查看）所有用户
+2. 列出（考虑分页查看）所有角色
+3. 列出（考虑分页查看）所有权限
+
+4. 增加/删除/修改用户信息
+5. 为用户增加或移除角色
+6. 增加/删除/修改角色信息（由代码可知，不存在的权限能自动添加，故不需要单独的权限管理功能）
+
+7. 验证用户密码功能
+8. 查看UserManager登录日志的功能
+9. 其它你认为有必要的功能
+
+请仔细思考使用什么方案实现最为便捷。
+
+
+
+
+
+
+
+
+
+
+
+
+这是渲染文章列表的代码，我怎样能做到让archived_time区域的背景色根据archived_time距今的时间变化而渐变。
+比如当前时间为好看的橙色（显眼但不突兀），当前时间 - 12小时为当前的浅蓝色，中间的颜色线性渐变，从而能让读者从颜色上能显著感知archived_time距当前的远近程度。
+
+
+
+
+
+
+
+
+请帮我实现下面的IntelligenceCache类，用以缓存指定时间段内的情报数据以加速查询。
+其中load_cache()用过IntelligenceQueryEngine查询数据库中的记录，相关的上下文如下。
+注意cache中存储的是dict，即ArchivedData需要转换为dict后存储。
+此外涉及到插入和检索数据时注意列表顺序为降序，即时间最接近当前的项处于列表前部。
+
+```
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None
+    SUBMITTER: str | None
+    APPENDIX: dict | None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+
+
+APPENDIX_TIME_ARCHIVED  = '__TIME_ARCHIVED__'
+
+
+def build_intelligence_query(
+        self,
+        period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+        locations: Optional[Union[str, List[str]]] = None,
+        peoples: Optional[Union[str, List[str]]] = None,
+        organizations: Optional[Union[str, List[str]]] = None,
+        keywords: Optional[str] = None,
+        threshold: Optional[float] = None  # New threshold parameter
+) -> dict:
+```
+
+请根据我给出的代码框架与注释，仔细分析并实现我的需求。注意所有的的注释文本必须使用英文，如果上下文不足，请指出来。
+
+```
+class IntelligenceCache:
+    def __init__(self, db_archive: MongoDBStorage, cache_period: datetime.timedelta):
+        self.db_archive = db_archive
+        self.cache_period = cache_period
+
+        self.lock = threading.Lock()
+        self.cache = []     # Sorted by data['APPENDIX'][APPENDIX_TIME_ARCHIVED]
+
+    def encache(self, data: ArchivedData):
+        # TODO: Insert into self.cache by data['APPENDIX'][APPENDIX_TIME_ARCHIVED] descending.
+        pass
+
+    def load_cache(self) -> bool:
+        query_engine = IntelligenceQueryEngine(self.db_archive)
+        query_engine.query_intelligence()
+
+    def get_cached_data(self, filter_func: Optional[callable], map_function: Optional[callable]) -> list:
+        # TODO: Just pseudocode code.
+        original_data = self.cache if not filter_func else filter(filter_func, self.cache)
+        mapped_data = map(map_function, original_data)
+        return mapped_data
+
+    def _check_drop_out_of_period(self):
+        # TODO: while now - self.cache[-1] > self.cache_period, drop.
+        pass
+```
+
+
+
+
+
+
+我希望使用pymongo向“UUID”字段为某值的mongodb record中的APPENDIX.__PARENT_ITEM__列表中增加一项，更新语句应该怎么构造？
+
+
+
+
+
+
+
+
+我正在编写Prompt用以让AI给情报评分，但我只有大概的概念，还没做到准确且量化的描述，且评分阶梯有所缺失。请仔细思考并帮我完善评分标准。我期望的是80%的新闻评分应当在4分以下。
+
+
+
+
+
+
+
+
+
+
+我会给出一个python生成内网页的模板，其中“Analysis & Evaluation”部分会展示各个维度的评分。
+我希望在“Rating”后面增加一列“Manual Rating”，可以让用户通过点击和滑动星星的方式调整各维度的评分，再提供一个按钮提交评分（怎样实现比较简单和方便呢？）。
+“Manual Rating”的值从'MANUAL_RATING'取，如果不存在这个字段，则使用和“Rating”相同的默认值。
+注意：实现尽可能简单，尽量和现有代码耦合少（封装函数，少改动现有代码），且提交手工评分时需要附带UUID信息以标识评分对象。
+
+
+
+
+
+
+
+
+
+我在win11上调试基于flask的python程序，发现网络服务在运行一段时间后（约2天？）失效。现象是所有本机或外部的请求全部失败，且服务端flask的routing函数断点也没进入，log也没输出，但程序的线程都正常运行，没有任何异常或crash。查看内存占用应该算是正常，这个问题重新启动服务程序即可恢复。
+
+请帮我分析这个问题出现的原因。
+
+
+
+
+
+
+
+
+
+帮我使用python写一个模块用以监控本服务的各种资源使用情况，提供外部获取信息接口，做好多线程保护工作。两编写一个模块将这些数据发布成一个统计网页。具体要求如下：
+统计信息包括系统和需要监控的程序（可指定多个），除了传统的CPU和内存外，还需要包括句柄等各种资源占用信息，以及你认为需要展示的各种信息。
+提供以下启动参数：需要监控的pid，监听端口，其它你认为有必要的参数。
+可通过webapi（最好参数简化为浏览器能直接请求）增删监控对象和相关配置。
+所有文本和注释都要使用英文。
+主程序在启动时会启动该程序并将自己的pid传给它（怎么做？）。
+
+
+
+
+
+
+
+
+我在mongodb中存储的数据记录如下所示：
+
+```
+
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None
+    SUBMITTER: str | None
+    APPENDIX: dict | None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+```
+
+其中APPENDIX下有以下字段：
+
+```
+
+APPENDIX_TIME_GOT       = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST      = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE      = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED  = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT    = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG  = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE = '__MAX_RATE_SCORE__'
+
+APPENDIX_MANUAL_RATING  = '__MANUAL_RATING__'
+
+APPENDIX_LINK_ITEMS     = '__LINK_ITEMS__'
+APPENDIX_PARENT_ITEM    = '__PARENT_ITEM__'
+```
+
+请帮我组织一个mongodb的查询，指定一个时间范围（依据APPENDIX_TIME_ARCHIVED），统计所有记录在 APPENDIX_MAX_RATE_SCORE 上的分布（评分为1 - 10），并通过网络发布，由前端绘制柱状图。
+要求除前端外代码由python实现，使用Flask提供网络服务。
+所有文本和注释均使用英文。
+
+
+
+
+
+
+
+请帮我组织一个mongodb的查询，依据APPENDIX.{APPENDIX_TIME_ARCHIVED}，统计在不同时间段上的记录数量分布，并通过网络发布，由前端绘制柱状图。
+时间段分为以下几档：
+1. 按小时，最大滑动显示窗口为24小时
+2. 按日，最大滑动显示窗口为31天
+3. 按周，最大华东显示窗口为10周
+4. 按月，最大滑动显示窗口为12个月
+可以通过前端UI界面调整显示的时段，为了简单起见，小时按整小时为起始，日、周、月同理
+要求除前端外代码由python实现，使用Flask提供网络服务。
+所有文本和注释均使用英文。
+先给出python后端的实现。
+
+
+
+
+
+
+
+
+
+
+接下来我将给你一个python渲染的页面代码，帮我做以下改进：
+
+界面做一定程度的美化，现在的界面太素，时间控件也不好用
+脚本和HTML分离，在生成页面时再组合，使得以后可以独立调整网页风格和JS代码
+使用网络资源，不要增加窗外的js及css文件。
+
+
+
+
+
+
+
+
+
+这个页面的显示效果不错，但查询做的不够人性化。
+可以尝试这样设计：指定一个开始，再通过slide bar指定一个查询时间段。
+开始时间指定最好能做到：
+    按小时查询时，选择的时间粒度最小为小时，范围为8 ~ 48；
+    按日查询时，选择的时间粒度最小为日，范围为7 ~ 31；
+    按周查询时，选择的时间粒度最小为日，范围为4 ~ 52；
+    按月查询时，选择的时间粒度最小为月，范围为4 - 12；
+用户选择起始时间和范围后，下方动态显示调整后的实际查询时间范围。即起始时间会被调整到每个查询周期的最初时间，周按周一对齐，月按1号对齐。
+所有注释文件需要使用英文，使用网络资源，不要增加窗外的js及css文件。
+如果边界清晰，只需要告知并给出需要更新的代码部分。
+
+
+
+
+
+
+
+
+
+
+
+诸如以下flask的routing函数，我应该怎样做才能跳转到登录界面，让用户登录之后再返回到之前请求的页面呢：
+
+```
+@self.app.route('/statistics/score_distribution', methods=['GET', 'POST'])
+@WebServiceAccessManager.login_required
+def get_score_distribution():
+```
+
+其中login_required实现如下：
+
+```
+@staticmethod
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session or not session['logged_in']:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+```
+
+
+
+
+
+
+
+
+我们已经有以下一个脚本：
+
+```Scripts/mongodb_exporter.py
+import subprocess
+import json
+import argparse
+from typing import Dict, Optional
+
+
+def export_mongodb_data(
+        uri: str,
+        db: str,
+        collection: str,
+        output_file: str,
+        query: Optional[Dict] = None,
+        fields: Optional[str] = None,
+        export_format: str = "json"
+) -> None:
+    """
+    导出MongoDB数据到文件（兼容mongoimport导入格式）
+
+    参数:
+    uri: MongoDB连接字符串 (e.g. "mongodb://user:pass@localhost:27017")
+    db: 数据库名称
+    collection: 集合名称
+    output_file: 输出文件路径
+    query: 导出数据的查询条件 (e.g. {"age": {"$gt": 25}})
+    fields: 指定导出字段 (e.g. "name,age,email")
+    export_format: 导出格式 ("json" 或 "csv")
+    """
+    # 构建基础命令
+    cmd = [
+        "mongoexport",
+        f"--uri={uri}",
+        f"--db={db}",
+        f"--collection={collection}",
+        f"--out={output_file}"
+    ]
+
+    # 添加格式参数
+    if export_format.lower() == "csv":
+        cmd.append("--type=csv")
+        if not fields:
+            raise ValueError("导出CSV格式时必须指定--fields参数")
+
+    # 添加查询条件
+    if query:
+        cmd.append(f"--query='{json.dumps(query)}'")
+
+    # 添加字段选择
+    if fields:
+        cmd.append(f"--fields={fields}")
+
+    # 执行导出命令
+    try:
+        result = subprocess.run(
+            " ".join(cmd),
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        print("✅ 导出成功!")
+        print(f"📁 文件路径: {output_file}")
+        print(f"📊 导出格式: {export_format.upper()}")
+        if query:
+            print(f"🔍 查询条件: {json.dumps(query)}")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ 导出失败: {e.stderr}")
+    except FileNotFoundError:
+        print("❌ 未找到mongoexport工具，请安装MongoDB数据库工具")
+
+
+if __name__ == "__main__":
+    # 命令行参数解析
+    parser = argparse.ArgumentParser(description="MongoDB数据导出工具")
+    parser.add_argument("--uri", required=True, help="MongoDB连接URI")
+    parser.add_argument("--db", required=True, help="数据库名称")
+    parser.add_argument("--collection", required=True, help="集合名称")
+    parser.add_argument("--output", required=True, help="输出文件路径")
+    parser.add_argument("--query", type=json.loads, help="查询条件(JSON格式)")
+    parser.add_argument("--fields", help="导出字段(逗号分隔)")
+    parser.add_argument("--format", choices=["json", "csv"], default="json", help="导出格式")
+
+    args = parser.parse_args()
+
+    # 执行导出
+    export_mongodb_data(
+        uri=args.uri,
+        db=args.db,
+        collection=args.collection,
+        output_file=args.output,
+        query=args.query,
+        fields=args.fields,
+        export_format=args.format
+    )
+```
+
+帮我实现一个前端页面和对应的基于Flask的python后端，用以调用该脚本导出数据库数据到服务器本地目录。
+
+前端需要一定美化，提供时间段选择，点击导出后根据选择的时间段导出数据，并显示进度和结果。
+可以通过三种方式选择时间段：
+    通过时间控件手动任意选择间隔
+    当前月 ~ 当前月-12个月的预设按钮（12个），用以快速设置时间控件
+    当前周 ~ 当前周-52周的预设按钮（52个），用以快速设置时间控件
+
+后端只需要接收时间段即可执行导出，剩余的参数参考以下代码：
+    date_query = {
+        "PUB_TIME": {
+            "$gte": {"$date": start_date},
+            "$lte": {"$date": end_date}
+        }
+    }
+
+    # 导出 IntelligenceIntegrationSystem 数据库中的 intelligence_archived 集合本月记录
+    export_mongodb_data(
+        uri="mongodb://localhost:27017",  # 根据实际情况修改
+        db="IntelligenceIntegrationSystem",
+        collection="intelligence_archived",
+        output_file='文件名+时间段作为文件名后缀',
+        query=date_query,
+        export_format="json"
+    )
+
+所有文本和注释需要使用英文。
+该功能比较复杂，请一步步思考，逐步实现该功能。
+
+
+
+
+
+
+Waitress
+
+帮我写一个python脚本（跨平台），使用gunicorn启动IntelligenceHubLauncher.py，并得到它的pid。主要参数如下，不要使用配置文件而直接使用参数：
+    bind = "0.0.0.0:5000"
+    workers = 1     # 暂时不支持多进程，如果能开多线程最好
+    worker_class = 'gevent'
+    accesslog = './access.log'
+    errorlog = './error.log'
+启动后定时访问一个特定的服务（/maintenance/ping），如果发现得不到回复，则重启IntelligenceHubLauncher.py（限制重启间隔防止反复重启）并记录日志。
+如果有没有考虑到的地方，帮我补充。
+
+
+
+
+
+
+
+
+
+
+
+我写了一段prompt用来分析情报（新闻），在我统计评分区间时，我发现大部分评分集中在6分，而我期望的是绝大部分应当落在4分，6分及以上的重要新闻不应该这么多。从实际的阅读体验来看，我认为AI的评分过于宽松。
+请帮我修改该prompt，使得评分标准更为严格，确保6分以上的情报能筛选出真正有情报价值，有影响力的情报。
+
+
+
+
+
+
+
+
+
+
+
+我想使用python实现以下功能：不依赖任何和UI有关的库（因为是服务器），在一个线程中指定时间间隔，或定期（比如指定时间，或每周末/初，每月末/初）运行指定任务。请给出最适合的方案及代码。
+
+
+使用python实现一个基于apscheduler的类，实现以下特性：
+1. 分别提供独立且方便的接口以添加各种风格的scheduler（周期，定时，按周，按月，按某时间条件等等）
+2. 指定是新建线程执行任务（通过一个线程wrapper）还是直接执行任务
+3. 可以手动触发某任务一次，可以指定延时，0为立即触发
+4. 对于周期任务，可以手动重置计时
+5. 对于线程，管理其生命周期，超时结束任务线程
+6. 保存执行状态，比如daily任务今天已经触发过了，即使重启程序也不会再次执行该任务
+7. 所有文本注释需要使用英文
+
+
+
+
+
+
+
+
+
+
+这个函数再增加两个特性，即delay_seconds和，reset_timer。
+
+如果设置了delay_seconds，则可以将其再次加入到一个一次性任务中并延迟触发（不移除原来的调度）。
+如果设置了reset_timer，则重置定时执行的定时器（对于interval_task而言）。
+
+
+
+
+
+
+
+
+
+
+我期望这样设计一个request计时机制：
+1. 在before_request时记录当前时间及访问路径，并生成一个uuid，作为key，记录到g里，且记录到一个dict中。
+2. 在after_request，如果g中存在上文所述key，则移除，同时对于请求时间超过阈值的打印warning。
+3. 提供一个函数，dump上文所述dict中，持续时间超过阈值10倍的记录到logger.warning，超过100倍的记录到logger.error。
+4. 其它任何你认为有助于调试的特定。
+
+
+
+
+
+
+
+
+
+
+
+
+使用python实现一个sqlite和文件的混合数据库，sqlite存储索引，文件存储内容。
+提供二进制及文本内容的存取接口，属性包括：
+1. 分类 - 对应文件保存的文件夹名，不能有文件名目录名的非法字符（both win and linux），默认为“default”
+2. 时间 - 可选，如果没指定则取当前时间
+3. 名称 - 如果没指定名称，则使用uuid4作为其名称。
+模块初始化时指定根目录名，文件存储路径以“分类”为子目录，以“名称”+“时间”为文件名，以txt或bin为后缀。
+将文件信息和索引（记得使用基于根目录的相对路径）保存到数据库中时需一个递增index字段，文件存储成功后返回该index。
+
+可以通过index、名称（模糊）、时间（范围）来获取文件列表，可以指定返回相对路径还是绝对路径。
+docstring需要详细说明该类的设计意图和usage，以及各个接口的用途。所有文本注释使用英文。
+
+
+
+
+
+
+
+
+我有一段生成文章列表的代码，其中有一个区域显示消息来源，是一个url：
+
+```<span class="article-source">Source: {informant_html}</span>```
+
+我希望建立一个列表，包括以下信息：世界主要媒体的域名，所属国家地区，对应的国家地区的国旗（emoji），在中国是否可直接访问。
+从上面所述的url中使用亮黄色高亮其顶级域名部分，并且在URL前面增加国旗及中国是否可直接访问的符号标识（请自行选择适合的emoji）。
+以上代码考虑使用JS实现，以便今后将该页面转换为完全前端的页面。
+emoji图标和url显示要协调，美观，注意url有过长从而折行的可能性。
+代码按照之前实现同样地将css和js分离。
+
+这个列表尽可能包含多的主流媒体，包括并不限于以下媒体，且日后可供我手动扩展：
+
+"""
+	华尔街日报
+	Investing.com
+	纽约时报
+	美国之音
+	加拿大国际广播电台
+	BBC
+	法广
+	德国之声
+	澳大利亚广播公司
+	半岛电视台
+	俄罗斯卫星通讯社
+	NHK日本国际传媒
+
+	联合早报
+	朝鲜日报
+	中央日报
+	共同网
+	日经中文网
+	中央社
+	界面新闻
+	澎湃新闻
+	南方周末
+	报刊
+	人民日报
+	光明日报
+	经济日报
+	解放军报
+	求是
+	新华每日电讯
+	新京报
+"""
+
+
+
+
+
+
+
+
+
+
+写一个python程序，使用selenium操作chrome浏览器，打开一个AI对话网页，模拟输入并发送，等待输出并提取回复内容。
+
+选择器参考如下：
+
+GEMINI_SELECTORS = {
+    "input_box": '[aria-label="在此处输入提示"]',
+    "send_button": '[aria-label="发送"]',
+    "indicator": '[aria-label="发送"][disabled]',
+    "response_content": ".markdown.markdown-main-panel:last-child"
+}
+
+给出代码，注释和详细的部署方法。
+
+
+
+
+
+
+
+
+
+
+我想使用实现一个资源使用情况和限制的管理功能，具体来说：
+
+1. 配置某资源的限制，包括但不限于：
+    total token
+    input token
+    output token
+    每分钟请求数 (RPM)
+    每分钟 token 数（输入）(TPM)
+    每日请求数 (RPD)
+    其它资源的常用限制
+    自定义的限制
+    ......
+2. 提供接口方面更新已使用限制
+3. 保存和加载使用情况
+4. 根据限制的周期重置使用情况
+
+是否有现成的，较为轻量的python库能实现上面的需求？
+
+
+
+
+
+
+
+
+使用python实现一个ResourceUsageManager（或更合适的名字），实现对有限制资源的管理：
+
+1. 每个资源有唯一的名字（外部传入，无则内部生成）。
+2. 资源使用量抽象为数量 + 重置时间
+    2.1 对于纯使用量的资源，时重置时间不存在
+    2.2 对于按时间段周期重置的资源，使用滑动窗口统计使用情况
+    2.3 对于按固定时刻重置的资源，使用cron的方式设计重置时刻，cron接口可以拆分多个以便于设置yearly, monthly, weekly, daily, hourly重置的资源（cron的通用接口不友好）。
+3. 一个资源可能有多重限制，即CompositeLimit。所以限制要和资源分离，一个资源可以包含一个到多个限制，检查可用性时应当返回其中使用量最大者（即，从严判定）。
+4. 资源需要一个“单位”的字符串，仅用来对用户友好显示。程序提供常用的单位，比如RPM、TPM、RPD、Token、次数、流量单位等等。
+5. 提供方便的记录（提交使用量）的接口
+6. 可以设置2个阈值，并提供可用性检查接口，使用量超过第一个阈值的资源不推荐，超过第二个阈值为不可用。
+7. 资源需要分类（group），提供指定group名字让程序推荐一个可用的（且用量尽可能大的，避免每个都用一点的情况）接口。
+8. 提供手动重置接口
+9. 提供手动设置/校准接口
+10. 提供统计接口（对用户和前端友好）
+11. 资源管理可以存储额外数据，用户可以存储和提取真正的资源数据。
+12. 资源配置可以导入和导出成json
+13. 使用sqlite存储使用情况，启动时载入并对周期或固定时刻重置的资源进行检查和重置，输出初始化情况。
+14. docstring要详细
+15. 所有文本注释使用英文
+
+有进一步的改进意见请提出。
+
+
+
+
+
+
+
+
+
+根据以下信息，理解、推论并完成代码，文本及注释使用英文：
+```
+import logging
+
+from Tools.OpenAIClient import OpenAICompatibleAPI
+from Tools.AiServiceBalanceQuery import get_siliconflow_balance
+
+
+logger = logging.getLogger(__name__)
+
+
+class SiliconFlowServiceRotator:
+    # 用来检查余额并自动更换key
+    # 启动时载入key，当判定使用完一个key（balance < self.threshold）后，将其从self.valid_keys移除，并写入'.json'文件。
+    # 更换key前先检查key的余额及有效性
+    # 不要因为网络问题而错误地丢弃key
+    # 为了让系统正常运作，启动时先给一个key再说
+    # 如果check_all_balance为True，则在启动并检查完当前key后，获取所有key的余额
+    # 保存json时需要通过临时文件
+    def __init__(self,
+                 ai_client: OpenAICompatibleAPI,
+                 keys_file: str,
+                 threshold: float = 0.1,
+                 check_all_balance: bool = True):
+        self.ai_client = ai_client
+        self.keys_file = keys_file
+        self.threshold = threshold
+
+        self.keys_data = {}
+        self.current_key = ''
+
+    def load_keys(self):
+        key_record = 'key_record.json'
+        # TODO: 载入'key_record.json'，并构建内存中的key表，至少包括以下字段：余额、最后一次使用，状态（有效，无效，错误，默认：未知）
+        #       同时也从self.keys_file载入所有key，并跟自己的数据库比对，加入数据库中不存在的部分
+        #       keys_file的格式非常简单，每一行为一个key，记得去除首尾空格
+
+    def check_update_key(self):
+        balance = self._fetch_balance(self.current_key)
+
+    def run_forever(self, thread_quit_flag):
+        # TODO: 在这个函数中调度，包括获取所有余额信息，检查当前key余额，保存json文件，等等
+        #       根据余额的趋势估计下一次检查的时间
+        pass
+
+    def _fetch_balance(self, key: str) -> float:
+        if key:
+            result = get_siliconflow_balance(key)
+            if 'total_balance_usd' in result:
+                return result['total_balance_usd']
+        return -1
+
+    def _change_api_key(self, api_key):
+        self.ai_client.set_api_token(api_key)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+请分析并理解以下代码的设计并做以下改动：
+
+1. 初始化载入文件逻辑不变，但如果一个key的状态已经被判定为不可用，则后续所有操作都不用于该key，该key在json数据库中仅做记录。
+2. 在run_forever()中选择初始key。逻辑如下：
+    + 按顺序选择第一个可用的key
+    + 检查其状态，如果余额小于阈值，则更新数据并换下一个，直到选择到一个可用的key。
+    + 选择可用的key后一并保存刚才更新的内容到json数据库
+3. 如果指定全部更新，则对可用的key做一次全部更新（不可用的key不要更新）
+4. 检查当前key是否达到不可用阈值及换成新key的代码检查确认无误，废弃的key要标识为不可用，后续该key再也不会参与任何操作。
+
+注意：
+    余额可能为负值
+    文本注释使用英文
+    不要丢失已实现功能
+
+
+
+
+
+
+
+
+
+
+我的前端JS程序中有个网站列表，其中记录着各大媒体的网址、所属国家以及中国大陆是否能直接访问等信息。
+现在我有一个更大的列表，请将这个列表中所有网站的信息都更新到JS程序的列表中，并增加网站中文名条目，注意要和原来的程序格式兼容。
+
+
+
+
+
+
+
+
+
+
+
+我想在python中使用向量数据库，需求如下：
+1. 为文本创建向量索引，保存向量索引及文本id。
+2. 查询时从数据库匹配并获取文本id，根据ID从主数据库中获取正文
+3. 向量数据库初始及启动要快，不能每次启动都下载模型和重新索引
+4. 向量化的算法最好不需要自己进行初始训练
+其它考虑的维度：
+    向量化的文本最大长度是多少？
+    对多国语言支持如何？
+    文本切分方案。
+    向量长度。
+请综合考虑，给出合适的，尽量轻量的解决方案。
+
+
+
+
+
+
+
+
+基于Chroma及sentence-transformers，考虑多国语言支持，使用python实现一个类，满足以下功能：
+1. 存储文档的接口：参数为文本及它的唯一标识符（ID），返回值为其在向量数据库中的索引。
+2. 独立的文档向量化接口：仅返回向量，不保存到数据库
+3. 对于长文本自动切片，自己维护一个文本标识符与多块和向量索引的对应
+4. 搜索接口：通过一段文本，返回配置的文档id列表及它们的匹配度，可以指定filter，包括:top_n、阈值、softmax后的阈值等等的常用方法，仅返回限制内的结果。
+5. 获取和删除接口：通过文档id或向量数据库的数据索引删除
+6. 浏览接口：用以给数据库浏览器浏览数据用，未来会实现网页数据库浏览器
+7. 其它你认为有必要的接口。
+8. 注意向量化和存储查询不要耦合过大，未来会替换其中的组件。
+9. 注释文本使用英文。
+
+
+
+
+
+
+
+
+
+
+
+写一个python脚本 rebuild_vector_index.py，用以以数据库中的数据向量化并存储到向量数据库VectorStoreManager中：
+
+我在mongodb数据库中上万个有以下记录：
+
+```
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None
+    SUBMITTER: str | None
+    APPENDIX: dict | None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+```
+
+创建两个向量数据库：intelligence_full_text和intelligence_summary
+
+将UUID作为key，APPENDIX.RAW_DATA做为文本存储到 intelligence_full_text 中。
+将UUID作为key，EVENT_TITLE + EVENT_BRIEF + EVENT_TEXT 组合成文本存储到 intelligence_summary 中。
+
+整个转换过程需要显示进度信息，且除了建立向量索引外，还实现查询功能，即让用户输入一段文本，检索这两个向量数据库并返回结果UUID的对比（默认一个阈值）。
+用户可以指定查看intelligence_full_text或intelligence_summary的查询结果，也可以查看两个数据库查询结果的交集（相互印证？）。
+
+
+
+
+
+
+
+
+
+
+再帮我实现一个Vector的后端和前端，功能包括选择要浏览的向量数据库，浏览、增加、删除、查找记录等功能，能让用户清楚地知道数据库的情况，方便用户判断它所期望的项是否正确加入数据库。
+对于后端，采用以下类似的方法来注册routing，用以方便地集成到其它的后端项目中。
+
+```
+    def _register_routes(self, wrapper):
+        def maybe_wrap(fn):
+            return wrapper(fn) if wrapper else fn
+
+        self.app.add_url_rule('/logger/log_viewer', 'log_viewer', maybe_wrap(self.log_viewer))
+        self.app.add_url_rule('/logger/api/logs', 'get_logs', maybe_wrap(self.get_logs), methods=['GET'])
+        self.app.add_url_rule('/logger/api/modules', 'get_module_hierarchy', maybe_wrap(self.get_module_hierarchy),
+                              methods=['GET'])
+```
+请仔细思考设计并针对需求给出前后端的实现。
+
+
+
+
+
+
+
+
+请分析以下代码并按要求实现功能：
+
+```
+def vector_search_intelligence(self,
+                               text: str,
+                               in_summary: bool = True,
+                               in_fulltext: bool = False,
+                               top_n: int = 10,
+                               score_threshold: float = 0.5) -> List[Dict[str, Any]]:
+    summary_result = []
+    fulltext_result = []
+
+    if in_summary and self.vector_db_summary:
+        summary_result = self.vector_db_summary.search(text, top_n, score_threshold)
+    if in_fulltext and self.vector_db_full_text:
+        fulltext_result = self.vector_db_summary.search(text, top_n, score_threshold)
+
+    # TODO:
+
+    return []
+```
+
+其中的向量搜索函数会返回以下格式的数据：
+
+```
+chunk_results.append({
+    "chunk_id": results['ids'][0][i],
+    "doc_id": results['metadatas'][0][i]['original_doc_id'],
+    "score": similarity_score,
+    "chunk_text": results['documents'][0][i]
+})
+```
+我希望合并及重构这两个结果，依照以下规则：
+
+1. 返回格式为：{ doc_id: (score, chunk_text) }。
+2. 一个doc_id可能会存在于多个chunk记录中，可能会有不同评分。
+3. 返回结果doc_id不能重复，后面的score和chunk_text使用其中评分最高的。
+
+
+
+
+
+
+
+
+分析下面的代码，帮我实现以下功能：
+
+```
+```
+
+1. 将RECYCLED的功能加回去，即搜索mongodb的全文。
+2. 增加向量搜索，向量搜索是和之前的搜索并行且不相关的功能，对应接口和数据格式后续给出。
+3. 实现后端代码，基于给出的接口。
+
+```
+```
+
+
+
+
+
+
+
+基于这个接口，实现一个搜索情报的前端页面，要求提供的参数能完美覆盖该后端接口，且布局合理，逻辑清晰，具有一定的美观。并且前后端完全分离。
+
+关于情报列表显示，可以参考下面的代码：
+
+```
+```
+
+
+
+
+
+
+使用python实现一个AI client的管理框架及client类。
+
+ai client需要包含以下功能，并提取一个公共接口：
+1. 对话接口（已有代码）
+2. 设置限额接口（每个client的限制方式都不一样）
+3. 获取可用额度接口，返回使用量最大的额度剩余百分比或余额
+4. 获取client状态
+    未知 - 还没有测试结果
+    可用 - 可正常对话
+    错误状态 - 发生错误，但可以恢复
+    不可用 - 额度用完或遇到不可恢复错误，这种情况下通常会将该client移除出管理器
+5. 测试与更新状态接口，框架会定期调用该接口（使用线程），这个间隔可以由client控制，由具体的client决定是不是要发送简单对话进行测试。测试后会改变状态。
+6. 占用/检查是否占用中的接口，一个实例同时只能有一个对话。
+7. 查询是否忙碌接口
+8. 以api token为键，通过管理框架保存使用情况
+
+管理框架需要包含以下功能：
+1. 按优先级（指用户配置首先用哪个，而不是说它们重要性有区别）获取一个可用的client
+2. 定时检查未占用的client状态，丢弃不可用的client
+
+我需要解决的问题是：
+1. 有些服务每天增赠送一定免费调用次数，这种要优先使用
+2. 硅基流动赠送余额，有多个小额账号，我已经有一个轮转key的类，但我发现换更换key会得到503错误，一段时间后会恢复，目测有预热时间。
+3. 在使用这些不确定的client之前，我有一个确定可用的“大号”，可以作为默认的初始client，但当上面的client ready后，这个client原则上尽量少用
+
+当前的client见以下代码：
+
+
+```
+```
+
+仔细分析我的需求，关注问题本身，综合我的思考，给出最佳方案。注释用英文。
+
+
+
+
+
+
+
+
+
+
+帮我修改以下程序，在func_rebuild的时候可以选择重新创建或增加创建，后者在向量化之前先检查uuid是否存在，如果存在，则跳过。最后给出增加和跳过的条目数，默认为增量。为实现这一功能，功能需要为VectorStoreManager增加新接口。
+
+
+
+
+
+
+
+
+
+我的想法时无论是用户正常调用chat，还是管理器定时调用test_and_update_status（或换个名字），其逻辑和流程都是一样的，即通过一次普通调用测试client的问题并更新状态。
+所以理想情况应该是chat后统一处理和更新状态，test_and_update_status仅在chat长时间没调用时才去激活一次。
+
+
+
+
+
+
+
+以下代码用来生成代码，我希望将d_fetcher和e_fetcher的初始化参数提取出来，成为d_fetcher_init_param和e_fetcher_init_param。
+代码仅供你参考，仅需要生成d_fetcher_init_param和e_fetcher_init_param的初始化代码，我会将其放置在生成代码中合适的位置。
+
+
+参考的生成代码（注意不同的fetcher参数不一样）：
+
+```
+d_fetcher_init_param = {
+    'log_callback': log_cb,
+    'proxy': 'http://127.0.0.1:10809',
+    'timeout_s': 10
+}
+
+e_fetcher_init_param = {
+    'log_callback': log_cb,
+    'proxy': 'http://127.0.0.1:10809',
+    'timeout_s': 20,
+    'stealth': False,
+    'pause_browser': False,
+    'render_page': True
+}
+```
+
+
+
+
+
+
+
+
+我最初的需求如下：
+AI client分为几类：
+1. 贵但默认有效，默认先使用这一类client，但只要有其它client有效，则不要使用这一类client。
+2. 为了降低成本，使用大量低值账号轮换的client，但是在切换key时会有一段时间服务无响应，这类client通常有很多，定时检查以更新更用性，优先返回这种client。
+3. 每日限量client，每日更新额度，在这类client能用的前提下，使用的优先级是最高的。
+4. 其它client，优先级在1之前。
+请帮我分析一下这个设计，给出建议。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+帮我思考如何设计self._usage_stats，使之可以易于被统一记录更新和统一计算，但同时满足各种不同的用量统计方法，如：
+1. 限量
+2. 限次
+3. 余额
+4. 其它用量限制
+我能想到的一点是：对于限量和限次，用量百分比是有意义的，而对于余额来说，用量百分比并没有意义（不需要在乎初始的钱数，只需要在达到阈值后放弃使用即可）。
+同时，这个用量能方便从统一的返回结果中提取，或者由核心API主动上报。开发者能接受一个通用且合理的机制，它不会给后续开发造成负担。
+
+
+
+
+
+
+
+
+AIClientManager类中获取client后需要显式释放，导致代码编写麻烦，且可能导致资源泄露：
+
+```
+if ai_client := self.ai_client_manager.get_available_client():
+    try:
+        result = analyze_with_ai(ai_client, ANALYSIS_PROMPT, original_data)
+    except Exception as e:
+        logger.error(f"Analysis with AI fail: {str(e)}")
+    finally:
+        self.ai_client_manager.release_client(ai_client)
+        break
+```
+
+我在考虑另一种方式，即调用get_available_client时指定一个用户的名字，在manager中维护 用户-Client 映射表。
+在调用 get_available_client ，如果该client已经占用了一个client，那么推荐client时有优先级更高的，则释放前一个，分配新的一个。
+当然，用户可以主动释放，这样一来它名下没有client。
+同时，统计信息包含哪个client在哪个用户下，最后的一次 get_available_client 是什么时候。
+
+
+
+
+
+
+
+
+
+
+我想把一个过程改成多线程的，我将给出代码，并视需要补充上下文，帮我评估和审查代码的调用是否适合多线程，如果不适合，请给出改进意见和实现。
+
+
+
+
+
+
+
+
+
+
+
+
+我将给你两个文件的代码，帮我实现它的前后端代码，包括以下功能：
+1. 整个系统的Overview
+2. 各个客户端的情况（健康情况，占用情况，占用时间，最后一次更新/使用时间，额度情况，等等）
+3. 各个客户端的统计信息（对话次数，失败次数，token消耗量，当前的token，当前调用的模型，等等）。
+4. 手动更改客户端的状态（预留，后续ClientManager需要增加接口）
+5. 手动触发客户端很乖检查（（预留，后续ClientManager需要增加接口））
+
+
+
+
+
+
+
+
+
+
+
+
+请分析以下代码，思考以下功能使用哪种方案更合适：
+
+我希望client分类，并且可以设置一类client的最大用量限制。比如A类client有3个，但限制是2，那么即使这类client还有1个空闲，也不会返回给用户使用。
+这个设计的用意在于：服务提供商可能对调用API的IP有所限制，另一方面，多出来的client可以作为错误备份。
+
+有两种实现思路：
+1. 设置一个类型属性（str），根据该属性分类。
+2. 使用不同的类，增加一个类型则增加一个类，通过类名分类
+
+
+
+
+
+
+下面是前端的代码，我在client的meta下增加了一个group属性，同时顶层的"summary"下增加一个属性："group_limits": self.group_limits
+
+首先，我希望在界面上合理地展示client的分组。同时，可选，能直观地体现分组的限制，以及能让用户知道该组的分配已经达到限制，从而即使有空闲client，也不能再参与分配了。
+
+
+
+
+
+
+
+
+
+
+给get_available_client增加几个参数：
+1. 请求换一个：如果为true，则给它换一个，没有则返回空。既然它名下没有client，则下次有可能分配到刚释放的client，符合预期。
+2. 指定要更换的client的group_id，没有满足则返回空。
+3. 指定要更换的client名，最严格且优先级最高的要求，不满足则返回空。
+
+
+
+
+
+
+
+
+
+
+
+
+分析并理解以下类，为其增加一个导出功能，在这之上提供一系列更方便地按时间段导出的函数，如：
+
+1. 全部导出（可以指定按年、月、周分隔文件）
+2. 按月导出（指定年，月，导出该月的数据）
+3. 按周导出（指定年，周，导出对应的周数据）
+4. 按时间段导出（指定时间段）
+
+选择文件名根据导出的时间段生成，仅使用英文和数字，能让人一眼看出数据的时间段。
+可以选择仅使用导出时间段命名（稳定的名字），从而能覆盖上一个导出，或者增加导出时间戳，从而不覆盖上一个导出。
+其中时间使用本地时间，程序中已有所支持。
+
+
+
+
+
+
+
+
+
+
+
+使用pyqt5写一个mongodb导出的json文件浏览器，支持以下功能：
+
+1. 支持文件拖放到列表
+2. 选择文件列表中的文件查看数据
+3. 显示文件统计信息，比如时间范围（指定时间字段，并自动保存到qsetting）、条目数，等等
+4. 可以选择一部分文件，并导入（指定mongodb tools的路径）
+5. 浏览数据（数据列表，展开树形，分页）
+6. 注意操作不要阻塞界面
+7. 其它你觉得需要的功能
+
+叙述你的理解和设计，文本注释使用英文。
+
+
+
+
+
+
+
+
+
+
+
+
+
+理解并帮我重构以下代码，要求：
+1. 不要使用单例，而是要求初始化实例，配置由外部传入。
+2. 支持metadata存储和搜索
+3. 接口尽量不要大改
+4. 无论是VectorStoreManager还是VectorDBService都要求线程安全
+5. 为了和webapi的网络服务区分，给这两个类精心设计一个好名字
+6. doc_id是一个非常重要的属性，也是该类提供的的核心功能，对应关系要管理好
+7. 代码的文本注释使用英文
+
+
+
+
+
+
+
+
+
+
+很好，backend做以下调整：
+
+1. 封装成一个独立的类，engine和各种配置由外部传入。
+2. 可以单独启动服务，也可以注入APP，将服务注册到其上（见下面其它模块的代码示例）
+3. 我会将前端命名为VectorDBFrontend.html并放在同一目录下，由backend统一发布。
+
+
+
+
+
+
+
+
+
+
+
+
+综合以上讨论，帮我封装几个函数，要求是比原始函数简单易用，最好一行代码解决问题。
+不要通过异常，而是通过返回值报告错误。
+要考虑返回值可以方便地作为另一个函数的输入参数，比如检测函数的返回值可以给杀死程序的函数，等等。
+对于防多开，需要全局变量记录socket那就用全局变量，因为这些代码会作为一个单独的文件存在。
+注意这个封装很重要的一点是将python程序和普通程序“拉平”，而不要将python程序当作一堆python.exe处理。
+注释文本使用英文。
+
+1. 检测某个（Python）程序是否正在运行
+2. 启动某个（python）程序，可以指定命令行及环境变量，同时要支持不同启动方式，比如daemon、显示窗口等等（我不熟）
+3. 检测占用某个端口的程序，如果是python程序，要返回真正的python文件名
+4. 杀死某个程序，指定pid或文件名，包括python文件名
+5. 通过socket点位实现的进程防多开
+
+不知道你有什么建议？注意不要瞎J8盲目赞同我，实事求是从设计上给出评价和建议。
+
+
+
+
+
+
+
+
+
+我想分析程序中调用AI处理数据的流程中，错误及异常的传递与处理。
+原因在于，我发现有些错误，比如触发敏感词时，并不能简单地进行重试，只能传到外层，由外层决定丢弃或换一个client。其它比如余额问题也是如此。
+但我最初的设计中，异常和错误和重试尽量由底层处理，经过重构后，我也不确定错误是不是可以格式统一地，正确地从内层传递到外层。
+接下来我会逐步给出各个层次模块的代码，代码量较大，为了节约token，在最终我提问之前，尽量不要输出过多内容。
+
+
+首先是最底层的API层，它将处理大部分的错误及重试：
+
+
+接下来是Client层，它根据API的错误反馈更新和管理Client的状态：
+
+
+然后是使用用client的会话层：
+
+
+最后是最外层的调用者：
+
+
+
+
+
+
+
+
+基于以上分析，深入思考AIClientManager中对client的检查机制。
+我原本的期望是：“在及时更新和恢复client状态的同时对程序的正常运行影响尽可能少，特别是在client有分组限制的情况下”
+同时：“尽可能让用户获取干净可用的client”
+但矛盾的地在于：“及时”意味着频繁调用，会对用造成影响；但如果检查的间隔太久，又会导致无法及时“复活”client。
+有一个可能可以改善的点是：在测试状态下，减少timeout及去除重试，从而获取快速响应。
+同时程序一上来就每个client都跑一遍，可能导致瞬时的流量过大。
+
+请结合各种实践经验，充分思考，给出一个完美的client检查机制方案。
+
+
+我突然想到一点：我们应该使用“last_chat”来计算下一次测试的时间，而不是“status_last_updated”或“last_test”，
+因为检查状态的根本就是chat，只要执行了chat，无论状态是否有改变，是正常执行还是测试，它都已经执行了完整的状态检查流程。
+
+
+
+
+
+
+
+
+
+
+
+我的系统使用ai分析情报和新闻，通过以下复杂的Prompt将信息摘要并提取信息。
+然而问题在于：这个prompt在64b及以下的模型上表现不佳，它们通常无法按要求返回合法的json。
+但是高性能的模型价值太高，我希望通过微调小模型，通过本地部署实现（一部分）功能，从而降低成本，提高处理速度。
+
+我有几个思路：
+
+1. 训练模型仅用来评估“无价值”及“低价值”信息，直接丢弃这些信息从而减少提交给高性能模型的token量。
+2. 上一条的改进版，训练小模型进行全维度的评分，同样可以在提交给大模型之前过滤一部分内容。
+3. 训练小模型进行全功能的情报处理，但我不确定小模型的参数量是否支持完成如些复杂的功能。
+
+请帮我评估方案，包括：
+
+1. 根据任务的难度，我应该选择多少参数量的模型（7b，14b，32b）？在能实现功能的前提下模型应该尽量小。
+2. 使用哪个模型作为微调的基础，需要考虑的内容有：
+	a. 支持较长的上下文
+	b. 支持多国语言
+	c. 逻辑能力强
+	d. 消耗资源尽量少
+3. 结合上一条考虑，使用哪个框架进行微调，需要考虑的内容有：
+	a. 使用简单，有针对方便训练的封装及设计
+	b. 支持AMD的MI 50 32G计算卡 x 2，而不是N卡。
+	c. 推理时支持json约束。
+	d. 使用哪种微调方式？
+	e. 微调的参数量及超参数的定性分析。
+4. 通用性考量：如果我希望升级prompt，更改评分维度，那么模型是不是需要重新训练？如何使得训练出来的模型更通用？
+5. 提示我其它需要考虑的问题。
+
+
+上面提到的Prompt如下：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+现在APPENDIX字段下增加了以下内容：
+
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+它们分别表示AI的API服务和使用的模型。请将这两项增加到前端的显示中，比如放在rating和uuid后面，要求显示协调，并且兼容之前没有这两个字段的情况。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+我想进行大语言模型微调，请帮我编写python程序一步一步地进行数据提取和预处理，每步只依赖上一步的结果，每个步骤相对独立。
+
+数据存储在mongodb仓库IntelligenceIntegrationSystem中，其中包含两个collection：
+1. intelligence_cached - 未处理的原始/缓存数据，遵循CollectedData定义。
+2. intelligence_archived - 已处理的数据/归档数据，遵循ArchivedData定义。
+
+数据定义如下，请记住并充分理解。下面我的说明将围绕着这个定义进行：
+
+```
+class CollectedData(BaseModel):
+    UUID: str = Field(..., min_length=1)    # [MUST]: The UUID to identify a message.
+    token: str = Field(..., min_length=1)   # [MUST]: The token to identify the legal end point.
+    source: str | None = None               # (Optional): Message source. If it requires reply.
+    target: str | None = None               # (Optional): Message source. If it requires reply.
+    prompt: str | None = None               # (Optional): The prompt to ask LLM to process this message.
+
+    title: str | None = None                # [MUST]: The content to be processed.
+    authors: List[str] | None = []          # (Optional): Article authors.
+    content: str                            # [MUST]: The content to be processed.
+    pub_time: object | None = None          # (Optional): Content publish time. Can be time.struct_time, datetime, str, ...
+    informant: str | None = None            # (Optional): The source of message (like URL).
+
+
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None = None
+    SUBMITTER: str | None = None
+    APPENDIX: dict | None = None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+
+
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+```
+
+第一步：
+    * 数据抽取和基本清洗
+        + 最后结果分别保存到json文件，utf-8，易读格式
+
+    * 列出所有清洗后丢弃的数据的摘要：
+        + 从intelligence_cached中找到 f"APPENDIX.{APPENDIX_ARCHIVED_FLAG}" 为 f"{ARCHIVED_FLAG_DROP}"标记的项。
+        + 记录以下字段（不需要按照原有格式）： UUID、pub_time、informant。
+        + 去除UUID及informant有重复的项，去除informant不是url的项，并给出报告。
+
+    * 列出所有清洗后归档数据的摘要：
+        + 从intelligence_archived中提取数据，记录以下字段（不需要按照原有格式）：
+            + UUID
+            + INFORMANT
+            + f"APPENDIX.{APPENDIX_TIME_ARCHIVED}"
+            + f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
+        + 去除以下项，并给出报告：
+            + UUID及INFORMANT重复
+            + UUID必须同时在intelligence_cached中存在，且 f"APPENDIX.{APPENDIX_ARCHIVED_FLAG}" 必须为 f"{ARCHIVED_FLAG_ARCHIVED}"
+            + INFORMANT不是url的项
+            + EVENT_TITLE，EVENT_BRIEF，EVENT_TEXT主体必须是中文（使用简单方法判定，不要使用重型AI）
+
+第二步：
+    * 训练及测试、验证数据采样：
+        + 指定需要的训练数据条数，计算出额外需要的测试及验证集数据量
+        + 根据以上分析，给出丢弃数据及归档数据中采样的比例的建议（也可以由用户指定）。
+        + 输出数据采样详细统计信息。
+        + 采样完成后分训练集、测试集、验证集保存为三个json文件，理论上只需要保存UUID。
+
+    * 在丢弃数据中采样：
+        + 按前一步确定的数量，综合考虑informant和pub_time，使这二者的项均匀分布
+
+    * 在归档数据中采样：
+        + 按前一步确定的数量，综合考虑INFORMANT，APPENDIX_TIME_ARCHIVED，APPENDIX_MAX_RATE_SCORE，使这几项合理分布（不一定均匀，我也不确定，请给出建议）。
+
+第三步：
+    生成训练数据（Alpaca格式）
+        + 仔细阅读并理解以下要求，提取数据并组织为训练数据，需要显示处理进度。
+        + 最后同样分训练集、测试集、验证集保存。
+        + 同样给出结果详细摘要。
+
+    输入数据（原始数据）：
+        + 根据上一步的采样结果，通过UUID从intelligence_cached中获取原始数据。
+        + 数据原本的分析是通过以下函数构建对话的，请参考或使用它，尽量按对话时同样的格式构建训练数据。
+        + 其中prompt请仔细思考，设计一个简单有效，且具有一定泛用性的文本。如果我没理解错，这段文本将作为该模型今后的“功能开关”。
+        + 特殊要求：评分减1（不得小于0），如果为0则归为丢弃数据一类。
+        ```
+        def build_analyze_message(
+                prompt: str,
+                structured_data: Dict[str, Any],
+                context: Optional[List[Dict[str, str]]] = None):
+            try:
+                sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
+            except ValidationError as e:
+                logger.error(f'AI require data field missing: {str(e)}')
+                return {'error': str(e)}
+            except Exception as e:
+                logger.error(f'Validate AI data fail: {str(e)}')
+                return {'error': str(e)}
+
+            metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
+            metadata_block = '## metadata\n' + "\n".join(metadata_items)
+            content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
+            user_message = metadata_block + content_block
+
+            messages = context if context else []
+            messages.append({"role": "system", "content": prompt})
+            messages.append({"role": "user", "content": user_message})
+
+            return messages
+        ```
+
+    输出数据：
+        对于被判定为需要丢弃的数据，输出结果为：
+            ````{"UUID": "输入的UUID原值"}````
+
+        对于非丢弃的数据，输出结果为：
+            ProcessedData格式，对应数据从intelligence_archived中提取。
+
+为了使输出不混乱且可验证，我们先分析并执行第一步。
+
+
+
+
+
+有两点不知道你有没有注意：
+1. URL要对比domain部分，而不要比较文章完整URL
+2. 如果样本数不足，怎么处理？
+
+
+
+
+
+关于prompt部分有几个问题：
+1. ProcessedData是python程序内容结构，AI是看不到的。
+2. 关于无价值部分的描述不完整。
+我将给出完整的prompt，请参考并总结一段简短但能体现重点的prompt。
+注意在微调之后这段prompt更像一个功能的触发文本，所以我认为并不需要详尽描述评分标准和数据格式（是这样吗）。在设计训练时用的Prompt时要考虑到这一点，让prompt准确，有代表性而简短，不要占用过多的token。让模型更多关注分析内容。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+接下来我决定使用LLaMA-Factory训练框架，微调Qwen2.5-7B-Instruct模型。
+使用的机器是ubuntu 2204，计算卡为 AMD MI50 (32G) * 2。
+训练完成后使用ollama运行模型，并对输出开启json约束。
+
+请评估需要的训练数据量、微调的方案、微调的参数量、超参数、大致的训练时间。
+
+
+
+
+
+
+
+
+
+
+感谢你的分析，请将以上历程进行总结，输出不经网页渲染的markdown文档（或使用panel，或者可能的话生成pdf）。等下次我想继续讨论该事情的话，我只需要把这份文档给你，你就能知道当时调整的历程和上下文。同时这份文档也可以作为技术文档发布。
+
+最好包括每次发现的问题，每次性能的摘要，每次针对问题的调整。最后总结并给出最终配置。
+
+不限制字数，越长越详尽越好。
+
+
+
+
+
+
+
+
+
+
+我已经有一个类用来记录和管理爬虫所爬取的URL状态，并检查该URL是否已经被抓取过。每个爬虫实例会创建一个独立的CrawlRecord实例，并保存到不同的数据库中。
+
+我想在这一层之上增加一个统一的，一个关于爬虫的状态的记录器，并基于它做一个前端的实时监控界面。
+
+需求如下：
+
+1. 首先，我们需要的是一个监控统计系统，调度是不需要的。实际上，我的程序中有两套调度框架，我希望这个监控系统和具体调度无关，能集成到任意抓取框架中（即：做一个“旁观者”，仅对delay等进行有限介入）。
+2. 需要分别针对爬虫和URL任务进行统计，提供API记录爬虫生命周期中的关键节点（开始、成功、失败、解析完成）。
+3. 监控及统计内容包括：
+    + 当前正在运行的所有爬虫实例状态
+    + 每个爬虫的实时进度（已抓/总数/成功率）
+    + 速率分析（注意每次循环之间有休息时间，不要影响统计）
+    + 性能指标（平均响应时间、吞吐量）
+    + 历史趋势分析（成功率变化、速度变化）
+    + 错误类型分布（考虑提供requests或playwright的结果，不一定能提供）
+    + 其它你认为应该有的功能
+4. 控制
+    + 手动更改URL状态（以便再次重试或放弃）
+    + 调整抓取间隔和每轮等待时间
+    + 暂停/恢复
+    + 其它你认为应该有的功能
+5. 接口
+    + 控制接口：为了控制功能，需要提供两次抓取等待间隔接口和轮次等待接口，让爬虫通过这个接口等待从而能进一步控制。
+    + 统计接口：对于爬虫而言，只需要上报自己的名字、开始抓取、抓取完成、URL种类（循环抓取的，如列表，还是一次性抓取的，如文章）。至于统计和状态维护，由内部进行。
+    + 爬虫需要接口检查某个链接是否还需要抓取，所以我们的这个监控系统实际上还要对外提供一个检查和判断状态接口，以及维护重试（高级预留：细分是可恢复重试还是不可恢复重试，尽可能保证不因网络问题忽略文章）。
+    + 抓取内容记录接口：将内容保存成文件并记录文件路径，并提供接口获取该文件，到时前端可以下载这个文件。
+6. 尽量复用CrawlRecord，兼容之前的记录（可选）。程序中要管理好实时数据、历史数据和数据落库。
+7. 前端界面
+    + 对于循环抓取的链接，链接固定，状态Log刷新，状态更新；对于一次性抓取链接，链接本身是刷新的，同时状态也更新。只保留比如最近100条，再往后的需要翻阅Log。
+    + 不同的爬虫任务下的url不要混在一起显示
+
+
+设计：
+1. 需要一个统一管理的类来“平面”地管理所有的url记录和状态。
+2. 每个url有“记录”和“状态”，记录为流式的，状态根据最新的记录更新。
+    + “记录”在爬虫通知管理类抓取结束后上报结果时生成，包括：
+        a. 时间戳
+        b. HTTP状态码（可选）
+        c. 内部状态码（无法提供HTTP状态码的通用错误，或者进一步细分解析出错，内容为空等错误）
+        d. 时间花费
+        e. 抓取内容（这个类负责将内容保存成文件并和url相关联，方便调用下载检阅，即通过URL检阅响应的内容）
+        f. 其它需要的内容
+    + “状态”根据最新的记录更新，包括状态信息和统计信息。
+    + “记录”和“状态”需要保存到数据库，同时在内存中维护加速返回，注意内存数据和数据库中数据的对应关系。
+    + “状态”很重要，用来判断是否重复抓取或重试抓取。
+3. 除了平面记录外，需要层次索引：
+    a. 按逻辑层次索引：[爬虫名字, 文章分类等等, ......]
+    b. 按网站索引
+4. 为了简化操作，最好使用时封装一个session，即将记录层次等封装好，调用接口时能少写信息。
+
+我们看一个例子：
+
+爬虫名字：bbc
+爬取网站：bbc.com
+爬取列表：rss1, rss2，或“国际”，“商业”
+流程：
+    间隔一段时间，爬取列表（RSS或分类）
+        爬取前记录开始爬取
+        爬取完成后记录爬取完成（成功，失败，HTTP code，解析错误还是其它什么错误）
+    对于爬取到的列表结果，对其中每一个文章
+        判断是否需要抓取（是否已抓过，是否冷却期，是否出错太多放弃（注意：如果仅是网络问题，不应该放弃，比如临时断网，不应导致丢失抓取内容））
+        如果需要抓取，则进行抓取
+        爬取前记录开始爬取
+        爬取完成后记录爬取完成（成功，失败，HTTP code，解析错误还是其它什么错误）
+        随机等待后，开始抓取下一个
+   所有列表完成后，阶段性等待
+
+监控：
+    查看某个爬虫的状态和统计（此处只是一个统分类，没有URL，查看High level信息）
+    查看某个列表链接的状态和统计（即是分类，也是一个URL，通常需要反复抓取，查看自身统计信息和下面链接统计信息）
+    查看某个列表下文章的状态（URL，一般来说抓取成功则不需要再抓取，抓取失败我想知道原因和统计）
+
+由于以上需求并非一次完成，可能会有逻辑上不自洽和不合理的地方，先分析合理性，指出你认为表述不清楚或有歧义的地方。
+对于层次的设计权衡（通用或特殊），对我来说是设计上一个很纠结的事情，请理解我的需求，给出优雅且灵活的设计。
+
+以下是CrawlRecord代码供参考，这部分代码可以任意修改，甚至可以放弃使用：
+
+我们一步步来，先分析需求，确定设计方案。不要直接给出实现代码。
+
+
+
+
+
+
+
+首先，现在的爬虫在一个进程中，所以暂时不需要通过RPC调用。但是这是一个好办法，在编写后端的时候可以考虑加入。先实现本地调用。
+第二，虽然后端记录很细，但前端展示的信息太少，没法全面了解爬虫的细节。
+第三，我没看到具体体现列表统计和文章抓取信息的设计。因为列表是反复抓取，所以它的统计信息是常驻的，而文章则是流动显示，已经成功或确定放弃的会慢慢挤出显示。
+同时，属于一个大分类（名字）下的信息应该分在一组显示。
+还有就是，抓取结束后的记录的内容我提到很多，请一并考虑。
+最后，一个细节，不要因为可恢复错误而丢失文章。因为我抓取外网，所以网络问题之类是很正常的。
+
+
+
+
+
+
+
+
+有以下几个问题：
+1. StorageHandler保存的内容似乎并没有和过程关联起来。我希望通过URL能直接索引到文件的路径，文件可以由外部指定主要名字以及便脱离此关联阅读（如："{custom_name}_{uuid}.{suffix}""）。
+2. interval被当作下一次运行时间使用，明显不正确。我建议直接放弃，统一改用wait_interval，时间由外部传入。同时加入动态控制时间的接口，从而在外部实现sleep，resume，start immediately。
+3. 在任务开始时即即记录log，结束时更新log，这样前端可以看到实时进行中的任务。
+4. 当前系统的分类靠“group_name”，实际上，层次可能会更多：
+    a. 爬虫。
+        - 程序设计时将爬虫名放到了GovernanceManager层，这是不对的。GovernanceManager下包含多个爬虫才对。
+    b. 数据源（RSS，或列表名）
+        - 程序中这一层体现在group_name中，也是不对的。这样一来多个crawler下的数据源会并列显示在同一层。
+    c. 具体抓取的内容
+        - 这一层的设计没什么问题，注意 条目3 所列事项即可。
+
+    + 一种可以参考的设计是：group_name可以嵌套，即transaction时指定的group_name是列表，最终存成易于进行层次分析的形式，比如点号或斜线分隔字符串。
+5. 需要crawl_log和crawl_status表，前者已经存在，后者用来记录任务的状态和统计信息，以URL为主键。相当于前者为流动信息，后者为根据流动信息统计的状态。
+6. register_task和task_registry重新设计，register_task更改为register_group_task，即创建一个虚拟分组，并（可选）为该group关联一个url。
+    + 提交session结果时，根据注册的虚拟分组聚合统计信息。点击一个分组时，显示该分组的统计信息。
+    + 如果分组关联一个url，那么这个url通常为该分组的列表URL，会反复抓取。点击这个分组时（如果关联URL存在），同时也显示这个url的统计信息（crawl_status表）。
+
+在给出代码前先理解代码和需求，先思考问题，如果有不明确和冲突的地方请指出。没有问题再再给出结论，根据结论编写代码。
+我们先修改核心类，先不要管后端和前端。
+修改代码时注意不要改无关接口，文本注释使用英文。
+
+
+
+
+
+
+
+实现类，需要注释说明usage及供展示返回的数据格式，文本注释使用英文。
+
+
+
+
+
+
+
+
+
+请思考并做以下调整：
+1. 'list' or 'content'不是task type而是url type（在提交url时指定），一个task会先拉取列表再拉取其中的文章。分类是为了区别不同url的记录和展示方式。
+2. 做好多线程保护，每个crawler会运行在不同的线程中，线程冲突是必然的。
+3. 由于目的是统一管理，所以CrawlerMonitor可以做成单件模式。
+
+
+
+
+
+
+
+
+
+
+
+
+我正在设计一个情报处理系统，我想对情报的领域划分和评分做出调整。
+最初的设计是让AI为其在领域维度以重要性评分，现在改成领域维度仅按相关性评分，以最高者为主要领域。对标之前重要性评分的是几个固定的评分维度，所有情报都以这几个维度评估其价值。
+
+领域维度：
+		国际事件
+		国内政局
+		政策法规
+		商业金融
+		科技信息
+		军事国防
+		自然灾害
+		信息安全
+		重大犯罪
+
+		公共卫生
+		社会民生
+		交通运输
+		能源资源
+		农业粮食
+		舆论认知
+
+		教育文化
+		体育娱乐
+
+		低价值信息
+
+评分维度：
+	可信度/准确性（Accuracy）：基于来源可信度与交叉验证。
+	时效性（Timeliness）：新增！情报价值随时间衰减。
+	新颖性/异常性（Novelty/Anomaly）：是否偏离常态？
+	影响力(范围与深度)（Impact Scope & Severity）：谁受影响？多严重？
+	可行动性（Actionability）：能否触发预案、资源调配或决策？
+	演化潜力（Development Potential）：是否会升级、扩散或引发连锁反应
+
+
+请综合Google、CIA、FBI等等情报领域专业团队的经验，对我的方案进行分析评价并给出公认的、理论上最成熟的、最贴合我需求的评分和分类体系
+
+
+
+
+
+
+如何处理事件关联和聚合？
+
+
+
+
+
+
+
+
+
+
+由于公司和政策，不允许使用代理。我想使用python做一个浏览器，同时在程序中支持连接v2ray服务器。由于没有使用标准客户端和浏览器，公司的软件应该监控不到，只能看到一个普通程序在连接网络。
+请问这样的方案是否可行？
+注意，不要像v2raya一样一边连接服务器一边在本地转换为socks5代理，而是在程序中，浏览器直接走服务器，不用额外创建本地服务。
+请使用开源组件构造这样一个浏览器程序，要求能保存session，下次开启要保留登录信息。
+
+
+
+
+
+
+
+
+
+
+
+我正在设计一个使用AI处理情报的系统。
+请帮我分析以下prompt，检查其上下文逻辑是否有冲突、引用是否准确可达、描述是否精确、是否有二义性及模糊之处、是否符合AI的注意力逻辑、是否容易触发AI幻觉。
+注意我将处理过程要我的需求进行了调整，所以不一定会完全符合标准情报处理和分类规范。
+
+
+
+
+
+
+
+
+
+
+我升级了数据结构，因此一系列代码都需要调整。
+
+版本v1的数据结构定义如下：
+
+```
+import datetime
+from typing import List
+from pydantic import BaseModel, Field
+
+
+class CollectedData(BaseModel):
+    UUID: str = Field(..., min_length=1)    # [MUST]: The UUID to identify a message.
+    token: str = Field(..., min_length=1)   # [MUST]: The token to identify the legal end point.
+    source: str | None = None               # (Optional): Message source. If it requires reply.
+    target: str | None = None               # (Optional): Message source. If it requires reply.
+    prompt: str | None = None               # (Optional): The prompt to ask LLM to process this message.
+
+    title: str | None = None                # [MUST]: The content to be processed.
+    authors: List[str] | None = []          # (Optional): Article authors.
+    content: str                            # [MUST]: The content to be processed.
+    pub_time: object | None = None          # (Optional): Content publish time. Can be time.struct_time, datetime, str, ...
+    informant: str | None = None            # (Optional): The source of message (like URL).
+
+
+class ProcessedData(BaseModel):
+    UUID: str = Field(..., min_length=1)
+    INFORMANT: str = Field(..., min_length=1)
+    PUB_TIME: str | datetime.datetime | None = None
+
+    TIME: list | None = Field(default_factory=list)
+    LOCATION: list | None = Field(default_factory=list)
+    PEOPLE: list | None = Field(default_factory=list)
+    ORGANIZATION: list | None = Field(default_factory=list)
+    EVENT_TITLE: str | None = Field(..., min_length=1)
+    EVENT_BRIEF: str | None = Field(..., min_length=1)
+    EVENT_TEXT: str | None = None
+
+    RATE: dict | None = {}
+    IMPACT: str | None = None
+    TIPS: str | None = None
+
+
+class ArchivedDataExtraFields(BaseModel):
+    RAW_DATA: dict | None = None
+    SUBMITTER: str | None = None
+    APPENDIX: dict | None = None
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    pass
+
+
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+ARCHIVED_FLAG_DUPLICATED = 'U'
+
+
+VECTOR_DB_SUMMARY = 'intelligence_summary'
+VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
+```
+
+
+版本v2的数据结构定义如下：
+
+```
+import datetime
+from typing import List, Dict, Optional, Any, Union
+from pydantic import BaseModel, Field, AnyHttpUrl
+
+
+# ==========================================
+# Phase 1: Input Data (Before LLM Processing)
+# ==========================================
+
+class CollectedData(BaseModel):
+    """
+    Data collected from raw sources (crawlers, API, RSS, etc.).
+    Passed as context to the LLM.
+    """
+    uuid: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Unique identifier for the message/article."
+    )
+
+    token: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Validation token for the endpoint/source."
+    )
+
+    source: str | None = Field(
+        None,
+        description="(Optional): Origin platform (e.g., 'Twitter', 'BBC')."
+    )
+
+    target: str | None = Field(
+        None,
+        description="(Optional): Intended recipient or channel."
+    )
+
+    prompt: str | None = Field(
+        None,
+        description="(Optional): Custom prompt override for this specific item."
+    )
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: Raw title of the article."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list,
+        description="(Optional): List of authors found in metadata."
+    )
+
+    content: str = Field(
+        ...,
+        min_length=10,
+        description="[MUST]: The main text body to be analyzed by LLM."
+    )
+
+    pub_time: Union[datetime.datetime, str, float] | None = Field(
+        None,
+        description="(Optional): Original publish time."
+    )
+
+    collect_time: datetime.datetime | None = Field(
+        default_factory=datetime.datetime.now,
+        description="(Optional): Content collect time."
+    )
+
+    # 建议：如果 informant 是 URL，可以用 AnyHttpUrl 增强验证
+    informant: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST]: The specific source URL or informant ID."
+    )
+
+    class Config:
+        # 可选：如果传入的数据包含 extra 字段，是否允许（默认忽略，设为 forbid 会报错）
+        extra = "ignore"
+
+
+# ==========================================
+# Phase 2: Processed Output (LLM Result)
+# ==========================================
+
+class ProcessedData(BaseModel):
+    """
+    Structured intelligence data extracted and validated from LLM output.
+    Design Philosophy: Fields are Optional to handle the "NonIntelligence" branching logic.
+    """
+
+    # --- System Fields (Inherited/Generated) ---
+    UUID: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] Unique identifier for the message/article."
+    )
+
+    INFORMANT: str = Field(
+        ...,
+        min_length=1,
+        description="[MUST] The specific source URL or informant ID."
+    )
+
+    # --- Core Classification (Prompt: TAXONOMY, SUB_CATEGORY) ---
+    TAXONOMY: str = Field(
+        ...,
+        description="High-level category (e.g., 'Politics', 'NonIntelligence'). Dynamic string."
+    )
+
+    SUB_CATEGORY: list[str] | None = Field(  # 建议使用 list[str]
+        default_factory=list,
+        description="Specific tags selected from the prompt list (e.g., ['International Relations']). Dynamic list."
+    )
+
+    # --- Analysis Reasoning (Prompt: REASON) ---
+    REASON: str | None = Field(
+        None,
+        description="Explanation for the classification (Used for both Valuable and Non-Intelligent items)."
+    )
+
+    # --- Event Details (Prompt: EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT) ---
+    EVENT_TITLE: str | None = Field(
+        None,
+        min_length=1,
+        description="Core title of the intelligence event (<20 chars)."
+    )
+
+    EVENT_BRIEF: str | None = Field(
+        None,
+        min_length=1,
+        description="Factual summary of the event (<50 chars)."
+    )
+
+    EVENT_TEXT: str | None = Field(
+        None,
+        description="Detailed intelligence report/briefing generated by LLM (>2000 chars if content allows)."
+    )
+
+    # --- Entities & Context (Prompt: TIME, LOCATION, GEOGRAPHY, PEOPLE, ORGANIZATION) ---
+    TIME: list[str] | None = Field(
+        default_factory=list,
+        description="Standardized event dates extracted from text (Format: YYYY-MM-DD)."
+    )
+
+    LOCATION: list[str] | None = Field(
+        default_factory=list,
+        description="Specific locations mentioned (Cities, Regions)."
+    )
+
+    GEOGRAPHY: str | None = Field(
+        None,
+        description="Country ISO code (e.g., 'CN', 'US') or English name."
+    )
+
+    PEOPLE: list[str] | None = Field(
+        default_factory=list,
+        description="Key individuals involved."
+    )
+
+    ORGANIZATION: list[str] | None = Field(
+        default_factory=list,
+        description="Key organizations or groups involved."
+    )
+
+    # --- Impact Analysis (Prompt: IMPACT, RATE, TIPS) ---
+    IMPACT: str | None = Field(
+        None,
+        description="Brief description of the event's impact (<50 chars)."
+    )
+
+    # 建议使用 dict[str, int]
+    RATE: dict[str, int] | None = Field(
+        default_factory=dict,
+        description="Scoring dictionary (1-10) for dimensions like Impact, Novelty, Actionability."
+    )
+
+    TIPS: str | None = Field(
+        None,
+        description="Analyst remarks or handling difficulties."
+    )
+
+
+# ==========================================
+# Phase 3: Archival Storage (Database Schema)
+# ==========================================
+
+class ArchivedDataExtraFields(BaseModel):
+    """
+    Additional fields appended during the persistence layer (Database insertion).
+    """
+    RAW_DATA: Dict[str, Any] | None = Field(
+        None,
+        description="The full raw original message."
+    )
+
+    SUBMITTER: str | None = Field(
+        None,
+        description="Where the intelligence comes from."
+    )
+
+    APPENDIX: Dict[str, Any] | None = Field(
+        None,
+        description="Any extra metadata, file attachments, or extended properties."
+    )
+
+
+class ArchivedData(ProcessedData, ArchivedDataExtraFields):
+    """
+    Final model representing a record stored in the database.
+    Combines processed intelligence with system archival metadata.
+    """
+    pass
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+APPENDIX_TIME_PUB           = '__TIME_PUB__'            # Timestamp of article published
+APPENDIX_TIME_GOT           = '__TIME_GOT__'            # Timestamp of get from collector
+APPENDIX_TIME_POST          = '__TIME_POST__'           # Timestamp of post to processor
+APPENDIX_TIME_DONE          = '__TIME_DONE__'           # Timestamp of retrieve from processor
+APPENDIX_TIME_ARCHIVED      = '__TIME_ARCHIVED__'
+
+APPENDIX_RETRY_COUNT        = '__RETRY_COUNT__'
+APPENDIX_ARCHIVED_FLAG      = '__ARCHIVED__'
+APPENDIX_MAX_RATE_CLASS     = '__MAX_RATE_CLASS__'
+APPENDIX_MAX_RATE_SCORE     = '__MAX_RATE_SCORE__'
+APPENDIX_MAX_RATE_CLASS_EXCLUDE = '内容准确率'
+
+APPENDIX_MANUAL_RATING      = '__MANUAL_RATING__'
+
+APPENDIX_PROMPT_VERSION     = '__PROMPT_VERSION__'
+APPENDIX_AI_SERVICE         = '__AI_SERVICE__'
+APPENDIX_AI_MODEL           = '__AI_MODEL__'
+
+APPENDIX_LINK_UPSTREAM      = '__LINK_UPSTREAM__'
+APPENDIX_LINK_DOWNSTREAM    = '__LINK_DOWNSTREAM__'
+
+APPENDIX_VECTOR_SCORE       = '__VECTOR_SCORE__'        # Temporary added when doing vector search
+
+
+ARCHIVED_FLAG_DROP = 'D'
+ARCHIVED_FLAG_ERROR = 'E'
+ARCHIVED_FLAG_RETRY = 'R'
+ARCHIVED_FLAG_ARCHIVED = 'A'
+ARCHIVED_FLAG_SENSITIVE = 'S'
+ARCHIVED_FLAG_DUPLICATED = 'U'
+
+
+VECTOR_DB_SUMMARY = 'intelligence_summary'
+VECTOR_DB_FULL_TEXT = 'intelligence_full_text'
+```
+
+注意：“APPENDIX_”开头的字段位于APPENDIX字段下。
+
+主要区别是评分模式：从各个领域维度评分，以最高的评分维度作为主领域，变为：识别分类领域，评分采用统一标准。
+因此接下来涉及评分（RATE、APPENDIX_MAX_RATE_CLASS、APPENDIX_MAX_RATE_SCORE）都需要改为新的格式。
+使用APPENDIX_PROMPT_VERSION可以判断版本，新格式为20 ~ 29。如果该字段不存在，则是旧格式（v1）。
+未来可能会有3x、4x及更高版本，请考虑清楚。
+我希望最好兼容2种格式，如果做不到，至少旧格式不要报错。
+先分析和记住二者的格式和区别，接下来我将给出可能需要调整的代码。只需要给出修改的部分和准确定位，注释使用英文。
+
+
+
+
+
+
+首先是文章列表项，它是所有文章列表的基础。对于v2，我希望能展示主分类和子分类，以及各个评分维度。并显示其prompt版本号（APPENDIX_PROMPT_VERSION）。
+请精心设计布局，不要更改原来的风格，同时不同版本代码区分明显，方便后续的版本加入。
+
+
+
+
+
+
+
+
+
+帮我写一个nginx的配置文件，实现以下反向代理：
+    将本地5000端口的http服务代理为https服务，端口25000。这是主服务。
+    将本地8002端口的http服务代理为https服务，挂在主服务的/crawl_monitor路径下。即下面的本地routing在外网我要挂到/crawl_monitor下：
+       ```
+        # Data APIs (GET)
+        self.app.add_url_rule(build_url('/api/dashboard/stats'), 'get_dashboard_stats',
+                              maybe_wrap(self.get_dashboard_stats), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/groups'), 'get_groups', maybe_wrap(self.get_groups), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/logs'), 'get_logs', maybe_wrap(self.get_logs), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/status/recent'), 'get_recent_statuses',
+                              maybe_wrap(self.get_recent_statuses), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/snapshot/<url_hash>'), 'get_snapshot', maybe_wrap(self.get_snapshot),
+                              methods=['GET'])
+        self.app.add_url_rule(build_url('/api/dashboard/chart'), 'get_trend_chart',
+                              maybe_wrap(self.get_trend_chart), methods=['GET'])
+
+        self.app.add_url_rule(build_url('/api/history/stats'), 'get_history_stats',
+                              maybe_wrap(self.get_history_stats), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/group/round_status'), 'get_group_round_status',
+                              maybe_wrap(self.get_group_round_status), methods=['GET'])
+        self.app.add_url_rule(build_url('/api/export/<target>'), 'export_data',
+                              maybe_wrap(self.export_data), methods=['GET'])
+
+        # Control APIs (POST)
+        self.app.add_url_rule(build_url('/api/control/<action>'), 'system_control', maybe_wrap(self.system_control),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/api/control/reset_stats'), 'reset_stats', maybe_wrap(self.reset_stats),
+                              methods=['POST'])
+
+        # RPC APIs (POST)
+        self.app.add_url_rule(build_url('/rpc/register_group'), 'rpc_register_group',
+                              maybe_wrap(self.rpc_register_group), methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/should_crawl'), 'rpc_should_crawl', maybe_wrap(self.rpc_should_crawl),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/report_result'), 'rpc_report_result', maybe_wrap(self.rpc_report_result),
+                              methods=['POST'])
+        self.app.add_url_rule(build_url('/rpc/round/lifecycle'), 'rpc_round_lifecycle',
+                              maybe_wrap(self.rpc_round_lifecycle), methods=['POST'])
+       ```
+    同时编写模板，今后会有其它子服务会被代理到指定的子路径下。
+
+使用以下证书：
+	ssl_certificate      C:/nginx/conf/ssl/server.crt;
+    ssl_certificate_key  C:/nginx/conf/ssl/server.key;
+
+同时：
+1. 将http重定向到https服务
+2. 对于子服务，通过主服务的 “/auth_check” 进行认证检查。
+3. 记录访问详细日志，便于工具分析（推荐一个在线阅读nginx的工具，日志格式适配它）。
+
+本服务器系统为win11，使用 “https://sleepysoft.asuscomm.com” 这个DDNS域名访问。
+真正的域名对应的主机会做反向代理，保留访问者原始信息，并转发到本服务器。
+请分析和检查我的需求，给出nginx的配置文件。
+
+
+
+
+
+
+
+
+
+
+
+
+我希望为AIClientManager增加存储到sqlite数据库的log功能。
+记录的内容包括：
+    1. 自增长序号
+    2. 时间
+    3. client名字
+    4. 模型名字
+    5. 运行及错误状态（正常但空闲、运行中（成功或失败）、出错空闲、不可用，和ClientStatus并不对应）
+    6. 程序启动标识（不要将这次的状态和上次的状态混在一起，从而出现空闲几天的错误显示）
+我的期望是：之后可以根据这个log列表绘制水平柱状图，直观地看出在某段时间中，一个client处于哪种状态。从而直观地看出一个client的利用率和执行的速度。
+仔细思考，给出你的设计和想法，再实现代码。只需要给出修改的代码及定位，文本注释使用英文。
+
+
+
+
+请仔细设计，如何将上面的数据提供给前端？以及前端怎样绘制和显示图表。可以创建另一个页面并增加跳转。由于我这是一个可以嵌入任何系统的监控工具，所以前端直接内嵌。要保持这个设计。
+给出增加的代码和修改的代码并定位 ，不要输出大幅修改的完整代码。
+
+
+
+
+
+
+
+
+我有一段前端代码，其中prompt的部分我想链接到真实的prompt上。请帮设计一个后端接口（placeholder，根据你的参数和设计我来填具体内容），并对前端进行修改以及适配该功能。
+注意prompt返回的是一段文本，请尽可能以简洁但好看的方式展现。给出修改的代码，如果修改了函数，给出函数完整实现。
+prompt和uuid无关，只通过prompt_version进行匹配。
+
+
+
+
+
+
+
+
+
+
+我给出的是情报列表页面。我希望实现一个显示聚合情报页面，和情报列表页面保持同样的风格，但增加展开功能。
+该列表只显示簇中心的文章，用户可以展开这个簇的其它相关文章，子文章列表显示内容和原本列表项一样，但需要看出层次。
+无论点击哪个文章，默认行为也和文章列表一致，即弹出modal展示文章详情。
+
+
+
+
+
+
+
+
+
+
+
+
+我的程序中会出现AI没按指令做翻译和摘要的问题，因此我想增加一层翻译功能。即检测EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT是否非中文，如果是，则调用AI进行翻译。
+这个翻译即要考虑刚分析完成的内容，同时也要从后向前扫描已经归档的情报。同时如果vector db存在的话，还需要更新对应的向量数据。
+这是一个略微复杂的综合动作，并且更像一个补丁而非正式功能。我不希望在IntelligenceHub中增加大量代码。
+请充分思考，给出设计和代码。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+我想为VectorDB模块做一些修改：
+
+1. 每次离线聚类时记录结果到一个文本文件，只需要记录标题，并且体现层次关系。
+2. 聚类生成的文件要放到Engine配置的目录同级。
+
+
+
+
+
+
+
+
+
+
+
+
+
+我会给出IntelligenceAggregationEngine和引用它的service部分代码，我需要你做两件事情：
+1. 将api_clusters_latest和api_cluster_members主要部分移到IntelligenceAggregationEngine，抽取代码复用。
+2. 每次离线聚类时，开一个临时线程监控任务状态，一旦任务完成，记录latest_offline的一个snapshot到一个文本文件，只需要记录标题，以及你认为有助于调试的信息，并且体现层次关系。
+
+
+
+
+
+
+
+
+
+
+
+我要实现一个时间段内实体出现次数统计功能。
+
+按小时为time slot，统计并记录intelligence_archived中这个slot里 地点，地域，人物，组织 四者的出现次数并缓存。
+需要查询时直接按查询时间段统计并合并这个缓存结果即可。
+
+时间段默认按 APPENDIX_TIME_ARCHIVED = '__TIME_ARCHIVED__' 字段划分，字段作为参数在构造时可改。
+统计字段为 ProcessedData 的 LOCATION，GEOGRAPHY，PEOPLE，ORGANIZATION。
+
+该功能作为ServiceComponent下的一个独立模块，提供统计函数，以及查询函数。有以下使用方式：
+1. 由IHub通过定时器每一个小时调用一次。
+2. 查询时如果某些time slot没有记录，则先建立记录（这段时间由实体为0也是记录，需要占位标识）
+3. 可按 地点，地域，人物，组织 四类分类统计并指定时间段查询。
+
+同时提供对应的后端API和前端页面，要求：
+1. 按 地点，地域，人物，组织 分四类显示统计信息
+2. 全局设置一个阈值和时间段
+3. 每类显示TOP 20以及高于阈值的BOTTOM 20
+4. 每类用曲线力显示趋势
+5. 各个类使用tab切换子页面显示
+6. 其它你认为有帮助的统计信息
+
+需要考虑的问题：这个数据用什么数据库保存比较合适。
+
+
+
+几个改动：
+1. 对于没有数据的time slot，统计时间会非常长，我希望能有进度提示。
+2. 统计最小粒度为天，阈值默认为5，限制TOP N的最大数量为50，时间范围最大为12个月。
+3. 动态统计间隔，比如按天统计或按周统计，按月统计，动态调整显示时间间隔。
+4. 横坐标显示太密，应按统计粒度动态调整（如按日统计只显示到日期不显示时间）。
+5. 最活跃时段和峰值次数无用。
+6. TOP N显示区域两边不对称，文字也重新斟酌一下。
+7. 趋势曲线仅点击某个实体后显示单一实体趋势。
+
+
+
+
+
+实现一个复杂的功能：
+
+在实体统计页面 templates/entity_frequency.html 中，当我查看某个实体的趋势时，我好奇它某一天怎么会有这么多新闻。
+因此我想在点击趋势图的某一天时，查看对应实体在当天的情报。
+同时更进一步，在点击TOP N统计图时，也能查询对应实体在这段时间内的情报。
+情报要在新的页面中打开，同时尽可能构造条件并利用现有的页面展示特定条件的情报。
+先评估实现的可能性。
+
+
+
+
+
+
+
+
+
+
+实体统计功能有几个问题：
+1. 如果多个用户访问页面，会不会重复触发实体统计缓存更新？
+2. 当访问页面触发实时更新时，其它访问者疑似无法访问网页。
+
+我希望：
+1. 防缓存重复更新。
+2. 更新过程在线程中而非Flask的任务中进行。
+3. 可以在程序启动时使用线程检查并更新一个月内的实体统计信息。
+4. 非登录用户无法触发缓存更新，有多少数据看多少数据（如何区分用户状态）。
+5. 只有登录用户查询才会补足缺失的实体统计，本条和1、2不冲突。
+
+
+
+
+
+
+
+调查一个问题：
+
+实体趋势中显示某实体某日出现次数为N，但我点击趋势图对应日期跳转查询页面，得到的结果却不一定是N。
+
+如：New England
+Date: 2026-01-25 00:00 to 2026-01-25 23:59
+数量：5
+跳转后结果：2
+
+检查是统计问题，还是时区问题，或是时间字段问题。
+
+
+
+
+
+
+
+
+
+请评估以下prompt和schema，我在使用中发现一些问题以及有一点想法。
+
+1. prompt会提取所有涉及的地点和时间，但其实最有价值的是主要发生的时间和地点，也就是说同一个要素多个值其实有主次之分。
+> 比如伊朗被美国空袭中国发声，显示地域热点图的时候肯定是将点显示在伊朗而非中国或美国。
+> 时间、人物、组织也是同理。
+
+2. 对于今后想做的产业图，我希望除了提取原始的五要素之外还要提取产业相关的“物料”或“服务”。
+> 这也涉及到判断其中提到的哪个物料/服务有价值，而非将所有提及的物料/服务都列出来。
+> 对于“物料”或“服务”，应该修改schema作为顶级节点，还是放到APPENDIX中？物料算是一种通用的本质的概念吗？今后有没有可能为了其它目的提取逻辑上并列的东西。
+
+
+
+
+
+
+
+
+接下来我想做一个中等规模的重构。
+
+我的原始目的如下：
++ 当前已实现国际新闻的抓取和分析，接下来我想实现 finance 以及 industry 的情报分析。
++ 针对 finance 和 industry ，有其独特的数据源，和国际新闻源完全不同。
++ 三种数据不是一类，我期望通过不同的页面发布。
++ 对于 finance 和 industry数据，会接入其它系统进一步处理。
+
+当前的状况：
+IIS的核心 IntelligenceHub.py 中，所有输入的情报都遵循同一套流程处理，使用同一个prompt分析，使用同一个schema检查，并保存入同一套数据库中。
+我希望IIS可以支持多个“子系统”，即根据来源的消息的分类标记，使用不同的prompt分析，结果保存到不同的数据库组里，访问页面则带有不同的前缀路径，而分析和处理流程则使用同一套。
+而扩展更多的子系统，只需要通过改配置实现而不需要动代码。
+甚至可以动态注入prompt和schema并直接观测结果（比如测试，不入库）。
+
+为了达成这个目的，有以下几个考虑：
+1. schema是使用标准框架，还是允许不相同。
+2. 是使用同一个数据库，通过不同标记区分，还是分数据库（相当于“两套系统”，但不需要额外开一个IIS实例）。
+3. 情报内容有交叉怎么办？基于这点考虑，到底是分“子系统”，还是仅仅“分类”？
+
+请分析和评估，为了实现这个目标，最佳方案是什么？需要修改哪些文件。
+
+
+
+
+
+
+
+
+设计确定如下：
+1. 统一schema
+2. 单库分集合
+3. 情报明确其所属子系统并交由该子系统分析，情报暂时不跨系统
+4. 分离子系统相关配置，增加需要的额外字段。但子系统配置入口集成和公共配置依然放在原来的配置文件中
+5. web service通过blue print分不同前缀路径注册
+6. 由IntelligenceHub中拆分出子系统的资源，流程的框架保持不变
+7. 必须向前兼容，有默认子系统。
+8. 子项目应该不需要动，但采集模块需要额外字段支持送达不同系统，先做简单兼容，然后系统考虑采集模块如何维护多子系统的数据源
+如果还有未确定的事项及不合理的细节请告诉我。
+
+补充：
+1. 所有子系统都要具名，可以配置default指向某个子系统，不具名的默认url指向这个子系统的内容，不影响对应的具名url。
+2. 内容的额外字段先放APPENDIX，后续再考虑动态或升级schema。
+3. 聚合之类先只做default，后期可以配置，并且向量数据库非常耗资源，不可能多实例。与向量相关的，比如recommendation和vector search同理。
+4. 每个子系统数据源不同，并且有自己的一套数据库访问实例，互不管对方。
+其它按推荐进行。
+
+
+
+
+

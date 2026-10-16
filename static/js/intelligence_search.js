@@ -28,6 +28,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const publicMode = JSON.parse(document.body.dataset.publicMode || 'false');
     const publicLimits = JSON.parse(document.body.dataset.publicLimits || '{}');
 
+    // 非默认子系统暂不支持向量检索：隐藏 Vector 标签页
+    if (window.IIS_VECTOR_ENABLED === false) {
+        const vectorTab = document.getElementById('vector-tab');
+        if (vectorTab && vectorTab.closest('li')) {
+            vectorTab.closest('li').remove();
+        }
+        const vectorPane = document.getElementById('vector-pane');
+        if (vectorPane) {
+            vectorPane.remove();
+        }
+    }
+
     function clampPerPageOptions(selectId, maxPerPage) {
         const select = document.querySelector(selectId);
         if (!select || !maxPerPage) return;
@@ -54,18 +66,19 @@ document.addEventListener('DOMContentLoaded', () => {
         clampPerPageOptions('#mongo-pane select[name="per_page"]', mongoMaxPerPage);
         clampPerPageOptions('#vector-pane select[name="per_page"]', vectorMaxPerPage);
 
-        // 游客模式仅允许按 Archive Time 搜索，禁用并清空 Publish Time
-        ['date-range-mongo', 'date-range-vector'].forEach(id => {
+        // 游客模式仅允许按内容主时间搜索，禁用并清空归档时间
+        ['date-range-archive-mongo', 'date-range-archive-vector'].forEach(id => {
             const input = document.getElementById(id);
             if (!input) return;
             input.disabled = true;
             input.placeholder = '游客模式不可用';
-            const group = input.closest('.public-publish-time-group');
-            if (group) group.classList.add('disabled-publish-time');
+            const group = input.closest('.public-archive-time-group');
+            if (group) group.classList.add('disabled-archive-time');
             const clearBtn = document.querySelector(`.clear-date-btn[data-target="${id}"]`);
             if (clearBtn) clearBtn.disabled = true;
         });
-        ['start-time-mongo', 'end-time-mongo', 'start-time-vector', 'end-time-vector'].forEach(id => {
+        ['archive-start-time-mongo', 'archive-end-time-mongo',
+         'archive-start-time-vector', 'archive-end-time-vector'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -97,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (vectorPane && !vectorPane.querySelector('.public-limit-notice')) {
             const notice = document.createElement('div');
             notice.className = 'alert alert-light border public-limit-notice py-1 px-2 mt-2 mb-0 small text-secondary';
-            notice.innerHTML = `<i class="bi bi-shield-lock"></i> 游客模式：每页最多 ${vectorMaxPerPage} 条、最多 ${vectorMaxPage} 页、仅摘要库、最低相似度 ${vectorMinScore}、仅最近 ${vectorWindowDays} 天归档数据。`;
+            notice.innerHTML = `<i class="bi bi-shield-lock"></i> 游客模式：每页最多 ${vectorMaxPerPage} 条、最多 ${vectorMaxPage} 页、仅摘要库、最低相似度 ${vectorMinScore}、仅最近 ${vectorWindowDays} 天内容数据。`;
             vectorPane.appendChild(notice);
         }
     }
@@ -300,12 +313,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const fpVector = initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
     const fpArchiveVector = initFlatpickr('date-range-archive-vector', 'archive-start-time-vector', 'archive-end-time-vector');
 
-    // 游客模式下清空已禁用的发布时间选择器（flatpickr 实例此时已创建）
+    // 游客模式下清空已禁用的归档时间选择器（flatpickr 实例此时已创建）
     if (publicMode) {
-        [fpMongo, fpVector].forEach(fp => {
+        [fpArchiveMongo, fpArchiveVector].forEach(fp => {
             if (fp && typeof fp.clear === 'function') fp.clear(false);
         });
-        ['start-time-mongo', 'end-time-mongo', 'start-time-vector', 'end-time-vector'].forEach(id => {
+        ['archive-start-time-mongo', 'archive-end-time-mongo',
+         'archive-start-time-vector', 'archive-end-time-vector'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -340,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.showLoading();
 
         try {
-            const response = await fetch('/intelligences/query', {
+            const response = await fetch((window.IIS_BASE_PATH || '') + '/intelligences/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -397,17 +411,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const perPage = document.querySelector('#vector-pane select[name="per_page"]');
             payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
-            if (!publicMode) {
-                const st = document.getElementById('start-time-vector').value;
-                const et = document.getElementById('end-time-vector').value;
-                if (st) payload.start_time = st;
-                if (et) payload.end_time = et;
-            }
+            const st = document.getElementById('start-time-vector').value;
+            const et = document.getElementById('end-time-vector').value;
+            if (st) payload.start_time = st;
+            if (et) payload.end_time = et;
 
-            const ast = document.getElementById('archive-start-time-vector').value;
-            const aet = document.getElementById('archive-end-time-vector').value;
-            if (ast) payload.archive_start_time = ast;
-            if (aet) payload.archive_end_time = aet;
+            if (!publicMode) {
+                const ast = document.getElementById('archive-start-time-vector').value;
+                const aet = document.getElementById('archive-end-time-vector').value;
+                if (ast) payload.archive_start_time = ast;
+                if (aet) payload.archive_end_time = aet;
+            }
 
             const scoreMin = document.getElementById('score-threshold-min-vector').value;
             const scoreMax = document.getElementById('score-threshold-max-vector').value;
@@ -430,17 +444,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const perPage = document.querySelector('#mongo-pane select[name="per_page"]');
             payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
-            if (!publicMode) {
-                const st = document.getElementById('start-time-mongo').value;
-                const et = document.getElementById('end-time-mongo').value;
-                if (st) payload.start_time = st;
-                if (et) payload.end_time = et;
-            }
+            const st = document.getElementById('start-time-mongo').value;
+            const et = document.getElementById('end-time-mongo').value;
+            if (st) payload.start_time = st;
+            if (et) payload.end_time = et;
 
-            const ast = document.getElementById('archive-start-time-mongo').value;
-            const aet = document.getElementById('archive-end-time-mongo').value;
-            if (ast) payload.archive_start_time = ast;
-            if (aet) payload.archive_end_time = aet;
+            if (!publicMode) {
+                const ast = document.getElementById('archive-start-time-mongo').value;
+                const aet = document.getElementById('archive-end-time-mongo').value;
+                if (ast) payload.archive_start_time = ast;
+                if (aet) payload.archive_end_time = aet;
+            }
 
             const thMin = document.getElementById('threshold-min-mongo').value;
             const thMax = document.getElementById('threshold-max-mongo').value;
@@ -448,11 +462,9 @@ document.addEventListener('DOMContentLoaded', () => {
             payload.threshold_max = Number(thMax);
 
             const loc = document.querySelector('#mongo-pane input[name="locations"]');
-            const geo = document.querySelector('#mongo-pane input[name="geography"]');
             const peo = document.querySelector('#mongo-pane input[name="peoples"]');
             const org = document.querySelector('#mongo-pane input[name="organizations"]');
             if (loc && loc.value.trim()) payload.locations = loc.value.trim();
-            if (geo && geo.value.trim()) payload.geography = geo.value.trim();
             if (peo && peo.value.trim()) payload.peoples = peo.value.trim();
             if (org && org.value.trim()) payload.organizations = org.value.trim();
 
@@ -516,8 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const entities = {
             'locations': 'locations',
             'peoples': 'peoples',
-            'organizations': 'organizations',
-            'geography': 'geography'
+            'organizations': 'organizations'
         };
         for (const [param, fieldName] of Object.entries(entities)) {
             const val = urlParams.get(param);
@@ -540,34 +551,31 @@ document.addEventListener('DOMContentLoaded', () => {
             return isNaN(d) ? null : d;
         };
 
-        // 游客模式忽略 URL 中的发布时间参数
-        if (!publicMode) {
-            if (startTime && endTime) {
-                const startDate = parseDate(startTime);
-                const endDate = parseDate(endTime);
-                if (!isVector) {
-                    document.getElementById('start-time-mongo').value = startTime;
-                    document.getElementById('end-time-mongo').value = endTime;
-                    if (fpMongo && startDate && endDate) fpMongo.setDate([startDate, endDate], false);
-                } else {
-                    document.getElementById('start-time-vector').value = startTime;
-                    document.getElementById('end-time-vector').value = endTime;
-                    if (fpVector && startDate && endDate) fpVector.setDate([startDate, endDate], false);
-                }
-            } else if (archiveStartTime && archiveEndTime) {
-                // 跳转时只带了归档时间 → 清空默认的发布时间，避免双重过滤
-                if (!isVector) {
-                    document.getElementById('start-time-mongo').value = '';
-                    document.getElementById('end-time-mongo').value = '';
-                    if (fpMongo) fpMongo.clear(false);
-                } else {
-                    document.getElementById('start-time-vector').value = '';
-                    document.getElementById('end-time-vector').value = '';
-                    if (fpVector) fpVector.clear(false);
-                }
+        if (startTime && endTime) {
+            const startDate = parseDate(startTime);
+            const endDate = parseDate(endTime);
+            if (!isVector) {
+                document.getElementById('start-time-mongo').value = startTime;
+                document.getElementById('end-time-mongo').value = endTime;
+                if (fpMongo && startDate && endDate) fpMongo.setDate([startDate, endDate], false);
+            } else {
+                document.getElementById('start-time-vector').value = startTime;
+                document.getElementById('end-time-vector').value = endTime;
+                if (fpVector && startDate && endDate) fpVector.setDate([startDate, endDate], false);
+            }
+        } else if (!publicMode && archiveStartTime && archiveEndTime) {
+            // 跳转时只带了归档时间 → 清空内容时间，避免双重过滤
+            if (!isVector) {
+                document.getElementById('start-time-mongo').value = '';
+                document.getElementById('end-time-mongo').value = '';
+                if (fpMongo) fpMongo.clear(false);
+            } else {
+                document.getElementById('start-time-vector').value = '';
+                document.getElementById('end-time-vector').value = '';
+                if (fpVector) fpVector.clear(false);
             }
         }
-        if (archiveStartTime && archiveEndTime) {
+        if (!publicMode && archiveStartTime && archiveEndTime) {
             const startDate = parseDate(archiveStartTime);
             const endDate = parseDate(archiveEndTime);
             if (!isVector) {

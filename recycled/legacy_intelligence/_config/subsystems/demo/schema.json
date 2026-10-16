@@ -1,0 +1,31 @@
+{
+  "name": "demo",
+  "display_name": "???????",
+  "fields": {
+    "TAXONOMY": {
+      "label": "??"
+    },
+    "SUB_CATEGORY": {
+      "label": "??"
+    },
+    "EVENT_TITLE": {
+      "label": "??"
+    },
+    "EVENT_BRIEF": {
+      "label": "??"
+    },
+    "RATE": {
+      "label": "??"
+    },
+    "APPENDIX": {
+      "fields": {
+        "DEMO_TAG": {
+          "label": "Demo ??"
+        },
+        "LEVEL": {
+          "label": "??"
+        }
+      }
+    }
+  }
+}

@@ -72,6 +72,16 @@ class MongoDBStorage:
         - The '_id' field of returned documents is converted from ObjectId to string.
     """
 
+    @classmethod
+    def from_collection(cls, collection: Collection) -> "MongoDBStorage":
+        """Wrap an existing PyMongo collection without opening another client."""
+        instance = cls.__new__(cls)
+        instance.collection = collection
+        instance.db = collection.database
+        instance.client = collection.database.client
+        instance.connection_uri = ""
+        return instance
+
     def __init__(self,
                  host: str = 'localhost',
                  port: int = 27017,
@@ -579,7 +589,7 @@ class MongoDBStorage:
             return []
 
         # Note: process_document_output converts output to Local, which is what we want for iteration logic
-        # FIX: Use helper to access nested fields via dot notation (e.g. "APPENDIX.time_archived")
+        # Use helper to access nested fields via dot notation (e.g. "APPENDIX.__CONTENT_TIME__").
         raw_min = self._get_nested_value(min_doc, time_field)
         raw_max = self._get_nested_value(max_doc, time_field)
 

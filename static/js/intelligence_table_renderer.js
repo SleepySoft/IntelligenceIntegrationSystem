@@ -9,8 +9,44 @@ class ArticleRenderer {
         this.listContainer = document.getElementById(listContainerId);
         this.paginationClass = paginationContainerClass;
         this.promptCache = new Map();
+        this.sortBy = 'archived_at';
         this.initPromptViewer();
         this.initAutoRefresh();
+    }
+
+    setSortBy(sortBy) {
+        this.sortBy = ['content_time', 'archived_at'].includes(sortBy) ? sortBy : 'relevance';
+    }
+
+    renderTimeChips(article) {
+        const source = article.content_time_source
+            || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
+        const selectedKey = this.sortBy === 'content_time'
+            ? source : (this.sortBy === 'archived_at' ? 'archived' : null);
+        const times = [
+            ['published', '发布', article.published_at],
+            ['collected', '采集', article.collected_at],
+            ['archived', '归档', article.archived_at]
+        ];
+        times.sort((left, right) => Number(right[0] === selectedKey) - Number(left[0] === selectedKey));
+        return times
+            .map(([key, label, value]) => {
+                const active = key === selectedKey ? ' time-sort-active' : '';
+                // 内容时间排序时直接使用当前来源标签的时间。这样即使旧数据没有
+                // 物化 content_time，只要发布/采集时间存在，仍能获得与归档时间
+                // 排序相同的时效高亮。
+                const sortTime = key === selectedKey
+                    ? (value || (this.sortBy === 'content_time'
+                        ? article.content_time : article.archived_at))
+                    : '';
+                const sortData = sortTime
+                    ? ` data-sort-time="${this.escapeHTML(sortTime)}"` : '';
+                const title = key === selectedKey
+                    ? ` title="${this.sortBy === 'content_time' ? '内容时间排序依据' : '归档时间排序依据'}"`
+                    : '';
+                const display = value ? this.formatLocalTime(value) : '—';
+                return `<span class="article-time time-${key}${active}"${sortData}${title}>${label}: ${this.escapeHTML(display)}</span>`;
+            }).join('');
     }
 
     // --- 公共方法 ---
@@ -79,36 +115,32 @@ class ArticleRenderer {
     generateArticleCardHtml(article) {
         if (!article) return '';
 
-        // 1. 获取 Appendix (防止 undefined)
-        const appendix = article.APPENDIX || {};
+        // 先问插件：有整卡/块覆盖则由协议处理，否则回退后面的默认实现
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        if (plugin) {
+            const helpers = window.SubsystemUI.makeHelpers ? window.SubsystemUI.makeHelpers(this, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '') : {
+                base: window.IIS_BASE_PATH || '',
+                subsystem: window.IIS_SUBSYSTEM || '',
+            };
+            const built = window.SubsystemUI.buildCard(plugin, article, this, helpers);
+            if (built && built.html) return built.html;
+        }
+
 
         // 1.2 ID 获取
         const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
-        const intelUrl = `/intelligence/${uuid}`;
+        const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
 
-        // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
-        const informant_val = article.INFORMANT || article.informant || article.source || "";
+        const informant_val = article.INFORMANT || "";
         const informant = this.escapeHTML(informant_val);
         const informant_html = this.isValidUrl(informant)
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
             : (informant || 'Unknown Source');
 
-        // 1.4 发布时间获取 (兼容 v2:APPENDIX, v1:PUB_TIME, 采集时间兜底)
-        const pub_time_raw = appendix['__TIME_PUB__'] || article.PUB_TIME || article.pub_time || article.collect_time;
-        const pub_time_display = this.formatLocalTime(pub_time_raw);
-
-        // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
-        const raw_archived_time = appendix['__TIME_ARCHIVED__'] || '';
-        const archived_time_display = this.formatLocalTime(raw_archived_time);
-
-        // 生成归档时间 HTML 片段
-        let archived_html = "";
-        if (raw_archived_time) {
-            archived_html = `<span class="article-time archived-time" data-archived="${this.escapeHTML(raw_archived_time)}">Archived: ${archived_time_display}</span>`;
-        }
+        const time_html = this.renderTimeChips(article);
 
         // 1.6 向量评分 (Vector Score)
-        const vector_score = appendix['__VECTOR_SCORE__'];
+        const vector_score = article.vector_score;
         let vector_score_html = "";
         if (vector_score !== undefined && vector_score !== null) {
             const formattedScore = parseFloat(vector_score).toFixed(3);
@@ -119,63 +151,22 @@ class ArticleRenderer {
         }
 
         // 1.7 AI 服务信息
-        const ai_service = this.escapeHTML(appendix['__AI_SERVICE__'] || '');
-        const ai_model = this.escapeHTML(appendix['__AI_MODEL__'] || '');
+        const ai_service = this.escapeHTML(article.ai_service || '');
+        const ai_model = this.escapeHTML(article.ai_model || '');
 
-        // 2. 版本逻辑分支 (V1 vs V2) - 生成 left_content
-        const prompt_version = appendix['__PROMPT_VERSION__'];
-        const is_v2 = prompt_version && !isNaN(Number(prompt_version)) && Number(prompt_version) >= 20;
-
-        let left_content = "";
-
-        if (is_v2) {
-            const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
-            const sub_categories = article.SUB_CATEGORY || [];
-            const total_score = appendix['__TOTAL_SCORE__'];
-
-            let tags_html = "";
-            if (Array.isArray(sub_categories) && sub_categories.length > 0) {
-                tags_html = sub_categories.map(tag => `<span class="v2-category-tag">${this.escapeHTML(tag)}</span>`).join('');
-            }
-
-            const category_line = `<div style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                <span class="debug-label" style="color:#1a73e8; font-size:0.95rem;">${taxonomy}</span>
-                ${tags_html}
-            </div>`;
-
-            let total_score_html = "";
-            if (total_score !== undefined && total_score !== null) {
-                total_score_html = `
-                <div class="article-rating" style="margin: 6px 0 4px 0;">
-                    <span class="debug-label">总分:</span>
-                    ${this.createRatingStars(total_score)}
-                </div>`;
-            }
-
-            left_content = `
-            ${category_line}
-            ${total_score_html}
-            <div>
-                <span class="debug-label">UUID:</span> ${uuid}
-            </div>`;
-
-        } else {
-            const max_rate_class = this.escapeHTML(appendix['__MAX_RATE_CLASS__'] || '');
-            const max_rate_score = appendix['__MAX_RATE_SCORE__'];
-
-            if (max_rate_class && max_rate_score !== null) {
-                left_content += `
-                <div class="article-rating" style="margin-bottom: 4px;">
-                    <span class="debug-label">${max_rate_class}:</span>
-                    ${this.createRatingStars(max_rate_score)}
-                </div>`;
-            }
-
-            left_content += `
-            <div>
-                <span class="debug-label">UUID:</span> ${uuid}
-            </div>`;
-        }
+        const prompt_version = article.prompt_version;
+        const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
+        const sub_categories = article.SUB_CATEGORY || [];
+        const tags_html = sub_categories.map(
+            tag => `<span class="category-tag">${this.escapeHTML(tag)}</span>`).join('');
+        const left_content = `
+            <div style="margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                <span class="debug-label">${taxonomy}</span>${tags_html}
+            </div>
+            <div class="article-rating" style="margin:6px 0 4px 0;">
+                <span class="debug-label">总分:</span>${this.createRatingStars(article.total_score)}
+            </div>
+            <div><span class="debug-label">UUID:</span> ${uuid}</div>`;
 
         // 3. 构建右侧调试信息 (right_content)
         let right_content = "";
@@ -184,7 +175,7 @@ class ArticleRenderer {
             if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
         }
 
-        if (is_v2 && prompt_version) {
+        if (prompt_version) {
             const pvEscaped = this.escapeHTML(prompt_version);
             right_content += `
               <div>
@@ -203,12 +194,11 @@ class ArticleRenderer {
         <div class="article-card">
             <h3>
               <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">
-                ${this.escapeHTML(article.EVENT_TITLE || article.title || "No Title")}
+                ${this.escapeHTML(article.EVENT_TITLE || "No Title")}
               </a>
             </h3>
             <div class="article-meta">
-                ${archived_html}
-                <span class="article-time">Publish: ${pub_time_display}</span>
+                ${time_html}
                 ${vector_score_html}
                 <span class="article-source">Source: ${informant_html}</span>
             </div>
@@ -237,8 +227,7 @@ class ArticleRenderer {
         this.listContainer.innerHTML = html;
     }
 
-    // --- 新增: V2 评分列表生成辅助函数 ---
-    createV2RatingList(rateDict) {
+    createRatingList(rateDict) {
         if (!rateDict || Object.keys(rateDict).length === 0) return "";
 
         // 将对象转换为数组并排序（可选：按分数降序或按Key排序，这里默认按Key）
@@ -340,19 +329,16 @@ class ArticleRenderer {
         const now = new Date().getTime();
         const twelveHours = 12 * 60 * 60 * 1000;
         const container = this.listContainer || document;
-        container.querySelectorAll('.archived-time').forEach(el => {
-            const archivedStr = el.dataset.archived;
-            if(!archivedStr) return;
-            const archivedTime = new Date(archivedStr.replace(/-/g, '/')).getTime();
-            if (isNaN(archivedTime)) return;
-            const timeDiff = now - archivedTime;
+        container.querySelectorAll('.time-sort-active[data-sort-time]').forEach(el => {
+            const sortTime = new Date(el.dataset.sortTime).getTime();
+            if (isNaN(sortTime)) return;
+            const timeDiff = now - sortTime;
             let ratio = Math.min(1, Math.max(0, timeDiff / twelveHours));
             const r = Math.round(255 - ratio * (255 - 227));
             const g = Math.round(165 - ratio * (165 - 242));
             const b = Math.round(0 - ratio * (0 - 253));
             el.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-            // 原始代码没有变色逻辑，如果你想要完全还原，可以删掉下面这行
-            el.style.color = ratio < 0.3 ? '#fff' : '#5f6368';
+            el.style.color = '#fff';
         });
     }
 
@@ -523,7 +509,7 @@ class ArticleRenderer {
             return this.promptCache.get(key);
         }
 
-        const url = `/api/prompts/${encodeURIComponent(key)}`;
+        const url = `${window.IIS_BASE_PATH || ''}/prompt?version=${encodeURIComponent(key)}`;
 
         const resp = await fetch(url, {
             method: 'GET',

@@ -1,0 +1,55 @@
+# =========================
+# VPS Gateway Config (sleepysoft.org)
+# =========================
+
+# HTTP -> HTTPS 重定向
+server {
+    listen 80;
+    server_name sleepysoft.org;
+    
+    # Certbot 可能会自动插入验证代码，保持默认即可
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS 主入口
+server {
+    listen 443 ssl;
+    server_name sleepysoft.org;
+
+    # SSL 证书配置 (Certbot 生成路径)
+    ssl_certificate /etc/letsencrypt/live/sleepysoft.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sleepysoft.org/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # -------------------------
+    # 核心转发逻辑
+    # -------------------------
+    location / {
+        # 目标：你家里的 Windows Server (通过 DDNS 域名)
+        # 注意：这里用 https，因为你家里的 Nginx 也是监听 SSL
+        proxy_pass https://sleepysoft.asuscomm.com:25000;
+
+        # 【关键】传递原始请求头，让后端知道真实的域名和 IP
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSL 握手优化 (VPS -> Windows)
+        # 必须开启 SNI，否则对方如果是多站点 SSL 可能会握手失败
+        proxy_ssl_server_name on;
+        proxy_ssl_name sleepysoft.asuscomm.com;
+        
+        # 长连接优化 (减少 VPS 和家里服务器的握手开销)
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        
+        # 缓冲设置 (根据网络状况可选，防止大文件阻塞)
+        proxy_buffering off;
+    }
+}

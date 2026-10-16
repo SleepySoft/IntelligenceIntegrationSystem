@@ -6,11 +6,13 @@
 
 #### Intelligence
 
-+ [Intelligence List](/intelligences?offset=0&count=50&threshold=6)
++ [Intelligence List](/views)
 
 + [Aggregated Intelligence](/intelligences/clusters)
 
 + [Intelligence Search](/intelligences/search)
+
++ [Intelligence Views](/views/)
 
 + [Intelligence Graph](/intelligence/graph/view)
 
@@ -18,15 +20,19 @@
 
 #### Statistics
 
-+ [Dashboard](/statistics/intelligence_statistics.html)
++ [Statistics Overview](/statistics/overview)
 
-+ [Rate Statistics](/statistics/score_distribution.html)
-
-+ [Entity Statistics](/statistics/entity_frequency/page)
++ [Entity Statistics (Full)](/statistics/entity_frequency/page)
 
 -----------------------------------------------
 
 #### Maintenance
+
++ [Runtime Monitor](/monitor/runtime)
+
++ [Runtime Control](/control)
+
++ [Manual Intelligence Debug](/debug/intelligence)
 
 + [Log Viewer](/logger/log_viewer)
 
@@ -34,7 +40,6 @@
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
-+ [System Monitor](/monitor/api/dashboard)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 

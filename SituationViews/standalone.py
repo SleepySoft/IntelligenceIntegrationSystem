@@ -1,0 +1,60 @@
+"""独立启动“态势洞察”，不修改或依赖 IIS Web 路由。"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from flask import Flask, redirect
+
+from GlobalConfig import DATA_PATH, DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
+from IISConfig import load_iis_config
+from ServiceComponent.SubsystemRegistry import SubsystemRegistry
+from SituationViews.web import SituationViewsService
+from SituationViews.geocoding import CachedNominatimGeocoder
+
+
+def create_app(config=None, *, subsystem_registry=None) -> Flask:
+    """创建只读视图服务；正式入口始终从配置连接真实 MongoDB。"""
+    config = config or load_iis_config(
+        DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
+    registry = subsystem_registry or SubsystemRegistry.build_from_config(
+        config,
+        mongodb_params={
+            "host": config.get("mongodb.host", "localhost"),
+            "port": config.get("mongodb.port", 27017),
+            "username": config.get("mongodb.user", ""),
+            "password": config.get("mongodb.password", ""),
+        },
+        db_name="IntelligenceIntegrationSystem",
+    )
+    app = Flask(__name__)
+    SituationViewsService(
+        registry,
+        detail_origin=config.get(
+            "intelligence_hub_web_service.service.host_url",
+            "http://127.0.0.1:5000",
+        ),
+        geocoder=CachedNominatimGeocoder(
+            Path(DATA_PATH) / "SituationViews" / "geocoding.sqlite"),
+        dashboard=config.get(
+            "intelligence_hub_web_service.intelligence_views.situation", {}),
+    ).mount_to_app(app, url_prefix="/situation")
+
+    @app.get("/")
+    def root():
+        return redirect("/situation/embed/map")
+
+    return app
+
+
+def main():
+    parser = argparse.ArgumentParser(description="IIS Situation Insight dashboards")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5010)
+    args = parser.parse_args()
+    create_app().run(host=args.host, port=args.port, debug=False)
+
+
+if __name__ == "__main__":
+    main()

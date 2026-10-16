@@ -5,23 +5,16 @@
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
 
 
-## v2版本的说明
+## Event V4 版本说明
 
-从2026年2月15日开始，main分支将正式切换到v2版本。
+当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。现有情报域共享
+`CollectedData → AnalysisResultV4 → ArchivedDataV4` 契约。归档文档内嵌
+`EVENT_EXTRACTION` 作为权威数据；事件集合只是可重建的查询索引，实体和地域以名称
+快照直接保存在事件中。查询、翻译、向量化、聚合、图谱和 Web 展示均读取该契约。
 
-同时v1版本归档到 [这个分支](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/iis-v1)。
-
-v2版本兼容v1版本的数据，数据库不需要额外的升级操作。
-最新导出的数据在 [这里下载](https://pan.baidu.com/s/18PpJPCkIkB9EB2ea5zOA5Q?pwd=djts)
-
-关于v2版本的设计理念，以及与v1版本的区别，请阅读 [这篇文章]((doc/iis_v2_concept.md)) 。
-
-除了情报数据结构及评分机制改变外，v2版本还对爬虫框架进行了进一步的改进。
-一方面通过界面“所见即所得”的方式生成爬虫配置，另一方面增加了监控及调度功能，今后接入网站会非常方便。
-
-另外向量数据库存储的格式也进行了调整，即将部分内容直接置入metadata中。借助向量数据库，IIS系统支持相似情报跳转及关联情报推演功能。
-
-经过调整后的向量数据库对关联情报的查询表现优异，接下来我会重点研究情报的聚合以及关联推演。
+历史 V1/V2 实现、Prompt、测试、训练资料和设计文档已归档到
+[`recycled/legacy_intelligence/`](recycled/legacy_intelligence/)，不会被生产代码加载。
+V4 当前结构与完成情况见 [Event V4 集成记录](doc/event_v4_integration_handoff.md)。
 
 
 ## 更新与通知
@@ -85,7 +78,7 @@ N/A
 
 #### 创建与激活虚拟环境（可选）
 
-本项目建议使用python版本为3.10以上。当然，不创建虚拟环境，直接使用系统默认的python环境也不是不行。
+本项目要求 Python 3.11 以上。当然，不创建虚拟环境，直接使用系统默认的 Python 环境也可以。
 
 > 所谓python虚拟环境，其实非常简单，它就是一个目录，当你切换到这个虚拟环境时，使用的解析器、安装的库、使用的库，都仅限于该目录下，从而和其它环境隔离。
 > 
@@ -123,7 +116,7 @@ Anaconda好处是方便，缺点是重
 
 ```
 # 创建虚拟环境
-conda create -n iis python=3.10
+conda create -n iis python=3.11
 
 # 切换到该虚拟环境
 conda activate iis
@@ -197,22 +190,45 @@ python CrawlerServiceEngine.py
 
 #### 程序配置
 
-+ 重要：将 [config_example.json](_config/config_example.json) 复制为 [config.json](_config/config.json) ，按照实际情况更改配置（默认能启动，但不能进行分析）。
-> 
-> 配置主要应用在在 [IntelligenceHubStartup.py](IntelligenceHubStartup.py) 中载入，阅读该文件可以知道各配置项的用法。
-> 
-> 对于抓取外网新闻，需要配置 global_site_proxy。
-> 
-> 注意intelligence_hub_web_service及collector段的token并非AI服务的Token，而是爬虫引擎提交情报时的凭证以及IHub接受提交情报的凭证，两边需要对上（因为二者可以部署在不同的机器上）。
++ 重要：将 [iis_example.yaml](_config/iis_example.yaml) 复制为 `_config/iis.yaml`，只填写部署差异。
+>
+> [IISConfig.py](IISConfig.py) 负责默认值、严格 schema 校验以及运行时组件装配。主配置
+> 只分为 `server`、`database`、`hub`、`access`、`optional_subsystems` 和可选的 `web`，不会要求
+> 用户复制大量默认参数。未知字段会在启动时直接报错，避免“写了但实际没有生效”。
+> `optional_subsystems` 下的键是子系统名，每个子系统自带 `enabled` 及必要参数；
+> 例如翻译子系统用 `client_group` 选择 `ai_clients.yaml` 中的 Client 分组。
+>
+> AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
+> 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。
 
 + AI服务配置
 > 
-> 如果想使用AI进行情报分析，需要配置 [ai_client_config.py](_config/ai_client_config.py) 。由于AI服务配置比较复杂，因此直接使用python文件而非json文件。
+> 如果想使用 AI 进行情报分析，需要配置 [ai_clients.yaml](_config/ai_clients.yaml)。
+> 标准 Client 使用工厂式 YAML：`factory`、`name`、`group` 之外的字段直接传给工厂，
+> 分组并发统一写在顶层 `group_limits`。自定义 Client 使用外部工厂函数，不直接拼装结果列表。
 > 
-> 配置请参考：[AIClientConfigExample.py](AIClientCenter/ai_client_config_example.py) ，按需要复制修改对应项即可。
+> 配置请参考：[ai_clients_example.yaml](_config/ai_clients_example.yaml) ，复制为
+> `ai_clients.yaml` 后按需要修改对应项即可。AIClientCenter 的独立 CLI/harness
+> 配置请参阅 [AIClientCenter/README.md](AIClientCenter/README.md)。
+> 免费 API 服务的当前额度、使用边界，以及针对 Event V4 的 Client 能力/性能基准方案见
+> [免费 LLM API 资源池与 Client 基准验证方案](doc/free_llm_api_and_client_benchmark.md)。
+> Gemini/Groq/NVIDIA 的限额配置可直接复制
+> [_config/ai_clients_gemini_80_example.yaml](_config/ai_clients_gemini_80_example.yaml)，
+> 并通过对应环境变量提供 Key。`gemini_free`、`groq_free`、`nvidia_free` 等工厂直接复用
+> AIClientCenter 的 Provider preset；模型、额度和恢复策略仍由 Provider 维护，组并发由 YAML 明确配置。
+> 调用观测默认写入 `_data/ai_client_observations.db`，只保存模型、耗时、次数、逻辑
+> 字节量及估算/服务商实报 Token 等元数据，不保存请求和回复正文；可在
+> `ai_client_center.call_observation` 中关闭或调整保留期。登录后台后可从 AI Client
+> Manager 进入 Usage 页面，查看总览、趋势、切片排行和最近调用。
+> 准备组合多个免费服务时，也可复制
+> [_config/ai_clients_recommended_example.yaml](_config/ai_clients_recommended_example.yaml)
+> 为 `_config/ai_clients.yaml`，然后按文件顶部说明填写环境变量。
+> 不启动主程序即可预览 Event V4 Client 基准计划：
+> `python Scripts/benchmark_ai_clients.py`；确认 Client 和调用次数后增加 `--execute`
+> 才会发送真实请求，结果写入 `_data/ai_benchmarks/`。
 > 
 
 #### 启动
@@ -254,6 +270,13 @@ python CrawlerServiceEngine.py
 + 打开 [localhost:8001](localhost:8001) 进入向量数据库的管理页面。
 
 + 打开 [localhost:5000](localhost:5000) 则是无密码的公开页面。
+
++ 登录后台后可打开 [localhost:5000/debug/intelligence](http://localhost:5000/debug/intelligence)
+  人工粘贴正文并调试 AI 分析。该入口自动补齐 `CollectedData` 元数据，将 `source` 固定为
+  `__IIS_MANUAL_TEST__`，结果仅保存在当前进程的有界内存列表中，不写入 cache、archive、
+  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可分别选择情报域与
+  V2 / Event V4 分析机制，再选择对应的正式 Prompt 版本；Prompt 可编辑并仅对本次任务覆盖，
+  日期、正文等占位符仍由正式分析消息构造器拼接。
 
 
 ## 其它工具
@@ -306,10 +329,10 @@ python CrawlerServiceEngine.py
 
 ### IntelligenceHub
 
-+ [IntelligenceHub.py](IntelligenceHub.py)（IHub）：程序的核心。所有的信息都会提交汇总至此，由该模块进行处理、分析、归档，并提供查询功能。
++ [IntelligenceHub.py](IntelligenceHub.py)（IHub）：兼容导出入口。核心运行时位于 `ServiceComponent/runtime/`，应用门面位于 `ServiceComponent/HubApplication.py`；两者不直接依赖 MongoDB、AI、向量或 Flask。
 + [IntelligenceHubWebService.py](IntelligenceHubWebService.py)：为IHub提供网络服务的模块，包括API、网页发布和鉴权。
 + 
-+ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：初始化所有子组件、IntelligenceHub和IntelligenceHubWebService。
++ [IntelligenceHubStartup.py](IntelligenceHubStartup.py)：组合根。它初始化情报域和 AI 管理器，并按配置安装主流程、cache 恢复、翻译、向量索引、定时维护、聚合和图谱等可选子系统。
 + [IntelligenceHubLauncher.py](IntelligenceHubStartup.py)：IHub的**启动**器，选用合适的backend载入IntelligenceHubWebService的wsgi_app，
   > [20250910] 提供Flask原生、waitress、gunicorn三种WSGI服务器，默认服务器为waitress。
   > 
@@ -318,17 +341,18 @@ python CrawlerServiceEngine.py
   > 该文件不包含业务代码，几乎全部由AI生成，没有阅读的必要。如果对启动原理不理解，可以去搜索WSGI的机制。
   > 
 
-> IHub的处理流程请参见：[IIS_Diagram.drawio](doc/IIS_Diagram.drawio)
+> IHub 的现行处理流程为事件链：`intake.received → analysis.requested → archive.completed`。向量、翻译等可选能力订阅归档事件，详情见 [hub_runtime_refactor.md](doc/hub_runtime_refactor.md)。历史图示仍可用于理解业务概念，但其中的内部队列已由事件运行时替换。
 
 ### 分析
 
-+ [prompts_v2x.py](prompts_v2x.py)
++ [prompts_event_v4.py](prompts_event_v4.py)
 
-+ [ServiceComponent/IntelligenceHubDefines_v2.py](ServiceComponent/IntelligenceHubDefines_v2.py)
++ [ServiceComponent/IntelligenceHubDefines_v4.py](ServiceComponent/IntelligenceHubDefines_v4.py)
 
   情报分析的prompt以及格式定义。程序中的dict校验和该prompt指示的输出格式紧密相关，prompt对AI的要求必须遵守校验规则。
   
-  已知的问题为：
+  Event V4 的事件谓词、角色和语义校验由 `event_engine` Registry 统一生成，IIS 不复制规则表。
+  当前已知问题为：
   
   1. 该prompt在小模型（甚至于65b）上表现不佳。
   > 
@@ -363,7 +387,7 @@ python CrawlerServiceEngine.py
 + 登录与鉴权
     > 由 WebServiceAccessManager 和 [UserManager.py](ServiceComponent/UserManager.py) 进行管理。其中：
     >  
-    > + API Token位于配置文件中：[config_example.json](config_example.json)
+    > + API Token 位于 `_config/iis.yaml` 的 `access` 段
     > + 登录与注销的页面分别为：'/login'，'/logout'
     > + 用户信息保存在Authentication.db，通过[UserManagerConsole.py](Scripts/UserManagerConsole.py)管理用户。
 

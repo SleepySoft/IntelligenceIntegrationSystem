@@ -1,0 +1,8 @@
+{
+  "name": "finance",
+  "display_name": "财经情报",
+  "url_prefix": "/finance",
+  "collection_prefix": "finance_intelligence_",
+  "ai_client_group": null,
+  "scoring": null
+}

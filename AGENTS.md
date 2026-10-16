@@ -1,6 +1,6 @@
 # IntelligenceIntegrationSystem — Agent Guide
 
-> 本文档供 AI 编码助手阅读。如果你第一次接触本项目，请先阅读本文件，再阅读 `README.md` 和 `doc/IntelligenceDesign.md`。
+> 本文档供 AI 编码助手阅读。如果你第一次接触本项目，请先阅读本文件、`README.md` 和 `doc/event_v4_integration_handoff.md`。
 
 ---
 
@@ -14,7 +14,7 @@
 
 系统从全球主流媒体抓取公开新闻（RSS 或列表页），通过 AI（LLM）进行结构化分析、评分、去重，最终将高价值情报归档到数据库，并通过 Web 提供检索、聚合、态势推演等功能。
 
-当前主分支为 **v2**（2026-02-15 起切换），兼容 v1 数据，无需数据库升级。
+当前生产主链为 **Event V4**。不兼容、不双读 V1/V2 数据；历史实现统一位于 `recycled/legacy_intelligence/`。
 
 ---
 
@@ -22,7 +22,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 语言 | Python 3.10+ |
+| 语言 | Python 3.11+ |
 | Web 框架 | Flask（主服务）、FastAPI（部分子服务） |
 | WSGI 服务器 | Waitress（Windows 默认）、Gunicorn（Linux 可选）、Flask dev server |
 | 数据库 | MongoDB（文档存储）、SQLite（用户认证、AI 客户端状态日志） |
@@ -43,18 +43,20 @@
 | 文件 | 职责 |
 |------|------|
 | `GlobalConfig.py` | 全局路径、代理、超时、默认端口等常量 |
-| `IntelligenceHub.py` | **核心引擎**。管理队列、AI 分析线程、后处理线程、向量化线程、定时任务 |
-| `IntelligenceHubStartup.py` | **启动组装**。读取配置、初始化 MongoDB/VectorDB/AIClientManager、组装 Hub 和 WebService |
+| `IISConfig.py` | IIS YAML 配置 schema、默认值、校验和运行时投影 |
+| `IntelligenceHub.py` | 兼容入口，只导出 `HubApplication` 与情报数据模型；不构造基础设施。 |
+| `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_v2x.py` | AI 分析 Prompt 定义表 |
+| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：基于 `ServiceComponent.prompt_protocols` 的协议族机制，prompt 版本绑定协议（前处理/后处理/校验链）并声明是否参与生产抽样 |
 
 ### 3.2 主要子目录
 
 - **`AIClientCenter/`** — AI 客户端管理中心
   - 支持多厂商、多账号、Token 轮询、余额监控、故障切换
   - 关键类：`AIClientManager`, `BaseAIClient`, `StandardOpenAIClient`, `OuterTokenRotatingOpenAIClient`
-  - 配置方式：将 `AIClientConfigExample.py` 复制为 `_config/ai_client_config.py` 并修改
+  - 另支持基于本机命令行 Agent 的客户端（`harness/cli.py`：`CodexCLIClient` / `KimiCLIClient`），分 stateless（模拟单次调用）与 session（沿上下文续接、利用缓存省 Token）两种模式，调研见 `AIClientCenter/doc/AgentCLIResearch.md`
+  - 配置工厂引擎位于 `AIClientCenter/factory_engine.py`：标准 Client 使用 YAML 工厂配置，内置短名称直接调用 `providers/`（及 harness）中的 `create_*_preset()` 预置；`providers/` 因而同时包含底层适配器与配置预置。自定义工厂可通过 `module:callable`、相对于 YAML 的 `./file.py:callable` 或宿主显式注册扩展，无需修改引擎。独立入口使用 `AIClientCenter/config/config.yaml`，IIS 使用 `_config/ai_clients.yaml`
 
 - **`CrawlTasks/`** — 具体抓取任务模块
   - 每个文件对应一个媒体源的抓取逻辑（如 `task_crawl_bbc.py`, `task_crawl_nhk_ic.py`）
@@ -67,14 +69,38 @@
   - `CrawlPipeline.py` / `Discoverer.py` / `Extractor.py` / `Fetcher.py`：流水线组件
 
 - **`ServiceComponent/`** — 业务组件层
-  - `IntelligenceHubDefines_v2.py`：Pydantic 数据模型（`CollectedData`, `ArchivedData`, `ProcessedData` 等）
+  - `prompt_protocols.py`：Prompt 协议族机制（协议 = 前处理/后处理/校验链，目录 = 版本注册与抽样声明）
+  - `IntelligenceHubDefines_v4.py`：V4 采集输入和 AI 分析结果模型
+  - `event_v4_archive.py`：`ArchivedDataV4`、APPENDIX 构造与归档投影
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
-  - `IntelligenceQueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
-  - `IntelligenceVectorDBEngine.py`：向量检索封装
-  - `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py`：情报聚合与态势图谱推演
+  - `EventV4QueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
+  - `IntelligenceVectorDBEngine.py` / `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py` / `adapters/iis_vector.py`：**兼容壳**，实现已迁至 `VectorIntelligence/`，仅 re-export
+  - `text_language.py`：语言判定启发式（`needs_translation`，翻译/向量等扩展共享）
   - `IntelligenceScoringEngine.py`：评分引擎
   - `UserManager.py`：用户认证管理（SQLite）
   - `PostManager.py` / `RSSPublisher.py`：文章发布与 RSS 生成
+
+- **`VectorIntelligence/`** — 向量情报子系统（低耦合，可整体禁用）
+  - `extension.py`：向量索引 Hub 扩展（订阅 `archive.completed` / `extension.translation.completed`，自有队列与后台线程，翻译等待基于 `text_language.needs_translation` 自判）
+  - `vector_engine.py` / `aggregation.py` / `graph.py`：向量检索、情报聚合、动态图谱引擎
+  - `search.py`：向量搜索业务（召回→Mongo 回填→`vector_score`→分页）；经 `IntelligenceHubWebService.set_vector_search_handler` 注入 Core，旧 `/intelligences/query?search_mode=vector_*` 入口委托同一实现
+  - `web.py`：`/vector/` Blueprint（`/vector/search`、`/vector/clusters`、`/vector/graph` 及 `/vector/api/*`），模板/静态资源在包内
+  - `iis_integration.py`：唯一装配入口（`create_vector_intelligence` + `mount_to_iis`），由组合根在 try/except 内调用
+  - `config.py`：集合名/chunk 参数单一事实源与 `intelligence_hub.vectordb` 配置读取
+  - 详细设计与迁移计划见 `doc/vector_intelligence_subsystem_refactor.md` 与 `doc/20261015_vector_subsystem_coupling_audit_and_plan.md`
+
+- **`EntityAlias/`** — 实体别名子系统（标准名 ⇄ 别名映射，相对独立，可作独立项目）
+  - `service.py`：解析（精确→模糊/部分→可选向量）、批量接口、CRUD、查询时别名展开（`expand_names`）
+  - `store.py`：JSONL 文本存储（事实源，git 管理，按类型分文件、按标准名排序、原子重写）
+  - `index.py` / `normalize.py`：内存精确索引与归一化；`vector.py`：可选最近名向量召回（IIS 集成时复用 VectorDB 独立集合 `entity_alias_names`，模块不 import VectorDB）
+  - `model.py`：实体 = 主标准名+`localized`（lang→该语言标准名）+别名（带 `lang`/`role`: abbr/full/former）+ `native_lang` + `type`（person/organization/country/location/animal/commodity/other/uncertain）+ `status`（unverified/verified）+ `description` + `refs`（外部标识，如 wikidata QID）；`resolve` 支持 `lang=<代码>|native` 返回对应语言标准名
+  - `wikidata.py`：在线建议源（本地未命中时查 Wikidata；描述性 UA、0.5s 节流、429 退避、SQLite 缓存 7 天、代理可配）；`register_from_wikidata` 预填多语言数据补录回本地
+  - `index.py`：精确索引 + bigram 倒排预过滤（≥2 万名字自动启用）；容量实测与拐点见 README
+  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；`iis_integration.py`：装配入口（`optional_subsystems.entity_alias` 配置门控，经 IISConfig 投影为 `entity_alias.*` 运行时键）
+  - 设计/容量/改进文档：`doc/20261016_entity_alias_subsystem.md`
+  - `data/`：git 管理的别名数据（JSONL）；`skill/SKILL.md`：AI 调用方指南
+  - 查询时展开：挂载后组合根把 `expand_names` 注入各子系统 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
+  - 历史补录：`Scripts/entity_alias_backfill.py scan` 产出未注册实体工作清单 → AI 填写 `action` → `register` 执行
 
 - **`VectorDB/`** — 向量数据库服务
   - `VectorDBBService.py`：独立 Flask 服务，提供向量存储、检索、聚类 API
@@ -111,7 +137,7 @@
 
 | 目录 | 用途 |
 |------|------|
-| `_config/` | 用户手动编辑的配置文件 |
+| `_config/` | 用户手动编辑的独立配置：`iis.yaml`、`ai_clients.yaml`、`collector.json` 等 |
 | `_data/` | 程序运行时数据（向量库、SQLite、爬虫治理记录）**需重点备份** |
 | `_export/` | 程序导出的数据（JSON、MongoDB 导出） |
 | `_log/` | 日志文件及历史归档 |
@@ -123,7 +149,7 @@
 
 ### 4.1 环境准备
 
-1. 安装 Python 3.10+
+1. 安装 Python 3.11+
 2. 安装并启动 MongoDB（默认 `localhost:27017`）
 3. 下载向量模型 `BAAI/bge-m3`（供 VectorDB 使用）
 4. 克隆仓库并拉取子模块：
@@ -152,11 +178,12 @@ pip install -r requirements_freeze.txt
 
 ### 4.3 配置
 
-1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
-   - 修改 MongoDB 地址、Token、向量库路径等
-   - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、最大页码、时间窗口、向量 `top_n`、速率限制、并发上限等。未登录用户仅允许按归档时间（Archive Time）搜索，避免 Publish Time 与 Archive Time 双重过滤。
-2. **AI 服务配置**：复制 `AIClientCenter/AIClientConfigExample.py` → `_config/ai_client_config.py`
-   - 填入实际 API Key、模型地址、优先级、分组限制等
+1. **主配置**：复制 `_config/iis_example.yaml` → `_config/iis.yaml`
+   - 只填写部署差异；默认值、严格 schema 校验和组件运行时投影位于 `IISConfig.py`
+   - 主配置使用简短分区：`server`、`database`、`hub`、`access`、`features`、可选 `web`
+   - 公开搜索限制位于 `web.public_search`；未登录用户仅允许按内容主时间搜索
+2. **AI 服务配置**：复制 `_config/ai_clients_example.yaml` → `_config/ai_clients.yaml`
+   - 每项仅保留 `factory`、`name`、`group` 三个公共字段，其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
 
 ### 4.4 启动服务
@@ -193,25 +220,32 @@ python VectorDB/VectorDBBService.py \
 ## 5. 代码风格与开发约定
 
 ### 5.1 语言与注释
-- 代码中注释以 **中文** 为主，部分关键模块（如 `IntelligenceHubDefines_v2.py`）使用英文 docstring
+- 代码中注释以 **中文** 为主，部分关键模块（如 `IntelligenceHubDefines_v4.py`）使用英文 docstring
 - 日志输出以中文为主，便于运维阅读
 - 类名/函数名使用英文，遵循 PEP 8
 
 ### 5.2 数据模型
-- 所有跨模块传输的数据结构必须使用 `ServiceComponent.IntelligenceHubDefines_v2` 中的 Pydantic 模型定义
-- `CollectedData`：采集端提交的原始数据
-- `ArchivedData`：AI 分析后归档的数据（含 `APPENDIX` 元数据）
-- `ProcessedData`：中间处理数据，用于清洗和校验
+- 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
+- 跨组件共享的 schema 版本、状态码、集合后缀、内容时间来源和 UUIDv5 命名空间统一定义在 `ServiceComponent.intelligence_contracts`；不得在业务模块重复声明
+- `CollectedData`：独立于分析版本的采集端原始数据契约
+- `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
+- `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
+- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；LLM 面向的 Prompt 可使用完整契约（`full`，v41）或核心子集（`core_subset`，v42；v43 起 RATE 也从数字改为等级词，由服务端按 `IntelligenceHubDefines_v4.RATE_LEVELS` 映射为分数）。生产版本以 `prompts_event_v4.build_event_v4_prompt_catalog` 的注册为准；桥接由 `event_engine.extraction.complete_core_extraction` 完成，详见 `doc/20261013_event_v4_extraction_subset_design.md`
+- `ArchivedDataV4`：分析结果加 `UUID`、`INFORMANT`、事件派生速查字段和 `APPENDIX`；`EVENT_EXTRACTION` 内嵌且是权威事件数据
+- Mongo `_id` 不是业务字段，读取后必须清除；`UUID` 始终表示文章 ID
+- `RAW_DATA`、评分、主时间、归档时间、翻译修订等系统元数据均位于 `APPENDIX`，键名只允许在 `intelligence_contracts.py` 定义；基本查询和前端输出默认移除 `APPENDIX`
+- 派生事件索引直接保存实体/地域名称快照，不使用实体 UUID；事件索引失败不得阻塞文章归档
 - **不要**在业务代码中随意构造裸字典，应通过 `check_sanitize_dict()` 校验
 
 ### 5.3 并发模型
-- `IntelligenceHub` 内部使用 **多线程 + 队列**：
-  - `original_queue`：待分析原始数据
-  - `processed_queue`：分析完成待归档数据
-  - `unarchived_queue`：重启时加载的未归档数据（低优先级）
-  - `vectorize_queue`：待向量化的数据
-- AI 分析线程数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量
-- 向量化线程在后台无限重试连接 VectorDB，直到成功或收到关闭信号
+- `HubRuntime` 使用事件队列和 worker：`intake.received → analysis.requested → archive.completed`。
+  运行时不解析 payload；各子系统可使用各自的数据结构。
+- AI worker 数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量。
+- 入口在返回 `queued` 前等待 intake/archive 阶段确认；在途数量由
+  `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
+- 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
+- cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
+- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）
@@ -241,7 +275,7 @@ python VectorDB/VectorDBBService.py \
 - 没有 CI/CD 流水线，也没有自动化测试套件
 - 如果需要添加测试，建议：
   1. 在 `Test/` 目录下新增 `test_*.py` 文件
-  2. 对 `ServiceComponent` 中的引擎类（如 `IntelligenceQueryEngine`, `IntelligenceScoringEngine`）编写单元测试
+  2. 对 `ServiceComponent` 中的引擎类（如 `EventV4QueryEngine`, `IntelligenceScoringEngine`）编写单元测试
   3. 对 Pydantic 模型进行边界值测试
 
 运行测试：
@@ -254,8 +288,8 @@ pytest Test/
 ## 7. 安全注意事项
 
 1. **Token 鉴权**
-   - `/collect`（采集提交）、`/api`（RPC）、`/processed`（处理端）分别使用不同的 Token
-   - Token 配置在 `_config/config.json` 的 `collector.tokens`、`rpc_api.tokens`、`processor.tokens` 中
+   - `/collect`（采集提交）和 `/api`（RPC）分别使用独立 Token
+   - Token 配置在 `_config/iis.yaml` 的 `access.collector_tokens`、`access.rpc_tokens` 中
    - 生产环境建议设置 `deny_on_empty_config: true`，禁止空配置时放行
 
 2. **用户认证**
@@ -265,7 +299,7 @@ pytest Test/
 
 3. **代理与网络**
    - `GlobalConfig.py` 中定义了 `DEFAULT_PROXY`（SOCKS5 `127.0.0.1:10808`）
-   - 采集外网新闻通常需要代理/VPN，配置在 `config.json` 的 `collector.global_site_proxy`
+   - 采集外网新闻通常需要代理/VPN，配置在独立的 `_config/collector.json`
 
 4. **数据隔离**
    - 程序目录与数据目录分离（`_config/`、`_data/`、`_log/`、`_export/`）
@@ -277,7 +311,7 @@ pytest Test/
 
 | 现象 | 排查方向 |
 |------|----------|
-| AI 分析线程一直等待客户端 | 检查 `_config/ai_client_config.py` 是否配置正确；检查 AI 服务余额/网络 |
+| AI 分析线程一直等待客户端 | 检查 `_config/ai_clients.yaml` 是否配置正确；检查 AI 服务余额/网络 |
 | VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log` |
 | 向量搜索慢/超时/503 | 检查 VectorDB 的 `logs/vector_perf.log`（或 `VECTOR_PERF_LOG` 指定路径）中 `vectordb_async_search` 耗时；确认 `VECTOR_MAX_CONCURRENT_SEARCHES` 与 `VECTOR_JOB_MAX_WORKERS` 是否满足并发需求；查看 `/api/status/memory` 中 `jobs.search` 指标 |
 | 爬虫不执行 | 检查 `CrawlerServiceEngine.py` 是否启动；检查 `CrawlTasks/` 目录下模块是否有语法错误 |
@@ -307,10 +341,10 @@ pytest Test/
 | 文档 | 内容 |
 |------|------|
 | `README.md` | 中文项目介绍、部署教程、已接入媒体列表 |
-| `doc/IntelligenceDesign.md` | v1 设计理念与情报分类评分标准 |
-| `doc/IntelligenceDesign_v2.md` | v2 设计理念与改进点 |
-| `doc/iis_v2_concept.md` | v2 概念说明（与 v1 的区别） |
-| `doc/IIS_Diagram.drawio` | 系统架构图（可用 draw.io 打开） |
+| `doc/event_v4_integration_handoff.md` | Event V4 架构、存储契约与切换状态 |
+| `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
+| `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
+| `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |
 | `VectorDB/README.md` | 向量数据库说明 |

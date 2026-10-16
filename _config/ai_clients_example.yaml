@@ -1,0 +1,38 @@
+# Copy to _config/ai_clients.yaml. Omit an entry to disable that client.
+clients:
+  # Any OpenAI-compatible endpoint can use the generic factory.
+  # - factory: openai_compatible
+  #   name: My OpenAI-compatible API
+  #   group: paid_api
+  #   api_base_url: https://example.com/v1
+  #   api_key_env: MY_API_KEY
+  #   model: model-name
+  #   priority: 50
+  #   default_available: true
+
+  # Local harness clients are also factories.
+  - factory: codex
+    name: Codex CLI Stateless
+    group: codex_cli
+    mode: stateless
+    sandbox: read-only
+
+  # - factory: kimi
+  #   name: Kimi CLI Stateless
+  #   group: kimi_cli
+  #   mode: stateless
+
+  # - factory: openclaw
+  #   name: OpenClaw Main
+  #   group: openclaw
+  #   agent_id: main
+  #   gateway_token_env: OPENCLAW_GATEWAY_TOKEN
+
+  # - factory: zhipu
+  #   name: Zhipu GLM
+  #   group: zhipu
+  #   api_key_env: ZHIPU_API_KEY
+  #   model: glm-4
+
+group_limits:
+  codex_cli: 1

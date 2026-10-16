@@ -2,19 +2,7 @@
 
 ## 链接
 
-[24小时情报聚合](/intelligences/clusters)
-
-[完整情报列表](/intelligences?offset=0&count=20&threshold=6)
-
-[实体趋势](/statistics/entity_frequency/page)
-
-[情报搜索](/intelligences/search)
-
-> 20260215: 
-> 
-> 临时开放相似情报搜索功能，欢迎大家体验。入口为文章详情页面右上方的“Find Similar”按钮。
-> 
-> 由于硅基流动AI服务的性能问题，有的情报并未按指令翻译为中文。请大家见谅。
+[情报视图](/views)
 
 ## 说明
 
