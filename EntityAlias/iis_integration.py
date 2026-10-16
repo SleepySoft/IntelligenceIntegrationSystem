@@ -22,11 +22,11 @@ def _build_suggester(config, data_dir: str):
     if not config.get("entity_alias.wikidata.enabled", True):
         return None
     try:
-        from GlobalConfig import DEFAULT_PROXY
-        from EntityAlias.wikidata import DEFAULT_UA, WikidataSuggester
+        from GlobalConfig import APPLIED_PROXY
+        from EntityAlias.wikidata import DEFAULT_UA, WikidataSuggester, proxy_uses_socks
 
-        proxy = config.get("entity_alias.wikidata.proxy", "") or DEFAULT_PROXY or ""
-        if proxy.startswith("socks"):
+        proxy = config.get("entity_alias.wikidata.proxy", "") or APPLIED_PROXY or ""
+        if proxy_uses_socks(proxy):
             try:
                 import socks  # noqa: F401（PySocks 未安装则 socks 代理不可用）
             except ImportError:
@@ -46,14 +46,12 @@ def _build_suggester(config, data_dir: str):
         return None
 
 
-def mount_to_iis(app, *, config, wrapper, vector_client=None,
-                 url_prefix: str = None) -> EntityAliasService | None:
-    """把实体别名子系统挂载到 IIS Flask app。失败只记日志，返回 None。"""
+def create_entity_alias(config, *, vector_client=None) -> EntityAliasService | None:
+    """创建可注入主链的服务实例；未启用或初始化失败返回 None。"""
     if not config.get("entity_alias.enabled", True):
         return None
     try:
         data_dir = config.get("entity_alias.data_dir", "") or DEFAULT_DATA_DIR
-        prefix = url_prefix or config.get("entity_alias.url_prefix", "/entity-alias")
 
         # 可选向量化：复用 IIS 的 VectorDB 服务，独立集合，就绪前后台重试。
         vector_index = NullNearestIndex()
@@ -70,9 +68,6 @@ def mount_to_iis(app, *, config, wrapper, vector_client=None,
         service = EntityAliasService(JSONLStore(data_dir), vector_index,
                                      suggester=_build_suggester(config, data_dir))
 
-        from EntityAlias.web import EntityAliasWebService
-        EntityAliasWebService(service).mount_to_app(app, wrapper=wrapper, url_prefix=prefix)
-
         if vector_index.available:
             def _sync_when_ready():
                 try:
@@ -88,5 +83,25 @@ def mount_to_iis(app, *, config, wrapper, vector_client=None,
 
         return service
     except Exception:
-        logger.exception("EntityAlias 挂载失败，IIS 主服务继续运行。")
+        logger.exception("EntityAlias 初始化失败，IIS 主服务继续运行。")
+        return None
+
+
+def mount_to_iis(app, *, config, wrapper, vector_client=None,
+                 url_prefix: str = None,
+                 service: EntityAliasService | None = None) -> EntityAliasService | None:
+    """把实体别名 Web 能力挂载到 IIS；可复用组合根已注入主链的实例。"""
+    if not config.get("entity_alias.enabled", True):
+        return None
+    try:
+        service = service or create_entity_alias(config, vector_client=vector_client)
+        if service is None:
+            return None
+        prefix = url_prefix or config.get("entity_alias.url_prefix", "/entity-alias")
+        from EntityAlias.web import EntityAliasWebService
+        EntityAliasWebService(service).mount_to_app(
+            app, wrapper=wrapper, url_prefix=prefix)
+        return service
+    except Exception:
+        logger.exception("EntityAlias Web 挂载失败，IIS 主服务继续运行。")
         return None

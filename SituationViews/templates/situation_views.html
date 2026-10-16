@@ -81,6 +81,7 @@
         .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
         .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
+        .edge-arrow { stroke: transparent; pointer-events: none; }
         .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; cursor: pointer; }
         .edge.graph-selected { stroke-opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
         .arrow-head { fill: light-dark(#475569, #b8c6d9); stroke: var(--panel); stroke-width: .8px; }
@@ -585,7 +586,7 @@ function renderGraph() {
     const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
     const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
         .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
-        .attr('stroke-width', d => edgeScale(d.support)).attr('marker-end', d => d.directed ? 'url(#arrow)' : null)
+        .attr('stroke-width', d => edgeScale(d.support))
         .style('pointer-events', 'none');
     const hitLines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge-hit')
         .on('mouseenter', (event,d) => {
@@ -609,6 +610,10 @@ function renderGraph() {
         });
     const labels = root.append('g').selectAll('text').data(nodes).join('text').attr('class','node-label')
         .attr('text-anchor','middle').attr('dy', d => radius(d.importance) + 13).text(d => d.name.length > 18 ? d.name.slice(0,17) + '…' : d.name);
+    // 标签需要保持可读，因此边线仍位于标签下方；箭头头部单独放到标签上层，
+    // 避免从节点下方进入时被标签的背景描边完全遮住。
+    const arrowLines = root.append('g').selectAll('line').data(edges.filter(d => d.directed)).join('line')
+        .attr('class','edge-arrow').attr('marker-end','url(#arrow)');
     const simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(d => d.id).distance(d => 80 + Math.min(80, 160 / d.support)).strength(.35))
         .force('charge', d3.forceManyBody().strength(-240)).force('center', d3.forceCenter(width/2, height/2))
@@ -617,7 +622,7 @@ function renderGraph() {
         .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
         .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
     simulation.on('tick', () => {
-        lines.each(function(d) {
+        const positionEdges = selection => selection.each(function(d) {
             const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
             const distance = Math.hypot(dx, dy) || 1;
             const ux = dx / distance, uy = dy / distance;
@@ -629,6 +634,8 @@ function renderGraph() {
                 .attr('x2', d.target.x - ux * targetPadding)
                 .attr('y2', d.target.y - uy * targetPadding);
         });
+        positionEdges(lines);
+        positionEdges(arrowLines);
         hitLines.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
         edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
@@ -718,6 +725,8 @@ function updateGraphSelectionStyles() {
         .classed('graph-dim', d => !relatedNodes.has(d.id));
     d3.select('#graph-svg').selectAll('.edge')
         .classed('graph-selected', edgeRelevant)
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-arrow')
         .classed('graph-dim', d => !edgeRelevant(d));
     d3.select('#graph-svg').selectAll('.edge-hit')
         .classed('graph-dim', d => !edgeRelevant(d));

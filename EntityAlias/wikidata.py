@@ -16,7 +16,9 @@ import os
 import sqlite3
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
+
+from EntityAlias.normalize import normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +26,17 @@ API_URL = "https://www.wikidata.org/w/api.php"
 DEFAULT_UA = "IIS-EntityAlias/1.0 (OSINT entity alias registry; contact: local-admin)"
 
 
+def proxy_uses_socks(proxy: Any) -> bool:
+    """兼容 requests 的字符串代理和 ``{scheme: url}`` 代理配置。"""
+    values = proxy.values() if isinstance(proxy, Mapping) else (proxy,)
+    return any(str(value or "").lower().startswith("socks") for value in values)
+
+
 class WikidataSuggester:
     """Wikidata 检索建议器：节流 + 429 退避 + SQLite 结果缓存 + 可选代理。"""
 
     def __init__(self, *, user_agent: str = DEFAULT_UA,
-                 proxy: str = "", min_interval: float = 0.5,
+                 proxy: Any = "", min_interval: float = 0.5,
                  timeout: float = 10.0, cache_path: str = "",
                  cache_ttl_sec: float = 7 * 24 * 3600,
                  langs: tuple = ("zh", "en"),
@@ -105,8 +113,18 @@ class WikidataSuggester:
 
         localized = {lang: label for lang, label in labels.items()
                      if lang != canonical_lang}
-        aliases = [{"name": name, "lang": lang}
-                   for lang, names in alias_groups.items() for name in names]
+        # Wikidata 不同语言组中可能出现同名别名，也可能与 label 重复。
+        # 本地索引要求归一化后全局唯一，因此预填时按首次出现去重。
+        seen = {normalize_name(canonical)}
+        seen.update(normalize_name(value) for value in localized.values())
+        aliases = []
+        for lang, names in alias_groups.items():
+            for name in names:
+                key = normalize_name(name)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                aliases.append({"name": name, "lang": lang})
 
         return {
             "canonical": canonical,
@@ -148,7 +166,10 @@ class WikidataSuggester:
 
     def _http_get_json(self, url: str, params: Dict[str, Any]) -> dict:
         import requests
-        proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
+        if isinstance(self.proxy, Mapping):
+            proxies = dict(self.proxy)
+        else:
+            proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
         resp = requests.get(
             url, params=params, timeout=self.timeout, proxies=proxies,
             headers={"User-Agent": self.user_agent,

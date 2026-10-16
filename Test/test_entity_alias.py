@@ -7,7 +7,7 @@ import pytest
 from flask import Flask
 
 from EntityAlias import EntityAliasService, JSONLStore
-from EntityAlias.iis_integration import mount_to_iis
+from EntityAlias.iis_integration import create_entity_alias, mount_to_iis
 from EntityAlias.model import AliasEntry, AliasError, Entity
 from EntityAlias.normalize import display_normalize, normalize_name
 from EntityAlias.web import EntityAliasWebService
@@ -300,6 +300,25 @@ def test_mount_to_iis(tmp_path):
     assert client.get("/entity-alias/api/status").status_code == 200
     # 向量未配置时 status 反映不可用
     assert client.get("/entity-alias/api/status").get_json()["vector_available"] is False
+
+
+def test_create_then_mount_reuses_same_service(tmp_path):
+    class FakeConfig:
+        def get(self, key, default=None):
+            return {"entity_alias.data_dir": str(tmp_path)}.get(key, default)
+
+    config = FakeConfig()
+    service = create_entity_alias(config)
+    service.create_entity("人民日报", aliases=[{"name": "People's Daily"}])
+    app = Flask(__name__)
+
+    mounted = mount_to_iis(
+        app, config=config, wrapper=None, service=service)
+
+    assert mounted is service
+    response = app.test_client().get(
+        "/entity-alias/api/resolve?name=People's%20Daily")
+    assert response.get_json()["canonical"] == "人民日报"
 
 
 def test_iis_config_projection():

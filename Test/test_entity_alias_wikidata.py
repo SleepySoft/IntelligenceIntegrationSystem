@@ -7,7 +7,7 @@ import pytest
 
 from EntityAlias import EntityAliasService, JSONLStore
 from EntityAlias.model import AliasError
-from EntityAlias.wikidata import WikidataSuggester, _RateLimited
+from EntityAlias.wikidata import WikidataSuggester, _RateLimited, proxy_uses_socks
 
 
 NYT_ENTITY = {
@@ -67,6 +67,27 @@ def test_prefill_fallback_to_english():
     assert prefill["canonical"] == "Universe" and prefill["lang"] == "en"
 
 
+def test_prefill_deduplicates_aliases_against_labels_and_other_aliases():
+    entity = {"Q1": {
+        "id": "Q1",
+        "labels": {"zh": {"value": "唐纳德·特朗普"},
+                   "en": {"value": "Donald Trump"}},
+        "descriptions": {},
+        "aliases": {
+            "zh": [{"value": "唐纳德·特朗普"}, {"value": "川普"}],
+            "en": [{"value": "Donald Trump"}, {"value": "Trump"},
+                   {"value": "Trump"}],
+        },
+    }}
+    suggester = WikidataSuggester(
+        transport=lambda url, params: {"entities": entity}, min_interval=0)
+    prefill = suggester.prefill("Q1")
+    assert prefill["aliases"] == [
+        {"name": "川普", "lang": "zh"},
+        {"name": "Trump", "lang": "en"},
+    ]
+
+
 def test_rate_limit_backoff():
     calls = []
     suggester = WikidataSuggester(transport=make_transport(calls, fail_times=2),
@@ -120,3 +141,30 @@ def test_refs_merge_on_update(tmp_path):
     svc.update_entity(entity["id"], {"refs": {"geonames": "123"}})
     assert svc.get_entity(entity["id"])["refs"] == {
         "wikidata": "Q204839", "geonames": "123"}
+
+
+def test_proxy_mapping_is_supported():
+    proxy = {"http": "socks5://127.0.0.1:10808",
+             "https": "socks5://127.0.0.1:10808"}
+    assert proxy_uses_socks(proxy) is True
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"search": []}
+
+    def fake_get(url, **kwargs):
+        captured.update(kwargs)
+        return Response()
+
+    from unittest.mock import patch
+    suggester = WikidataSuggester(proxy=proxy, min_interval=0)
+    with patch("requests.get", fake_get):
+        suggester.suggest("NYT")
+    assert captured["proxies"] == proxy

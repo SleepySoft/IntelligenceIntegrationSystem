@@ -97,6 +97,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_recorder: Any = None,
         quality_enabled: bool = True,
         control_state: Any = None,
+        entity_name_normalizer: Callable[[str], str | None] | None = None,
     ):
         super().__init__(
             subsystem_registry,
@@ -127,6 +128,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
         self._control_state = control_state
+        # 可选后处理：EntityAlias 命中时把抽取实体名替换为系统标准名。
+        # 未启用、未命中或解析异常均保留 LLM 原始名称，不能阻塞主链。
+        self._entity_name_normalizer = entity_name_normalizer
+
+    def set_entity_name_normalizer(
+        self, normalizer: Callable[[str], str | None] | None,
+    ) -> None:
+        """由组合根注入/移除可选的实体标准名解析器。"""
+        self._entity_name_normalizer = normalizer
 
     @staticmethod
     def _build_catalog(event_registry: Any,
@@ -559,7 +569,37 @@ class EventV4PipelinePorts(BasePipelinePorts):
         event-extraction/1.0 的 EVENT_EXTRACTION）；各协议的差异封装在
         PromptProtocol.validate_result 内。
         """
-        return self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
+        analysis = self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
+        return self._normalize_entity_names(analysis)
+
+    def _normalize_entity_names(self, analysis: AnalysisResultV4) -> AnalysisResultV4:
+        """协议校验后的可选实体名规范化；任何失败均降级为保留原名。"""
+        normalizer = self._entity_name_normalizer
+        if normalizer is None or analysis.EVENT_EXTRACTION is None:
+            return analysis
+        normalized = analysis.model_copy(deep=True)
+        try:
+            for entity in normalized.EVENT_EXTRACTION.entities:
+                original = entity.name
+                try:
+                    canonical = normalizer(original)
+                except Exception:
+                    logger.warning(
+                        "entity name normalization failed for %r; original kept",
+                        original,
+                        exc_info=True,
+                    )
+                    continue
+                canonical = str(canonical or "").strip()
+                if canonical:
+                    entity.name = canonical
+        except Exception:
+            logger.warning(
+                "entity name normalization postprocess failed; original analysis kept",
+                exc_info=True,
+            )
+            return analysis
+        return normalized
 
     def _record_failure_sample(
         self, *, category: str, error: Exception, raw_response: Any,

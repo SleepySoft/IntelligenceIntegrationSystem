@@ -258,6 +258,28 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         services.update(vector_handles.services)
         vector_search = vector_handles.search
 
+    # ------------------------- 实体别名子系统（可拆卸装配） -------------------------
+    # 在 Hub worker 启动前创建并注入同一服务实例：分析后处理使用标准名，
+    # 查询层使用别名展开；关闭或初始化失败时两者均自然降级。
+    entity_alias_service = None
+    try:
+        from EntityAlias.iis_integration import create_entity_alias
+        entity_alias_service = create_entity_alias(
+            config,
+            vector_client=vector_handles.vector_client if vector_handles else None,
+        )
+        if entity_alias_service is not None:
+            def normalize_entity_name(name):
+                resolved = entity_alias_service.resolve(name)
+                return resolved.get("canonical") if resolved else None
+
+            pipeline_ports.set_entity_name_normalizer(normalize_entity_name)
+            for _ctx in subsystem_registry.enabled_subsystems():
+                _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
+            services["entity_alias"] = entity_alias_service
+    except Exception:
+        logger.exception("实体别名模块装配失败，IIS 主服务继续运行。")
+
     # 实体统计、导出和聚合触发均为外围维护能力，不参与主处理链。
     from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
     from MyPythonUtility.AdvancedScheduler import AdvancedScheduler
@@ -385,21 +407,19 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         except Exception:
             logger.exception("向量子系统 Web 挂载失败，IIS 主服务继续运行。")
 
-    # 实体别名子系统（独立模块）：标准名/别名解析 API，可复用 VectorDB 做语义召回。
-    try:
-        from EntityAlias.iis_integration import mount_to_iis as mount_entity_alias
-        entity_alias_service = mount_entity_alias(
-            wsgi_app,
-            config=config,
-            wrapper=hub_service.access_manager.login_required,
-            vector_client=vector_handles.vector_client if vector_handles else None,
-        )
-        # 查询时别名展开：实体过滤条件自动展开为该实体的全部已知名字。
-        if entity_alias_service is not None:
-            for _ctx in subsystem_registry.enabled_subsystems():
-                _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
-    except Exception:
-        logger.exception("实体别名模块加载失败，IIS 主服务继续运行。")
+    # 实体别名 Web API 复用已注入分析主链的同一服务实例。
+    if entity_alias_service is not None:
+        try:
+            from EntityAlias.iis_integration import mount_to_iis as mount_entity_alias
+            mount_entity_alias(
+                wsgi_app,
+                config=config,
+                wrapper=hub_service.access_manager.login_required,
+                vector_client=vector_handles.vector_client if vector_handles else None,
+                service=entity_alias_service,
+            )
+        except Exception:
+            logger.exception("EntityAlias Web 挂载失败，IIS 主服务继续运行。")
 
     intelligence_views_settings = config.get(
         "intelligence_hub_web_service.intelligence_views", {}) or {}

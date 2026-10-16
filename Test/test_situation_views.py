@@ -434,6 +434,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
     assert '"min_score": 6.0' in embedded_html
+    assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html
+    assert embedded_html.index("const labels = root.append('g')") < embedded_html.index(
+        "const arrowLines = root.append('g')")
     assert scoped_map.status_code == 200
     assert scoped_map.get_json()["meta"]["hotspot_count"] == 1
     assert map_payload.status_code == 200

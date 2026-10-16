@@ -1,10 +1,13 @@
 # Scripts/entity_alias_backfill.py
-# 历史数据实体别名补录工具。
+# 历史实体扫描与别名库补录工具。
+# 本脚本管理 EntityAlias JSONL 事实库，不回写 MongoDB 历史归档；
+# 归档内实体名规范化请用 Scripts/entity_alias_archive_backfill.py。
 #
 # 用法：
 #   python Scripts/entity_alias_backfill.py scan [--min-count 2] [--limit 500] [--out _export/entity_alias_worklist.json]
 #       扫描默认子系统归档的 PEOPLE/LOCATION/ORGANIZATION 字段，统计频次，
-#       批量查询 EntityAlias，输出未注册实体工作清单（含候选）供 AI 填写。
+#       批量查询 EntityAlias，可选查 Wikidata；唯一精确匹配自动补录，
+#       其余输出工作清单（含候选）供 AI 填写。
 #   python Scripts/entity_alias_backfill.py register <filled_worklist.json> [--data-dir EntityAlias/data]
 #       读取 AI 填写后的工作清单并执行注册/加别名/忽略。
 #
@@ -13,6 +16,7 @@
 #     "candidates": [...],                # lookup 候选，供 AI 判断
 #     "action": {                          # AI 填写其一：
 #       "op": "register",                 #   注册新实体（附 canonical/lang/type/aliases/description）
+#       "op": "wikidata",                 #   按已确认 qid 拉取多语言资料并注册
 #       "op": "alias",                    #   作为已有实体的别名（附 entity_id，可选 lang/role）
 #       "op": "ignore"                    #   忽略
 #     }}]
@@ -28,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from GlobalConfig import DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE  # noqa: E402
 from IISConfig import load_iis_config  # noqa: E402
+from EntityAlias.normalize import normalize_name  # noqa: E402
 
 logger = logging.getLogger("entity_alias_backfill")
 
@@ -59,10 +64,10 @@ def _open_alias_service(data_dir: str, with_suggester: bool = False):
     from EntityAlias import EntityAliasService, JSONLStore
     suggester = None
     if with_suggester:
-        from GlobalConfig import DEFAULT_PROXY
-        from EntityAlias.wikidata import WikidataSuggester
-        proxy = DEFAULT_PROXY or ""
-        if proxy.startswith("socks"):
+        from GlobalConfig import APPLIED_PROXY
+        from EntityAlias.wikidata import WikidataSuggester, proxy_uses_socks
+        proxy = APPLIED_PROXY or ""
+        if proxy_uses_socks(proxy):
             try:
                 import socks  # noqa: F401
             except ImportError:
@@ -72,6 +77,43 @@ def _open_alias_service(data_dir: str, with_suggester: bool = False):
             proxy=proxy,
             cache_path=os.path.join(data_dir, ".cache", "wikidata_cache.sqlite"))
     return EntityAliasService(JSONLStore(data_dir), suggester=suggester)
+
+
+def _select_exact_wikidata(name, candidates):
+    """Wikidata 只有一个 label/matched 与输入精确同名时才自动选中。"""
+    key = normalize_name(name)
+    exact = [item for item in candidates
+             if key and any(normalize_name(item.get(field, "")) == key
+                            for field in ("matched", "label"))]
+    return exact[0] if len(exact) == 1 and exact[0].get("qid") else None
+
+
+def _find_by_wikidata_qid(service, qid):
+    for entity in service.store.all():
+        if entity.refs.get("wikidata") == qid:
+            return entity.to_dict()
+    return None
+
+
+def _wikidata_type(item, candidate):
+    return _field_to_type(item.get("field"))
+
+
+def _register_wikidata_item(service, item, qid, candidate=None, overrides=None):
+    """QID 直接补录；同一 QID 已存在时只补当前名称为别名。"""
+    options = dict(overrides or {})
+    primary_lang = options.pop("primary_lang", "zh")
+    name_lang = options.pop("name_lang", "")
+    entity = _find_by_wikidata_qid(service, qid)
+    if entity is None:
+        fields = {"type": _wikidata_type(item, candidate or {})}
+        fields.update(options)
+        entity = service.register_from_wikidata(
+            qid, primary_lang=primary_lang, overrides=fields)
+    name = item["name"]
+    if service.resolve(name) is None:
+        entity = service.add_alias(entity["id"], name, name_lang)
+    return entity
 
 
 def cmd_scan(args):
@@ -91,6 +133,7 @@ def cmd_scan(args):
     logger.info("扫描归档 %d 篇", scanned)
 
     worklist = []
+    auto_registered = 0
     for field in ENTITY_FIELDS:
         for name, count in counters[field].most_common():
             if count < args.min_count:
@@ -106,8 +149,22 @@ def cmd_scan(args):
                 "action": None,
             }
             if args.enrich and service.suggester is not None:
-                # 在线补全 Wikidata 候选（带节流），AI 审阅时无需再发请求
+                # 在线补全 Wikidata 候选（带节流）。唯一精确同名可直接补录；
+                # 模糊或多义候选继续交给 AI 判断。
                 item["wikidata"] = service.suggest(name, online=True)["wikidata"]
+                exact = _select_exact_wikidata(name, item["wikidata"])
+                if exact is not None and args.auto_register_exact:
+                    try:
+                        entity = _register_wikidata_item(service, item, exact["qid"], exact)
+                        item["action"] = {
+                            "op": "wikidata", "qid": exact["qid"],
+                            "auto_applied": True,
+                        }
+                        item["registered_entity_id"] = entity["id"]
+                        auto_registered += 1
+                    except Exception as exc:
+                        item["auto_register_error"] = str(exc)
+                        logger.warning("Wikidata 自动补录失败 %s: %s", name, exc)
             worklist.append(item)
             if len(worklist) >= args.limit:
                 break
@@ -115,16 +172,19 @@ def cmd_scan(args):
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(worklist, f, ensure_ascii=False, indent=2)
-    logger.info("未注册实体 %d 个，工作清单已写入 %s", len(worklist), args.out)
-    print(f"扫描 {scanned} 篇归档，未注册实体 {len(worklist)} 个 -> {args.out}")
+    logger.info("未注册实体 %d 个，Wikidata 自动补录 %d 个，工作清单已写入 %s",
+                len(worklist), auto_registered, args.out)
+    print(f"扫描 {scanned} 篇归档，未注册实体 {len(worklist)} 个，"
+          f"Wikidata 自动补录 {auto_registered} 个 -> {args.out}")
 
 
 def cmd_register(args):
-    service = _open_alias_service(args.data_dir)
+    service = _open_alias_service(args.data_dir, with_suggester=True)
     with open(args.worklist, "r", encoding="utf-8") as f:
         worklist = json.load(f)
 
-    stats = {"registered": 0, "aliased": 0, "ignored": 0, "failed": 0}
+    stats = {"registered": 0, "wikidata": 0, "aliased": 0,
+             "ignored": 0, "failed": 0}
     for item in worklist:
         action = item.get("action") or {}
         op = action.get("op")
@@ -142,6 +202,13 @@ def cmd_register(args):
                     description=action.get("description", ""),
                 )
                 stats["registered"] += 1
+            elif op == "wikidata":
+                _register_wikidata_item(
+                    service, item, action["qid"],
+                    overrides={key: action[key] for key in
+                               ("type", "primary_lang", "name_lang") if key in action},
+                )
+                stats["wikidata"] += 1
             elif op == "alias":
                 service.add_alias(action["entity_id"], name,
                                   action.get("lang", ""))
@@ -164,7 +231,7 @@ def _field_to_type(field):
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="历史数据实体别名补录")
+    parser = argparse.ArgumentParser(description="历史实体扫描与 EntityAlias 别名库补录")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_scan = sub.add_parser("scan", help="扫描归档，产出未注册实体工作清单")
@@ -173,7 +240,10 @@ def main():
     p_scan.add_argument("--out", default=DEFAULT_WORKLIST)
     p_scan.add_argument("--data-dir", default=os.path.join("EntityAlias", "data"))
     p_scan.add_argument("--enrich", action="store_true",
-                        help="在线查询 Wikidata 为每个未注册实体预填候选（慢，带节流）")
+                        help="在线查询 Wikidata，唯一精确同名自动补录（慢，带节流）")
+    p_scan.add_argument("--no-auto-register-exact", action="store_false",
+                        dest="auto_register_exact",
+                        help="只预填 Wikidata 候选，不自动补录精确同名")
 
     p_reg = sub.add_parser("register", help="按 AI 填写的工作清单注册")
     p_reg.add_argument("worklist")

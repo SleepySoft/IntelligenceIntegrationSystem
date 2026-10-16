@@ -267,6 +267,50 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     )
 
 
+def test_v4_postprocess_normalizes_known_entity_names_before_projection():
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+        entity_name_normalizer=lambda name: {"A军": "甲军"}.get(name),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    archive = analyzed.payload.archive
+    assert [entity.name for entity in archive.EVENT_EXTRACTION.entities] == [
+        "甲军", "B设施"]
+    assert archive.ORGANIZATION == ["甲军"]
+
+
+def test_v4_postprocess_keeps_original_name_when_normalizer_fails():
+    def broken_normalizer(name):
+        if name == "A军":
+            raise RuntimeError("alias service unavailable")
+        return None
+
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+        entity_name_normalizer=broken_normalizer,
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert [entity.name for entity in
+            analyzed.payload.archive.EVENT_EXTRACTION.entities] == ["A军", "B设施"]
+    assert ports.statistics["validation_errors"] == 0
+
+
 def test_v4_adapter_deprioritizes_api_failed_client_on_retry():
     responses = [
         {"error": "local_rate_limit", "error_type": "recoverable"},

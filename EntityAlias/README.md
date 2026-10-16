@@ -70,10 +70,13 @@ AI 确认候选后调 `POST /api/entities/from_wikidata {"qid": "Q..."}` 将其�
 预填注册回本地（带 `refs.wikidata` 溯源）。
 
 工程约束已内置于 `wikidata.py`：描述性 UA、固定节流（默认 0.5s）、429 按 `Retry-After` 退避、
-SQLite 结果缓存（7 天，`.cache/` 不入 git）、代理可配（默认 `GlobalConfig.DEFAULT_PROXY`，
+SQLite 结果缓存（7 天，`.cache/` 不入 git）、代理可配（默认 `GlobalConfig.APPLIED_PROXY`，
 socks 代理需 PySocks）。网络失败一律静默降级为空结果，不影响本地功能。
 
-历史补录：`Scripts/entity_alias_backfill.py scan --enrich` 可为工作清单预填 Wikidata 候选。
+历史补录：`Scripts/entity_alias_backfill.py scan --enrich` 会查询 Wikidata。若只有一个
+候选的 `matched` 或 `label` 与输入名归一化后完全相同，脚本会直接按 QID 拉取
+多语言名称、别名、简介和 `refs.wikidata` 并写入本地；多义/模糊候选仍留给
+AI 处理。使用 `--no-auto-register-exact` 可只生成候选而不写入。
 
 ## 容量评估（合成基准实测，2026-10）
 
@@ -95,7 +98,19 @@ socks 代理需 PySocks）。网络失败一律静默降级为空结果，不影
 
 挂载后，IIS 的实体过滤查询（`peoples` / `locations` / `organizations`）会自动把每个名字
 展开为其所属实体的全部已知名字再查 Mongo `$in`：归档零改动，别名表更新即时生效。
-历史数据中的未注册实体用 `Scripts/entity_alias_backfill.py scan` 生成工作清单交 AI 补录。
+历史数据的处理分为两个明确步骤：
+
+1. `Scripts/entity_alias_backfill.py scan [--enrich]` 扫描未注册名称并补全
+   EntityAlias JSONL 事实库；该脚本不回写 MongoDB 归档。
+2. `Scripts/entity_alias_archive_backfill.py` 预览已有归档的标准名变更；确认后使用
+   `--apply` 回写权威归档、三类速查字段、outbox 和 `v4_events`。实际写入前
+   会在 `_export/` 生成 BSON Extended JSONL 原文档备份。
+
+子系统启用且初始化成功时，组合根还会把同一服务实例注入 Event V4 分析后处理：
+协议桥接与校验完成后，对 `EVENT_EXTRACTION.entities[].name` 做本地精确解析，
+命中时替换为 `canonical`，未命中或解析异常时保留 LLM 原始名称。规范名会继续
+进入权威归档、事件派生索引及 `PEOPLE/LOCATION/ORGANIZATION` 速查字段；
+关闭 EntityAlias 或初始化失败不会改变分析主链行为。
 
 ## 挂载到 IIS
 
