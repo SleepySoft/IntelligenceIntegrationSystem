@@ -43,6 +43,7 @@
 | 文件 | 职责 |
 |------|------|
 | `GlobalConfig.py` | 全局路径、代理、超时、默认端口等常量 |
+| `IISConfig.py` | IIS YAML 配置 schema、默认值、校验和运行时投影 |
 | `IntelligenceHub.py` | 兼容入口，只导出 `HubApplication` 与情报数据模型；不构造基础设施。 |
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
@@ -123,7 +124,7 @@
 
 | 目录 | 用途 |
 |------|------|
-| `_config/` | 用户手动编辑的配置文件 |
+| `_config/` | 用户手动编辑的独立配置：`iis.yaml`、`ai_clients.yaml`、`collector.json` 等 |
 | `_data/` | 程序运行时数据（向量库、SQLite、爬虫治理记录）**需重点备份** |
 | `_export/` | 程序导出的数据（JSON、MongoDB 导出） |
 | `_log/` | 日志文件及历史归档 |
@@ -164,9 +165,10 @@ pip install -r requirements_freeze.txt
 
 ### 4.3 配置
 
-1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
-   - 修改 MongoDB 地址、Token、向量库路径等
-   - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、最大页码、时间窗口、向量 `top_n`、速率限制、并发上限等。未登录用户仅允许按内容主时间（发布时间优先，否则采集时间）搜索，避免与归档时间形成双重过滤。
+1. **主配置**：复制 `_config/iis_example.yaml` → `_config/iis.yaml`
+   - 只填写部署差异；默认值、严格 schema 校验和组件运行时投影位于 `IISConfig.py`
+   - 主配置使用简短分区：`server`、`database`、`hub`、`access`、`features`、可选 `web`
+   - 公开搜索限制位于 `web.public_search`；未登录用户仅允许按内容主时间搜索
 2. **AI 服务配置**：复制 `_config/ai_clients_example.yaml` → `_config/ai_clients.yaml`
    - 每项仅保留 `factory`、`name`、`group` 三个公共字段，其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
@@ -274,7 +276,7 @@ pytest Test/
 
 1. **Token 鉴权**
    - `/collect`（采集提交）和 `/api`（RPC）分别使用独立 Token
-   - Token 配置在 `_config/config.json` 的 `collector.tokens`、`rpc_api.tokens` 中
+   - Token 配置在 `_config/iis.yaml` 的 `access.collector_tokens`、`access.rpc_tokens` 中
    - 生产环境建议设置 `deny_on_empty_config: true`，禁止空配置时放行
 
 2. **用户认证**
@@ -284,7 +286,7 @@ pytest Test/
 
 3. **代理与网络**
    - `GlobalConfig.py` 中定义了 `DEFAULT_PROXY`（SOCKS5 `127.0.0.1:10808`）
-   - 采集外网新闻通常需要代理/VPN，配置在 `config.json` 的 `collector.global_site_proxy`
+   - 采集外网新闻通常需要代理/VPN，配置在独立的 `_config/collector.json`
 
 4. **数据隔离**
    - 程序目录与数据目录分离（`_config/`、`_data/`、`_log/`、`_export/`）

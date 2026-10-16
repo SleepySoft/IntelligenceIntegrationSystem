@@ -190,20 +190,14 @@ python CrawlerServiceEngine.py
 
 #### 程序配置
 
-+ 重要：将 [config_example.json](_config/config_example.json) 复制为 [config.json](_config/config.json) ，按照实际情况更改配置（默认能启动，但不能进行分析）。
-> 
-> 配置主要应用在在 [IntelligenceHubStartup.py](IntelligenceHubStartup.py) 中载入，阅读该文件可以知道各配置项的用法。
-> 
-> 对于抓取外网新闻，需要配置 global_site_proxy。
-> 
-> 注意intelligence_hub_web_service及collector段的token并非AI服务的Token，而是爬虫引擎提交情报时的凭证以及IHub接受提交情报的凭证，两边需要对上（因为二者可以部署在不同的机器上）。
++ 重要：将 [iis_example.yaml](_config/iis_example.yaml) 复制为 `_config/iis.yaml`，只填写部署差异。
 >
-> `intelligence_hub.replay_unarchived` 控制启动后是否从 cache 恢复未归档记录（默认开启）；
-> `intelligence_hub.translation.enabled` 控制异步翻译扩展（默认开启）。关闭
-> `intelligence_hub.vectordb.enabled` 时，向量索引、聚合和图谱扩展不会安装，主分析归档流程仍可运行。
-> `intelligence_hub.max_inflight` 限制尚未到达终态的提交数量（默认 2000），用于在 AI
-> 处理变慢时提供入口背压；`submission_ack_timeout_sec` 控制提交端等待 intake/archive
-> 接收结果的最长时间（默认 30 秒）。
+> [IISConfig.py](IISConfig.py) 负责默认值、严格 schema 校验以及运行时组件装配。主配置
+> 只分为 `server`、`database`、`hub`、`access`、`features` 和可选的 `web`，不会要求
+> 用户复制大量默认参数。未知字段会在启动时直接报错，避免“写了但实际没有生效”。
+>
+> AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
+> 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。
@@ -212,7 +206,7 @@ python CrawlerServiceEngine.py
 > 
 > 如果想使用 AI 进行情报分析，需要配置 [ai_clients.yaml](_config/ai_clients.yaml)。
 > 标准 Client 使用工厂式 YAML：`factory`、`name`、`group` 之外的字段直接传给工厂，
-> 分组并发统一写在顶层 `group_limits`。无法由内置工厂表达的 Client 才使用自定义 Python 配置。
+> 分组并发统一写在顶层 `group_limits`。自定义 Client 使用外部工厂函数，不直接拼装结果列表。
 > 
 > 配置请参考：[ai_clients_example.yaml](_config/ai_clients_example.yaml) ，复制为
 > `ai_clients.yaml` 后按需要修改对应项即可。AIClientCenter 的独立 CLI/harness
@@ -391,7 +385,7 @@ python CrawlerServiceEngine.py
 + 登录与鉴权
     > 由 WebServiceAccessManager 和 [UserManager.py](ServiceComponent/UserManager.py) 进行管理。其中：
     >  
-    > + API Token位于配置文件中：[config_example.json](config_example.json)
+    > + API Token 位于 `_config/iis.yaml` 的 `access` 段
     > + 登录与注销的页面分别为：'/login'，'/logout'
     > + 用户信息保存在Authentication.db，通过[UserManagerConsole.py](Scripts/UserManagerConsole.py)管理用户。
 

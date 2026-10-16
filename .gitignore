@@ -180,8 +180,8 @@ output
 doc/.$IIS_Diagram.drawio.bkp
 requirements.txt.bak
 
-# config file
-config.json
+# deployment config
+iis.yaml
 ai_clients.yaml
 
 # Not-project folders
@@ -191,11 +191,11 @@ _export
 _products
 
 # Real config files are ignored; example configs are tracked in git.
-# 真实配置不入库（config.json / collector.json / ai_clients.yaml / Authentication.db / 密钥文件），
+# 真实配置不入库（iis.yaml / collector.json / ai_clients.yaml / Authentication.db / 密钥文件），
 # 示例文件（*_example.* / readme.txt / subsystems/ 模板）正常提交。
 _config/*
 !_config/readme.txt
-!_config/config_example.json
+!_config/iis_example.yaml
 !_config/collector_example.json
 !_config/ai_clients_example.yaml
 !_config/ai_clients_recommended_example.yaml

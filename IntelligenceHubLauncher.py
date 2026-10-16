@@ -14,6 +14,13 @@ import threading
 import platform
 import subprocess
 from abc import ABC, abstractmethod
+
+from GlobalConfig import DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
+from IISConfig import load_iis_config
+
+
+LAUNCHER_CONFIG = load_iis_config(
+    DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
 from IntelligenceHubStartup import wsgi_app
 
 # ==================== CONFIGURATION SECTION ====================
@@ -23,10 +30,10 @@ SERVER_TYPE = None  # Set to 'waitress', 'gunicorn', or None for auto-detection
 
 # =================== Common server parameters ===================
 
-HOST = "0.0.0.0"
-PORT = 5000
-THREADS = 4
-WORKERS = 1
+HOST = LAUNCHER_CONFIG.settings.server.host
+PORT = LAUNCHER_CONFIG.settings.server.port
+THREADS = LAUNCHER_CONFIG.settings.server.threads
+WORKERS = LAUNCHER_CONFIG.settings.server.workers
 
 # ================== Gunicorn server parameters ==================
 
@@ -42,7 +49,7 @@ FLASK_APP_INSTANCE = "wsgi_app"  # Your Flask app instance name
 
 # ================== Health check configuration ==================
 
-HEALTH_CHECK_URL = "http://127.0.0.1:5000/maintenance/ping"
+HEALTH_CHECK_URL = f"http://127.0.0.1:{PORT}/maintenance/ping"
 HEALTH_CHECK_TIMEOUT = 10
 CHECK_INTERVAL = 30
 RESTART_COOLDOWN = 300  # Seconds between restart attempts

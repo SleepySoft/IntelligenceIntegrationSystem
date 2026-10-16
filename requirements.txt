@@ -10,7 +10,7 @@ Jinja2==3.1.6                # Template engine (dependency for Flask)
 pymongo==4.13.0              # Official MongoDB driver
 tortoise-orm==0.25.0         # Async ORM (supports PostgreSQL/MySQL, etc.)
 pydantic==2.11.5             # Data validation library (core dependency of FastAPI)
-PyYAML>=6.0                  # YAML configuration for AIClientCenter
+PyYAML>=6.0                  # YAML configuration for IIS and AIClientCenter
 markdown
 bcrypt
 psutil

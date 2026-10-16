@@ -20,7 +20,7 @@ from ServiceComponent.runtime import ScheduledMaintenancePlugin, RuntimeControlS
 from ServiceComponent.runtime.status import HubStatusLogGate, format_hub_status
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
-from MyPythonUtility.easy_config import EasyConfig
+from IISConfig import IISConfig, load_iis_config
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
@@ -63,7 +63,7 @@ def show_intelligence_hub_statistics_forever(
         time.sleep(poll_interval)
 
 
-def build_ai_client_manager(config: EasyConfig):
+def build_ai_client_manager(config: IISConfig):
     from AIClientCenter import build_manager, load_config, validate_config
 
     ai_config_path = Path(os.getenv(
@@ -478,10 +478,8 @@ def run():
 
     # --------------------------------- Config --------------------------------
 
-    config = EasyConfig(
-        config_file=DEFAULT_CONFIG_FILE,
-        config_file_alter=DEFAULT_ALTER_CONFIG_FILE
-    )
+    config = load_iis_config(
+        DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
 
     logger.info('Apply config: ')
     logger.info(config.dump_text())

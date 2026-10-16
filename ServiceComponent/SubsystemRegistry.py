@@ -5,16 +5,14 @@
 每个子系统拥有一套独立资源（Mongo collection、查询引擎、prompt 表、URL 前缀等），
 但分析与归档流程完全复用 IntelligenceHub 的同一套框架。
 
-配置入口位于 config.json 的 `intelligence_hub.subsystems` 段：
+外部配置入口位于 iis.yaml 的 `hub.subsystems` 段：
 
-    "subsystems": {
-        "default": "news",
-        "list": [
-            {"name": "news", "display_name": "国际新闻", "enabled": true},
-            {"name": "finance", "display_name": "财经情报", "enabled": true,
-             "config_file": "_config/subsystems/finance.json"}
-        ]
-    }
+    hub:
+      subsystems:
+        default: news
+        enabled:
+          news: 国际新闻
+          finance: 财经情报
 
 子系统详细配置（collection 前缀、prompt 文件、URL 前缀等）分离到独立文件，
 新增子系统只需要新增配置目录 + 修改入口列表，无需改动代码。
@@ -196,8 +194,8 @@ class SubsystemRegistry:
             config_root: Optional[str] = None,
     ) -> 'SubsystemRegistry':
         """
-        从 config.json 的 `intelligence_hub.subsystems` 段构建注册表。
-        配置段缺失时自动退化为单一默认子系统（向前兼容）。
+        从 IISConfig 的运行时投影构建注册表。
+        配置段缺失时退化为单一默认子系统。
         """
         subsystems_cfg = config.get('intelligence_hub.subsystems', None)
         default_name = 'news'

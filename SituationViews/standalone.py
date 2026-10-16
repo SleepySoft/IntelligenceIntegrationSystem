@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, redirect
 
 from GlobalConfig import DATA_PATH, DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
-from MyPythonUtility.easy_config import EasyConfig
+from IISConfig import load_iis_config
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from SituationViews.web import SituationViewsService
 from SituationViews.geocoding import CachedNominatimGeocoder
@@ -16,10 +16,8 @@ from SituationViews.geocoding import CachedNominatimGeocoder
 
 def create_app(config=None, *, subsystem_registry=None) -> Flask:
     """创建只读视图服务；正式入口始终从配置连接真实 MongoDB。"""
-    config = config or EasyConfig(
-        config_file=DEFAULT_CONFIG_FILE,
-        config_file_alter=DEFAULT_ALTER_CONFIG_FILE,
-    )
+    config = config or load_iis_config(
+        DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
     registry = subsystem_registry or SubsystemRegistry.build_from_config(
         config,
         mongodb_params={

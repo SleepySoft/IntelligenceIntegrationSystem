@@ -36,6 +36,7 @@ def load_vector_db_settings(config) -> Optional[Dict[str, Any]]:
     未启用或缺少关键配置时返回 None（向量子系统整体不装配）。
     """
     enabled = config.get('intelligence_hub.vectordb.enabled', False)
+    vector_db_url = config.get('intelligence_hub.vectordb.url', None)
     vector_db_port = config.get('intelligence_hub.vectordb.vector_db_port', 8001)
     vector_db_path = config.get('intelligence_hub.vectordb.vector_db_path', '')
     embedding_model_name = config.get('intelligence_hub.vectordb.embedding_model_name', '')
@@ -44,7 +45,7 @@ def load_vector_db_settings(config) -> Optional[Dict[str, Any]]:
         return None
 
     return {
-        "url": f"http://localhost:{vector_db_port}",
+        "url": vector_db_url or f"http://localhost:{vector_db_port}",
         "db_path": vector_db_path,
         "embedding_model_name": embedding_model_name,
     }

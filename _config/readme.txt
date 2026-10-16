@@ -1,5 +1,12 @@
 This directory contains deployment configuration kept separate from program code.
 
+IIS configuration
+-----------------
+
+Copy ``iis_example.yaml`` to ``iis.yaml`` and only set deployment differences.
+Defaults and strict validation live in ``IISConfig.py``. AI clients and the
+collector intentionally use their own files below.
+
 AI Client configuration
 -----------------------
 

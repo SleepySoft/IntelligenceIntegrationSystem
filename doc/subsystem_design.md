@@ -5,25 +5,15 @@ AI 客户端分组、评分配置和可选 UI 插件。
 
 ## 配置
 
-子系统入口位于 `_config/config.json`：
+子系统入口位于 `_config/iis.yaml`，详细参数仍分离在 `_config/subsystems/`：
 
-```json
-{
-  "intelligence_hub": {
-    "subsystems": {
-      "default": "news",
-      "list": [
-        {"name": "news", "display_name": "国际新闻", "enabled": true},
-        {
-          "name": "finance",
-          "display_name": "财经情报",
-          "enabled": true,
-          "config_file": "_config/subsystems/finance.json"
-        }
-      ]
-    }
-  }
-}
+```yaml
+hub:
+  subsystems:
+    default: news
+    enabled:
+      news: 国际新闻
+      finance: 财经情报
 ```
 
 详细配置支持：`collection_prefix`、`url_prefix`、`ai_client_group`、`scoring`、`ui_plugin`
@@ -40,7 +30,7 @@ AI 客户端分组、评分配置和可选 UI 插件。
 
 ## 新增子系统
 
-1. 在主配置 `subsystems.list` 中登记名称、显示名和配置文件。
+1. 在主配置 `hub.subsystems.enabled` 中登记名称和显示名。
 2. 设置唯一 `collection_prefix` 与 `url_prefix`。
 3. 如有需要，设置 AI 客户端分组和 V4 评分权重。
 4. 如需定制展示，新增读取 V4 DTO 的 `ui_plugin.js`。

@@ -12,7 +12,7 @@ IIS 内仅向 `IntelligenceViews` 集成页提供两个嵌入组件：
 事件类别和实体类型仍可通过右上角可折叠悬浮图例进行筛选。旧的 `/situation/`、
 `/situation/map` 和 `/situation/entities` 不再注册。
 
-独立运行（直接读取 `_config/config.json` 指向的真实 MongoDB）：
+独立运行（直接读取 `_config/iis.yaml` 指向的真实 MongoDB）：
 
 ```bash
 python -m SituationViews.standalone
@@ -21,37 +21,20 @@ python -m SituationViews.standalone
 然后访问 `http://127.0.0.1:5010/situation/embed/map`。
 
 IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，复用主站的登录保护和
-`SubsystemRegistry`，但不进入 Hub 事件链。可以在 `_config/config.json` 中单独关闭整个
+`SubsystemRegistry`，但不进入 Hub 事件链。可以在 `_config/iis.yaml` 中单独关闭整个
 模块或地名解析：
 
-```json
-{
-  "intelligence_hub_web_service": {
-    "intelligence_views": {
-      "situation": {
-        "subsystem": "news",
-        "window_days": 7,
-        "min_score": 6.0,
-        "min_support": 2,
-        "max_nodes": 80,
-        "max_edges": 240,
-        "max_articles": 5000,
-        "primary_only": true,
-        "keep_high_score_singletons": true
-      }
-    },
-    "situation_views": {
-      "enabled": true,
-      "geocoding": {
-        "enabled": true,
-        "cache_file": "SituationViews/geocoding.sqlite"
-      }
-    }
-  }
-}
+```yaml
+features:
+  situation:
+    enabled: true
+    subsystem: news
+    window_days: 7
+    min_score: 6
+    geocoding: true
 ```
 
-没有该配置段时默认启用，以兼容已有部署。模块初始化失败不会阻断 IIS 主服务；若仅地名
+没有该配置段时使用代码默认值。模块初始化失败不会阻断 IIS 主服务；若仅地名
 解析初始化失败，国家级热点和实体关系图仍可使用。`SituationViewsService.mount_to_app()`
 仍可供独立程序或其他 Flask 应用直接挂载。
 

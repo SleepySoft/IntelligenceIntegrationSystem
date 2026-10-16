@@ -1,0 +1,58 @@
+# IIS 主程序只写部署差异；未出现的字段由 IISConfig.py 提供默认值并校验。
+# AI Client 使用 ai_clients.yaml，采集器使用 collector.json，不在这里重复配置。
+
+server:
+  host: 0.0.0.0
+  port: 5000
+  # 经过反向代理或使用外部域名时再设置：
+  # public_origin: https://intel.example.com
+
+database:
+  host: localhost
+  port: 27017
+  # username: iis
+  # password: change-me
+
+hub:
+  workers: 1
+  subsystems:
+    default: news
+    # 键是稳定的子系统名，值是界面显示名；详细设置从 subsystems/<名称>.json 加载。
+    enabled:
+      news: 国际新闻
+      finance: 财经情报
+      industry: 行业情报
+
+access:
+  # 空列表表示拒绝对应的 Token API；部署时填入随机 Token。
+  rpc_tokens: []
+  collector_tokens: []
+
+features:
+  translation: true
+  vector:
+    enabled: false
+    endpoint: http://127.0.0.1:8001
+    database: vectordb
+    model: BAAI/bge-m3
+  situation:
+    enabled: true
+    subsystem: news
+    window_days: 7
+    min_score: 6
+  intelligence_views: true
+
+# 常用高级项只在需要覆盖默认值时添加：
+# hub:
+#   max_inflight: 2000
+#   client_wait_timeout_sec: 60
+#   submission_timeout_sec: 30
+#   replay_unarchived: true
+#   shadow_versions: [43]
+# web:
+#   public_search:
+#     page_size: 20
+#     max_pages: 5
+#     window_days: 30
+#     requests_per_minute: 10
+#     vector_enabled: false

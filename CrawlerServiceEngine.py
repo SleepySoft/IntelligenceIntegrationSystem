@@ -35,9 +35,9 @@ COLLECTOR_ALTER_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector_example.json'
 
 def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
     """
-    加载采集器独立配置（config.json 只属于 IIS 服务）。
+    加载采集器独立配置（IIS 主配置与采集器配置互相独立）。
     优先级：显式参数 / IIS_COLLECTOR_CONFIG 环境变量 / _config/collector.json
-            / _config/collector_example.json / （迁移期兜底）旧 config.json 的 collector 段。
+            / _config/collector_example.json。
     """
     path = config_path or os.environ.get('IIS_COLLECTOR_CONFIG') or COLLECTOR_CONFIG_FILE
     if os.path.isfile(path):
@@ -45,10 +45,9 @@ def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
     if os.path.isfile(COLLECTOR_ALTER_CONFIG_FILE):
         logger.warning(f"Collector config not found: {path}, fallback to example: {COLLECTOR_ALTER_CONFIG_FILE}")
         return EasyConfig(config_file=path, config_file_alter=COLLECTOR_ALTER_CONFIG_FILE)
-    logger.warning(
-        f"Collector config not found ({path}); "
-        f"fallback to legacy config.json 'collector' section (migration period).")
-    return EasyConfig(DEFAULT_CONFIG_FILE)
+    raise ValueError(
+        f"Collector config not found: {path}; example also missing: "
+        f"{COLLECTOR_ALTER_CONFIG_FILE}")
 
 
 def resolve_task_dirs(config: EasyConfig) -> Dict[str, str]:
@@ -142,7 +141,7 @@ class TaskManager:
         self.watch_dir = watch_dir
         self.security = security_config
 
-        # 采集器独立配置（不再依赖 IIS 的 config.json）
+        # 采集器独立配置（不依赖 IIS 的 iis.yaml）
         self.config = load_collector_config(collector_config_path)
         self.default_subsystem = str(
             self.config.get('collector.default_subsystem') or 'news').strip() or 'news'

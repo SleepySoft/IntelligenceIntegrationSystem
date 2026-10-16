@@ -126,7 +126,7 @@
    - 限制 `top_n`；
    - upsert 任务内部记录耗时/内存。
 6. 新增 `Test/vectordb_stress_test.py`。
-7. 更新 `_config/config_example.json` 与 `doc/AGENTS.md`（如相关配置变化）。
+7. 更新 `_config/iis_example.yaml` 与 `AGENTS.md`（如相关配置变化）。
 
 ---
 
