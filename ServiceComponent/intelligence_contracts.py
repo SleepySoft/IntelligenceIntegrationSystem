@@ -93,3 +93,5 @@ class EventV4CollectionSuffix(StrEnum):
     LOW_VALUE = "v4_low_value"
     EVENTS = "v4_events"
     OUTBOX = "v4_outbox"
+    # intake 拒绝审计：被入口校验/去重拒绝的提交记录（不进 cache，只供审计）。
+    INTAKE_REJECTED = "intake_rejected"

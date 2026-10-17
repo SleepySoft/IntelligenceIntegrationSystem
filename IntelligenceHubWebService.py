@@ -793,29 +793,31 @@ class IntelligenceHubWebService:
 
         @app.route('/collect', methods=['POST'])
         def collect_api():
+            # 应答契约：resp = queued | rejected | error；rejected 必带 reason，
+            # 供采集端区分“可重试的传输错误”与“服务端明确拒绝”（重复/校验失败等）。
             try:
                 if self.control_state is not None and self.control_state.is_paused('intake'):
                     return jsonify({'resp': 'maintenance', 'uuid': '',
                                     'message': 'intake paused by operator'}), 503
                 data = dict(request.json)
                 if not data.get('UUID', ''):
-                    raise ValueError('Invalid UUID.')
+                    return jsonify({'resp': 'rejected', 'uuid': '', 'reason': 'missing_uuid'})
 
                 collector_token = data.get('token', '')
-                if self.access_manager.check_collector_token(collector_token):
-                    result = self.intelligence_hub.submit_collected_data(data)
-                    response = 'queued' if result else 'error',
-                else:
-                    response = 'invalid token'
+                if not self.access_manager.check_collector_token(collector_token):
                     logger.warning(f'Post intelligence with invalid token: {collector_token}.')
+                    return jsonify({'resp': 'rejected', 'uuid': data.get('UUID', ''),
+                                    'reason': 'invalid_token'})
 
+                accepted, reason = self.intelligence_hub.submit_collected_data_result(data)
                 return jsonify({
-                    'resp': response,
-                    'uuid': data.get('UUID', '')
+                    'resp': 'queued' if accepted else 'rejected',
+                    'uuid': data.get('UUID', ''),
+                    'reason': reason,
                 })
             except Exception as e:
                 logger.error(f'collect_api() fail: {str(e)}')
-                return jsonify({'resp': 'error', 'uuid': ''})
+                return jsonify({'resp': 'error', 'uuid': '', 'reason': str(e)[:200]})
 
         @app.route('/debug/intelligence', methods=['GET'])
         @WebServiceAccessManager.login_required

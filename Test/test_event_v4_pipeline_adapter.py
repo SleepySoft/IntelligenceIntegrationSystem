@@ -20,6 +20,7 @@ class FakeStorage:
     def __init__(self):
         self.inserted = []
         self.updated = []
+        self.audit = FakeAuditDb()
 
     def insert(self, value):
         self.inserted.append(value)
@@ -31,10 +32,30 @@ class FakeStorage:
     def collection(self):
         return self
 
+    @property
+    def db(self):
+        return self.audit
+
     def find_one(self, query, projection=None):
         del projection
         return next((item for item in self.inserted
                      if all(item.get(key) == value for key, value in query.items())), None)
+
+
+class FakeAuditCollection:
+    def __init__(self):
+        self.docs = []
+
+    def insert_one(self, doc):
+        self.docs.append(doc)
+
+
+class FakeAuditDb:
+    def __init__(self):
+        self.collections = {}
+
+    def __getitem__(self, name):
+        return self.collections.setdefault(name, FakeAuditCollection())
 
 
 class FakeContext:
@@ -47,6 +68,9 @@ class FakeContext:
         self.mongo_db_cache = FakeStorage()
         self.cache_query_engine = None
         self.stats = {"archived": 0, "dropped": 0, "error": 0}
+
+    def collection_name(self, suffix):
+        return f"intelligence_{suffix}"
 
 
 class FakeRegistry:
@@ -203,6 +227,11 @@ def test_v4_intake_deduplicates_by_informant_not_uuid():
     assert not second.accepted
     assert second.reason == "collected_data_duplicated"
     assert len(context.mongo_db_cache.inserted) == 1
+    # 拒绝审计：重复提交写入 intake_rejected 集合，不影响 cache 队列。
+    audit_docs = context.mongo_db_cache.db["intelligence_intake_rejected"].docs
+    assert len(audit_docs) == 1
+    assert audit_docs[0]["reason"] == "collected_data_duplicated"
+    assert audit_docs[0]["informant"] == repeated_source["informant"]
 
 
 def test_v4_intake_rejects_blank_informant():
@@ -214,6 +243,10 @@ def test_v4_intake_rejects_blank_informant():
 
     assert not result.accepted
     assert not context.mongo_db_cache.inserted
+    # 校验失败同样落审计记录。
+    audit_docs = context.mongo_db_cache.db["intelligence_intake_rejected"].docs
+    assert len(audit_docs) == 1
+    assert audit_docs[0]["reason"].startswith("validation_error:")
 
 
 def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():

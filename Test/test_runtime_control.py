@@ -44,6 +44,9 @@ class FakeHub:
     def submit_collected_data(self, data):
         return True
 
+    def submit_collected_data_result(self, data):
+        return True, ""
+
     def get_service(self, name, default=None):
         return default
 
@@ -145,7 +148,7 @@ def test_control_endpoints_and_intake_gate():
     assert resp.status_code == 200
     resp = client.post("/collect", json={"UUID": "u-1", "token": "collector-token"})
     assert resp.status_code == 200
-    assert resp.get_json()["resp"] == ["queued"]  # 既有实现返回的是单元素列表
+    assert resp.get_json()["resp"] == "queued"  # 应答契约修复后 resp 是字符串
 
     assert client.post("/api/control/pause", json={"scope": "bad"}).status_code == 400
     # 未登录不可访问控制端点

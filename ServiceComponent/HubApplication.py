@@ -175,10 +175,15 @@ class HubApplication:
         return outcomes
 
     def submit_collected_data(self, data: dict) -> bool:
+        accepted, _reason = self.submit_collected_data_result(data)
+        return accepted
+
+    def submit_collected_data_result(self, data: dict) -> Tuple[bool, str]:
+        """提交并等待 intake 回执；返回 (是否接收, 拒绝原因)。接受时原因为空串。"""
         subsystem = str(data.get("subsystem") or "").strip() or self.default_subsystem_name
         if self.subsystem_registry.resolve(subsystem) is None:
-            return False
-        return self._submit_and_wait(
+            return False, "unknown_subsystem"
+        return self._submit_and_wait_result(
             HubEvent(INTAKE_RECEIVED, dict(data), subsystem),
             accepted_event=INTAKE_ACCEPTED,
         )
@@ -254,10 +259,14 @@ class HubApplication:
         return self.services.get(name, default)
 
     def _submit_and_wait(self, event: HubEvent, *, accepted_event: str) -> bool:
+        accepted, _reason = self._submit_and_wait_result(event, accepted_event=accepted_event)
+        return accepted
+
+    def _submit_and_wait_result(self, event: HubEvent, *, accepted_event: str) -> Tuple[bool, str]:
         if not self._started.is_set():
-            return False
+            return False, "hub_not_started"
         if not self._inflight_slots.acquire(timeout=self._submission_ack_timeout):
-            return False
+            return False, "inflight_limit"
         waiter = threading.Event()
         outcome: Dict[str, Any] = {}
         with self._submission_lock:
@@ -270,12 +279,16 @@ class HubApplication:
                 self._submission_waiters.pop(event.event_id, None)
                 self._active_submissions.discard(event.event_id)
             self._inflight_slots.release()
-            return False
+            return False, "emit_failed"
 
         acknowledged = waiter.wait(timeout=self._submission_ack_timeout)
         with self._submission_lock:
             self._submission_waiters.pop(event.event_id, None)
-        return acknowledged and outcome.get("event_type") == accepted_event
+        if not acknowledged:
+            return False, "ack_timeout"
+        if outcome.get("event_type") == accepted_event:
+            return True, ""
+        return False, str(outcome.get("reason") or "rejected")
 
     def _on_submission_accepted(self, event: HubEvent, runtime: HubRuntime) -> None:
         self._acknowledge_submission(event, True)
@@ -296,6 +309,8 @@ class HubApplication:
                 return
             outcome["accepted"] = accepted
             outcome["event_type"] = event.event_type
+            # 拒绝事件 payload 是 PipelineStageFailure；把 reason 透传给提交方。
+            outcome["reason"] = str(getattr(event.payload, "reason", "") or "")
             waiter.set()
 
     def _on_submission_terminal(self, event: HubEvent, runtime: HubRuntime) -> None:

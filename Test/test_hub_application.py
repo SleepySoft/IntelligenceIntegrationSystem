@@ -81,6 +81,28 @@ def test_application_reports_intake_rejection_instead_of_queued():
     app.shutdown()
 
 
+def test_application_returns_rejection_reason():
+    app = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
+    app.startup()
+    try:
+        accepted, reason = app.submit_collected_data_result({"subsystem": "news", "reject": True})
+        assert not accepted
+        assert reason == "invalid"
+
+        accepted, reason = app.submit_collected_data_result({"subsystem": "news", "content": "ok"})
+        assert accepted
+        assert reason == ""
+    finally:
+        app.shutdown()
+
+    # 未启动/未知子系统的拒绝原因
+    app2 = HubApplication(
+        subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports())
+    assert app2.submit_collected_data_result({"subsystem": "unknown"}) == (False, "unknown_subsystem")
+    assert app2.submit_collected_data_result({"subsystem": "news"})[1] == "hub_not_started"
+
+
 def test_application_releases_backpressure_slot_after_terminal_event():
     app = HubApplication(
         subsystem_registry=Registry(), ai_client_manager=object(), pipeline_ports=Ports(),

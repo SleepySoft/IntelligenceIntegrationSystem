@@ -59,6 +59,7 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
+    EventV4CollectionSuffix,
     appendix_path,
 )
 from ServiceComponent.intelligence_time import resolve_content_time
@@ -188,6 +189,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 submitted.get("UUID")))
             data = CollectedData.model_validate(submitted).model_dump()
         except ValidationError as exc:
+            self._record_intake_rejection(ctx, event.payload, f"validation_error:{exc}")
             return StageResult.reject(str(exc))
         if data.get("source") == MANUAL_TEST_SOURCE:
             return StageResult.reject("manual_test_requires_debug_route")
@@ -196,12 +198,36 @@ class EventV4PipelinePorts(BasePipelinePorts):
             collection = ctx.mongo_db_cache.collection if ctx.mongo_db_cache else None
             if collection is not None:
                 if collection.find_one({"informant": data["informant"]}, {"_id": 1}):
+                    self._record_intake_rejection(ctx, data, "collected_data_duplicated")
                     return StageResult.reject("collected_data_duplicated")
                 while collection.find_one({"UUID": data["UUID"]}, {"_id": 1}):
                     data["UUID"] = str(normalize_or_assign_intelligence_uuid(None))
             if ctx.mongo_db_cache:
                 ctx.mongo_db_cache.insert(data)
         return StageResult.allow(data, subsystem=ctx.name)
+
+    @staticmethod
+    def _record_intake_rejection(ctx: Any, data: Any, reason: str) -> None:
+        """intake 拒绝审计：写入独立的 intake_rejected 集合（不进 cache 队列）。
+
+        只读统计用途；任何失败都只记日志，绝不能反过来影响 intake 本身。
+        """
+        try:
+            storage = getattr(ctx, "mongo_db_cache", None)
+            if storage is None:
+                return
+            payload = dict(data) if isinstance(data, Mapping) else {}
+            storage.db[ctx.collection_name(EventV4CollectionSuffix.INTAKE_REJECTED)].insert_one({
+                "uuid": str(payload.get("UUID") or ""),
+                "informant": str(payload.get("informant") or ""),
+                "source": str(payload.get("source") or ""),
+                "title": str(payload.get("title") or "")[:200],
+                "subsystem": getattr(ctx, "name", ""),
+                "reason": reason[:1000],
+                "rejected_at": datetime.now(timezone.utc),
+            })
+        except Exception:
+            logger.warning("intake rejection audit write failed", exc_info=True)
 
     def analyze(self, event: HubEvent) -> StageResult:
         self._wait_while_analysis_paused()
