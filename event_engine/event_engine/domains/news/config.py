@@ -20,7 +20,7 @@ PREDICATE_ARGUMENT_SPECS = {
     "improve": _arguments("subject agent"),
     "deteriorate": _arguments("subject agent"),
     "create": _arguments("actor", "object"),
-    "terminate": _arguments("subject agent"),
+    "terminate": _arguments("subject agent actor"),
     "gain": _arguments("subject agent", "object"),
     "lose": _arguments("subject agent", "object"),
     "damage": _arguments("actor", "affected"),
@@ -37,10 +37,12 @@ PREDICATE_ARGUMENT_SPECS = {
     "inspect": _arguments("inspector", "object"),
     "investigate": _arguments("investigator", "object"),
     "negotiate": _arguments("party", "topic"),
-    "agree": _arguments("party", "agreement"),
-    "regulate": _arguments("authority", "target rule"),
+    # topic：模型常需要为协议类事件表达议题槽（生产归档中 agree/topic 高频出现）。
+    "agree": _arguments("party", "agreement topic"),
+    "regulate": _arguments("authority", "target rule object"),
     "sanction": _arguments("authority", "target object"),
-    "restrict": _arguments("authority", "target object"),
+    # actor：模型习惯把施行限制的一方标为 actor（同 sanction 的 authority），兼容两种写法。
+    "restrict": _arguments("authority actor", "target object"),
     "elect": _arguments("electorate", "person position"),
     "adjudicate": _arguments("authority", "case party"),
     "detain": _arguments("authority", "person"),
@@ -127,4 +129,4 @@ FRAMES = frame_specs(
     ("natural_hazard outbreak", _frame("process", "intrinsic", "non_agentive")),
 )
 PREDICATE_SPECS = make_specs(PREDICATE_ARGUMENT_SPECS, IDENTITIES, TAGS, FRAMES, NEWS_PREDICATE_METADATA)
-PACK = DomainPack("news", "1.5", PREDICATE_SPECS)
+PACK = DomainPack("news", "1.6", PREDICATE_SPECS)

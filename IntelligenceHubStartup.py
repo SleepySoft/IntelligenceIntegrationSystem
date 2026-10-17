@@ -189,6 +189,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         logger.info(f'Shadow analysis enabled for prompt versions: {shadow_versions}')
     # 运行控制开关：组合根创建唯一实例，分别注入 pipeline 与 Web 层。
     control_state = RuntimeControlState()
+    shadow_sample_rate = float(config.get(
+        'intelligence_hub.shadow_analysis.sample_rate', 1.0))
     pipeline_ports = EventV4PipelinePorts(
         subsystem_registry,
         client_manager,
@@ -197,6 +199,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         failure_recorder=failure_recorder,
         shadow_versions=shadow_versions,
         shadow_recorder=shadow_recorder,
+        shadow_sample_rate=shadow_sample_rate,
         control_state=control_state,
     )
     extensions = []

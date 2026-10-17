@@ -66,6 +66,7 @@ optional_subsystems:
 #   submission_timeout_sec: 30
 #   replay_unarchived: true
 #   shadow_versions: [43]
+#   shadow_sample_rate: 1.0   # 影子链路采样率（0-1），调低可控制灰度 Token 成本
 # web:
 #   public_search:
 #     page_size: 20

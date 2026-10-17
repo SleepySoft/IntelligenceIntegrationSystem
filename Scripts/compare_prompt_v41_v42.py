@@ -77,6 +77,7 @@ def analyze_with_retry(client_manager, prompt: str, version: int, data: dict,
         if isinstance(raw, dict):
             raw = dict(raw)
             raw.pop("record_file", None)
+            raw.pop("_ai_client_meta", None)  # 生产链在进领域模型前同样移除该内部标识
         if not isinstance(raw, dict) or raw.get("error"):
             last_error = RuntimeError(str(raw.get("error") if isinstance(raw, dict) else raw))
             continue

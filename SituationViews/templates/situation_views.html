@@ -93,6 +93,7 @@
         .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
         .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
         .map-attribution a { color: inherit; }
+        .scope-badge { position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 11px; z-index: 3; }
         .warning { margin-top: 10px; padding: 9px; border-radius: 8px; background: color-mix(in srgb, #eab308 16%, var(--panel)); color: var(--text); }
         .dashboard .shell { max-width: none; padding: 12px; }
         .dashboard header { align-items: center; margin-bottom: 10px; }
@@ -175,6 +176,9 @@
                 <svg id="map-svg" role="img" aria-label="事件热点地球视图"></svg>
                 <div class="tooltip" id="map-tooltip"></div>
                 <div class="map-attribution">细化坐标 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></div>
+                {% if embedded %}
+                <div class="scope-badge">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }}</div>
+                {% endif %}
             </div>
             <aside class="side" id="map-detail">
                 <h2>地图概览</h2>
@@ -197,6 +201,9 @@
                 <div class="status" id="graph-status">正在聚合实体关系…</div>
                 <svg id="graph-svg" role="img" aria-label="实体施受关系图"></svg>
                 <div class="tooltip" id="graph-tooltip"></div>
+                {% if embedded %}
+                <div class="scope-badge">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }}</div>
+                {% endif %}
             </div>
             <aside class="side" id="graph-detail">
                 <h2>关系图设置</h2>

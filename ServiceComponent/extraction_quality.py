@@ -9,6 +9,7 @@
 - 未登记角色名：已登记谓词使用了 Registry 未声明的角色；
 - 角色-实体类型冲突：按角色的 SemanticRoleGroup 检查实体类型兼容性
   （如 AGENT 组角色绑定 product/information 等抽象实体）；
+  组级限制之外，议题（topic）槽按角色名禁用人物/动物类实体；
 - surface 接地率：谓词/时间 surface 是否逐字出现在原文中（规范化后子串匹配）。
 """
 
@@ -27,6 +28,12 @@ GROUP_ALLOWED_ENTITY_TYPES = {
     SemanticRoleGroup.AGENT: _AGENT_LIKE_TYPES,
     SemanticRoleGroup.AUTHORITY: _AGENT_LIKE_TYPES,
     SemanticRoleGroup.LOCATION: _LOCATION_TYPES,
+}
+
+# 组级限制之外按角色名判负的名单：topic（议题）属于 THEME 组，语义上是抽象事项，
+# 人物/动物不可能作议题（典型错位：把表态人物填进 topic，事项反而塞进谓词 surface）。
+_ROLE_DENIED_ENTITY_TYPES = {
+    "topic": frozenset({"person", "animal"}),
 }
 
 _DETAIL_CAP = 10
@@ -54,11 +61,15 @@ def _check_roles(extraction, registry) -> tuple[list[dict], list[dict]]:
                     {"event": event.id, "predicate": predicate_id, "role": role})
                 continue
             allowed = GROUP_ALLOWED_ENTITY_TYPES.get(SemanticRoleGroup(group))
-            if not allowed:
+            denied = _ROLE_DENIED_ENTITY_TYPES.get(role)
+            if not allowed and not denied:
                 continue
             for ref in refs:
                 entity = entities.get(ref)
-                if entity is not None and entity.type not in allowed:
+                if entity is None:
+                    continue
+                if (allowed and entity.type not in allowed) or (
+                        denied and entity.type in denied):
                     type_conflicts.append({
                         "event": event.id,
                         "predicate": predicate_id,

@@ -80,6 +80,9 @@ class HubSettings(_StrictModel):
     replay_unarchived: bool = True
     conversation_retention_days: int = Field(7, ge=1)
     shadow_versions: list[int] = Field(default_factory=list)
+    # 影子链路采样率：1.0 = 每条主链成功样本都跑影子；0.1 = 约 10% 样本跑影子，
+    # 用于控制灰度 Token 成本。仅对 shadow_versions 非空时生效。
+    shadow_sample_rate: float = Field(1.0, ge=0.0, le=1.0)
     subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings)
 
 
@@ -265,6 +268,7 @@ class IISConfig:
                 "shadow_analysis": {
                     "enabled": bool(settings.hub.shadow_versions),
                     "versions": settings.hub.shadow_versions,
+                    "sample_rate": settings.hub.shadow_sample_rate,
                     "directory": "_data/analysis_shadow",
                     "max_files": 1000,
                 },

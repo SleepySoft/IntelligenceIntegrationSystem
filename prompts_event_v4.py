@@ -223,7 +223,22 @@ EVENT_ANALYSIS_PROMPT_V44 = EVENT_ANALYSIS_PROMPT_V44.replace(
     EVENT_CORE_EXTRACTION_SECTION, EVENT_CORE_EXTRACTION_SECTION + _V44_EXTRACTION_ADDENDUM)
 
 
+# V45：在 v44 基础上补充议题槽与角色名使用指引（灰度评估版本，不进生产抽样）。
+# 依据：生产归档中发现的角色-议题错位（表态人物被填入 topic，事项反而塞进谓词
+# surface）与已登记谓词改用 subject/theme 等开放兼底角色两类问题。
+_V45_EXTRACTION_ADDENDUM = """
+
+## 议题槽与角色名（必须遵守）
+
+- topic 角色表示议题，只能填抽象事项类实体（如 agreement、policy、topic、event、information），禁止填 person、organization 等行动方实体。事项由人物或机构引发时（如“某领导人回应某停火”），行动方填 party 等角色，议题本身单独抽象为实体（如“能源停火” type=agreement）。
+- 已登记谓词只能使用目录中为该谓词列出的角色名，禁止改用 subject、theme 等开放兼底角色；目录中没有合适谓词时才使用 predicate.id=null 加 frame 的开放形式。
+"""
+EVENT_ANALYSIS_PROMPT_V45 = EVENT_ANALYSIS_PROMPT_V44 + _V45_EXTRACTION_ADDENDUM
+
+
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
+# v44（RATE 档位准入提示 + 信息状态限定词保留）为当前生产抽样版本；
+# v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
 # v42（核心子集、数字 RATE）与 v41（完整契约直出）保留为回滚/对照通道。
 # 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
 # （doc/20261013_event_v4_extraction_subset_design.md §7.1）。
@@ -279,6 +294,9 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     catalog = PromptCatalog()
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
+    catalog.register_prompt(
+        45, EVENT_ANALYSIS_PROMPT_V45,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
     catalog.register_prompt(
         44, EVENT_ANALYSIS_PROMPT_V44,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=True)

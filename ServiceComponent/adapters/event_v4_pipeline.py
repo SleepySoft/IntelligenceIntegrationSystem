@@ -110,6 +110,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         failure_recorder: Any = None,
         shadow_versions: Iterable[int] | None = None,
         shadow_recorder: Any = None,
+        shadow_sample_rate: float = 1.0,
         quality_enabled: bool = True,
         control_state: Any = None,
         entity_name_normalizer: Callable[[str], str | None] | None = None,
@@ -139,6 +140,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         if unknown_shadow:
             raise ValueError(f"shadow prompt versions not configured: {unknown_shadow}")
         self._shadow_recorder = shadow_recorder
+        # 影子采样率：主链成功样本按此概率进入影子链路，控制灰度 Token 成本。
+        self._shadow_sample_rate = max(0.0, min(1.0, float(shadow_sample_rate)))
         self._quality_enabled = quality_enabled
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
@@ -636,6 +639,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         if not persist or self._shadow_recorder is None:
             return
         if self._control_state is not None and self._control_state.is_paused("shadow"):
+            return
+        # 抽样判定对整次事件做一次：命中时该事件的所有影子版本都执行，保证配对完整。
+        if self._shadow_sample_rate < 1.0 and random.random() >= self._shadow_sample_rate:
             return
         for version in self._shadow_versions:
             if version == primary_version:

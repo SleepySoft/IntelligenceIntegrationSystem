@@ -245,7 +245,7 @@ python VectorDB/VectorDBBService.py \
   `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
 - 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
-- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
+- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。`intelligence_hub.shadow_analysis.sample_rate`（0-1，默认 1.0）控制影子采样率，可压低灰度 Token 成本；抽样判定对整次事件做一次，保证多影子版本配对完整。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）
@@ -345,6 +345,7 @@ pytest Test/
 | `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
+| `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |
 | `VectorDB/README.md` | 向量数据库说明 |

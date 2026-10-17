@@ -778,7 +778,7 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44}
+    assert set(table) == {41, 42, 43, 44, 45}
     assert "核心子集" in table[42]
     # 生产抽样表已切换为只有 44。
     assert list(ports._prompt_table) == [44]
@@ -792,7 +792,7 @@ class FakeShadowRecorder:
         self.records.append(kwargs)
 
 
-def _ports_with_shadow(analyzer, shadow_recorder):
+def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0):
     return EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
@@ -801,6 +801,7 @@ def _ports_with_shadow(analyzer, shadow_recorder):
         extraction_modes={41: "full", 42: "core_subset"},
         shadow_versions=[42],
         shadow_recorder=shadow_recorder,
+        shadow_sample_rate=shadow_sample_rate,
         analyzer=analyzer,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -850,6 +851,44 @@ def test_v4_shadow_failure_does_not_affect_primary_chain():
     assert analyzed.payload.archive.APPENDIX["__PROMPT_VERSION__"] == 41
     assert not shadow_recorder.records
     assert ports.shadow_statistics == {"recorded": 0, "failed": 1}
+
+
+def test_v4_shadow_sample_rate_zero_skips_shadow_chain():
+    calls = []
+
+    def analyzer(client, prompt, original, record_meta=None):
+        calls.append(prompt)
+        return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    ports = _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=0.0)
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    # 采样率为 0：影子链路整体不执行，只跑主链一次分析。
+    assert calls == ["full prompt"]
+    assert not shadow_recorder.records
+    assert ports.shadow_statistics == {"recorded": 0, "failed": 0}
+
+
+def test_v4_shadow_sample_rate_partial_uses_single_draw_per_event(monkeypatch):
+    def analyzer(client, prompt, original, record_meta=None):
+        return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    ports = _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=0.5)
+
+    import ServiceComponent.adapters.event_v4_pipeline as pipeline_module
+    monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.6)
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    assert analyzed.accepted
+    assert not shadow_recorder.records  # 0.6 >= 0.5，未命中
+
+    monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.4)
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    assert analyzed.accepted
+    assert len(shadow_recorder.records) == 1  # 0.4 < 0.5，命中
 
 
 def test_v4_archive_appendix_carries_extraction_quality_stats():

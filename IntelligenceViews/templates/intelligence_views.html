@@ -23,6 +23,8 @@
         .tab:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
         .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
         .open-view { margin-left: auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; white-space: nowrap; }
+        .scope-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .scope-note[hidden] { display: none; }
         .frames { position: relative; min-height: 0; }
         iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); display: none; }
         iframe.active { display: block; }
@@ -45,6 +47,7 @@
             <button class="tab" type="button" data-view="map">地域视图</button>
             <button class="tab" type="button" data-view="entities">实体视图</button>
         </nav>
+        <span class="scope-note" id="scope-note" hidden></span>
         <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">单独打开</a>
     </header>
     <main class="frames">
@@ -56,6 +59,7 @@
 </div>
 <script>
 const FRAME_URLS = {{ frame_urls|tojson }};
+const SITUATION = {{ profile.situation|tojson }};
 let activeView = {{ profile.active_view|tojson }};
 
 function activate(view, updateHistory = true) {
@@ -76,6 +80,13 @@ function activate(view, updateHistory = true) {
         }
     });
     document.getElementById('open-view').href = FRAME_URLS[view];
+    const scopeNote = document.getElementById('scope-note');
+    if (view === 'map' || view === 'entities') {
+        scopeNote.textContent = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
+        scopeNote.hidden = false;
+    } else {
+        scopeNote.hidden = true;
+    }
     if (updateHistory) {
         const url = new URL(window.location.href);
         url.searchParams.set('view', view);

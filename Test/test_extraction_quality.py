@@ -9,7 +9,9 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
 _REGISTRY = DEFAULT_EVENT_REGISTRY
 
 
-def _extraction(roles, entities, surface="袭击", time_surface=None):
+def _extraction(roles, entities, surface="袭击", time_surface=None,
+                predicate="attack", frame=None):
+    frame = frame or {"dynamics": "process", "topology": "targeted", "agency": "agentive"}
     time_block = None
     if time_surface:
         time_block = {
@@ -21,8 +23,8 @@ def _extraction(roles, entities, surface="袭击", time_surface=None):
     event = {
         "id": "E1",
         "core": {
-            "frame": {"dynamics": "process", "topology": "targeted", "agency": "agentive"},
-            "predicate": {"id": "attack", "surface": surface},
+            "frame": frame,
+            "predicate": {"id": predicate, "surface": surface},
             "roles": roles,
         },
     }
@@ -36,8 +38,10 @@ def _extraction(roles, entities, surface="袭击", time_surface=None):
     }
 
 
-def _quality(roles, entities, surface="袭击", time_surface=None, raw_text=""):
-    payload = _extraction(roles, entities, surface=surface, time_surface=time_surface)
+def _quality(roles, entities, surface="袭击", time_surface=None, raw_text="",
+             predicate="attack", frame=None):
+    payload = _extraction(roles, entities, surface=surface, time_surface=time_surface,
+                          predicate=predicate, frame=frame)
     extraction = validate_analysis_result_v4({
         "TAXONOMY": "政治与安全", "SUB_CATEGORY": ["国防军事"],
         "EVENT_TITLE": "t", "EVENT_BRIEF": "b", "EVENT_TEXT": "x",
@@ -106,3 +110,35 @@ def test_surface_grounding_flags_translated_surface():
         raw_text="Force A launched an attack on facility B.",
     )
     assert quality["surface_grounding"]["predicate"] == {"total": 1, "hit": 0}
+
+
+_NEGOTIATE_FRAME = {"dynamics": "process", "topology": "relational", "agency": "agentive"}
+
+
+def test_topic_role_binding_person_is_flagged():
+    # 议题槽错位：把表态人物填进 topic，事项反而塞进谓词 surface。
+    quality = _quality(
+        roles={"party": ["ENT1"], "topic": ["ENT2"]},
+        entities=[
+            {"id": "ENT1", "name": "甲国", "type": "geopolitical_entity"},
+            {"id": "ENT2", "name": "某领导人", "type": "person"},
+        ],
+        predicate="negotiate", frame=_NEGOTIATE_FRAME,
+    )
+    assert quality["role_type_conflict_count"] == 1
+    conflict = quality["role_type_conflicts"][0]
+    assert conflict["role"] == "topic"
+    assert conflict["entity_type"] == "person"
+
+
+def test_topic_role_binding_abstract_entity_is_clean():
+    quality = _quality(
+        roles={"party": ["ENT1"], "topic": ["ENT2"]},
+        entities=[
+            {"id": "ENT1", "name": "甲国", "type": "geopolitical_entity"},
+            {"id": "ENT2", "name": "能源停火协议", "type": "agreement"},
+        ],
+        predicate="negotiate", frame=_NEGOTIATE_FRAME,
+    )
+    assert quality["role_type_conflict_count"] == 0
+    assert quality["unregistered_role_count"] == 0
