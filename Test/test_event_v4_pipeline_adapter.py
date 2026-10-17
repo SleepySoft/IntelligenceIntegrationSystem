@@ -75,6 +75,7 @@ class FakeClientManager:
         self.client = FakeClient()
         self.released = []
         self.requests = []
+        self.feedback = []
 
     def wait_for_available_client(self, user, **kwargs):
         self.requests.append(kwargs)
@@ -82,6 +83,14 @@ class FakeClientManager:
 
     def release_client(self, client):
         self.released.append(client)
+
+    def report_client_feedback(self, client, request_id, *, valid, labels=None):
+        self.feedback.append({
+            "client": client.name,
+            "request_id": request_id,
+            "valid": valid,
+            "labels": labels or {},
+        })
 
     def get_scheduling_capacity(self, target_group_id=None, **kwargs):
         return 1
@@ -212,7 +221,9 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
 
     def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
-        return {"TAXONOMY": "政治与安全"} if len(prompts) == 1 else _valuable()
+        result = {"TAXONOMY": "政治与安全"} if len(prompts) == 1 else _valuable()
+        result["_ai_client_meta"] = {"request_id": f"request-{len(prompts)}"}
+        return result
 
     context = FakeContext()
     repository = FakeArchiveRepository()
@@ -236,7 +247,9 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert len(manager.released) == 2
     assert manager.requests[0]["estimated_input_tokens"] > 0
     assert manager.requests[0]["max_tokens"] == 8192
-    assert manager.requests[1]["avoid_client_names"] == set()
+    assert manager.requests[1]["avoid_client_names"] == {"fake-client"}
+    assert [item["valid"] for item in manager.feedback] == [False, True]
+    assert [item["request_id"] for item in manager.feedback] == ["request-1", "request-2"]
     runtime_stats = ports.statistics
     timing_stats = {
         "last_call_ms": runtime_stats.pop("last_call_ms"),
@@ -338,6 +351,50 @@ def test_v4_adapter_deprioritizes_api_failed_client_on_retry():
     assert analyzed.accepted
     assert manager.requests[0]["avoid_client_names"] == set()
     assert manager.requests[1]["avoid_client_names"] == {"fake-client"}
+
+
+def test_v4_generic_http_400_retries_instead_of_marking_sensitive():
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: {
+            "error": "unified_api_error",
+            "api_error_code": "HTTP_400",
+            "api_error_type": "BAD_REQUEST",
+        },
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert not result.accepted
+    assert result.reason.startswith("analysis_r1:")
+    assert context.mongo_db_cache.updated[-1][1]["$set"]["APPENDIX.__ARCHIVED__"] == "R"
+
+
+def test_v4_explicit_content_safety_rejection_is_marked_sensitive():
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: {
+            "error": "unified_api_error",
+            "api_error_code": "CONTENT_SAFETY",
+            "api_error_type": "BAD_REQUEST",
+        },
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert not result.accepted
+    assert result.reason.startswith("analysis_failed:")
+    assert context.mongo_db_cache.updated[-1][1]["APPENDIX.__ARCHIVED__"] == "S"
 
 
 def test_v4_analysis_uses_three_persistent_retry_rounds_before_terminal_error():

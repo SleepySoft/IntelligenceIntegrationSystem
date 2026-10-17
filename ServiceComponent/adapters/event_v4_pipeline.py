@@ -475,6 +475,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         failed_client_names: set[str] = set()
 
         for attempt in range(1, 4):
+            request_id = None
             estimated_input_tokens = estimate_message_tokens(
                 build_analyze_message(prompt, original_data)
             )
@@ -517,6 +518,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 self._change_runtime_stat("ai_running", -1)
                 self._ai_client_manager.release_client(ai_client)
 
+            if isinstance(raw_result, dict):
+                client_meta = raw_result.pop("_ai_client_meta", None)
+                if isinstance(client_meta, dict):
+                    request_id = client_meta.get("request_id")
             if isinstance(raw_result, dict) and "record_file" in raw_result:
                 # conversation_common_process 添加的本地诊断元数据不属于 Event V4 响应契约。
                 raw_result = dict(raw_result)
@@ -531,7 +536,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     attempt=attempt, prompt_version=prompt_version, prompt=prompt,
                     ai_service=service, ai_model=model,
                 )
-                if raw_result.get("api_error_code") == "HTTP_400":
+                if raw_result.get("api_error_code") == "CONTENT_SAFETY":
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
                 last_error = api_error
                 failed_client_names.add(getattr(ai_client, "name", ""))
@@ -539,6 +544,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 self._change_runtime_stat("validation_running", 1)
                 try:
                     validated = self._validate_analysis(raw_result, prompt_version)
+                    self._report_client_feedback(
+                        ai_client, request_id, valid=True,
+                        labels={"stage": "event_v4_validation", "attempt": attempt},
+                    )
                     self._change_runtime_stat("validated")
                     return (
                         validated,
@@ -555,6 +564,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         ai_service=service, ai_model=model,
                     )
                     last_error = exc
+                    self._report_client_feedback(
+                        ai_client, request_id, valid=False,
+                        labels={
+                            "stage": "event_v4_validation",
+                            "attempt": attempt,
+                            "error": _compact_validation_error(exc),
+                        },
+                    )
+                    failed_client_names.add(getattr(ai_client, "name", ""))
                     feedback = _compact_validation_error(exc)
                     validation_feedback.append(feedback)
                     prompt = (
@@ -578,6 +596,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._stop_event.wait(delay)
         assert last_error is not None
         raise last_error
+
+    def _report_client_feedback(
+            self, ai_client: Any, request_id: str | None, *,
+            valid: bool, labels: dict[str, Any],
+    ) -> None:
+        reporter = getattr(self._ai_client_manager, "report_client_feedback", None)
+        if callable(reporter):
+            reporter(ai_client, request_id, valid=valid, labels=labels)
 
     def _wait_while_analysis_paused(self) -> None:
         """分析暂停时事件留在 worker 上等待恢复，不消费 AI、不标记错误。"""

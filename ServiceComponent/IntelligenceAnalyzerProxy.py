@@ -129,6 +129,10 @@ def conversation_common_process(category, messages, response, meta: dict = None)
     if isinstance(ai_json, dict):
         # For recommendation, it's not a dict.
         ai_json['record_file'] = record_file_rel_path
+        # 内部调用标识供业务校验回填质量结果；进入领域模型前会被移除。
+        client_meta = response.get('_ai_client_meta') if isinstance(response, Dict) else None
+        if isinstance(client_meta, dict):
+            ai_json['_ai_client_meta'] = dict(client_meta)
 
     if isinstance(ai_json, dict) and 'error' in ai_json:
         logger.error(f'AI {category} conversation fail.', extra={'link_file': record_file_web_path})
