@@ -1,14 +1,17 @@
 # Recommended free pools. Missing environment credentials simply produce no clients.
 clients:
   - factory: gemini_free
+    enable: true
     name: Gemini Free Pool
     group: gemini_free
 
   - factory: groq_free
+    enable: true
     name: Groq Free Pool
     group: groq_free
 
   - factory: nvidia_free
+    enable: true
     name: NVIDIA Free Pool
     group: nvidia_free
 

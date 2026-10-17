@@ -207,7 +207,8 @@ python CrawlerServiceEngine.py
 + AI服务配置
 > 
 > 如果想使用 AI 进行情报分析，需要配置 [ai_clients.yaml](_config/ai_clients.yaml)。
-> 标准 Client 使用工厂式 YAML：`factory`、`name`、`group` 之外的字段直接传给工厂，
+> 标准 Client 使用工厂式 YAML：公共字段为 `factory`、`name`、`group`、`enable`；
+> `enable` 默认为 `true`，设为 `false` 时保留但不加载该条目，其余字段直接传给工厂，
 > 分组并发统一写在顶层 `group_limits`。自定义 Client 使用外部工厂函数，不直接拼装结果列表。
 > 
 > 配置请参考：[ai_clients_example.yaml](_config/ai_clients_example.yaml) ，复制为

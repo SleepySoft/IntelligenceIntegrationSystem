@@ -183,7 +183,7 @@ pip install -r requirements_freeze.txt
    - 主配置使用简短分区：`server`、`database`、`hub`、`access`、`features`、可选 `web`
    - 公开搜索限制位于 `web.public_search`；未登录用户仅允许按内容主时间搜索
 2. **AI 服务配置**：复制 `_config/ai_clients_example.yaml` → `_config/ai_clients.yaml`
-   - 每项仅保留 `factory`、`name`、`group` 三个公共字段，其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
+   - 每项公共字段为 `factory`、`name`、`group`、`enable`（默认 `true`，设为 `false` 可保留但禁用条目），其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
 
 ### 4.4 启动服务

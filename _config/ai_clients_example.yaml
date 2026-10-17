@@ -1,4 +1,4 @@
-# Copy to _config/ai_clients.yaml. Omit an entry to disable that client.
+# Copy to _config/ai_clients.yaml. Set enable: false to retain but disable an entry.
 clients:
   # Any OpenAI-compatible endpoint can use the generic factory.
   # - factory: openai_compatible
@@ -14,6 +14,7 @@ clients:
   - factory: codex
     name: Codex CLI Stateless
     group: codex_cli
+    enable: true
     mode: stateless
     sandbox: read-only
 

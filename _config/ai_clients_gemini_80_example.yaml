@@ -1,6 +1,7 @@
 # Gemini AI Studio free-tier pool with local quota safety factor.
 clients:
   - factory: gemini_free
+    enable: true
     name: Gemini Flash 80%
     group: gemini_flash_80
     safety_ratio: 0.8
