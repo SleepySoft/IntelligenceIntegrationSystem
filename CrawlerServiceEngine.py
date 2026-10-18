@@ -5,6 +5,7 @@ import time
 import argparse
 import queue
 import logging
+import signal
 import threading
 import traceback
 from pathlib import Path
@@ -142,6 +143,7 @@ class TaskCmd:
 class TaskManager:
     THREAD_JOIN_TIMEOUT = 2
     THREAD_JOIN_ATTEMPTS = 10
+    MANAGER_SHUTDOWN_TIMEOUT = THREAD_JOIN_TIMEOUT * THREAD_JOIN_ATTEMPTS + 5
 
     def __init__(self, watch_dir: str, security_config=None, collector_config_path: Optional[str] = None):
         self.watch_dir = watch_dir
@@ -224,7 +226,9 @@ class TaskManager:
     def shutdown(self, source: str = "fs"):
         """Stop all tasks & manager thread."""
         self._enqueue("shutdown", "", source)
-        self._mgr_thread.join(timeout=10)
+        self._mgr_thread.join(timeout=self.MANAGER_SHUTDOWN_TIMEOUT)
+        if self._mgr_thread.is_alive():
+            logger.warning("TaskManager thread still alive after shutdown timeout.")
 
     # ---------------- internal: queue & manager ----------------
 
@@ -317,8 +321,13 @@ class TaskManager:
         logger.info(f"Removed plugin: {plugin_name}")
 
     def _handle_shutdown(self):
-        # stop all
+        # Notify every plugin first so their in-flight work winds down concurrently.
         names = list(self.tasks.keys())
+        for name in names:
+            entry = self.tasks.get(name)
+            if entry:
+                entry[2].set()
+
         for name in names:
             self._stop_and_join_if_running(name)
             self.plugin_manager.remove_plugin(name)
@@ -570,11 +579,18 @@ def main():
 
     # --------------------------------------------------------------------------------
 
+    shutdown_requested = threading.Event()
+
+    def request_shutdown(_signum, _frame):
+        shutdown_requested.set()
+
+    signal.signal(signal.SIGTERM, request_shutdown)
+
     try:
-        while True:
-            time.sleep(1)
+        while not shutdown_requested.wait(1):
+            pass
     except KeyboardInterrupt:
-        pass
+        shutdown_requested.set()
         # observer.stop()
     finally:
         # observer.join()

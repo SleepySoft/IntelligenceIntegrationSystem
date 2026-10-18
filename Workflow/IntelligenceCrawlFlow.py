@@ -85,6 +85,12 @@ class CommonIntelligenceCrawlFlow:
 
         self.pipeline: Optional[CrawlPipeline] = None
 
+    def shutdown(self):
+        """Terminally close fetchers when the owning plugin is stopping."""
+        pipeline, self.pipeline = self.pipeline, None
+        if pipeline:
+            pipeline.shutdown()
+
     def run_common_flow(self, local_crawler_config: dict, stop_event: threading.Event, global_site: bool = True):
 
         # Override generated config by user config file.
@@ -114,6 +120,14 @@ class CommonIntelligenceCrawlFlow:
                                            crawler_governor=self.crawl_context.crawler_governor)
 
         # TODO: Split and shorted the scope of scheduler.
-        with self.crawl_context.crawler_governor.schedule_pace(
-                f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, None):
-            drive_pipeline_batch(self.pipeline , local_crawler_config)
+        try:
+            with self.crawl_context.crawler_governor.schedule_pace(
+                    f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, stop_event):
+                drive_pipeline_batch(
+                    self.pipeline, local_crawler_config, stop_event=stop_event)
+        except InterruptedError:
+            if not stop_event.is_set():
+                raise
+        finally:
+            if stop_event.is_set():
+                self.shutdown()

@@ -18,6 +18,7 @@ StandardOutput=journal
 StandardError=journal
 
 KillSignal=SIGTERM
+KillMode=mixed
 TimeoutStopSec=30
 
 [Install]
