@@ -112,6 +112,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_versions: Iterable[int] | None = None,
         shadow_recorder: Any = None,
         shadow_sample_rate: float = 1.0,
+        max_live_age_hours: float = 0.0,
         quality_enabled: bool = True,
         control_state: Any = None,
         entity_name_normalizer: Callable[[str], str | None] | None = None,
@@ -143,6 +144,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._shadow_recorder = shadow_recorder
         # 影子采样率：主链成功样本按此概率进入影子链路，控制灰度 Token 成本。
         self._shadow_sample_rate = max(0.0, min(1.0, float(shadow_sample_rate)))
+        # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道而非主队列，
+        # 防止冷启动/久停后批量旧情报淹没问题。0 = 不启用。
+        self._max_live_age_hours = max(0.0, float(max_live_age_hours))
         self._quality_enabled = quality_enabled
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
@@ -204,7 +208,27 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     data["UUID"] = str(normalize_or_assign_intelligence_uuid(None))
             if ctx.mongo_db_cache:
                 ctx.mongo_db_cache.insert(data)
+        # 按内容年龄分流：超龄情报走低优先级车道，新鲜情报进主队列。
+        if self._max_live_age_hours > 0:
+            age_hours = self._content_age_hours(data)
+            if age_hours is not None and age_hours > self._max_live_age_hours:
+                return StageResult.allow(data, subsystem=ctx.name, lane="replay")
         return StageResult.allow(data, subsystem=ctx.name)
+
+    @staticmethod
+    def _content_age_hours(data: Mapping[str, Any]) -> float | None:
+        """情报年龄（小时）：优先 pub_time，其次 collect_time；无法判定返回 None（按新鲜处理）。"""
+        value = data.get("pub_time") or data.get("collect_time")
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        if not isinstance(value, datetime):
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - value).total_seconds() / 3600
 
     @staticmethod
     def _record_intake_rejection(ctx: Any, data: Any, reason: str) -> None:

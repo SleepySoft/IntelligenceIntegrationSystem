@@ -74,9 +74,11 @@ class EventPipelinePlugin(HubPlugin):
 
     @staticmethod
     def _on_intake_accepted(event: HubEvent, runtime: HubRuntime) -> None:
+        # intake 端口可按情报年龄标记 lane="replay"（超龄旧情报走低优先级车道）。
+        lane = (event.metadata or {}).get("lane")
         runtime.emit(
             event.derive(ANALYSIS_REQUESTED, event.payload),
-            priority=EventPriority.LIVE,
+            priority=(EventPriority.REPLAY if lane == "replay" else EventPriority.LIVE),
         )
 
     @staticmethod

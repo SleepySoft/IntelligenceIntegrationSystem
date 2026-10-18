@@ -73,6 +73,7 @@ optional_subsystems:
 #   replay_unarchived: true
 #   shadow_versions: [43]
 #   shadow_sample_rate: 1.0   # 影子链路采样率（0-1），调低可控制灰度 Token 成本
+#   max_live_age_hours: 24    # 超过该年龄的情报走低优先级车道，防冷启动旧情报堵主链；0=不启用
 # web:
 #   public_search:
 #     page_size: 20

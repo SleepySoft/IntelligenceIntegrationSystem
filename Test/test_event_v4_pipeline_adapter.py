@@ -1,5 +1,5 @@
 from tenacity import wait_none
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from ServiceComponent.adapters import EventV4PipelinePorts
@@ -959,3 +959,67 @@ def test_v4_shadow_versions_must_be_configured():
         assert "99" in str(exc)
     else:
         raise AssertionError("unknown shadow version should be rejected")
+
+# ---------------------------------------------------------------------------
+# 情报年龄分流（max_live_age_hours）
+
+
+def _ports_with_age_gate(hours):
+    ports, context = _ports_for_intake()
+    ports._max_live_age_hours = hours
+    return ports, context
+
+
+def test_intake_routes_stale_intelligence_to_replay_lane():
+    ports, _ = _ports_with_age_gate(24)
+    stale = _original()
+    stale["pub_time"] = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+
+    result = ports.accept(HubEvent("intake.received", stale, "news"))
+
+    assert result.accepted
+    assert result.metadata.get("lane") == "replay"
+
+
+def test_intake_keeps_fresh_intelligence_on_live_lane():
+    ports, _ = _ports_with_age_gate(24)
+    fresh = _original()
+    fresh["pub_time"] = datetime.now(timezone.utc).isoformat()
+
+    result = ports.accept(HubEvent("intake.received", fresh, "news"))
+
+    assert result.accepted
+    assert "lane" not in result.metadata
+
+
+def test_intake_age_gate_disabled_by_default():
+    ports, _ = _ports_for_intake()  # max_live_age_hours 默认 0
+    stale = _original()
+    stale["pub_time"] = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+    result = ports.accept(HubEvent("intake.received", stale, "news"))
+
+    assert result.accepted
+    assert "lane" not in result.metadata
+
+
+def test_plugin_emits_analysis_with_lane_priority():
+    from ServiceComponent.pipeline.plugin import EventPipelinePlugin
+    from ServiceComponent.runtime import EventPriority
+
+    class StubRuntime:
+        def __init__(self):
+            self.emitted = []
+
+        def emit(self, event, priority=None):
+            self.emitted.append((event, priority))
+
+    runtime = StubRuntime()
+    event = HubEvent("intake.accepted", {"x": 1}, "news", metadata={"lane": "replay"})
+    EventPipelinePlugin._on_intake_accepted(event, runtime)
+    assert runtime.emitted[0][1] == EventPriority.REPLAY
+
+    runtime2 = StubRuntime()
+    event2 = HubEvent("intake.accepted", {"x": 1}, "news")
+    EventPipelinePlugin._on_intake_accepted(event2, runtime2)
+    assert runtime2.emitted[0][1] == EventPriority.LIVE

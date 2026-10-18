@@ -201,6 +201,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         shadow_versions=shadow_versions,
         shadow_recorder=shadow_recorder,
         shadow_sample_rate=shadow_sample_rate,
+        max_live_age_hours=float(config.get(
+            'intelligence_hub.max_live_age_hours', 0) or 0),
         control_state=control_state,
     )
     extensions = []

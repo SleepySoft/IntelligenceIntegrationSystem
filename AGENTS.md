@@ -244,6 +244,7 @@ python VectorDB/VectorDBBService.py \
 - 入口在返回 `queued` 前等待 intake/archive 阶段确认；在途数量由
   `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
 - 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
+- 情报年龄分流：`intelligence_hub.max_live_age_hours`（默认 0=不启用）设置后，intake 按 pub_time/collect_time 计算情报年龄，超龄记录的分析事件进 REPLAY 低优先级车道而非 LIVE 主队列，防止冷启动/久停后旧情报堵主链。
 - 恢复插件始终安装（重试到期轮询依赖它）；`intelligence_hub.replay_unarchived` 只控制启动时是否自动回放未处理记录——设为 `false` 即手工模式，经 `POST /api/control/replay_unarchived`（或控制面板按钮）按需回放；`POST /api/control/discard_pending` 支持 `scope: pending|retry|all` 批量弃用未完成/重试中记录。
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
 - `/collect` 应答契约：`resp` ∈ `queued`（已接收）/ `rejected`（明确拒绝，必带 `reason`，如 `collected_data_duplicated`、`validation_error:*`、`invalid_token`，重试无意义）/ `error`（可重试的传输或内部错误）；采集端经 `Workflow.CollectorSubmission.normalize_collect_response` 解析，拒绝记 SKIPPED、错误缓存重试。
