@@ -78,3 +78,10 @@ Al Arabiya（403）、The Hindu（403）、Times of Israel（403）。
    历史配置；aa 的列表页需单独排查（4 月起静默）。
 5. 修复后的提交契约（rejected+reason）会让上述所有源的"服务端拒绝"在治理台
    直接可见，不会再出现 voanews 式假成功。
+
+### 2026-10-18 VOA 恢复复查
+
+VOA 主英语栏目 RSS 仍冻结在 2025-03，但官方 RSS 目录中的 Dari、Kurdish、Korean、
+Mandarin、Pashto、Persian、Russian、Ukrainian 英文译稿流持续更新，最新文章日期为
+2026-10-15/16，正文页面也仍兼容现有提取器。`task_crawl_voanews.py` 已切换到这些
+活跃流，并增加 14 天新鲜度检查；部署配置重新启用该任务。
