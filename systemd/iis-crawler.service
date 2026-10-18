@@ -9,6 +9,7 @@ User=sleepy
 Group=sleepy
 WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+ExecStartPre=/home/sleepy/anaconda3/envs/iis/bin/python Scripts/deployment_preflight.py --component crawler
 ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python CrawlerServiceEngine.py
 Restart=always
 RestartSec=10

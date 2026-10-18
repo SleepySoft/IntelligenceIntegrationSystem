@@ -88,6 +88,12 @@ def _file_sig(path: str) -> str:
     return h.hexdigest()
 
 
+def is_task_plugin_path(path: str) -> bool:
+    """Return whether a Python file follows the crawler task plugin convention."""
+    filename = os.path.basename(path)
+    return filename.startswith('task_crawl_') and filename.endswith('.py')
+
+
 class ServiceContext:
     """
     Use this class to pass parameters to plugins and to selectively expose functions to plugins.
@@ -354,12 +360,12 @@ class TaskManager:
 
     @staticmethod
     def _list_task_files(directory: str):
-        """递归收集目录下可加载的 .py 文件（跳过 _/. 开头与缓存目录）。"""
+        """递归收集 task_crawl_*.py 插件，忽略配置模块和 task_example.py 等模板。"""
         files = []
         for root, dirs, fnames in os.walk(directory):
             dirs[:] = [d for d in dirs if not d.startswith(('.', '_', '__pycache__'))]
             for fname in sorted(fnames):
-                if fname.endswith('.py') and not fname.startswith(('.', '_')):
+                if is_task_plugin_path(fname):
                     files.append(os.path.join(root, fname))
         return files
 
@@ -475,7 +481,8 @@ class FileHandler(FileSystemEventHandler):
         if self.__file_accept(event) and self._debounced(event.src_path):
             self._log_event("accepted", event)
             self.task_manager.submit_remove(event.src_path, 'fs')
-        if hasattr(event, "dest_path") and event.dest_path.endswith(".py") and self._debounced(event.dest_path):
+        if (hasattr(event, "dest_path") and is_task_plugin_path(event.dest_path)
+                and self._debounced(event.dest_path)):
             self._log_event("accepted", event)
             self.task_manager.submit_reload(event.dest_path, 'fs')
 
@@ -500,7 +507,7 @@ class FileHandler(FileSystemEventHandler):
     def __file_accept(event) -> bool:
         return (not event.is_directory and
                 not os.path.basename(event.src_path).startswith(('~', '.')) and
-                event.src_path.endswith('.py'))
+                is_task_plugin_path(event.src_path))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

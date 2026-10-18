@@ -189,6 +189,8 @@ _log
 _data
 _export
 _products
+aggregation_store/
+logs/
 
 # Real config files are ignored; example configs are tracked in git.
 # 真实配置不入库（iis.yaml / collector.json / ai_clients.yaml / Authentication.db / 密钥文件），

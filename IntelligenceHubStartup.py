@@ -1,4 +1,5 @@
 import os.path
+import atexit
 import time
 import uuid
 import logging
@@ -629,10 +630,8 @@ try:
 except Exception as e:
     print(str(e))
     print(traceback.format_exc())
-finally:
-    # 在进程退出前通知 systemd（如果启用 watchdog），这是 no-op on Windows/non-systemd。
-    try:
-        from Tools.SystemdWatchdog import notify_stopping
-        notify_stopping()
-    except Exception:
-        pass
+else:
+    # run() 完成的是应用装配；Launcher 的监控循环才负责维持主进程。
+    # 不能在这里立即发送 STOPPING=1，否则 systemd 会在服务刚启动后进入停止状态。
+    # atexit 只在 Python 正常退出时触发；systemd 强制终止时无需由应用重复通知。
+    atexit.register(notify_stopping)

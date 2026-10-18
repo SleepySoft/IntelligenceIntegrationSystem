@@ -717,6 +717,13 @@ class IntelligenceHubWebService:
         def refresh_session():
             session.modified = True
 
+        @app.route('/maintenance/ping', methods=['GET'])
+        def maintenance_ping():
+            """Unauthenticated liveness probe used by the service launcher."""
+            response = jsonify({'status': 'ok'})
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+
         @app.route('/login', methods=['GET', 'POST'])
         def login():
             if request.method == 'POST':

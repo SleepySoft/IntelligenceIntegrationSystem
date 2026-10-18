@@ -23,7 +23,10 @@ httpx
 json_repair
 backoff
 
-playwright-stealth          # playwright more like brower
+# Crawl4AI installs tf-playwright-stealth, which owns the same
+# ``playwright_stealth`` module.  Installing the unrelated 2.x package on top
+# breaks Crawl4AI 0.6.3 (StealthConfig disappears).
+tf-playwright-stealth==1.2.0
 ultimate-sitemap-parser     # Sitemap
 
 ##############################

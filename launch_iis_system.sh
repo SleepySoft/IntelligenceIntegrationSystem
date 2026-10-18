@@ -3,7 +3,7 @@ set -u   # 遇到未定义变量就退出，提前暴露错误
 
 # [DEPRECATED] 本脚本仅用于本地手工调试。
 # 生产环境请使用 systemd/ 目录下的独立服务单元：
-#   iis-vectordb.service, iis-web.service, iis-crawler.service, iis.target
+#   iis-web.service, iis-crawler.service, iis.target
 # 参见 systemd/README.md。
 
 # ========= 基本配置 =========
@@ -16,6 +16,10 @@ mkdir -p "$LOG_DIR" || { echo "无法创建日志目录 $LOG_DIR"; exit 1; }
 
 # 进入项目目录，失败则退出
 cd "$PROJECT_DIR" || { echo "无法进入目录 $PROJECT_DIR"; exit 1; }
+
+# 与 systemd 部署使用同一套启动前检查；向量子服务关闭时不检查其模型和存储。
+"$PYTHON" Scripts/deployment_preflight.py --component web || exit 1
+"$PYTHON" Scripts/deployment_preflight.py --component crawler || exit 1
 
 # ========= 环境变量 =========
 export PYTHONPATH="$PROJECT_DIR"
@@ -56,13 +60,7 @@ cleanup() {
 # 捕获系统信号，优雅停止所有子进程
 trap cleanup SIGTERM SIGINT
 
-# ========= 启动三个服务 =========
-start_app "Vector DB" \
-    "$PYTHON -m VectorDB.VectorDBBService \
-     --db-path $PROJECT_DIR/_data/VectorDB \
-     --model /home/sleepy/Documents/bge-m3" \
-    "linux_vector_db.log"
-
+# ========= 启动已启用的服务（向量子服务当前关闭） =========
 start_app "IIS" \
     "$PYTHON IntelligenceHubLauncher.py" \
     "linux_iis.log"
@@ -72,7 +70,7 @@ start_app "Crawl Engine" \
     "linux_crawl_engine.log"
 
 # ========= 监控子进程 =========
-echo "[$(date)] All services started. Waiting for any to exit..."
+echo "[$(date)] Enabled services started. Waiting for any to exit..."
 wait -n
 
 # 任一子进程退出（无论正常还是异常），都调用 cleanup 清理并退出
