@@ -39,6 +39,12 @@
         th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--card-border); }
         th { color: var(--muted); font-weight: 500; }
         .error { color: var(--danger); font-size: 13px; padding: 8px 0; }
+        .table-wrap { overflow-x: auto; }
+        .status { display: inline-block; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+        .status-healthy { color: var(--success); background: #14532d55; }
+        .status-attention { color: var(--warning); background: #713f1255; }
+        .status-poor { color: var(--danger); background: #7f1d1d55; }
+        .status-insufficient_data { color: var(--muted); background: #334155; }
         .link { color: var(--primary); text-decoration: none; font-size: 13px; }
         .link:hover { text-decoration: underline; }
         a.visited-plain { color: var(--primary); }
@@ -49,7 +55,7 @@
     <header>
         <div>
             <h1>统计分析</h1>
-            <div class="subtitle">归档分布 · 评分分布 · 实体频率（数据来自 Mongo/SQLite 聚合）</div>
+            <div class="subtitle">归档分布 · 来源状态 · 评分分布 · 实体频率（数据来自 Mongo/SQLite 聚合）</div>
         </div>
         <div>
             <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
@@ -87,6 +93,29 @@
         <div class="chart" id="source-chart"></div>
         <div class="error" id="source-error" style="display:none"></div>
         <table id="source-ranking" style="margin-top:12px"></table>
+    </div>
+
+    <!-- 来源状态评估 -->
+    <div class="section" id="source-quality">
+        <h2>网站来源状态评估</h2>
+        <div class="controls">
+            <label>范围:</label>
+            <button data-quality-range="1">近24小时</button>
+            <button data-quality-range="7" class="active">近7天</button>
+            <button data-quality-range="30">近30天</button>
+        </div>
+        <div class="subtitle" style="margin-bottom:12px">
+            以已接受提交为分母，综合归档、低价值、抓取内容缺陷、重试/失败等终态；少于 5 条标记为样本不足。低价值原因由 AI 结构化分类，历史记录显示为“未分类”。
+        </div>
+        <div class="cards">
+            <div class="card"><div class="value" id="quality-sources">-</div><div class="label">来源数</div></div>
+            <div class="card"><div class="value" id="quality-accepted">-</div><div class="label">接受提交</div></div>
+            <div class="card"><div class="value" id="quality-archived">-</div><div class="label">成功归档</div></div>
+            <div class="card"><div class="value" id="quality-low-value">-</div><div class="label">低价值</div></div>
+            <div class="card"><div class="value" id="quality-defects">-</div><div class="label">抓取内容缺陷</div></div>
+        </div>
+        <div class="error" id="quality-error" style="display:none"></div>
+        <div class="table-wrap"><table id="quality-table"></table></div>
     </div>
 
     <!-- 评分分布 -->
@@ -160,6 +189,12 @@ function bindRange(attr, onPick) {
         });
     });
 }
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[c]);
+}
+function percent(value) { return `${((value || 0) * 100).toFixed(1)}%`; }
 
 /* ---------- 归档分布 ---------- */
 async function loadDistribution(days) {
@@ -230,6 +265,63 @@ async function loadSourceSubmissions() {
     } catch (e) { showError('source-error', `加载失败: ${e.message}`); }
 }
 
+/* ---------- 网站来源状态评估 ---------- */
+const reasonLabels = {
+    empty_or_too_short: '正文为空/过短',
+    anti_bot_or_access_denied: '反爬/访问拒绝',
+    navigation_or_template: '导航/模板页',
+    media_stub: '媒体占位内容',
+    garbled_or_incomplete: '乱码/内容残缺',
+    advertising_or_promotion: '广告/宣传',
+    entertainment_or_lifestyle: '娱乐/生活',
+    sports: '普通体育',
+    historical_or_background: '历史/背景资料',
+    opinion_or_personal_expression: '个人表达/评论',
+    routine_or_no_information_gain: '例行/无信息增量',
+    academic_without_current_relevance: '无现实相关性的学术内容',
+    duplicate_or_recap: '重复/回顾',
+    other_non_intelligence: '其他低价值',
+    unspecified: '未分类（历史数据）',
+};
+const statusLabels = {
+    healthy: '正常', attention: '需关注', poor: '异常', insufficient_data: '样本不足'
+};
+async function loadSourceQuality(days) {
+    const start = isoDaysAgo(days), end = new Date().toISOString();
+    try {
+        const data = await fetchJson(
+            `/statistics/api/source_quality?start_time=${start}&end_time=${end}`);
+        const rows = data.sources || [];
+        const sum = key => rows.reduce((total, row) => total + (row[key] || 0), 0);
+        document.getElementById('quality-sources').textContent = data.source_count ?? '-';
+        document.getElementById('quality-accepted').textContent = sum('accepted');
+        document.getElementById('quality-archived').textContent = sum('archived');
+        document.getElementById('quality-low-value').textContent = sum('low_value');
+        document.getElementById('quality-defects').textContent = sum('content_defect');
+        document.getElementById('quality-table').innerHTML =
+            '<tr><th>来源（接受量从少到多）</th><th>状态</th><th>接受</th><th>入口拒绝</th>' +
+            '<th>归档</th><th>低价值</th><th>内容缺陷</th><th>重试</th><th>失败/敏感</th>' +
+            '<th>待处理</th><th>归档率</th><th>低价值原因</th><th>最后提交</th></tr>' +
+            rows.map(row => {
+                const reasons = Object.entries(row.low_value_reasons || {})
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([reason, count]) => `${reasonLabels[reason] || reason} ${count}`)
+                    .join('；') || '-';
+                const statusDetail = (row.status_reasons || []).join('；');
+                return `<tr><td>${escapeHtml(row.source)}</td>` +
+                    `<td><span class="status status-${escapeHtml(row.status)}" title="${escapeHtml(statusDetail)}">${escapeHtml(statusLabels[row.status] || row.status)}</span></td>` +
+                    `<td>${row.accepted}</td><td>${row.intake_rejected}</td><td>${row.archived}</td>` +
+                    `<td>${row.low_value} (${percent(row.low_value_rate)})</td>` +
+                    `<td>${row.content_defect} (${percent(row.content_defect_rate)})</td>` +
+                    `<td>${row.retrying}</td><td>${row.failed + row.sensitive}</td><td>${row.pending}</td>` +
+                    `<td>${percent(row.archive_rate)}</td><td>${escapeHtml(reasons)}</td>` +
+                    `<td>${escapeHtml(row.last_submission || '-')}</td></tr>`;
+            }).join('');
+        showError('quality-error', null);
+    } catch (e) { showError('quality-error', `加载失败: ${e.message}`); }
+}
+bindRange('data-quality-range', loadSourceQuality);
+
 /* ---------- 评分分布 ---------- */
 async function loadScore(days) {
     const start = isoDaysAgo(days), end = new Date().toISOString();
@@ -279,6 +371,7 @@ document.getElementById('entity-type').addEventListener('change',
 
 loadDistribution(1);
 loadSourceSubmissions();
+loadSourceQuality(7);
 loadScore(30);
 loadEntity(30);
 </script>

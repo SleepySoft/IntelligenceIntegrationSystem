@@ -17,6 +17,7 @@ from event_engine.extraction import (
     validate_event_extraction,
 )
 from ServiceComponent.intelligence_time import normalize_intelligence_datetime
+from ServiceComponent.intelligence_contracts import NonIntelligenceReason
 
 
 DEFAULT_EVENT_REGISTRY = registry_for("news", "industry", "financial")
@@ -182,6 +183,7 @@ class AnalysisResultV4(StrictModel):
     TAXONOMY: str = Field(..., min_length=1)
     SUB_CATEGORY: list[str] = Field(default_factory=list, max_length=5)
     REASON: str | None = Field(None, max_length=100)
+    NON_INTELLIGENCE_REASON: NonIntelligenceReason | None = None
     EVENT_TITLE: str | None = Field(None, min_length=1, max_length=30)
     EVENT_BRIEF: str | None = Field(None, min_length=1, max_length=100)
     EVENT_TEXT: str | None = Field(None, min_length=1, max_length=2000)
@@ -202,6 +204,9 @@ class AnalysisResultV4(StrictModel):
             if self.EVENT_EXTRACTION is not None:
                 raise ValueError("NonIntelligence result must not contain EVENT_EXTRACTION")
             return self
+
+        if self.NON_INTELLIGENCE_REASON is not None:
+            raise ValueError("valuable intelligence must not contain NON_INTELLIGENCE_REASON")
 
         if self.TAXONOMY not in TAXONOMY_SUBCATEGORIES:
             raise ValueError(f"unsupported TAXONOMY: {self.TAXONOMY}")

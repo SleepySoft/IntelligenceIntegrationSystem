@@ -12,6 +12,7 @@ from ServiceComponent.event_v4_archive import ArchivedDataV4, archive_document
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME,
     APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TIME_GOT,
     APPENDIX_TOTAL_SCORE,
     appendix_path,
 )
@@ -59,6 +60,11 @@ class MongoEventV4ArchiveRepository:
         )
         self.low_value_collection.create_index(
             [("INFORMANT", ASCENDING)], name="low_value_informant"
+        )
+        self.low_value_collection.create_index(
+            [(appendix_path(APPENDIX_TIME_GOT), DESCENDING),
+             ("INFORMANT", ASCENDING), ("NON_INTELLIGENCE_REASON", ASCENDING)],
+            name="low_value_source_reason_time",
         )
         self.event_collection.create_index(
             [("event_uuid", ASCENDING)], unique=True, name="event_uuid_unique"

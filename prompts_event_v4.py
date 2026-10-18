@@ -21,11 +21,13 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
     map_rate_levels,
     validate_analysis_result_v4,
 )
+from ServiceComponent.intelligence_contracts import NonIntelligenceReason
 from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
 
 EXTRACTION_MODE_FULL = "full"
 EXTRACTION_MODE_CORE_SUBSET = "core_subset"
 EXTRACTION_MODE_CORE_SUBSET_LEVELS = "core_subset_levels"
+EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON = "core_subset_levels_reason"
 
 
 EVENT_V4_PREDICATE_CATALOG = build_predicate_catalog(DEFAULT_EVENT_REGISTRY)
@@ -236,8 +238,42 @@ _V45_EXTRACTION_ADDENDUM = """
 EVENT_ANALYSIS_PROMPT_V45 = EVENT_ANALYSIS_PROMPT_V44 + _V45_EXTRACTION_ADDENDUM
 
 
+# V46：低价值结果增加机器可统计的原因码。保留 REASON 作为具体说明，使 IIS 能
+# 区分抓取质量缺陷与“内容有效但情报价值低”，而不需要爬虫侧反馈闭环。
+_NON_INTELLIGENCE_REASON_GUIDE = """
+
+## 无情报价值原因分类（必须遵守）
+
+无情报价值时必须输出：
+{"TAXONOMY":"NonIntelligence","SUB_CATEGORY":[],"NON_INTELLIGENCE_REASON":"原因码","REASON":"100字以内具体原因","RATE":{}}
+
+`NON_INTELLIGENCE_REASON` 只能选择下列一个原因码：
+- empty_or_too_short：正文为空、过短或没有足以判断的正文
+- anti_bot_or_access_denied：抓到验证码、访问拒绝、登录墙或其他反爬页面
+- navigation_or_template：主要是导航、页眉页脚、栏目列表等页面模板
+- media_stub：只有视频/音频入口、图片说明或极短媒体简介，没有有效正文
+- garbled_or_incomplete：乱码、截断、关键段落缺失或正文结构明显损坏
+- advertising_or_promotion：广告、软文、促销或纯品牌宣传
+- entertainment_or_lifestyle：文艺娱乐、生活方式或消费指南
+- sports：普通体育赛况、赛程或人物花边
+- historical_or_background：纯历史回顾或背景资料，没有当前信息增量
+- opinion_or_personal_expression：个人表达或缺少事实增量的评论
+- routine_or_no_information_gain：内容有效，但属于例行信息或没有现实信息增量
+- academic_without_current_relevance：纯学术内容，缺少当前现实应用价值
+- duplicate_or_recap：正文只是已知消息的重复、摘要或汇编，没有新增事实
+- other_non_intelligence：确属其他低价值原因；只有以上均不适用时才能选择
+
+前五项表示抓取内容质量缺陷；其余表示正文有效但情报价值低。不得用内容题材原因掩盖反爬、空正文、模板页或媒体占位内容。
+"""
+EVENT_ANALYSIS_PROMPT_V46 = EVENT_ANALYSIS_PROMPT_V44.replace(
+    '{"TAXONOMY":"NonIntelligence","SUB_CATEGORY":[],"REASON":"100字以内原因","RATE":{}}',
+    '{"TAXONOMY":"NonIntelligence","SUB_CATEGORY":[],"NON_INTELLIGENCE_REASON":"原因码",'
+    '"REASON":"100字以内具体原因","RATE":{}}',
+) + _NON_INTELLIGENCE_REASON_GUIDE
+
+
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
-# v44（RATE 档位准入提示 + 信息状态限定词保留）为当前生产抽样版本；
+# v46（v44 + 低价值结构化原因）为当前生产抽样版本；
 # v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
 # v42（核心子集、数字 RATE）与 v41（完整契约直出）保留为回滚/对照通道。
 # 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
@@ -270,6 +306,13 @@ def build_event_v4_protocols(registry=DEFAULT_EVENT_REGISTRY) -> list[PromptProt
             raw["RATE"] = map_rate_levels(rate)
         return validate_analysis_result_v4(raw)
 
+    def validate_core_subset_levels_reason(raw):
+        result = validate_core_subset_levels(raw)
+        if (result.is_non_intelligence
+                and result.NON_INTELLIGENCE_REASON in (None, NonIntelligenceReason.UNSPECIFIED)):
+            raise ValueError("NonIntelligence result requires NON_INTELLIGENCE_REASON")
+        return result
+
     return [
         PromptProtocol(
             name=EXTRACTION_MODE_FULL,
@@ -286,6 +329,11 @@ def build_event_v4_protocols(registry=DEFAULT_EVENT_REGISTRY) -> list[PromptProt
             validate_result=validate_core_subset_levels,
             description="核心子集 + RATE 等级词映射：LLM 选等级词，分数由服务端确定",
         ),
+        PromptProtocol(
+            name=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON,
+            validate_result=validate_core_subset_levels_reason,
+            description="核心子集 + RATE 等级词映射 + 低价值结构化原因",
+        ),
     ]
 
 
@@ -295,11 +343,14 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
     catalog.register_prompt(
+        46, EVENT_ANALYSIS_PROMPT_V46,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=True)
+    catalog.register_prompt(
         45, EVENT_ANALYSIS_PROMPT_V45,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
     catalog.register_prompt(
         44, EVENT_ANALYSIS_PROMPT_V44,
-        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=True)
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
     catalog.register_prompt(
         43, EVENT_ANALYSIS_PROMPT_V43,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
@@ -316,6 +367,6 @@ EVENT_V4_PROMPT_CATALOG = build_event_v4_prompt_catalog()
 
 # 兼容导出：web 展示、benchmark 等既有消费者继续按版本表读取。
 EVENT_ANALYSIS_PROMPT_TABLE = EVENT_V4_PROMPT_CATALOG.sampling_table()
-EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V44
+EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V46
 EVENT_ANALYSIS_EXTRA_PROMPTS = EVENT_V4_PROMPT_CATALOG.extra_table()
 PROMPT_EXTRACTION_MODES = EVENT_V4_PROMPT_CATALOG.modes_table()

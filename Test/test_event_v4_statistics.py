@@ -107,3 +107,69 @@ def test_hourly_source_submissions_groups_urls_by_domain_and_fills_empty_hours()
     assert result["total_count"] == 7
     match = engine._IntelligenceStatisticsEngine__collection.pipelines[0][0]["$match"]
     assert appendix_path(APPENDIX_TIME_GOT) in match
+
+
+def test_hourly_source_submissions_uses_cache_as_accepted_intake_source():
+    archive = FakeCollection()
+    cache = FakeCollection()
+    engine = IntelligenceStatisticsEngine(archive, cache_collection=cache)
+    engine._IntelligenceStatisticsEngine__local_timezone = "UTC"
+
+    result = engine.get_hourly_source_submissions(
+        datetime(2026, 1, 1, 8, tzinfo=timezone.utc),
+        datetime(2026, 1, 1, 10, tzinfo=timezone.utc),
+    )
+
+    assert archive.pipelines == []
+    assert cache.pipelines[0][0]["$match"]["collect_time"]
+    assert result["count_basis"] == "accepted_intake"
+
+
+def test_source_quality_combines_states_low_value_reasons_and_rejections():
+    class CacheCollection(FakeCollection):
+        def aggregate(self, pipeline):
+            self.pipelines.append(pipeline)
+            return [
+                {"_id": {"informant": "https://www.example.com/a", "state": "A"},
+                 "count": 4, "last_submission": datetime(2026, 1, 2, tzinfo=timezone.utc)},
+                {"_id": {"informant": "https://example.com/b", "state": "D"},
+                 "count": 3, "last_submission": datetime(2026, 1, 3, tzinfo=timezone.utc)},
+                {"_id": {"informant": "https://example.com/c", "state": "R"},
+                 "count": 1, "last_submission": datetime(2026, 1, 3, tzinfo=timezone.utc)},
+            ]
+
+    class LowCollection(FakeCollection):
+        def aggregate(self, pipeline):
+            self.pipelines.append(pipeline)
+            return [
+                {"_id": {"informant": "https://example.com/b",
+                         "reason": "anti_bot_or_access_denied"}, "count": 2},
+                {"_id": {"informant": "https://example.com/b", "reason": "sports"},
+                 "count": 1},
+            ]
+
+    class RejectedCollection(FakeCollection):
+        def aggregate(self, pipeline):
+            self.pipelines.append(pipeline)
+            return [{"_id": "https://example.com/rejected", "count": 2}]
+
+    result = IntelligenceStatisticsEngine(
+        FakeCollection(), cache_collection=CacheCollection(),
+        low_value_collection=LowCollection(),
+        intake_rejected_collection=RejectedCollection(),
+    ).get_source_quality(
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        datetime(2026, 1, 4, tzinfo=timezone.utc),
+    )
+
+    assert result["source_count"] == 1
+    row = result["sources"][0]
+    assert row["source"] == "example.com"
+    assert row["accepted"] == 8
+    assert row["archived"] == 4
+    assert row["low_value"] == 3
+    assert row["content_defect"] == 2
+    assert row["retrying"] == 1
+    assert row["intake_rejected"] == 2
+    assert row["status"] == "attention"
+    assert row["low_value_reasons"]["sports"] == 1

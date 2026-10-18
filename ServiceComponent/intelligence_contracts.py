@@ -62,6 +62,35 @@ class CacheArchiveState(StrEnum):
     DEPRECATED = "X"  # 运维主动弃用（积压清理），不再分析与回放
 
 
+class NonIntelligenceReason(StrEnum):
+    """低价值情报的机器可统计原因；REASON 继续保存 AI 的具体文字说明。"""
+
+    EMPTY_OR_TOO_SHORT = "empty_or_too_short"
+    ANTI_BOT_OR_ACCESS_DENIED = "anti_bot_or_access_denied"
+    NAVIGATION_OR_TEMPLATE = "navigation_or_template"
+    MEDIA_STUB = "media_stub"
+    GARBLED_OR_INCOMPLETE = "garbled_or_incomplete"
+    ADVERTISING_OR_PROMOTION = "advertising_or_promotion"
+    ENTERTAINMENT_OR_LIFESTYLE = "entertainment_or_lifestyle"
+    SPORTS = "sports"
+    HISTORICAL_OR_BACKGROUND = "historical_or_background"
+    OPINION_OR_PERSONAL_EXPRESSION = "opinion_or_personal_expression"
+    ROUTINE_OR_NO_INFORMATION_GAIN = "routine_or_no_information_gain"
+    ACADEMIC_WITHOUT_CURRENT_RELEVANCE = "academic_without_current_relevance"
+    DUPLICATE_OR_RECAP = "duplicate_or_recap"
+    OTHER_NON_INTELLIGENCE = "other_non_intelligence"
+    UNSPECIFIED = "unspecified"  # 兼容 v46 之前没有结构化原因的历史数据
+
+
+NON_INTELLIGENCE_CONTENT_DEFECT_REASONS = frozenset({
+    NonIntelligenceReason.EMPTY_OR_TOO_SHORT.value,
+    NonIntelligenceReason.ANTI_BOT_OR_ACCESS_DENIED.value,
+    NonIntelligenceReason.NAVIGATION_OR_TEMPLATE.value,
+    NonIntelligenceReason.MEDIA_STUB.value,
+    NonIntelligenceReason.GARBLED_OR_INCOMPLETE.value,
+})
+
+
 CACHE_ARCHIVED_FLAG_FIELD = appendix_path(APPENDIX_ARCHIVED_FLAG)
 CACHE_LEGACY_ARCHIVED_FLAG_FIELD = "__ARCHIVED__"
 

@@ -591,7 +591,11 @@ def test_v4_adapter_stores_non_intelligence_envelope_without_events():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_, **__: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "广告内容", "RATE": {}},
+        analyzer=lambda *_, **__: {
+            "TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [],
+            "NON_INTELLIGENCE_REASON": "advertising_or_promotion",
+            "REASON": "广告内容", "RATE": {},
+        },
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -678,7 +682,11 @@ def test_v4_transient_non_intelligence_is_not_saved():
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
-        analyzer=lambda *_, **__: {"TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [], "REASON": "测试广告", "RATE": {}},
+        analyzer=lambda *_, **__: {
+            "TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [],
+            "NON_INTELLIGENCE_REASON": "advertising_or_promotion",
+            "REASON": "测试广告", "RATE": {},
+        },
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -811,10 +819,10 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45}
+    assert set(table) == {41, 42, 43, 44, 45, 46}
     assert "核心子集" in table[42]
-    # 生产抽样表已切换为只有 44。
-    assert list(ports._prompt_table) == [44]
+    # 生产抽样表已切换为只有 46。
+    assert list(ports._prompt_table) == [46]
 
 
 class FakeShadowRecorder:

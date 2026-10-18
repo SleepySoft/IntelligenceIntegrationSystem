@@ -121,3 +121,22 @@ def test_v43_rejects_numeric_rate_with_retry():
     assert len(prompts) == 2
     assert "上一次输出的修正要求" in prompts[1]
     assert result.payload.archive.RATE["影响广度"] == 4
+
+
+def test_v46_requires_structured_reason_but_legacy_protocol_remains_compatible():
+    from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
+
+    legacy_payload = {
+        "TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [],
+        "REASON": "抓到的是访问拒绝页面。", "RATE": {},
+    }
+    legacy = EVENT_V4_PROMPT_CATALOG.protocol_for(44).validate_result(legacy_payload)
+    assert legacy.NON_INTELLIGENCE_REASON is None
+
+    with pytest.raises(ValueError, match="NON_INTELLIGENCE_REASON"):
+        EVENT_V4_PROMPT_CATALOG.protocol_for(46).validate_result(legacy_payload)
+
+    classified = dict(legacy_payload)
+    classified["NON_INTELLIGENCE_REASON"] = "anti_bot_or_access_denied"
+    result = EVENT_V4_PROMPT_CATALOG.protocol_for(46).validate_result(classified)
+    assert result.NON_INTELLIGENCE_REASON.value == "anti_bot_or_access_denied"

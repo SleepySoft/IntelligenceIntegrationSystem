@@ -1424,6 +1424,23 @@ class IntelligenceHubWebService:
                              exc_info=True)
                 return jsonify({"error": str(exc)}), 500
 
+        @app.route('/statistics/api/source_quality', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def get_source_quality_stats():
+            """按网站来源查询提交漏斗、低价值原因和综合状态。"""
+            try:
+                start_time, end_time = self.get_time_range_params()
+                if end_time - start_time > datetime.timedelta(days=90):
+                    return jsonify({"error": "来源状态统计范围不能超过90天"}), 400
+                stat_engine = self.intelligence_hub.get_statistics_engine()
+                return jsonify(stat_engine.get_source_quality(start_time, end_time))
+            except (TypeError, ValueError) as exc:
+                return jsonify({"error": str(exc)}), 400
+            except Exception as exc:
+                logger.error("Error querying source quality statistics: %s", exc,
+                             exc_info=True)
+                return jsonify({"error": str(exc)}), 500
+
         @app.route('/statistics/intelligence_dashboard_data', methods=['GET'])
         @WebServiceAccessManager.login_required
         def get_intelligence_dashboard_data():

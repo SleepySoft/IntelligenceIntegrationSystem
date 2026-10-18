@@ -279,10 +279,13 @@ class SubsystemRegistry:
                 username=mongodb_params.get('username'),
                 password=mongodb_params.get('password'),
                 collection_name=ctx.collection_name('cached'),
-                indexes=[[
-                    (CACHE_ARCHIVED_FLAG_FIELD, ASCENDING),
-                    (appendix_path(APPENDIX_RETRY_NEXT_AT), ASCENDING),
-                ]])
+                indexes=[
+                    [
+                        (CACHE_ARCHIVED_FLAG_FIELD, ASCENDING),
+                        (appendix_path(APPENDIX_RETRY_NEXT_AT), ASCENDING),
+                    ],
+                    [("collect_time", ASCENDING), ("informant", ASCENDING)],
+                ])
             # -------- Event V4 存储 --------
             database = ctx.mongo_db_cache.db
             ctx.event_v4_intelligence_collection = database[
@@ -314,7 +317,12 @@ class SubsystemRegistry:
                 ctx.event_v4_event_collection,
             )
             ctx.statistics_engine = IntelligenceStatisticsEngine(
-                ctx.event_v4_intelligence_collection)
+                ctx.event_v4_intelligence_collection,
+                cache_collection=ctx.mongo_db_cache.collection,
+                low_value_collection=ctx.event_v4_low_value_collection,
+                intake_rejected_collection=database[
+                    ctx.collection_name(EventV4CollectionSuffix.INTAKE_REJECTED)],
+            )
 
             registry.add(ctx)
             logger.info(

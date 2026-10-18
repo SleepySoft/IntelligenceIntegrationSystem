@@ -8,6 +8,11 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_TIME_ARCHIVED,
     APPENDIX_TIME_GOT,
     APPENDIX_TOTAL_SCORE,
+    CACHE_ARCHIVED_FLAG_FIELD,
+    CACHE_LEGACY_ARCHIVED_FLAG_FIELD,
+    CacheArchiveState,
+    NON_INTELLIGENCE_CONTENT_DEFECT_REASONS,
+    NonIntelligenceReason,
     appendix_path,
 )
 
@@ -16,7 +21,9 @@ SUBMISSION_TIME_FIELD = appendix_path(APPENDIX_TIME_GOT)
 TOTAL_SCORE_FIELD = appendix_path(APPENDIX_TOTAL_SCORE)
 
 class IntelligenceStatisticsEngine:
-    def __init__(self, db: Any):
+    def __init__(self, db: Any, *, cache_collection: Any = None,
+                 low_value_collection: Any = None,
+                 intake_rejected_collection: Any = None):
         # PyMongo Collection 会通过 __getattr__ 把任意属性解释成子集合；
         # getattr(collection, "collection") 因此不会报错，而会悄悄查询
         # `<原集合>.collection`，导致所有统计为空。优先按集合协议识别。
@@ -25,6 +32,9 @@ class IntelligenceStatisticsEngine:
             self.__collection = db
         else:
             self.__collection = db.collection
+        self.__cache_collection = self._as_collection(cache_collection)
+        self.__low_value_collection = self._as_collection(low_value_collection)
+        self.__intake_rejected_collection = self._as_collection(intake_rejected_collection)
         try:
             from tzlocal import get_localzone_name
             self.__local_timezone = get_localzone_name()
@@ -296,14 +306,20 @@ class IntelligenceStatisticsEngine:
         if start > end:
             raise ValueError("start_time must be before end_time")
 
+        # cache 是 intake 接受事实源，包含归档、低价值、重试和失败；旧调用方未传
+        # cache 时回退到归档集合，保持独立使用的兼容性。
+        collection = (self.__cache_collection
+                      if self.__cache_collection is not None else self.__collection)
+        time_field = "collect_time" if self.__cache_collection is not None else SUBMISSION_TIME_FIELD
+        informant_field = "informant" if self.__cache_collection is not None else "INFORMANT"
         date_in_local_tz = {
-            "date": f"${SUBMISSION_TIME_FIELD}",
+            "date": f"${time_field}",
             "timezone": self.__local_timezone,
         }
         pipeline = [
             {"$match": {
-                SUBMISSION_TIME_FIELD: {"$gte": start, "$lte": end},
-                "INFORMANT": {"$type": "string", "$ne": ""},
+                time_field: {"$gte": start, "$lte": end},
+                informant_field: {"$type": "string", "$ne": ""},
             }},
             {"$group": {
                 "_id": {
@@ -311,7 +327,7 @@ class IntelligenceStatisticsEngine:
                     "month": {"$month": date_in_local_tz},
                     "day": {"$dayOfMonth": date_in_local_tz},
                     "hour": {"$hour": date_in_local_tz},
-                    "informant": "$INFORMANT",
+                    "informant": f"${informant_field}",
                 },
                 "count": {"$sum": 1},
             }},
@@ -319,7 +335,7 @@ class IntelligenceStatisticsEngine:
 
         by_source = {}
         totals = {}
-        for item in self.__collection.aggregate(pipeline):
+        for item in collection.aggregate(pipeline):
             identity = item.get("_id") or {}
             source = self._extract_source(identity.get("informant"))
             if not source:
@@ -350,7 +366,177 @@ class IntelligenceStatisticsEngine:
             "totals": {source: sum(values) for source, values in series.items()},
             "source_count": len(ranked),
             "total_count": sum(totals.values()),
+            "count_basis": "accepted_intake" if self.__cache_collection is not None else "archived",
         }
+
+    def get_source_quality(self, start_time: datetime.datetime,
+                           end_time: datetime.datetime) -> dict:
+        """按来源汇总 intake 及处理终态，并细分低价值原因。"""
+        start = ensure_timezone_aware(start_time)
+        end = ensure_timezone_aware(end_time)
+        if start > end:
+            raise ValueError("start_time must be before end_time")
+        if self.__cache_collection is None:
+            raise RuntimeError("source quality statistics require cache_collection")
+
+        cache_pipeline = [
+            {"$match": {
+                "collect_time": {"$gte": start, "$lte": end},
+                "informant": {"$type": "string", "$ne": ""},
+            }},
+            {"$group": {
+                "_id": {
+                    "informant": "$informant",
+                    "state": {"$ifNull": [
+                        f"${CACHE_ARCHIVED_FLAG_FIELD}",
+                        {"$ifNull": [f"${CACHE_LEGACY_ARCHIVED_FLAG_FIELD}", "__PENDING__"]},
+                    ]},
+                },
+                "count": {"$sum": 1},
+                "last_submission": {"$max": "$collect_time"},
+            }},
+        ]
+        sources: dict[str, dict] = {}
+        for item in self.__cache_collection.aggregate(cache_pipeline):
+            identity = item.get("_id") or {}
+            source = self._extract_source(identity.get("informant"))
+            if not source:
+                continue
+            row = sources.setdefault(source, self._empty_source_quality_row(source))
+            state = str(identity.get("state") or "__PENDING__")
+            count = int(item.get("count", 0))
+            row["accepted"] += count
+            state_field = {
+                CacheArchiveState.ARCHIVED.value: "archived",
+                CacheArchiveState.DROP.value: "low_value",
+                CacheArchiveState.RETRY.value: "retrying",
+                CacheArchiveState.ERROR.value: "failed",
+                CacheArchiveState.SENSITIVE.value: "sensitive",
+                CacheArchiveState.DUPLICATED.value: "duplicate",
+                CacheArchiveState.DEPRECATED.value: "deprecated",
+                "__PENDING__": "pending",
+            }.get(state, "pending")
+            row[state_field] += count
+            last = item.get("last_submission")
+            if last is not None and (row["last_submission"] is None
+                                     or last > row["last_submission"]):
+                row["last_submission"] = last
+
+        if self.__low_value_collection is not None:
+            low_pipeline = [
+                {"$match": {
+                    SUBMISSION_TIME_FIELD: {"$gte": start, "$lte": end},
+                    "INFORMANT": {"$type": "string", "$ne": ""},
+                }},
+                {"$group": {
+                    "_id": {
+                        "informant": "$INFORMANT",
+                        "reason": {"$ifNull": [
+                            "$NON_INTELLIGENCE_REASON",
+                            NonIntelligenceReason.UNSPECIFIED.value,
+                        ]},
+                    },
+                    "count": {"$sum": 1},
+                }},
+            ]
+            for item in self.__low_value_collection.aggregate(low_pipeline):
+                identity = item.get("_id") or {}
+                source = self._extract_source(identity.get("informant"))
+                if not source:
+                    continue
+                row = sources.setdefault(source, self._empty_source_quality_row(source))
+                reason = str(identity.get("reason") or NonIntelligenceReason.UNSPECIFIED.value)
+                count = int(item.get("count", 0))
+                row["low_value_reasons"][reason] = (
+                    row["low_value_reasons"].get(reason, 0) + count)
+                if reason in NON_INTELLIGENCE_CONTENT_DEFECT_REASONS:
+                    row["content_defect"] += count
+
+        if self.__intake_rejected_collection is not None:
+            rejected_pipeline = [
+                {"$match": {
+                    "rejected_at": {"$gte": start, "$lte": end},
+                    "informant": {"$type": "string", "$ne": ""},
+                }},
+                {"$group": {"_id": "$informant", "count": {"$sum": 1}}},
+            ]
+            for item in self.__intake_rejected_collection.aggregate(rejected_pipeline):
+                source = self._extract_source(item.get("_id"))
+                if source:
+                    row = sources.setdefault(source, self._empty_source_quality_row(source))
+                    row["intake_rejected"] += int(item.get("count", 0))
+
+        rows = []
+        for row in sources.values():
+            accepted = row["accepted"]
+            row["archive_rate"] = self._ratio(row["archived"], accepted)
+            row["low_value_rate"] = self._ratio(row["low_value"], accepted)
+            row["content_defect_rate"] = self._ratio(row["content_defect"], accepted)
+            failures = row["retrying"] + row["failed"] + row["sensitive"]
+            row["processing_issue_rate"] = self._ratio(failures, accepted)
+            row["total_attempts"] = accepted + row["intake_rejected"]
+            row["last_submission"] = self._isoformat(row["last_submission"])
+            row["status"], row["status_reasons"] = self._evaluate_source(row)
+            rows.append(row)
+        rows.sort(key=lambda item: (item["accepted"], item["source"]))
+        return {
+            "time_range": {"start": start.isoformat(), "end": end.isoformat()},
+            "sources": rows,
+            "source_count": len(rows),
+            "thresholds": {
+                "minimum_sample": 5,
+                "poor_processing_issue_rate": 0.20,
+                "poor_content_defect_rate": 0.30,
+                "attention_processing_issue_rate": 0.05,
+                "attention_content_defect_rate": 0.10,
+                "attention_low_value_rate": 0.80,
+            },
+        }
+
+    @staticmethod
+    def _empty_source_quality_row(source: str) -> dict:
+        return {
+            "source": source, "accepted": 0, "intake_rejected": 0,
+            "archived": 0, "low_value": 0, "content_defect": 0,
+            "retrying": 0, "failed": 0, "sensitive": 0, "duplicate": 0,
+            "deprecated": 0, "pending": 0, "last_submission": None,
+            "low_value_reasons": {},
+        }
+
+    @staticmethod
+    def _ratio(value: int, total: int) -> float:
+        return round(value / total, 4) if total else 0.0
+
+    @staticmethod
+    def _isoformat(value):
+        return value.isoformat() if hasattr(value, "isoformat") else value
+
+    @staticmethod
+    def _evaluate_source(row: dict) -> tuple[str, list[str]]:
+        if row["accepted"] < 5:
+            return "insufficient_data", ["样本不足"]
+        reasons = []
+        if row["processing_issue_rate"] >= 0.20:
+            reasons.append("处理异常偏高")
+        if row["content_defect_rate"] >= 0.30:
+            reasons.append("抓取内容缺陷偏高")
+        if reasons:
+            return "poor", reasons
+        if row["processing_issue_rate"] >= 0.05:
+            reasons.append("存在处理异常")
+        if row["content_defect_rate"] >= 0.10:
+            reasons.append("存在抓取内容缺陷")
+        if row["low_value_rate"] >= 0.80:
+            reasons.append("低价值率偏高")
+        return ("attention", reasons) if reasons else ("healthy", ["指标正常"])
+
+    @staticmethod
+    def _as_collection(value):
+        if value is None:
+            return None
+        if callable(getattr(value, "aggregate", None)):
+            return value
+        return getattr(value, "collection", None)
 
     def _hour_slots(self, start: datetime.datetime, end: datetime.datetime):
         try:
