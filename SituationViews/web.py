@@ -187,8 +187,8 @@ class SituationViewsService:
             "window_days": self._coerce_number(values.get("window_days"), 7, 1, 365, int),
             "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
             "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
-            "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 300, int),
-            "max_edges": self._coerce_number(values.get("max_edges"), 240, 10, 1000, int),
+            "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 5000, int),
+            "max_edges": self._coerce_number(values.get("max_edges"), 240, 10, 20000, int),
             "max_articles": self._coerce_number(
                 values.get("max_articles"), 5000, 100, 20000, int),
             "primary_only": self._coerce_bool(values.get("primary_only"), True),

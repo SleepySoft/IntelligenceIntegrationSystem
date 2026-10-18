@@ -44,6 +44,12 @@ optional_subsystems:
     subsystem: news
     window_days: 7
     min_score: 6
+    # min_support: 2            # 实体图：关系最少独立事件数（调低到 1 会显示全部关系，图更密更噪）
+    # max_nodes: 80             # 实体图节点上限
+    # max_edges: 240            # 实体图边上限
+    # max_articles: 5000        # 单次分析的最大文章数
+    # primary_only: true        # 只用主事件构图
+    # keep_high_score_singletons: true  # 保留高评分（≥8）单次关系
   intelligence_views:
     enabled: true
   entity_alias:

@@ -257,7 +257,7 @@ python VectorDB/VectorDBBService.py \
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）
-- 任务级开关：`_config/collector.json` 的 `collector.disabled_tasks`（插件名列表，如 `task_crawl_voanews`）在加载前拦截并停掉同名运行中任务，重启生效
+- 任务级开关：`_config/collector.json` 的 `collector.disabled_tasks`（插件名列表，如 `task_crawl_investing`）在加载前拦截并停掉同名运行中任务，重启生效
 - 每个插件需暴露 `module_init(ctx)` 和 `start_task(stop_event)` 两个钩子
 - `stop_event` 为 `threading.Event`，插件应在每次迭代中检查其状态以实现优雅退出
 

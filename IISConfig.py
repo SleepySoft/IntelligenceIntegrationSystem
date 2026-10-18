@@ -125,6 +125,13 @@ class SituationSettings(_StrictModel):
     window_days: int = Field(7, ge=1, le=365)
     min_score: float = Field(6.0, ge=0, le=10)
     geocoding: bool = True
+    # 态势看板细节参数（与 SituationViews._dashboard_profile 的界限保持一致）
+    min_support: int = Field(2, ge=1, le=50)            # 实体图：关系最少独立事件数
+    max_nodes: int = Field(80, ge=10, le=5000)          # 实体图节点上限
+    max_edges: int = Field(240, ge=10, le=20000)        # 实体图边上限
+    max_articles: int = Field(5000, ge=100, le=20000)   # 单次分析的最大文章数
+    primary_only: bool = True                           # 只用主事件构图
+    keep_high_score_singletons: bool = True             # 保留高评分单次关系
 
 
 class ToggleSettings(_StrictModel):
@@ -306,6 +313,12 @@ class IISConfig:
                         "subsystem": situation_subsystem,
                         "window_days": situation.window_days,
                         "min_score": situation.min_score,
+                        "min_support": situation.min_support,
+                        "max_nodes": situation.max_nodes,
+                        "max_edges": situation.max_edges,
+                        "max_articles": situation.max_articles,
+                        "primary_only": situation.primary_only,
+                        "keep_high_score_singletons": situation.keep_high_score_singletons,
                     },
                 },
                 "intelligence_views": {
@@ -317,6 +330,12 @@ class IISConfig:
                         "subsystem": situation_subsystem,
                         "window_days": situation.window_days,
                         "min_score": situation.min_score,
+                        "min_support": situation.min_support,
+                        "max_nodes": situation.max_nodes,
+                        "max_edges": situation.max_edges,
+                        "max_articles": situation.max_articles,
+                        "primary_only": situation.primary_only,
+                        "keep_high_score_singletons": situation.keep_high_score_singletons,
                     },
                 },
                 "public_search": {
