@@ -1023,3 +1023,31 @@ def test_plugin_emits_analysis_with_lane_priority():
     event2 = HubEvent("intake.accepted", {"x": 1}, "news")
     EventPipelinePlugin._on_intake_accepted(event2, runtime2)
     assert runtime2.emitted[0][1] == EventPriority.LIVE
+
+
+def test_intake_rejects_beyond_analysis_age_hard_limit():
+    ports, context = _ports_for_intake()
+    ports._max_analysis_age_hours = 168  # 7 天
+    ancient = _original()
+    ancient["pub_time"] = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+
+    result = ports.accept(HubEvent("intake.received", ancient, "news"))
+
+    assert not result.accepted
+    assert result.reason == "stale_content"
+    # cache 留痕并标 X（去重 + 审计），不会进入分析
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": ancient["UUID"]}, {"APPENDIX.__ARCHIVED__": "X"})
+    audit = context.mongo_db_cache.db["intelligence_intake_rejected"].docs
+    assert audit and audit[0]["reason"].startswith("stale_content")
+
+
+def test_intake_hard_limit_allows_recent_within_limit():
+    ports, _ = _ports_for_intake()
+    ports._max_analysis_age_hours = 168
+    recent = _original()
+    recent["pub_time"] = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+
+    result = ports.accept(HubEvent("intake.received", recent, "news"))
+
+    assert result.accepted

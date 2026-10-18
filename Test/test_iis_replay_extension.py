@@ -204,6 +204,10 @@ class SortableCollection(Collection):
         ]
         self.updates = []
 
+    def update_many(self, query, update):
+        self.updates.append((query, update))
+        return SimpleNamespace(modified_count=len(query.get("_id", {}).get("$in", [])))
+
     def find(self, query):
         records = self.records
 
@@ -233,3 +237,27 @@ def test_replay_unprocessed_emits_newest_first_when_enabled():
 
     assert [item["informant"] for item in received] == [
         "https://example.test/new", "https://example.test/old"]
+
+
+def test_replay_deprecates_records_beyond_analysis_age_limit():
+    runtime = HubRuntime()
+    registry = Registry()
+    registry.context.mongo_db_cache.collection = SortableCollection()
+    extension = IISUnarchivedReplayExtension(
+        registry, replay_newest_first=False, max_analysis_age_hours=24)
+    received = []
+    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload))
+
+    extension._replay_unprocessed(runtime)
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=2)
+    runtime.stop()
+
+    # 2 天前的旧记录被弃用不发射；1 小时前的正常回放
+    assert [item["informant"] for item in received] == ["https://example.test/new"]
+    deprecated_calls = [
+        u for u in registry.context.mongo_db_cache.collection.updates
+        if isinstance(u[1], dict) and "$set" in u[1]
+        and u[1]["$set"].get("APPENDIX.__ARCHIVED__") == "X"
+    ]
+    assert deprecated_calls, "超旧记录应被批量标记为 X"

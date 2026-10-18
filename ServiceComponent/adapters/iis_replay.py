@@ -36,7 +36,8 @@ class IISUnarchivedReplayExtension(HubPlugin):
 
     def __init__(self, subsystem_registry: Any, *, poll_interval: float = 30.0,
                  batch_size: int = 100, lease_duration: timedelta = timedelta(hours=6),
-                 auto_replay: bool = True, replay_newest_first: bool = True):
+                 auto_replay: bool = True, replay_newest_first: bool = True,
+                 max_analysis_age_hours: float = 0.0):
         if poll_interval <= 0 or batch_size < 1 or lease_duration.total_seconds() <= 0:
             raise ValueError("Retry poll/batch/lease 参数必须大于 0。")
         self.subsystem_registry = subsystem_registry
@@ -49,6 +50,9 @@ class IISUnarchivedReplayExtension(HubPlugin):
         # replay_newest_first=True 时未处理记录按 collect_time 新到旧回放：
         # 冷启动回补时先处理最新情报，旧存货最后消化。
         self.replay_newest_first = replay_newest_first
+        # 分析年龄硬上限（小时）：回放/重试时超过该年龄的记录直接标弃用（X）不再分析。
+        # 0 = 不启用。
+        self.max_analysis_age_hours = max(0.0, float(max_analysis_age_hours))
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._runtime: HubRuntime | None = None
@@ -126,6 +130,34 @@ class IISUnarchivedReplayExtension(HubPlugin):
             except Exception:
                 logger.exception("Failed to migrate legacy E records for subsystem %s", context.name)
 
+    def _deprecate_stale(self, context: Any, records: list) -> set:
+        """把超过分析年龄硬上限的记录批量标为弃用（X），返回被弃用的 _id 集合。"""
+        if self.max_analysis_age_hours <= 0 or not records:
+            return set()
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.max_analysis_age_hours)
+        stale_ids = []
+        for record in records:
+            collected = record.get("collect_time")
+            if isinstance(collected, datetime):
+                if collected.tzinfo is None:
+                    collected = collected.replace(tzinfo=timezone.utc)
+                if collected < cutoff:
+                    stale_ids.append(record.get("_id"))
+        if not stale_ids:
+            return set()
+        try:
+            result = context.mongo_db_cache.collection.update_many(
+                {"_id": {"$in": stale_ids}},
+                {"$set": {CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.DEPRECATED.value}},
+            )
+            count = int(getattr(result, "modified_count", len(stale_ids)))
+        except Exception:
+            logger.exception("Failed to deprecate stale records for subsystem %s", context.name)
+            return set()
+        logger.info("Deprecated %d stale records (older than %.1fh) for subsystem %s",
+                    count, self.max_analysis_age_hours, context.name)
+        return set(stale_ids)
+
     def _replay_unprocessed(self, runtime: HubRuntime) -> None:
         query = unarchived_cache_query()
         for context in self.subsystem_registry.enabled_subsystems():
@@ -135,7 +167,11 @@ class IISUnarchivedReplayExtension(HubPlugin):
                 cursor = context.mongo_db_cache.collection.find(query)
                 if not isinstance(cursor, list) and self.replay_newest_first:
                     cursor = cursor.sort("collect_time", -1)
-                for record in cursor:
+                records = list(cursor)
+                deprecated = self._deprecate_stale(context, records)
+                for record in records:
+                    if record.get("_id") in deprecated:
+                        continue  # 超旧记录已弃用，不再发射
                     if not self._emit_record(runtime, context, record, EventPriority.REPLAY):
                         return
                     self.replayed += 1
@@ -155,9 +191,13 @@ class IISUnarchivedReplayExtension(HubPlugin):
                 if not isinstance(cursor, list):
                     cursor = cursor.sort(
                         appendix_path(APPENDIX_RETRY_NEXT_AT), 1).limit(self.batch_size)
-                for record in list(cursor)[:self.batch_size]:
+                records = list(cursor)[:self.batch_size]
+                deprecated = self._deprecate_stale(context, records)
+                for record in records:
                     if self._stop.is_set():
                         return
+                    if record.get("_id") in deprecated:
+                        continue  # 超旧记录已弃用，不再重试
                     claim_query = {"_id": record.get("_id"), **retry_cache_query(now)}
                     claimed = collection.update_one(
                         claim_query,

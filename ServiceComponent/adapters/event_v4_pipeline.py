@@ -113,6 +113,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_recorder: Any = None,
         shadow_sample_rate: float = 1.0,
         max_live_age_hours: float = 0.0,
+        max_analysis_age_hours: float = 0.0,
         quality_enabled: bool = True,
         control_state: Any = None,
         entity_name_normalizer: Callable[[str], str | None] | None = None,
@@ -147,6 +148,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道而非主队列，
         # 防止冷启动/久停后批量旧情报淹没问题。0 = 不启用。
         self._max_live_age_hours = max(0.0, float(max_live_age_hours))
+        # 硬上限（小时）：超过即不再分析——intake 直接拒绝（cache 标 X 留痕），
+        # 回放时批量弃用。0 = 不启用。
+        self._max_analysis_age_hours = max(0.0, float(max_analysis_age_hours))
         self._quality_enabled = quality_enabled
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
@@ -208,11 +212,19 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     data["UUID"] = str(normalize_or_assign_intelligence_uuid(None))
             if ctx.mongo_db_cache:
                 ctx.mongo_db_cache.insert(data)
-        # 按内容年龄分流：超龄情报走低优先级车道，新鲜情报进主队列。
-        if self._max_live_age_hours > 0:
-            age_hours = self._content_age_hours(data)
-            if age_hours is not None and age_hours > self._max_live_age_hours:
-                return StageResult.allow(data, subsystem=ctx.name, lane="replay")
+        # 按内容年龄分流：超旧直接弃用（不分析），超龄走低优先级车道，新鲜进主队列。
+        age_hours = self._content_age_hours(data)
+        if (self._max_analysis_age_hours > 0 and age_hours is not None
+                and age_hours > self._max_analysis_age_hours):
+            # cache 留痕（X）保证去重与审计；拒绝通知采集端标记 SKIPPED 不再重发。
+            self._mark_cache(data["UUID"], CacheArchiveState.DEPRECATED, ctx)
+            self._record_intake_rejection(
+                ctx, data,
+                f"stale_content: age {age_hours:.1f}h > {self._max_analysis_age_hours}h")
+            return StageResult.reject("stale_content")
+        if (self._max_live_age_hours > 0 and age_hours is not None
+                and age_hours > self._max_live_age_hours):
+            return StageResult.allow(data, subsystem=ctx.name, lane="replay")
         return StageResult.allow(data, subsystem=ctx.name)
 
     @staticmethod

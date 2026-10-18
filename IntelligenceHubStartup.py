@@ -203,6 +203,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         shadow_sample_rate=shadow_sample_rate,
         max_live_age_hours=float(config.get(
             'intelligence_hub.max_live_age_hours', 0) or 0),
+        max_analysis_age_hours=float(config.get(
+            'intelligence_hub.max_analysis_age_hours', 0) or 0),
         control_state=control_state,
     )
     extensions = []
@@ -221,7 +223,9 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     replay_extension = IISUnarchivedReplayExtension(
         subsystem_registry,
         auto_replay=config.get('intelligence_hub.replay_unarchived', True),
-        replay_newest_first=config.get('intelligence_hub.replay_newest_first', True))
+        replay_newest_first=config.get('intelligence_hub.replay_newest_first', True),
+        max_analysis_age_hours=float(config.get(
+            'intelligence_hub.max_analysis_age_hours', 0) or 0))
     extensions.append(replay_extension)
     services["unarchived_replay"] = replay_extension
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)

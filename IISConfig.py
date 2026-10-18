@@ -86,6 +86,9 @@ class HubSettings(_StrictModel):
     # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道，防止冷启动/久停后
     # 旧情报淹没问题主队列。0 = 不启用（全部进主队列）。
     max_live_age_hours: float = Field(0, ge=0)
+    # 分析年龄硬上限（小时）：超旧情报直接弃用不分析（intake 拒绝 + 回放跳过标 X）。
+    # 0 = 不启用。与 max_live_age_hours 构成 新鲜→主队列 / 超龄→慢车道 / 超旧→弃用 三层。
+    max_analysis_age_hours: float = Field(0, ge=0)
     # 未处理记录回放顺序：True = 新的优先（冷启动先消化新情报），False = 按入库顺序。
     replay_newest_first: bool = True
     subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings)
@@ -278,6 +281,7 @@ class IISConfig:
                 "replay_unarchived": settings.hub.replay_unarchived,
                 "conversation_retention_days": settings.hub.conversation_retention_days,
                 "max_live_age_hours": settings.hub.max_live_age_hours,
+                "max_analysis_age_hours": settings.hub.max_analysis_age_hours,
                 "replay_newest_first": settings.hub.replay_newest_first,
                 "shadow_analysis": {
                     "enabled": bool(settings.hub.shadow_versions),
