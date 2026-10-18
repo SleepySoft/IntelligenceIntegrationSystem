@@ -12,6 +12,7 @@
     "task_dirs": {
       "news": "CrawlTasks/news",
       "finance": "CrawlTasks/finance"
-    }
+    },
+    "disabled_tasks": []
   }
 }

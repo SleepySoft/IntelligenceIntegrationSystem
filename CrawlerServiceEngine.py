@@ -162,6 +162,16 @@ class TaskManager:
 
         self.plugin_manager = PluginManager(['module_init', 'start_task'])
 
+        # 任务级开关：collector.disabled_tasks 列出要停用的插件名（文件名不含 .py），
+        # 在扫描/热重载入库前拦截；已在运行的同名任务会被停掉。修改后需重启生效。
+        self.disabled_tasks = {
+            str(name).strip()
+            for name in (self.config.get('collector.disabled_tasks') or [])
+            if str(name).strip()
+        }
+        if self.disabled_tasks:
+            logger.info(f'Disabled collector tasks: {sorted(self.disabled_tasks)}')
+
         self._sig = {}  # plugin_name -> sig
 
         # {plugin_name: (PluginWrapper, Thread, Event)}
@@ -183,6 +193,12 @@ class TaskManager:
         """For created/modified/moved-in events."""
         abs_path = os.path.abspath(file_path)
         name = PluginManager.plugin_name(abs_path)
+
+        if name in self.disabled_tasks:
+            logger.info(f"[CMD] skip disabled task {name} ({abs_path})")
+            self._stop_and_join_if_running(name)
+            self.plugin_manager.remove_plugin(name)
+            return
 
         try:
             sig = _file_sig(abs_path)
