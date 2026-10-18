@@ -82,6 +82,8 @@
         </div>
         <div class="subtitle" style="margin-bottom:6px">队列情况</div>
         <div class="cards hub-queue-row" id="hub-queue-cards"></div>
+        <div class="subtitle" style="margin-bottom:6px">今日流量（本地日界，持久库实时汇总）</div>
+        <div class="cards hub-today-row" id="hub-today-cards"></div>
         <div class="subtitle" style="margin-bottom:6px">本次启动后的运行结果</div>
         <div class="cards hub-result-row" id="hub-result-cards"></div>
         <div class="subtitle" style="margin-bottom:6px">子系统结果（本次进程生命周期）</div>
@@ -182,6 +184,14 @@ async function loadHub() {
             metricCard('活动 Handler', runtime.active_handlers ?? 0),
             metricCard('AI 等待/运行/校验',
                        `${analysis.waiting_client ?? 0} / ${analysis.ai_running ?? 0} / ${analysis.validation_running ?? 0}`),
+        ].join('');
+        const today = data.hub?.today_flow || {};
+        document.getElementById('hub-today-cards').innerHTML = [
+            metricCard('今日提交（入口接收）', today.intake ?? 0),
+            metricCard('今日归档', today.archived ?? 0),
+            metricCard('今日低价值', today.low_value ?? 0),
+            metricCard('今日入口拒绝', today.intake_rejected ?? 0,
+                       (today.intake_rejected ?? 0) > 0 ? 'warn' : ''),
         ].join('');
         document.getElementById('hub-result-cards').innerHTML = [
             metricCard('本次归档完成', processed['archive.completed'] || 0),

@@ -143,6 +143,43 @@ def test_legacy_terminal_errors_are_migrated_once_to_r1():
     assert extension.migrated_legacy_errors == 4
 
 
+def test_auto_replay_disabled_defers_unarchived_until_manual_trigger():
+    runtime = HubRuntime()
+    registry = Registry()
+    extension = IISUnarchivedReplayExtension(registry, auto_replay=False)
+    received = []
+    runtime.install(extension)
+    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload))
+    runtime.start()
+
+    # 自动回放被禁用：启动后不应有未处理记录进入。
+    assert not _wait_until(lambda: len(received) > 0, timeout=0.3)
+    assert extension.replayed == 0
+
+    # 手工触发后正常回放。
+    result = extension.trigger_replay()
+    assert result["started"] is True
+    assert _wait_until(lambda: len(received) == 2)
+    runtime.stop()
+    assert extension.replayed == 2
+
+
+def test_manual_trigger_rejects_concurrent_run_and_requires_start():
+    extension = IISUnarchivedReplayExtension(Registry())
+    assert extension.trigger_replay()["started"] is False  # 未 start
+
+    runtime = HubRuntime()
+    registry = Registry()
+    extension = IISUnarchivedReplayExtension(registry, auto_replay=False)
+    runtime.install(extension)
+    runtime.start()
+    try:
+        extension._manual_running = True  # 模拟一次进行中的手工回放
+        assert extension.trigger_replay()["reason"] == "already_running"
+    finally:
+        runtime.stop()
+
+
 def _wait_until(predicate, timeout=1.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

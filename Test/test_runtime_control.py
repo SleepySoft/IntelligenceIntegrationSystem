@@ -62,9 +62,14 @@ class FakeCache:
 
     def update(self, query, update):
         matched = 0
+        state_filter = query.get("APPENDIX.__ARCHIVED__") if isinstance(query, dict) else None
         for record in self.records:
             appendix = record.setdefault("APPENDIX", {})
-            if "__ARCHIVED__" in appendix:
+            if isinstance(state_filter, str):
+                # 按终态精确匹配（如弃用重试中记录）
+                if appendix.get("__ARCHIVED__") != state_filter:
+                    continue
+            elif "__ARCHIVED__" in appendix:
                 continue
             matched += 1
             for key, value in update.items():
@@ -257,7 +262,7 @@ def test_discard_pending_marks_unanalyzed_cache_deprecated():
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["deprecated_total"] == 2
-    assert data["details"]["news"]["deprecated"] == 2
+    assert data["details"]["news"]["pending"]["deprecated"] == 2
     flags = {r["UUID"]: r["APPENDIX"].get("__ARCHIVED__") for r in cache.records}
     assert flags == {"u1": "X", "u2": "X", "u3": "A", "u4": "D"}
 
@@ -266,3 +271,85 @@ def test_discard_pending_marks_unanalyzed_cache_deprecated():
     assert unarchived_cache_query()  # 查询存在
     remaining = [r for r in cache.records if "__ARCHIVED__" not in r["APPENDIX"]]
     assert remaining == []
+
+
+def test_discard_retry_marks_retry_records_deprecated():
+    from types import SimpleNamespace
+
+    cache = FakeCache([
+        {"UUID": "u1", "APPENDIX": {}},                              # 未分析 → 不动
+        {"UUID": "u2", "APPENDIX": {"__ARCHIVED__": "R"}},           # 重试中 → 弃用
+        {"UUID": "u3", "APPENDIX": {"__ARCHIVED__": "R"}},           # 重试中 → 弃用
+        {"UUID": "u4", "APPENDIX": {"__ARCHIVED__": "A"}},           # 已归档 → 不动
+    ])
+    registry = FakeSubsystemRegistry([SimpleNamespace(
+        name="news", mongo_db_cache=cache,
+        url_prefix="/news", is_default=True, ui_plugin_enabled=False,
+    )])
+    app = _build_app(RuntimeControlState(), subsystem_registry=registry)
+    client = _logged_in_client(app)
+
+    resp = client.post("/api/control/discard_pending", json={"scope": "retry"})
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["scope"] == "retry"
+    assert data["deprecated_total"] == 2
+    assert data["details"]["news"]["retry"]["deprecated"] == 2
+    flags = {r["UUID"]: r["APPENDIX"].get("__ARCHIVED__") for r in cache.records}
+    assert flags == {"u1": None, "u2": "X", "u3": "X", "u4": "A"}
+
+    # 非法 scope 被拒
+    resp = client.post("/api/control/discard_pending", json={"scope": "bogus"})
+    assert resp.status_code == 400
+
+
+class FakeHubWithReplay(FakeHub):
+    def __init__(self, replay_service):
+        self._replay_service = replay_service
+
+    def get_service(self, name, default=None):
+        if name == "unarchived_replay":
+            return self._replay_service
+        return default
+
+
+def _build_app_with_replay(fake_service):
+    control = RuntimeControlState()
+    app = Flask(
+        __name__,
+        template_folder=str(Path(__file__).resolve().parent.parent / "templates"),
+    )
+    app.secret_key = "test-secret"
+    access_manager = WebServiceAccessManager(
+        rpc_api_tokens=["rpc-token"], collector_tokens=["collector-token"],
+        user_manager=None, deny_on_empty_config=True)
+    service = IntelligenceHubWebService(
+        intelligence_hub=FakeHubWithReplay(fake_service),
+        access_manager=access_manager,
+        rss_publisher=FakeRSSPublisher(),
+        subsystem_registry=FakeSubsystemRegistry([]),
+        control_state=control,
+    )
+    service.register_routers(app)
+    return app
+
+
+def test_replay_unarchived_endpoint_requires_service():
+    app = _build_app(RuntimeControlState())
+    client = _logged_in_client(app)
+    # FakeHub.get_service 默认返回 None → 未安装时 503
+    resp = client.post("/api/control/replay_unarchived")
+    assert resp.status_code == 503
+
+
+def test_replay_unarchived_endpoint_triggers_service():
+    from types import SimpleNamespace
+
+    fake_service = SimpleNamespace(
+        trigger_replay=lambda: {"started": True, "replayed_before": 0})
+    app = _build_app_with_replay(fake_service)
+    client = _logged_in_client(app)
+    resp = client.post("/api/control/replay_unarchived")
+    assert resp.status_code == 200
+    assert resp.get_json()["started"] is True

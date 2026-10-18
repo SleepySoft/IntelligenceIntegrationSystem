@@ -35,15 +35,22 @@ class IISUnarchivedReplayExtension(HubPlugin):
     """
 
     def __init__(self, subsystem_registry: Any, *, poll_interval: float = 30.0,
-                 batch_size: int = 100, lease_duration: timedelta = timedelta(hours=6)):
+                 batch_size: int = 100, lease_duration: timedelta = timedelta(hours=6),
+                 auto_replay: bool = True):
         if poll_interval <= 0 or batch_size < 1 or lease_duration.total_seconds() <= 0:
             raise ValueError("Retry poll/batch/lease 参数必须大于 0。")
         self.subsystem_registry = subsystem_registry
         self.poll_interval = poll_interval
         self.batch_size = batch_size
         self.lease_duration = lease_duration
+        # auto_replay=False 时启动只做遗留迁移与重试轮询，未处理记录等待手工触发
+        # （POST /api/control/replay_unarchived）。
+        self.auto_replay = auto_replay
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._runtime: HubRuntime | None = None
+        self._manual_lock = threading.Lock()
+        self._manual_running = False
         self.replayed = 0
         self.retried = 0
         self.migrated_legacy_errors = 0
@@ -52,6 +59,7 @@ class IISUnarchivedReplayExtension(HubPlugin):
         return None
 
     def start(self, runtime: HubRuntime) -> None:
+        self._runtime = runtime
         self._thread = threading.Thread(
             target=self._replay, args=(runtime,), name="IISUnarchivedReplay", daemon=True)
         self._thread.start()
@@ -61,9 +69,31 @@ class IISUnarchivedReplayExtension(HubPlugin):
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
+    def trigger_replay(self) -> dict:
+        """手工触发一次未处理记录回放（运行控制端点调用）；幂等，并发调用只跑一次。"""
+        runtime = self._runtime
+        if runtime is None:
+            return {"started": False, "reason": "extension_not_started"}
+        with self._manual_lock:
+            if self._manual_running:
+                return {"started": False, "reason": "already_running"}
+            self._manual_running = True
+        before = self.replayed
+
+        def _run():
+            try:
+                self._replay_unprocessed(runtime)
+            finally:
+                with self._manual_lock:
+                    self._manual_running = False
+
+        threading.Thread(target=_run, name="IISUnarchivedReplayManual", daemon=True).start()
+        return {"started": True, "replayed_before": before}
+
     def _replay(self, runtime: HubRuntime) -> None:
         self._migrate_legacy_errors()
-        self._replay_unprocessed(runtime)
+        if self.auto_replay:
+            self._replay_unprocessed(runtime)
         self._replay_due_retries(runtime)
         while not self._stop.wait(self.poll_interval):
             self._replay_due_retries(runtime)

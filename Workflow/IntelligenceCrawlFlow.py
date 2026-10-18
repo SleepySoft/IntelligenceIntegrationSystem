@@ -93,7 +93,14 @@ class CommonIntelligenceCrawlFlow:
         local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
         local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
-        local_crawler_config['article_filter'] = partial(intelligence_crawler_filter, context=self.crawl_context)
+        # article_filter：配置自带的过滤（如排除视频页）与本地去重过滤组合生效。
+        base_filter = partial(intelligence_crawler_filter, context=self.crawl_context)
+        user_filter = local_crawler_config.get('article_filter')
+        if callable(user_filter):
+            local_crawler_config['article_filter'] = (
+                lambda url: base_filter(url) and user_filter(url))
+        else:
+            local_crawler_config['article_filter'] = base_filter
         local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=self.crawl_context)
 
         # Check and submit cached data.

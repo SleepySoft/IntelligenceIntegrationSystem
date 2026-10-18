@@ -244,6 +244,7 @@ python VectorDB/VectorDBBService.py \
 - 入口在返回 `queued` 前等待 intake/archive 阶段确认；在途数量由
   `intelligence_hub.max_inflight` 限制，避免 AI 变慢时无限积压。
 - 未归档 cache 恢复、翻译、向量索引、导出、实体频率、聚合、图谱均为独立插件；关闭或初始化失败不能阻塞主链路。
+- 恢复插件始终安装（重试到期轮询依赖它）；`intelligence_hub.replay_unarchived` 只控制启动时是否自动回放未处理记录——设为 `false` 即手工模式，经 `POST /api/control/replay_unarchived`（或控制面板按钮）按需回放；`POST /api/control/discard_pending` 支持 `scope: pending|retry|all` 批量弃用未完成/重试中记录。
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
 - `/collect` 应答契约：`resp` ∈ `queued`（已接收）/ `rejected`（明确拒绝，必带 `reason`，如 `collected_data_duplicated`、`validation_error:*`、`invalid_token`，重试无意义）/ `error`（可重试的传输或内部错误）；采集端经 `Workflow.CollectorSubmission.normalize_collect_response` 解析，拒绝记 SKIPPED、错误缓存重试。
 - intake 拒绝（校验失败、重复）会写入 `{集合前缀}intake_rejected` 审计集合（uuid/informant/source/title/reason/rejected_at），不进 cache 队列，仅用于离线审计；写入失败不影响 intake。
@@ -348,6 +349,7 @@ pytest Test/
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
+| `doc/feed_20261017_survey.md` | 数据源普查：死源清单、新源列表页实测（Guardian/Euronews/Moscow Times/TOI/Africanews 等）与接入建议 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
 | `IntelligenceCrawler/README.md` | 爬虫框架说明 |
 | `VectorDB/README.md` | 向量数据库说明 |

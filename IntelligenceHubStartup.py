@@ -212,10 +212,14 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     )
     extensions.append(manual_debug_service)
     services["manual_debug_analysis"] = manual_debug_service
-    if config.get('intelligence_hub.replay_unarchived', True):
-        replay_extension = IISUnarchivedReplayExtension(subsystem_registry)
-        extensions.append(replay_extension)
-        services["unarchived_replay"] = replay_extension
+    # 重放扩展始终安装（重试到期轮询是恢复机制的一部分，不能随配置关掉）；
+    # replay_unarchived 只控制启动时是否自动回放未处理记录，False 时可经
+    # POST /api/control/replay_unarchived 手工触发。
+    replay_extension = IISUnarchivedReplayExtension(
+        subsystem_registry,
+        auto_replay=config.get('intelligence_hub.replay_unarchived', True))
+    extensions.append(replay_extension)
+    services["unarchived_replay"] = replay_extension
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)
     translation_client_group = config.get(
         'intelligence_hub.translation.client_group', 'translate_small')

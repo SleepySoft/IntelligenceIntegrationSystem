@@ -71,8 +71,19 @@
             此操作将其全部标记为弃用（不再分析、不再回放、不消耗 token），不可撤销。
             内存队列中的在途事件不受影响。
         </div>
-        <button class="switch-btn paused" onclick="discardPending()">弃用全部未分析积压</button>
+        <button class="switch-btn paused" onclick="discardPending('pending')">弃用全部未分析积压</button>
+        <button class="switch-btn paused" onclick="discardPending('retry')">弃用全部重试中记录</button>
         <span class="subtitle" id="discard-result"></span>
+    </div>
+
+    <div class="section">
+        <h2>未分析记录回放</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            启动时是否自动回放由配置 hub.replay_unarchived 控制；关闭后可在准备就绪时
+            用此按钮手工触发一次回放（防止重启即面对大量积压）。
+        </div>
+        <button class="switch-btn" onclick="replayUnarchived()">手工回放未分析记录</button>
+        <span class="subtitle" id="replay-result"></span>
     </div>
 </div>
 
@@ -152,17 +163,36 @@ async function loadStatus() {
     } catch (e) { showError(`状态加载失败: ${e.message}`); }
 }
 
-async function discardPending() {
-    if (!confirm('确认弃用全部未分析积压？\n此操作不可撤销，这些记录将不再被分析。')) return;
+async function discardPending(scope) {
+    const label = scope === 'retry' ? '重试中（R）记录' : '未分析积压';
+    if (!confirm(`确认弃用全部${label}？\n此操作不可撤销，这些记录将不再被分析。`)) return;
     if (!confirm('再次确认：弃用后需要重新抓取才能获得这些内容。')) return;
     try {
-        const resp = await fetch('/api/control/discard_pending', {method: 'POST'});
+        const resp = await fetch('/api/control/discard_pending', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({scope}),
+        });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
         const detail = Object.entries(data.details || {})
-            .map(([k, v]) => `${k}: ${v.deprecated} 条`).join('，');
+            .map(([k, v]) => `${k}: ${Object.values(v).reduce((t, x) => t + x.deprecated, 0)} 条`)
+            .join('，');
         document.getElementById('discard-result').textContent =
             ` 已弃用 ${data.deprecated_total} 条（${detail}）`;
+        showError(null);
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function replayUnarchived() {
+    if (!confirm('确认手工回放全部未分析记录？\n它们将进入分析队列（消耗 token）。')) return;
+    try {
+        const resp = await fetch('/api/control/replay_unarchived', {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        document.getElementById('replay-result').textContent = data.started
+            ? ' 回放已启动（后台进行，进度见运行监控）'
+            : ` 未启动：${data.reason}`;
         showError(null);
     } catch (e) { showError(`操作失败: ${e.message}`); }
 }

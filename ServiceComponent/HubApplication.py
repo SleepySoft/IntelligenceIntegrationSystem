@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from datetime import datetime
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ServiceComponent.pipeline import (
@@ -19,9 +20,11 @@ from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_MANUAL_RATING,
     APPENDIX_RETRY_LEVEL,
+    APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
     CACHE_LEGACY_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
+    EventV4CollectionSuffix,
     appendix_path,
 )
 
@@ -108,7 +111,48 @@ class HubApplication:
             "shadow": dict(getattr(self._pipeline_ports, "shadow_statistics", {}) or {}),
             "subsystems": self.subsystem_registry.describe(),
             "workflow_outcomes": self._workflow_outcomes(),
+            "today_flow": self._today_flow(),
         }
+
+    def _today_flow(self) -> Dict[str, Any]:
+        """当日流量漏斗（本地日界）：提交 → 入口拒绝 / 归档 / 低价值。
+
+        事件计数（emitted/processed）是一条情报生命周期内多个阶段事件的总和，
+        不能直接反映提交量；该块给出可与人理解对齐的按天口径。
+        """
+        day_start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+        flow: Dict[str, Any] = {
+            "day_start": day_start.isoformat(),
+            "intake": 0, "intake_rejected": 0, "archived": 0, "low_value": 0,
+        }
+        enabled = getattr(self.subsystem_registry, "enabled_subsystems", None)
+        if not callable(enabled):
+            return flow
+        for ctx in enabled():
+            try:
+                cache = getattr(ctx, "mongo_db_cache", None)
+                if cache is None:
+                    continue
+                flow["intake"] += int(cache.collection.count_documents(
+                    {"collect_time": {"$gte": day_start}}))
+                archived_coll = getattr(ctx, "event_v4_intelligence_collection", None)
+                if archived_coll is not None:
+                    flow["archived"] += int(archived_coll.count_documents(
+                        {appendix_path(APPENDIX_TIME_ARCHIVED): {"$gte": day_start}}))
+                low_coll = getattr(ctx, "event_v4_low_value_collection", None)
+                if low_coll is not None:
+                    flow["low_value"] += int(low_coll.count_documents(
+                        {appendix_path(APPENDIX_TIME_ARCHIVED): {"$gte": day_start}}))
+                try:
+                    rejected_coll = cache.db[
+                        ctx.collection_name(EventV4CollectionSuffix.INTAKE_REJECTED)]
+                    flow["intake_rejected"] += int(rejected_coll.count_documents(
+                        {"rejected_at": {"$gte": day_start}}))
+                except Exception:
+                    pass  # 审计集合未创建时按 0 计
+            except Exception:
+                continue  # 单个子系统统计失败不影响整体
+        return flow
 
     def _workflow_outcomes(self) -> List[Dict[str, Any]]:
         """从持久集合汇总整个工作流结果，不受进程重启影响。"""

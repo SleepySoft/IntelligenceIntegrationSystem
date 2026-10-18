@@ -1221,13 +1221,25 @@ class IntelligenceHubWebService:
         @app.route('/api/control/discard_pending', methods=['POST'])
         @WebServiceAccessManager.login_required
         def control_discard_pending_api():
-            """把 cache 中全部未分析记录标记为弃用（不再分析与回放）。
+            """把 cache 中未完成记录标记为弃用（不再分析与回放）。
 
-            暂停/维护期间的持久化积压可用此操作一键清理；内存队列中的在途事件
-            不受影响，恢复后仍会继续分析。
+            scope（JSON body，默认 pending）：
+            - pending：未分析记录（无终态标记）；
+            - retry：重试中（R）记录——用于一次性切断失败翻滚；
+            - all：两者都弃用。
+            内存队列中的在途事件不受影响，恢复后仍会继续分析。
             """
             if self.subsystem_registry is None:
                 return jsonify({"error": "子系统注册表未启用"}), 503
+            scope = str((request.get_json(silent=True) or {}).get('scope') or 'pending')
+            if scope not in ('pending', 'retry', 'all'):
+                return jsonify({"error": f"未知 scope: {scope}"}), 400
+            queries = []
+            if scope in ('pending', 'all'):
+                queries.append(('pending', unarchived_cache_query()))
+            if scope in ('retry', 'all'):
+                queries.append(('retry', {
+                    CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.RETRY.value}))
             operator = session.get("username", "")
             details = {}
             total = 0
@@ -1235,16 +1247,32 @@ class IntelligenceHubWebService:
                 cache = getattr(ctx, "mongo_db_cache", None)
                 if cache is None:
                     continue
-                matched, modified = cache.update(
-                    unarchived_cache_query(),
-                    {CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.DEPRECATED.value},
-                )
-                details[ctx.name] = {"matched": matched, "deprecated": modified}
-                total += modified
+                for label, query in queries:
+                    matched, modified = cache.update(
+                        query,
+                        {CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.DEPRECATED.value},
+                    )
+                    details.setdefault(ctx.name, {})[label] = {
+                        "matched": matched, "deprecated": modified}
+                    total += modified
             logger.warning(
-                "运行控制：弃用未分析积压（操作人: %s），共 %d 条，明细: %s",
-                operator or "unknown", total, details)
-            return jsonify({"success": True, "deprecated_total": total, "details": details})
+                "运行控制：弃用未完成积压（操作人: %s，scope: %s），共 %d 条，明细: %s",
+                operator or "unknown", scope, total, details)
+            return jsonify({"success": True, "scope": scope,
+                            "deprecated_total": total, "details": details})
+
+        @app.route('/api/control/replay_unarchived', methods=['POST'])
+        @WebServiceAccessManager.login_required
+        def control_replay_unarchived_api():
+            """手工触发一次未分析记录回放（配合 replay_unarchived=false 的手工模式）。"""
+            service = self.intelligence_hub.get_service("unarchived_replay")
+            if service is None:
+                return jsonify({"error": "回放扩展未安装"}), 503
+            result = service.trigger_replay()
+            operator = session.get("username", "")
+            logger.warning("运行控制：手工触发未分析回放（操作人: %s），结果: %s",
+                           operator or "unknown", result)
+            return jsonify(result)
 
         @app.route('/statistics/score_distribution.html', methods=['GET'])
         @WebServiceAccessManager.login_required
