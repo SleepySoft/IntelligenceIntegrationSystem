@@ -36,7 +36,7 @@ class IISUnarchivedReplayExtension(HubPlugin):
 
     def __init__(self, subsystem_registry: Any, *, poll_interval: float = 30.0,
                  batch_size: int = 100, lease_duration: timedelta = timedelta(hours=6),
-                 auto_replay: bool = True):
+                 auto_replay: bool = True, replay_newest_first: bool = True):
         if poll_interval <= 0 or batch_size < 1 or lease_duration.total_seconds() <= 0:
             raise ValueError("Retry poll/batch/lease 参数必须大于 0。")
         self.subsystem_registry = subsystem_registry
@@ -46,6 +46,9 @@ class IISUnarchivedReplayExtension(HubPlugin):
         # auto_replay=False 时启动只做遗留迁移与重试轮询，未处理记录等待手工触发
         # （POST /api/control/replay_unarchived）。
         self.auto_replay = auto_replay
+        # replay_newest_first=True 时未处理记录按 collect_time 新到旧回放：
+        # 冷启动回补时先处理最新情报，旧存货最后消化。
+        self.replay_newest_first = replay_newest_first
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._runtime: HubRuntime | None = None
@@ -129,7 +132,10 @@ class IISUnarchivedReplayExtension(HubPlugin):
             if self._stop.is_set() or not context.mongo_db_cache:
                 continue
             try:
-                for record in context.mongo_db_cache.collection.find(query):
+                cursor = context.mongo_db_cache.collection.find(query)
+                if not isinstance(cursor, list) and self.replay_newest_first:
+                    cursor = cursor.sort("collect_time", -1)
+                for record in cursor:
                     if not self._emit_record(runtime, context, record, EventPriority.REPLAY):
                         return
                     self.replayed += 1

@@ -187,3 +187,49 @@ def _wait_until(predicate, timeout=1.0):
             return True
         time.sleep(0.01)
     return predicate()
+
+
+class SortableCollection(Collection):
+    """模拟 Mongo cursor：支持 sort(key, direction) 返回排序后的列表。"""
+
+    def __init__(self):
+        now = datetime.now(timezone.utc)
+        self.records = [
+            {"_id": "old", "UUID": "30eb0459-998d-486f-8eac-470b9dfd98ec",
+             "informant": "https://example.test/old",
+             "collect_time": now - timedelta(days=2)},
+            {"_id": "new", "UUID": "a98f33b1-10a5-499a-85ac-eb3c773d2198",
+             "informant": "https://example.test/new",
+             "collect_time": now - timedelta(hours=1)},
+        ]
+        self.updates = []
+
+    def find(self, query):
+        records = self.records
+
+        class Cursor:
+            def sort(self, key, direction):
+                return sorted(records, key=lambda r: r.get(key),
+                              reverse=(direction < 0))
+
+            def __iter__(self):
+                return iter(records)
+
+        return Cursor()
+
+
+def test_replay_unprocessed_emits_newest_first_when_enabled():
+    runtime = HubRuntime()
+    registry = Registry()
+    registry.context.mongo_db_cache.collection = SortableCollection()
+    extension = IISUnarchivedReplayExtension(registry, replay_newest_first=True)
+    received = []
+    runtime.subscribe(ANALYSIS_REQUESTED, lambda event, _: received.append(event.payload))
+
+    extension._replay_unprocessed(runtime)
+    runtime.start()
+    assert runtime.wait_for_idle(timeout=2)
+    runtime.stop()
+
+    assert [item["informant"] for item in received] == [
+        "https://example.test/new", "https://example.test/old"]

@@ -220,7 +220,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     # POST /api/control/replay_unarchived 手工触发。
     replay_extension = IISUnarchivedReplayExtension(
         subsystem_registry,
-        auto_replay=config.get('intelligence_hub.replay_unarchived', True))
+        auto_replay=config.get('intelligence_hub.replay_unarchived', True),
+        replay_newest_first=config.get('intelligence_hub.replay_newest_first', True))
     extensions.append(replay_extension)
     services["unarchived_replay"] = replay_extension
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)
