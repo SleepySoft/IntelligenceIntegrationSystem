@@ -2,7 +2,11 @@ import pytest
 from pydantic import ValidationError
 
 from event_engine.extraction import build_event_extraction_prompt
-from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_V41, EVENT_V4_PREDICATE_CATALOG
+from prompts_event_v4 import (
+    EVENT_ANALYSIS_PROMPT_V41,
+    EVENT_ANALYSIS_PROMPT_V47,
+    EVENT_V4_PREDICATE_CATALOG,
+)
 from ServiceComponent.IntelligenceHubDefines_v4 import (
     AnalysisResultV4,
     DEFAULT_EVENT_REGISTRY,
@@ -90,6 +94,13 @@ def test_event_prompt_is_standalone_and_iis_prompt_composes_it():
     assert '"影响广度": 1' in EVENT_ANALYSIS_PROMPT_V41
     assert "不得输出 kind、analysis、message、classification、assessment" in EVENT_ANALYSIS_PROMPT_V41
     assert "不能单独输出事件抽取对象" in EVENT_ANALYSIS_PROMPT_V41
+
+
+def test_v47_is_a_static_system_prompt_with_v46_contract():
+    assert "{{CONTENT}}" not in EVENT_ANALYSIS_PROMPT_V47
+    assert "{{CURRENT_DATE}}" not in EVENT_ANALYSIS_PROMPT_V47
+    assert "NON_INTELLIGENCE_REASON" in EVENT_ANALYSIS_PROMPT_V47
+    assert "核心子集" in EVENT_ANALYSIS_PROMPT_V47
 
 
 def test_catalog_and_json_schema_follow_complete_event_registry():

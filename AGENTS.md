@@ -260,9 +260,9 @@ python VectorDB/VectorDBBService.py \
 - 其他错误标记为 `ARCHIVED_FLAG_ERROR`
 - **IIS 侧效果统计**（`ServiceComponent/analysis_stats.py`）：每次调用与每件终态持久化到 `_data/analysis_stats.db`（模型×prompt版本 的成功率/首过率/敏感率/错误分布/延迟），与 AIClientCenter 观测库分工（那边管客户端健康）；离线报告用 `Scripts/analysis_model_report.py`
 - Client 标签通道：`ai_clients.yaml` 条目级 `tags` 列表 → 工厂引擎挂载到 `client.tags`；`AIClientManager.wait_for_available_client(required_tags=...)` 按标签过滤；校验失败的 ClientCenter 反馈已带 `error_class` 标签
-- Prompt 前缀缓存、V47 候选、无损校验归一化、Client 能力分层和异步 Batch 的调查结论
-  见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；该文档中的分阶段内容未完成前
-  不得视为现有运行能力。
+- Prompt 前缀缓存、V47 生产消息布局、无损校验归一化、Client 能力分层和异步 Batch 的
+  调查结论见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；V47 已启用，文档中
+  标为后续方向的能力不得视为现有运行能力。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）

@@ -61,18 +61,26 @@ def build_analyze_message(
         logger.error("Validate AI data fail: %s", exc)
         raise
 
+    current_date = datetime.date.today().strftime("%Y-%m-%d")
     prepared_prompt = (
         prompt
-        .replace("{{CURRENT_DATE}}", datetime.date.today().strftime("%Y-%m-%d"))
+        .replace("{{CURRENT_DATE}}", current_date)
         .replace("{{SIMILAR_MESSAGES}}", "")
     )
-    messages = list(context) if context else []
     if has_content_placeholder:
+        messages = list(context) if context else []
         messages.append({
             "role": "user",
             "content": prepared_prompt.replace("{{CONTENT}}", user_message),
         })
     else:
-        messages.append({"role": "system", "content": prepared_prompt})
-        messages.append({"role": "user", "content": user_message})
+        # 缓存友好布局：稳定协议始终是首条 system；日期、正文和元数据全部位于
+        # 最后一条动态 user。重试反馈追加在 prompt 末尾，不影响前缀复用。
+        messages = [{"role": "system", "content": prepared_prompt}]
+        if context:
+            messages.extend(context)
+        messages.append({
+            "role": "user",
+            "content": f"## 当前参考时间\n{current_date}\n\n{user_message}",
+        })
     return messages

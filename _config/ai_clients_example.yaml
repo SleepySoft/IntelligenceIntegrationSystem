@@ -13,6 +13,9 @@ clients:
   #   model: model-name
   #   priority: 50
   #   default_available: true
+  #   request_overrides:             # Provider-specific fixed request fields
+  #     thinking: {type: disabled}
+  #     response_format: {type: json_object}
 
   # Local harness clients are also factories.
   - factory: codex
@@ -24,7 +27,7 @@ clients:
     # Codex app-server 的订阅窗口快照会持久化到 SQLite；达到阈值后通过
     # AIClientManager 的预算准入接口停止分配，给人工/管理使用保留额度。
     usage_guard:
-      reserve_percent: 20         # 默认两个窗口都保留 20%，即 IIS 最多用到 80%
+      reserve_percent: 35         # 两个窗口都保留 35%，即 IIS 最多用到 65%
       namespace: default          # 同一 Codex 登录账号的 Client 必须使用同一 namespace
       refresh_seconds: 30         # 只读查询官方额度接口，不会发起模型请求
       reset_grace_seconds: 30     # 服务端重置时间后的时钟/传播缓冲

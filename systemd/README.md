@@ -13,6 +13,10 @@
 | `iis.target` | 拉起当前启用的 Web 与爬虫服务（VectorDB 默认关闭） |
 | `iis-dashboard.service` | 开机创建 IIS 日志与系统监控 tmux 仪表盘 |
 
+付费 AI API Key 不写入 `iis.env` 或 YAML。Web 服务会额外读取部署机本地的
+`/home/sleepy/.config/iis/ai-clients.env`（权限应为 `0600`）；声明式 Client 配置仅通过
+`api_key_env` 引用变量名。该文件不属于仓库，也不会被提交。
+
 每个服务在启动前都会运行 `Scripts/deployment_preflight.py`。检查失败时服务不会进入
 重启循环；先按报错补齐配置、模型或依赖，再重启对应服务。也可以手工运行：
 

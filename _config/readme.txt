@@ -23,6 +23,9 @@ AI Client configuration
 4. Built-in factory names call presets implemented in ``AIClientCenter/providers``
    (or ``harness`` for local CLI clients). API keys should be supplied through
    the environment variables referenced by each factory.
+   The systemd deployment reads private paid-client keys from
+   ``/home/sleepy/.config/iis/ai-clients.env``; keep it mode ``0600`` and do
+   not put key values in this directory.
 5. For a custom Client, set ``factory`` to an importable
    ``module:callable``, or use ``./file.py:callable`` for a file relative to
    the YAML directory. The callable accepts ``name``, ``group`` and the

@@ -821,10 +821,10 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45, 46}
+    assert set(table) == {41, 42, 43, 44, 45, 46, 47}
     assert "核心子集" in table[42]
-    # 生产抽样表已切换为只有 46。
-    assert list(ports._prompt_table) == [46]
+    # 生产抽样表已切换为只有缓存友好布局 v47。
+    assert list(ports._prompt_table) == [47]
 
 
 class FakeShadowRecorder:

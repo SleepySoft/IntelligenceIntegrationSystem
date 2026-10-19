@@ -272,8 +272,34 @@ EVENT_ANALYSIS_PROMPT_V46 = EVENT_ANALYSIS_PROMPT_V44.replace(
 ) + _NON_INTELLIGENCE_REASON_GUIDE
 
 
+# V47：保持 v46 的业务契约不变，只把动态日期和正文移到独立 user message。
+# system message 因而成为跨文章稳定的公共前缀，可供 Provider Prompt Cache 复用；
+# 实际消息拆分由 analysis_messages.build_analyze_message 按无 CONTENT 占位符处理。
+_V47_DYNAMIC_INPUT_SECTION = """当前参考时间：{{CURRENT_DATE}}
+输出语言：简体中文
+
+# 输入
+
+正文：
+{{CONTENT}}
+
+相似历史消息参考：
+{{SIMILAR_MESSAGES}}
+
+"""
+assert _V47_DYNAMIC_INPUT_SECTION in EVENT_ANALYSIS_PROMPT_V46
+EVENT_ANALYSIS_PROMPT_V47 = EVENT_ANALYSIS_PROMPT_V46.replace(
+    _V47_DYNAMIC_INPUT_SECTION,
+    "输出语言：简体中文\n\n",
+    1,
+)
+assert "{{CONTENT}}" not in EVENT_ANALYSIS_PROMPT_V47
+assert "{{CURRENT_DATE}}" not in EVENT_ANALYSIS_PROMPT_V47
+
+
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
-# v46（v44 + 低价值结构化原因）为当前生产抽样版本；
+# v47（v46 业务契约 + 稳定 system 前缀）为当前生产版本；
+# v46 保留为同契约、旧消息布局的回滚/缓存对照版本；
 # v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
 # v42（核心子集、数字 RATE）与 v41（完整契约直出）保留为回滚/对照通道。
 # 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
@@ -343,8 +369,11 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
     catalog.register_prompt(
-        46, EVENT_ANALYSIS_PROMPT_V46,
+        47, EVENT_ANALYSIS_PROMPT_V47,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=True)
+    catalog.register_prompt(
+        46, EVENT_ANALYSIS_PROMPT_V46,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)
     catalog.register_prompt(
         45, EVENT_ANALYSIS_PROMPT_V45,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS, sampling=False)
@@ -367,6 +396,6 @@ EVENT_V4_PROMPT_CATALOG = build_event_v4_prompt_catalog()
 
 # 兼容导出：web 展示、benchmark 等既有消费者继续按版本表读取。
 EVENT_ANALYSIS_PROMPT_TABLE = EVENT_V4_PROMPT_CATALOG.sampling_table()
-EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V46
+EVENT_ANALYSIS_PROMPT = EVENT_ANALYSIS_PROMPT_V47
 EVENT_ANALYSIS_EXTRA_PROMPTS = EVENT_V4_PROMPT_CATALOG.extra_table()
 PROMPT_EXTRACTION_MODES = EVENT_V4_PROMPT_CATALOG.modes_table()

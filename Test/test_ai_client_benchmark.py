@@ -8,6 +8,7 @@ from ServiceComponent.ai_client_benchmark import (
     load_benchmark_suite,
 )
 from ServiceComponent.analysis_messages import build_analyze_message
+from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_V47
 
 
 def _valuable_payload():
@@ -101,6 +102,28 @@ def test_checked_in_example_suite_is_valid():
     name, cases = load_benchmark_suite(suite_path)
     assert name == "event-v4-smoke"
     assert len(cases) == 3
+
+
+def test_v47_keeps_system_prefix_stable_and_dynamic_data_in_user_message():
+    first = {
+        "UUID": "cache-1", "title": "第一篇", "content": "正文甲",
+        "informant": "test://cache/1",
+    }
+    second = {
+        "UUID": "cache-2", "title": "第二篇", "content": "正文乙",
+        "informant": "test://cache/2",
+    }
+
+    messages_a = build_analyze_message(EVENT_ANALYSIS_PROMPT_V47, first)
+    messages_b = build_analyze_message(EVENT_ANALYSIS_PROMPT_V47, second)
+
+    assert [item["role"] for item in messages_a] == ["system", "user"]
+    assert messages_a[0] == messages_b[0]
+    assert "正文甲" not in messages_a[0]["content"]
+    assert "cache-1" not in messages_a[0]["content"]
+    assert "## 当前参考时间" in messages_a[1]["content"]
+    assert "正文甲" in messages_a[1]["content"]
+    assert messages_a[1] != messages_b[1]
 
 
 def test_cli_preview_never_calls_client(tmp_path, monkeypatch, capsys):
