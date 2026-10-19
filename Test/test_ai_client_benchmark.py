@@ -143,7 +143,7 @@ def test_benchmark_uses_production_message_builder_and_writes_detailed_reports(t
         "valid": FakeBenchmarkClient("Valid Client", f"```json\n{valid}\n```"),
         "invalid": FakeBenchmarkClient("Invalid Client", '{"TAXONOMY":"政治与安全"}'),
         "repaired": FakeBenchmarkClient(
-            "Repaired Client", '{"TAXONOMY":"NonIntelligence","SUB_CATEGORY":[],"REASON":"普通生活内容","RATE":{},}',
+            "Repaired Client", f"{valid[:-1]},}}",
         ),
     }, {40: "Today={{CURRENT_DATE}}\n{{CONTENT}}"})
 
@@ -161,7 +161,9 @@ def test_benchmark_uses_production_message_builder_and_writes_detailed_reports(t
     assert records[0]["usage"]["total_tokens"] == 150
     assert records[1]["error_stage"] == "v4_validation"
     assert records[2]["json_repaired"] is True
-    assert records[2]["error_stage"] == "v4_validation"
+    assert records[2]["v4_valid"] is True
+    assert records[2]["correctness_pass"] is True
+    assert records[2]["error_stage"] is None
     assert summary["clients"][0]["v4_valid_rate"] == 1.0
     assert summary["clients"][1]["v4_valid_rate"] == 0.0
     assert summary["client_models"][0]["model"] == "fake-model"

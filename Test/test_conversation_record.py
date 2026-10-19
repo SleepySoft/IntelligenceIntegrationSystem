@@ -52,3 +52,53 @@ def test_record_conversation_tolerates_error_response(tmp_path, monkeypatch):
         {"error": "HTTP_503", "message": "busy"})
     content = proxy.conversation_db.get_content_by_index(index)
     assert json.loads(content.split("[response]")[1])["error"] == "HTTP_503"
+
+
+def test_parse_ai_response_repairs_json_without_polluting_domain_payload(caplog):
+    response = {
+        "choices": [{"message": {"content": '{"answer":"ok",}'}}],
+    }
+
+    with caplog.at_level("INFO", logger=proxy.__name__):
+        parsed = proxy.parse_ai_response(response)
+
+    assert parsed == {"answer": "ok"}
+    assert "warning" not in parsed
+    assert "AI response JSON syntax repaired" in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_parse_ai_response_expected_repair_failure_has_no_traceback(monkeypatch, caplog):
+    monkeypatch.setattr(
+        proxy.json_repair,
+        "loads",
+        lambda _value: (_ for _ in ()).throw(ValueError("known malformed output")),
+    )
+    response = {
+        "choices": [{"message": {"content": '{"answer":'}}],
+    }
+
+    with caplog.at_level("WARNING", logger=proxy.__name__):
+        parsed = proxy.parse_ai_response(response)
+
+    assert parsed == {"error": "Cannot parse AI response to JSON."}
+    assert "known malformed output" in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_parse_ai_response_unexpected_repair_failure_has_traceback(monkeypatch, caplog):
+    monkeypatch.setattr(
+        proxy.json_repair,
+        "loads",
+        lambda _value: (_ for _ in ()).throw(RuntimeError("repair implementation bug")),
+    )
+    response = {
+        "choices": [{"message": {"content": '{"answer":'}}],
+    }
+
+    with caplog.at_level("ERROR", logger=proxy.__name__):
+        parsed = proxy.parse_ai_response(response)
+
+    assert parsed == {"error": "Unexpected error while parsing AI response JSON."}
+    assert "repair implementation bug" in caplog.text
+    assert any(record.exc_info is not None for record in caplog.records)

@@ -225,10 +225,6 @@ class AIClientBenchmarkRunner:
             except json.JSONDecodeError:
                 parsed = json_repair.loads(pure_json)
                 record["json_repaired"] = True
-                # 生产解析器会附加此诊断字段；V4 是 extra=forbid，因此修复结果会和
-                # 正式链路一样进入 validation failure，而不是被基准误报为可归档。
-                if isinstance(parsed, dict):
-                    parsed["warning"] = "Json repaired."
             if not isinstance(parsed, dict):
                 raise TypeError("JSON 顶层必须是对象")
             record["json_parsed"] = True

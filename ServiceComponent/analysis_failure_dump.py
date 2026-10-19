@@ -102,7 +102,9 @@ class AnalysisFailureRecorder:
         return safe[:80] or "unknown"
 
     def _trim_locked(self) -> None:
-        files = sorted(self.directory.glob("*.json"), key=lambda item: item.stat().st_mtime)
+        # 文件名以固定宽度 UTC 微秒时间开头；按名称排序既是时间顺序，也不受某些
+        # 文件系统 mtime 分辨率影响。否则同一时钟刻度内连续写入时可能误删最新样本。
+        files = sorted(self.directory.glob("*.json"), key=lambda item: item.name)
         for stale in files[:-self.max_files]:
             try:
                 stale.unlink()

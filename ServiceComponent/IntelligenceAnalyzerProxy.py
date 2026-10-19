@@ -2,7 +2,6 @@ import datetime
 import json
 import logging
 import time
-import traceback
 import json_repair
 from typing import Optional, Dict, Any, List
 
@@ -82,29 +81,24 @@ def parse_ai_response(response: dict) -> dict:
             return parsed_output
 
         except json.JSONDecodeError:
-            logger.warning(f'Error when parsing AI reply to json, try to repair...')
-
             try:
-                repaired_data = json_repair.loads(ai_json)
-                fixed_json_str = json.dumps(repaired_data, ensure_ascii=False, indent=4)
-
-                parsed_output = json.loads(fixed_json_str)
-                if isinstance(parsed_output, dict):
-                    parsed_output['warning'] = 'Json repaired.'
-
-                logger.info(f'Json repare success.')
-
-                return parsed_output
-            except json.JSONDecodeError:
-                logger.error(f'Json cannot be repaired.')
+                parsed_output = json_repair.loads(ai_json)
+            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                # 模型偶发输出损坏属于可预期失败：交给上层重试，只记录摘要，不打印 traceback。
+                logger.warning("AI response JSON repair failed: %s", exc)
                 return {'error': "Cannot parse AI response to JSON."}
+            except Exception:
+                # 解析器自身或运行环境异常才需要 traceback，便于定位代码缺陷。
+                logger.exception("Unexpected exception while repairing AI response JSON")
+                return {'error': "Unexpected error while parsing AI response JSON."}
 
-            except:
-                raise
+            # 修复信息属于诊断元数据，不能写回 extra=forbid 的领域 Payload。
+            logger.info("AI response JSON syntax repaired")
+            return parsed_output
 
-        except Exception as e:
-            logger.error(f'Exception when parsing AI response')
-            print(traceback.format_exc())
+        except Exception:
+            logger.exception("Unexpected exception while parsing AI response JSON")
+            return {'error': "Unexpected error while parsing AI response JSON."}
 
     else:
         return {'error': "Invalid AI response."}
