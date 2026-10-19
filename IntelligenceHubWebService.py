@@ -1297,6 +1297,28 @@ class IntelligenceHubWebService:
                            operator or "unknown", result)
             return jsonify(result)
 
+        @app.route('/api/control/batch_analysis', methods=['GET', 'POST'])
+        @WebServiceAccessManager.login_required
+        def control_batch_analysis_api():
+            """批量分析（Provider Batch，凌晨半价）：POST 提交积压，GET 查任务状态。"""
+            service = self.intelligence_hub.get_service("batch_analysis")
+            if service is None:
+                return jsonify({"error": "批量分析未启用（hub.batch_analysis）"}), 503
+            if request.method == 'GET':
+                return jsonify({"jobs": service.list_jobs()})
+            body = request.get_json(silent=True) or {}
+            operator = session.get("username", "")
+            try:
+                result = service.submit_backlog(
+                    lookback_days=body.get("lookback_days"),
+                    limit=body.get("limit"))
+            except Exception as exc:
+                logger.warning("批量分析提交失败: %s", exc, exc_info=True)
+                return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+            logger.warning("运行控制：提交批量分析（操作人: %s），结果: %s",
+                           operator or "unknown", result)
+            return jsonify(result)
+
         # --------------------------- 影子分析对比 ---------------------------
 
         @app.route('/api/intelligence/<string:intelligence_uuid>/shadow', methods=['GET'])

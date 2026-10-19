@@ -342,87 +342,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 primary_version=prompt_version, persist=persist,
                 primary_client_name=primary_client, primary_model=ai_model,
             )
-            processed_at = datetime.now(timezone.utc)
-            if analysis.is_non_intelligence:
-                appendix = build_archive_appendix(
-                    original_data,
-                    subsystem=ctx.name,
-                    ai_service=ai_service,
-                    ai_model=ai_model,
-                    prompt_version=prompt_version,
-                    processed_at=processed_at,
-                    archived_at=processed_at,
-                )
-                low_value = ArchivedDataV4(
-                    **analysis.model_dump(mode="python", by_alias=True),
-                    UUID=str(intelligence_uuid),
-                    INFORMANT=informant,
-                    APPENDIX=appendix,
-                )
-                if persist:
-                    repository.save_low_value(low_value)
-                    self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DROP, ctx)
-                    self._increment_stat(ctx, "dropped")
-                    return StageResult.reject("non_intelligence")
-                debug_result = low_value.model_dump(mode="json", by_alias=True)
-                debug_result["debug_prompt"] = {
-                    "version": prompt_version,
-                    "overridden": bool(prompt_override),
-                }
-                return StageResult.allow(
-                    debug_result,
-                    subsystem=ctx.name, transient=True, low_value=True,
-                )
-
-            conversion = convert_event_extraction(
-                analysis.EVENT_EXTRACTION,
-                intelligence_uuid=intelligence_uuid,
-                registry=self._event_registry,
-                observed_at=processed_at,
-                metadata={"informant": informant, "subsystem": ctx.name},
-            )
-            scorer = self._scorer_factory(getattr(ctx, "scoring_config", None))
-            if not hasattr(scorer, "calculate_v4"):
-                raise TypeError("V4 评分器必须实现 calculate_v4()")
-            total_score = scorer.calculate_v4(analysis)
-            appendix = build_archive_appendix(
-                original_data,
-                subsystem=ctx.name,
-                ai_service=ai_service,
-                ai_model=ai_model,
-                prompt_version=prompt_version,
-                processed_at=processed_at,
-                archived_at=processed_at,
-                total_score=total_score,
-            )
-            quality = self._compute_quality(analysis, original_data)
-            if quality is not None:
-                appendix[APPENDIX_EXTRACTION_QUALITY] = quality
-            archive = ArchivedDataV4(
-                **analysis.model_dump(mode="python", by_alias=True),
-                UUID=str(intelligence_uuid),
-                INFORMANT=informant,
-                APPENDIX=appendix,
-            )
-            if not persist:
-                result = archive.model_dump(mode="json", by_alias=True)
-                # conversion.events 已经是可查询的派生事件文档，不再是 Event Engine
-                # 的领域对象，也不应再经过旧的 UUID 引用序列化器。
-                result["events"] = [dict(item) for item in conversion.events]
-                result["debug_prompt"] = {
-                    "version": prompt_version,
-                    "overridden": bool(prompt_override),
-                }
-                return StageResult.allow(
-                    result, subsystem=ctx.name, transient=True, low_value=False,
-                )
-            return StageResult.allow(
-                PreparedValuableV4(
-                    archive=archive,
-                    conversion=conversion,
-                    retry_metadata=dict(original_data.get(APPENDIX_FIELD) or {}),
-                ),
-                subsystem=ctx.name,
+            return self.prepare_analysis_outcome(
+                ctx, original_data, analysis,
+                prompt_version=prompt_version, ai_service=ai_service,
+                ai_model=ai_model, intelligence_uuid=intelligence_uuid,
+                informant=informant, persist=persist,
+                prompt_override=prompt_override,
             )
         except _SensitiveAnalysisError as exc:
             self._change_runtime_stat("failed")
@@ -439,6 +364,101 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 return StageResult.reject(
                     f"analysis_{retry_state.lower()}:{type(exc).__name__}:{exc}")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
+
+    def prepare_analysis_outcome(self, ctx: Any, original_data: dict,
+                                 analysis: AnalysisResultV4, *,
+                                 prompt_version: int, ai_service: str,
+                                 ai_model: str, intelligence_uuid: Any,
+                                 informant: str, persist: bool,
+                                 prompt_override: str | None = None) -> StageResult:
+        """分析成功后的公共后段：低价值分流 / 事件转换 / 评分 / 附录 / 归档载荷。
+
+        实时主链（_analyze_v4）与批量回注（BatchAnalysisService）共用，
+        保证两条路径的归档结构与质量统计完全一致。
+        """
+        repository = self._require_archive_repository(ctx) if persist else None
+        processed_at = datetime.now(timezone.utc)
+        if analysis.is_non_intelligence:
+            appendix = build_archive_appendix(
+                original_data,
+                subsystem=ctx.name,
+                ai_service=ai_service,
+                ai_model=ai_model,
+                prompt_version=prompt_version,
+                processed_at=processed_at,
+                archived_at=processed_at,
+            )
+            low_value = ArchivedDataV4(
+                **analysis.model_dump(mode="python", by_alias=True),
+                UUID=str(intelligence_uuid),
+                INFORMANT=informant,
+                APPENDIX=appendix,
+            )
+            if persist:
+                repository.save_low_value(low_value)
+                self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DROP, ctx)
+                self._increment_stat(ctx, "dropped")
+                return StageResult.reject("non_intelligence")
+            debug_result = low_value.model_dump(mode="json", by_alias=True)
+            debug_result["debug_prompt"] = {
+                "version": prompt_version,
+                "overridden": bool(prompt_override),
+            }
+            return StageResult.allow(
+                debug_result,
+                subsystem=ctx.name, transient=True, low_value=True,
+            )
+
+        conversion = convert_event_extraction(
+            analysis.EVENT_EXTRACTION,
+            intelligence_uuid=intelligence_uuid,
+            registry=self._event_registry,
+            observed_at=processed_at,
+            metadata={"informant": informant, "subsystem": ctx.name},
+        )
+        scorer = self._scorer_factory(getattr(ctx, "scoring_config", None))
+        if not hasattr(scorer, "calculate_v4"):
+            raise TypeError("V4 评分器必须实现 calculate_v4()")
+        total_score = scorer.calculate_v4(analysis)
+        appendix = build_archive_appendix(
+            original_data,
+            subsystem=ctx.name,
+            ai_service=ai_service,
+            ai_model=ai_model,
+            prompt_version=prompt_version,
+            processed_at=processed_at,
+            archived_at=processed_at,
+            total_score=total_score,
+        )
+        quality = self._compute_quality(analysis, original_data)
+        if quality is not None:
+            appendix[APPENDIX_EXTRACTION_QUALITY] = quality
+        archive = ArchivedDataV4(
+            **analysis.model_dump(mode="python", by_alias=True),
+            UUID=str(intelligence_uuid),
+            INFORMANT=informant,
+            APPENDIX=appendix,
+        )
+        if not persist:
+            result = archive.model_dump(mode="json", by_alias=True)
+            # conversion.events 已经是可查询的派生事件文档，不再是 Event Engine
+            # 的领域对象，也不应再经过旧的 UUID 引用序列化器。
+            result["events"] = [dict(item) for item in conversion.events]
+            result["debug_prompt"] = {
+                "version": prompt_version,
+                "overridden": bool(prompt_override),
+            }
+            return StageResult.allow(
+                result, subsystem=ctx.name, transient=True, low_value=False,
+            )
+        return StageResult.allow(
+            PreparedValuableV4(
+                archive=archive,
+                conversion=conversion,
+                retry_metadata=dict(original_data.get(APPENDIX_FIELD) or {}),
+            ),
+            subsystem=ctx.name,
+        )
 
     def archive(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)

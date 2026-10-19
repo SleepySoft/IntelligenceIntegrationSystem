@@ -72,6 +72,16 @@ class SubsystemSettings(_StrictModel):
         return normalized
 
 
+class BatchAnalysisSettings(_StrictModel):
+    """Provider Batch 积压分析（凌晨空闲半价）。默认关闭。"""
+    enabled: bool = False
+    base_url: str = "https://batch-api-cn.xiaomimimo.com/v1"
+    model: str = "mimo-v2.6-flash"
+    lookback_days: int = Field(7, ge=1, le=30)
+    max_items: int = Field(500, ge=1, le=5000)
+    poll_interval_sec: float = Field(300, gt=0)
+
+
 class HubSettings(_StrictModel):
     workers: int = Field(1, ge=1)
     max_inflight: int = Field(2000, ge=1)
@@ -94,6 +104,8 @@ class HubSettings(_StrictModel):
     max_analysis_age_hours: float = Field(0, ge=0)
     # 未处理记录回放顺序：True = 新的优先（冷启动先消化新情报），False = 按入库顺序。
     replay_newest_first: bool = True
+    batch_analysis: BatchAnalysisSettings = Field(
+        default_factory=BatchAnalysisSettings)
     subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings)
 
 
@@ -309,6 +321,7 @@ class IISConfig:
                 "max_live_age_hours": settings.hub.max_live_age_hours,
                 "max_analysis_age_hours": settings.hub.max_analysis_age_hours,
                 "replay_newest_first": settings.hub.replay_newest_first,
+                "batch_analysis": settings.hub.batch_analysis.model_dump(),
                 "shadow_analysis": {
                     "enabled": bool(settings.hub.shadow_versions),
                     "versions": settings.hub.shadow_versions,

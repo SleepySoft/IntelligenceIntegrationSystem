@@ -85,6 +85,17 @@
         <button class="switch-btn" onclick="replayUnarchived()">手工回放未分析记录</button>
         <span class="subtitle" id="replay-result"></span>
     </div>
+
+    <div class="section">
+        <h2>批量分析（Provider Batch）</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            把重试积压提交到 Provider 批量通道（凌晨空闲时段执行、半价），完成后自动校验回注归档。
+            需在配置中启用 hub.batch_analysis。
+        </div>
+        <button class="switch-btn" onclick="submitBatch()">提交积压到批量分析</button>
+        <span class="subtitle" id="batch-result"></span>
+        <div id="batch-jobs" style="margin-top:8px"></div>
+    </div>
 </div>
 
 <script>
@@ -196,6 +207,37 @@ async function replayUnarchived() {
         showError(null);
     } catch (e) { showError(`操作失败: ${e.message}`); }
 }
+
+async function submitBatch() {
+    if (!confirm('确认把重试积压提交到批量分析？\n凌晨 1-8 点执行，按批量价计费。')) return;
+    try {
+        const resp = await fetch('/api/control/batch_analysis', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        document.getElementById('batch-result').textContent = data.submitted
+            ? ` 已提交 ${data.item_count} 条，job=${data.job_id}`
+            : ` 未提交：${data.reason}`;
+        showError(null);
+        await loadBatchJobs();
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function loadBatchJobs() {
+    try {
+        const resp = await fetch('/api/control/batch_analysis');
+        const data = await resp.json();
+        if (!resp.ok) return;
+        const jobs = data.jobs || [];
+        document.getElementById('batch-jobs').innerHTML = jobs.length
+            ? '<table style="width:100%;font-size:12px"><tr><th>时间</th><th>状态</th><th>条数</th><th>备注</th></tr>' +
+              jobs.map(j => `<tr><td>${(j.created_at || '').slice(5, 16)}</td><td>${j.status}</td>` +
+                  `<td>${j.item_count ?? ''}</td><td>${j.note || ''}</td></tr>`).join('') + '</table>'
+            : '';
+    } catch (e) { /* 未启用时静默 */ }
+}
+loadBatchJobs();
 
 loadStatus();
 setInterval(loadStatus, 5000);

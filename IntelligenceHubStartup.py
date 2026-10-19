@@ -29,6 +29,9 @@ from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
 from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
 from ServiceComponent.analysis_stats import AnalysisStatsRecorder
+from ServiceComponent.analysis_batch import (
+    BatchAnalysisService, DEFAULT_BASE_URL as DEFAULT_BATCH_BASE_URL,
+    DEFAULT_MODEL as DEFAULT_BATCH_MODEL)
 from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appendix_path
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
@@ -114,6 +117,19 @@ def build_ai_client_manager(config: IISConfig):
     logger.info("AI group limit count: %s.", len(group_limits))
 
     return client_manager
+
+
+def _find_batch_api_key() -> str:
+    """从 ai_clients.yaml 找 MiMo（batch 服务方）的按量 key。"""
+    try:
+        import yaml
+        cfg = yaml.safe_load(open('_config/ai_clients.yaml', encoding='utf-8'))
+        for client in cfg.get('clients', []):
+            if 'xiaomimimo' in str(client.get('api_base_url', '')):
+                return str(client.get('api_key') or '')
+    except Exception:
+        logger.warning('读取 ai_clients.yaml 寻找 batch key 失败', exc_info=True)
+    return ''
 
 
 def start_intelligence_hub_service(config) -> Tuple[HubApplication, IntelligenceHubWebService, AIClientManager]:
@@ -238,6 +254,27 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             'intelligence_hub.max_analysis_age_hours', 0) or 0))
     extensions.append(replay_extension)
     services["unarchived_replay"] = replay_extension
+    # 批量分析（Provider Batch，凌晨半价）：默认关闭；启用时从 ai_clients.yaml 找
+    # MiMo key。与实时主链共用 prompt/校验/归档后段，只是换 AI 调用通道。
+    batch_cfg = config.get('intelligence_hub.batch_analysis', {}) or {}
+    if batch_cfg.get('enabled'):
+        batch_key = _find_batch_api_key()
+        if batch_key:
+            batch_service = BatchAnalysisService(
+                subsystem_registry, pipeline_ports,
+                base_url=batch_cfg.get('base_url') or DEFAULT_BATCH_BASE_URL,
+                model=batch_cfg.get('model') or DEFAULT_BATCH_MODEL,
+                api_key=batch_key,
+                db_path=os.path.join(DATA_PATH, 'analysis_batch.db'),
+                lookback_days=batch_cfg.get('lookback_days', 7),
+                max_items=batch_cfg.get('max_items', 500),
+                poll_interval_sec=batch_cfg.get('poll_interval_sec', 300),
+            )
+            extensions.append(batch_service)
+            services["batch_analysis"] = batch_service
+            logger.info('Batch analysis enabled (provider batch API).')
+        else:
+            logger.warning('batch_analysis 已启用但找不到 MiMo key，跳过。')
     translation_enabled = config.get('intelligence_hub.translation.enabled', True)
     translation_client_group = config.get(
         'intelligence_hub.translation.client_group', 'translate_small')
