@@ -305,6 +305,7 @@ async function loadProcess() {
         document.getElementById('proc-name').textContent =
             `PID ${proc.pid} · ${proc.name || ''} · ${proc.status || ''}`;
         document.getElementById('proc-cards').innerHTML = [
+            metricCard('进程运行时长', fmtUptime(proc.create_time)),
             percentCard('进程 CPU', proc.cpu_percent, 50, 80),
             metricCard('进程内存 (RSS)', mb(proc.memory_info?.rss)),
             percentCard('进程内存占比', proc.memory_percent, 20, 40),
@@ -325,11 +326,21 @@ async function loadProcess() {
     } catch (e) { showError('proc-error', `加载失败: ${e.message}`); }
 }
 
+function fmtUptime(epochSec) {
+    if (!epochSec) return 'N/A';
+    const s = Math.max(0, Math.floor(Date.now() / 1000 - epochSec));
+    const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600),
+          m = Math.floor(s % 3600 / 60), sec = s % 60;
+    const hms = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    return d ? `${d} 天 ${hms}` : hms;
+}
+
 /* ---------- 系统资源 ---------- */
 async function loadSystem() {
     try {
         const sys = await fetchJson('/monitor/api/system');
         document.getElementById('sys-cards').innerHTML = [
+            metricCard('系统运行时长', fmtUptime(sys.boot_time)),
             percentCard('CPU', sys.cpu?.percent, 70, 90),
             metricCard('CPU 核心', `${sys.cpu?.cores ?? '?'} 物理 / ${sys.cpu?.logical_cores ?? '?'} 逻辑`),
             percentCard('内存', sys.memory?.percent, 75, 90),
