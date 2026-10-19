@@ -23,11 +23,9 @@ def _make_records(root, specs):
 
 def test_compaction_archives_old_records_into_iso_week_zip(tmp_path):
     root = tmp_path / "conversation"
-    # 取上周周一和周三（保证同一 ISO 周且都超过 7 天保留期）
-    last_monday = datetime.now() - timedelta(days=datetime.now().weekday() + 7)
-    days_a = (datetime.now() - last_monday).days
-    days_b = days_a - 2
-    _make_records(root, [("旧记录A", days_a), ("旧记录B", days_b), ("新记录", 1)])
+    # 两条记录都取上周周一（同一 ISO 周且必然超过 7 天保留期，任何星期几运行都成立）
+    days_old = datetime.now().weekday() + 7
+    _make_records(root, [("旧记录A", days_old), ("旧记录B", days_old), ("新记录", 1)])
 
     summary = compact_conversation_records(root, older_than_days=7)
 
@@ -54,7 +52,9 @@ def test_compaction_archives_old_records_into_iso_week_zip(tmp_path):
 
 def test_compaction_groups_records_by_their_own_week(tmp_path):
     root = tmp_path / "conversation"
-    _make_records(root, [("上上周", 13), ("上周", 9)])
+    # 上周一与上上周一：必然分属不同 ISO 周且必然超过 7 天保留期
+    this_week_monday_age = datetime.now().weekday() + 7
+    _make_records(root, [("上上周", this_week_monday_age + 7), ("上周", this_week_monday_age)])
     summary = compact_conversation_records(root, older_than_days=7)
     # 两条记录分属不同 ISO 周 → 两个 zip
     assert summary["archived"] == 2

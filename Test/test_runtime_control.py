@@ -353,3 +353,74 @@ def test_replay_unarchived_endpoint_triggers_service():
     resp = client.post("/api/control/replay_unarchived")
     assert resp.status_code == 200
     assert resp.get_json()["started"] is True
+
+
+class FakeHubWithShadow(FakeHub):
+    def __init__(self, recorder, document):
+        self._recorder = recorder
+        self._document = document
+
+    def get_service(self, name, default=None):
+        if name == "shadow_recorder":
+            return self._recorder
+        return default
+
+    def get_intelligence(self, uuid, light_weight=False, include_appendix=False):
+        return self._document if self._document.get("UUID") == uuid else None
+
+
+def _build_app_with_shadow(recorder, document):
+    control = RuntimeControlState()
+    app = Flask(
+        __name__,
+        template_folder=str(Path(__file__).resolve().parent.parent / "templates"),
+    )
+    app.secret_key = "test-secret"
+    access_manager = WebServiceAccessManager(
+        rpc_api_tokens=["rpc-token"], collector_tokens=["collector-token"],
+        user_manager=None, deny_on_empty_config=True)
+    service = IntelligenceHubWebService(
+        intelligence_hub=FakeHubWithShadow(recorder, document),
+        access_manager=access_manager,
+        rss_publisher=FakeRSSPublisher(),
+        subsystem_registry=FakeSubsystemRegistry([]),
+        control_state=control,
+    )
+    service.register_routers(app)
+    return app
+
+
+def test_shadow_endpoints_pairing_and_record(tmp_path):
+    from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
+
+    recorder = ShadowAnalysisRecorder(tmp_path, max_files=10)
+    recorder.record(
+        original_data={"UUID": "u-9"}, subsystem="news",
+        primary_prompt_version=44, shadow_prompt_version=45,
+        analysis={"EVENT_TITLE": "影子版", "RATE": {"影响广度": 7}},
+        ai_service="svc", ai_model="gemini",
+    )
+    document = {
+        "UUID": "u-9", "EVENT_TITLE": "主链版", "RATE": {"影响广度": 8},
+        "APPENDIX": {"__PROMPT_VERSION__": 44, "__AI_MODEL__": "gemini",
+                     "__TOTAL_SCORE__": 8.6},
+    }
+    client = _logged_in_client(_build_app_with_shadow(recorder, document))
+
+    resp = client.get("/api/intelligence/u-9/shadow")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["available"] is True
+    assert data["pairs"][0]["kind"] == "same_model"  # 同 gemini，v44 vs v45
+    assert data["primary_document"]["APPENDIX"]["__TOTAL_SCORE__"] == 8.6
+
+    file_name = data["sides"][1]["id"]
+    resp = client.get(f"/api/shadow/record?file={file_name}")
+    assert resp.status_code == 200
+    assert resp.get_json()["analysis"]["EVENT_TITLE"] == "影子版"
+
+    # 无影子服务时返回 unavailable 而非报错
+    client2 = _logged_in_client(_build_app(RuntimeControlState()))
+    resp = client2.get("/api/intelligence/u-9/shadow")
+    assert resp.status_code == 200
+    assert resp.get_json()["available"] is False

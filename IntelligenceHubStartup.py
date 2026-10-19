@@ -187,7 +187,11 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             enabled=config.get('intelligence_hub.shadow_analysis.enabled', True),
             max_files=config.get('intelligence_hub.shadow_analysis.max_files', 1000),
         )
-        logger.info(f'Shadow analysis enabled for prompt versions: {shadow_versions}')
+        backfilled = shadow_recorder.rebuild_index_if_stale()
+        services["shadow_recorder"] = shadow_recorder
+        logger.info(
+            f'Shadow analysis enabled for prompt versions: {shadow_versions}'
+            + (f' (index backfilled {backfilled})' if backfilled else ''))
     # 运行控制开关：组合根创建唯一实例，分别注入 pipeline 与 Web 层。
     control_state = RuntimeControlState()
     shadow_sample_rate = float(config.get(

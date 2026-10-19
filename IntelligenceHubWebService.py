@@ -1297,6 +1297,63 @@ class IntelligenceHubWebService:
                            operator or "unknown", result)
             return jsonify(result)
 
+        # --------------------------- 影子分析对比 ---------------------------
+
+        @app.route('/api/intelligence/<string:intelligence_uuid>/shadow', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def intelligence_shadow_api(intelligence_uuid):
+            """某条情报的影子对比候选与配对（同模型比 prompt / 同 prompt 比模型）。"""
+            from ServiceComponent.shadow_compare import build_comparison_sides
+
+            recorder = self.intelligence_hub.get_service("shadow_recorder")
+            if recorder is None:
+                return jsonify({"available": False, "reason": "shadow_not_configured",
+                                "sides": [], "pairs": []})
+            document = self.intelligence_hub.get_intelligence(
+                intelligence_uuid, include_appendix=True)
+            if not document:
+                return jsonify({"error": "not_found"}), 404
+            appendix = document.get("APPENDIX") or {}
+            primary = {
+                "prompt_version": appendix.get("__PROMPT_VERSION__"),
+                "model": appendix.get("__AI_MODEL__"),
+            }
+            shadows = recorder.list_by_uuid(intelligence_uuid)
+            result = build_comparison_sides(primary, shadows)
+            result["available"] = bool(shadows)
+            result["title"] = document.get("EVENT_TITLE")
+            result["primary"] = primary
+            # 对比页左/右栏直接使用的主链全文（质量指标与总分在 APPENDIX 中）
+            result["primary_document"] = {
+                "EVENT_TITLE": document.get("EVENT_TITLE"),
+                "EVENT_BRIEF": document.get("EVENT_BRIEF"),
+                "TAXONOMY": document.get("TAXONOMY"),
+                "RATE": document.get("RATE"),
+                "EVENT_EXTRACTION": document.get("EVENT_EXTRACTION"),
+                "APPENDIX": {
+                    "__TOTAL_SCORE__": appendix.get("__TOTAL_SCORE__"),
+                    "__EXTRACTION_QUALITY__": appendix.get("__EXTRACTION_QUALITY__"),
+                },
+            }
+            return jsonify(result)
+
+        @app.route('/api/shadow/record', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def shadow_record_api():
+            """读取单个影子记录全文（file 必须是索引中登记的文件名）。"""
+            recorder = self.intelligence_hub.get_service("shadow_recorder")
+            if recorder is None:
+                return jsonify({"error": "shadow_not_configured"}), 503
+            record = recorder.read_record(request.args.get("file", ""))
+            if record is None:
+                return jsonify({"error": "not_found"}), 404
+            return jsonify(record)
+
+        @app.route('/shadow/compare/<string:intelligence_uuid>', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def shadow_compare_page(intelligence_uuid):
+            return render_template('shadow_compare.html', uuid=intelligence_uuid)
+
         @app.route('/statistics/score_distribution.html', methods=['GET'])
         @WebServiceAccessManager.login_required
         def score_distribution_page():
