@@ -293,10 +293,12 @@ function queryParams(extra = {}) {
 }
 
 function legendHtml() {
-    return Object.entries(CATEGORY_LABELS).map(([key, label]) =>
+    const buttons = Object.entries(CATEGORY_LABELS).map(([key, label]) =>
         `<button type="button" class="category-filter${selectedCategories.has(key) ? ' active' : ''}" data-category="${key}" aria-pressed="${selectedCategories.has(key)}">
             <i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}
         </button>`).join('');
+    return buttons + `<div class="muted" style="font-size:11px;margin-top:6px">
+        点填充色 = 主导类别；多类别混合热点带次类别色描边，悬停看分布</div>`;
 }
 $('map-legend').innerHTML = legendHtml();
 $('graph-legend').innerHTML = graphLegendHtml();
@@ -380,10 +382,23 @@ function renderMap() {
     root.append('g').selectAll('path').data(features).join('path').attr('class','country');
     const visible = mapData.hotspots.filter(d => centers.has(d.country_code));
     const radius = d3.scaleSqrt().domain([1, d3.max(visible, d => d.event_count) || 1]).range([5, 24]);
+    // 多类别热点：填充=主导类别，描边=次类别色（一眼识别混合点）
+    const ringColor = d => {
+        const cats = Object.keys(d.categories || {});
+        return cats.length > 1 ? (CATEGORY_COLORS[cats[1]] || CATEGORY_COLORS.other) : null;
+    };
+    const categoryBreakdown = d => Object.entries(d.categories || {})
+        .map(([k, v]) => `${CATEGORY_LABELS[k] || k} ${v}`).join(' · ');
     const marks = root.append('g').selectAll('circle').data(visible).join('circle')
         .attr('class','hotspot').attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+        .attr('stroke', d => ringColor(d) || 'color-mix(in srgb, var(--panel) 82%, transparent)')
+        .attr('stroke-width', d => ringColor(d) ? 3.5 : 2)
         .attr('r', d => radius(d.event_count))
-        .on('mouseenter', (event, d) => showTooltip('map-tooltip', event, `${names.get(d.country_code)} · ${d.event_count} 个事件`))
+        .on('mouseenter', (event, d) => {
+            const breakdown = categoryBreakdown(d);
+            showTooltip('map-tooltip', event,
+                `${names.get(d.country_code)} · ${d.event_count} 个事件${breakdown ? ` · ${breakdown}` : ''}`);
+        })
         .on('mouseleave', () => hideTooltip('map-tooltip'))
         .on('click', (_, d) => showMapDetail(d, names.get(d.country_code)));
     const labels = root.append('g').selectAll('text').data(visible).join('text')
