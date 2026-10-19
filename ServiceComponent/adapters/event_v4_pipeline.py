@@ -326,7 +326,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             self._run_shadow_analysis(
                 ctx, event, original_data,
                 primary_version=prompt_version, persist=persist,
-                primary_client_name=primary_client,
+                primary_client_name=primary_client, primary_model=ai_model,
             )
             processed_at = datetime.now(timezone.utc)
             if analysis.is_non_intelligence:
@@ -528,7 +528,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         prompt_version: int | None = None, prompt_override: str | None = None,
         client_group: str | None = None,
         avoid_client_names: set[str] | None = None,
-    ) -> tuple[AnalysisResultV4, int, str, str]:
+        avoid_model: str | None = None,
+    ) -> tuple[AnalysisResultV4, int, str, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(self._prompt_catalog.sampling_versions())
         elif not self._prompt_catalog.has(prompt_version):
@@ -562,6 +563,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 avoid_client_names=set(failed_client_names),
                 client_group=client_group,
             )
+            # 模型硬避让（影子链路）：取到与避让模型相同的客户端时直接换，
+            # 不发起调用——同模型的对比没有评估价值，不烧 Token。
+            if avoid_model and ai_client.get_current_model() == avoid_model:
+                failed_client_names.add(getattr(ai_client, "name", ""))
+                self._ai_client_manager.release_client(ai_client)
+                last_error = _SameModelError(
+                    f"acquired model matches avoided model: {avoid_model}")
+                if attempt == 3:
+                    break
+                continue
             self._change_runtime_stat("attempts")
             self._change_runtime_stat("ai_running", 1)
             call_started = time.perf_counter()
@@ -709,7 +720,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
     def _run_shadow_analysis(self, ctx: Any, event: HubEvent, original_data: dict, *,
                              primary_version: int, persist: bool,
-                             primary_client_name: str = "") -> None:
+                             primary_client_name: str = "",
+                             primary_model: str = "") -> None:
         """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
         if not persist or self._shadow_recorder is None:
             return
@@ -730,6 +742,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     prompt_version=version,
                     client_group=self._shadow_client_group,
                     avoid_client_names={primary_client_name} if primary_client_name else None,
+                    avoid_model=primary_model or None,
                 )
                 self._shadow_recorder.record(
                     original_data=original_data,
@@ -823,6 +836,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
 class _SensitiveAnalysisError(RuntimeError):
     pass
+
+
+class _SameModelError(RuntimeError):
+    """影子链路取到与主链相同的模型；放弃本次影子（不产生无意义对比）。"""
 
 def _compact_validation_error(exc: Exception) -> str:
     if isinstance(exc, ValidationError):

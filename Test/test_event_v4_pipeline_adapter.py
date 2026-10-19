@@ -833,9 +833,11 @@ class FakeShadowRecorder:
         self.records.append(kwargs)
 
 
-def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0):
+def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0,
+                       client_manager=None):
     return EventV4PipelinePorts(
-        FakeRegistry(FakeContext()), FakeClientManager(),
+        FakeRegistry(FakeContext()),
+        client_manager or RotatingClientManager(["fake-v4", "glm-shadow"]),
         archive_repository=FakeArchiveRepository(),
         prompt_table={41: "full prompt"},
         extra_prompt_versions={42: "shadow prompt"},
@@ -918,7 +920,9 @@ def test_v4_shadow_sample_rate_partial_uses_single_draw_per_event(monkeypatch):
         return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
 
     shadow_recorder = FakeShadowRecorder()
-    ports = _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=0.5)
+    ports = _ports_with_shadow(
+        analyzer, shadow_recorder, shadow_sample_rate=0.5,
+        client_manager=RotatingClientManager(["fake-v4", "glm-a", "glm-b"]))
 
     import ServiceComponent.adapters.event_v4_pipeline as pipeline_module
     monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.6)
@@ -1058,7 +1062,7 @@ def test_v4_shadow_chain_pins_client_group_when_configured():
         return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
 
     shadow_recorder = FakeShadowRecorder()
-    client_manager = FakeClientManager()
+    client_manager = RotatingClientManager(["fake-v4", "glm-x"])
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), client_manager,
         archive_repository=FakeArchiveRepository(),
@@ -1108,9 +1112,33 @@ def test_shadow_same_version_skipped_without_client_group():
     assert not shadow_recorder.records  # 同版本且未定向分组 → 跳过
 
 
+class RotatingClientManager(FakeClientManager):
+    """按调用顺序返回不同模型的客户端。"""
+
+    def __init__(self, models):
+        super().__init__()
+        self._models = list(models)
+        self._index = 0
+
+    def wait_for_available_client(self, user, **kwargs):
+        self.requests.append(kwargs)
+        model = self._models[min(self._index, len(self._models) - 1)]
+        self._index += 1
+        manager = self
+
+        class _Client(FakeClient):
+            name = f"client-{model}"
+
+            def get_current_model(self):
+                return model
+
+        return _Client()
+
+
 def test_shadow_same_version_runs_with_client_group_and_avoids_primary_client():
     shadow_recorder = FakeShadowRecorder()
-    client_manager = FakeClientManager()
+    # 主链 fake-v4，影子轮换到 glm-x → 模型不同，影子正常执行
+    client_manager = RotatingClientManager(["fake-v4", "glm-x"])
     ports = _ports_same_version_shadow(
         shadow_recorder, client_manager, client_group="other-group")
 
@@ -1122,4 +1150,36 @@ def test_shadow_same_version_runs_with_client_group_and_avoids_primary_client():
     # 影子调用：定向分组 + 避开主链客户端（保证不同模型）
     shadow_kwargs = client_manager.requests[1]
     assert shadow_kwargs.get("target_group_id") == "other-group"
-    assert "fake-client" in shadow_kwargs.get("avoid_client_names", set())
+    assert "client-fake-v4" in shadow_kwargs.get("avoid_client_names", set())
+    assert shadow_recorder.records[0]["ai_model"] == "glm-x"
+
+
+def test_shadow_aborts_without_burning_call_when_model_matches_primary():
+    calls = []
+
+    def analyzer(client, prompt, original, record_meta=None):
+        calls.append(prompt)
+        return _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    # 所有候选模型都与主链相同 → 影子放弃，analyzer 一次都不应被调用
+    client_manager = RotatingClientManager(["fake-v4", "fake-v4", "fake-v4", "fake-v4"])
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), client_manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        extraction_modes={41: "full"},
+        shadow_versions=[41],
+        shadow_recorder=shadow_recorder,
+        shadow_client_group="same-group",
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted          # 主链不受影响
+    assert not shadow_recorder.records
+    assert ports.shadow_statistics == {"recorded": 0, "failed": 1}
+    assert calls == ["v41 prompt"]    # 只有主链那一次调用，影子零消耗
