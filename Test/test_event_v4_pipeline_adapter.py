@@ -1081,3 +1081,45 @@ def test_v4_shadow_chain_pins_client_group_when_configured():
     assert len(client_manager.requests) == 2
     assert "target_group_id" not in client_manager.requests[0]
     assert client_manager.requests[1].get("target_group_id") == "shadow-group"
+
+
+def _ports_same_version_shadow(shadow_recorder, client_manager, *, client_group=None):
+    return EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), client_manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        extraction_modes={41: "full"},
+        shadow_versions=[41],           # 与主链同版本
+        shadow_recorder=shadow_recorder,
+        shadow_client_group=client_group,
+        analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+
+def test_shadow_same_version_skipped_without_client_group():
+    shadow_recorder = FakeShadowRecorder()
+    ports = _ports_same_version_shadow(shadow_recorder, FakeClientManager())
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert not shadow_recorder.records  # 同版本且未定向分组 → 跳过
+
+
+def test_shadow_same_version_runs_with_client_group_and_avoids_primary_client():
+    shadow_recorder = FakeShadowRecorder()
+    client_manager = FakeClientManager()
+    ports = _ports_same_version_shadow(
+        shadow_recorder, client_manager, client_group="other-group")
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert len(shadow_recorder.records) == 1  # 定向分组时同版本也执行（同 prompt 不同模型）
+    assert len(client_manager.requests) == 2
+    # 影子调用：定向分组 + 避开主链客户端（保证不同模型）
+    shadow_kwargs = client_manager.requests[1]
+    assert shadow_kwargs.get("target_group_id") == "other-group"
+    assert "fake-client" in shadow_kwargs.get("avoid_client_names", set())

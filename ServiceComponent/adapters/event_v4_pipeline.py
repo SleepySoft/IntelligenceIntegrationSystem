@@ -315,15 +315,18 @@ class EventV4PipelinePorts(BasePipelinePorts):
             requested_prompt_version, prompt_override = (
                 self._transient_prompt_options(original_data) if not persist else (None, None)
             )
-            analysis, prompt_version, ai_service, ai_model = self._analyze_v4_with_retry(
-                ctx, event, original_data,
-                analyzer=self._analyzer if persist else self._transient_analyzer,
-                prompt_version=requested_prompt_version,
-                prompt_override=prompt_override,
+            analysis, prompt_version, ai_service, ai_model, primary_client = (
+                self._analyze_v4_with_retry(
+                    ctx, event, original_data,
+                    analyzer=self._analyzer if persist else self._transient_analyzer,
+                    prompt_version=requested_prompt_version,
+                    prompt_override=prompt_override,
+                )
             )
             self._run_shadow_analysis(
                 ctx, event, original_data,
                 primary_version=prompt_version, persist=persist,
+                primary_client_name=primary_client,
             )
             processed_at = datetime.now(timezone.utc)
             if analysis.is_non_intelligence:
@@ -524,6 +527,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
         prompt_version: int | None = None, prompt_override: str | None = None,
         client_group: str | None = None,
+        avoid_client_names: set[str] | None = None,
     ) -> tuple[AnalysisResultV4, int, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(self._prompt_catalog.sampling_versions())
@@ -542,7 +546,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         model = ""
         last_error: Exception | None = None
         validation_feedback: list[str] = []
-        failed_client_names: set[str] = set()
+        # avoid_client_names：跨分析避让（如影子链路避开主链所用客户端，保证模型不同）
+        failed_client_names: set[str] = set(avoid_client_names or ())
 
         for attempt in range(1, 4):
             request_id = None
@@ -625,6 +630,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         prompt_version,
                         service,
                         model,
+                        getattr(ai_client, "name", ""),
                     )
                 except (ValidationError, ValueError, TypeError) as exc:
                     self._change_runtime_stat("validation_errors")
@@ -702,7 +708,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
             return None
 
     def _run_shadow_analysis(self, ctx: Any, event: HubEvent, original_data: dict, *,
-                             primary_version: int, persist: bool) -> None:
+                             primary_version: int, persist: bool,
+                             primary_client_name: str = "") -> None:
         """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
         if not persist or self._shadow_recorder is None:
             return
@@ -712,14 +719,17 @@ class EventV4PipelinePorts(BasePipelinePorts):
         if self._shadow_sample_rate < 1.0 and random.random() >= self._shadow_sample_rate:
             return
         for version in self._shadow_versions:
-            if version == primary_version:
+            # 未定向分组时跳过与主链同版本（同 prompt+随机模型≈重复劳动）；
+            # 定向分组时同版本恰恰意味着“同 prompt 不同模型”，必须执行。
+            if version == primary_version and not self._shadow_client_group:
                 continue
             try:
-                analysis, _, service, model = self._analyze_v4_with_retry(
+                analysis, _, service, model, _ = self._analyze_v4_with_retry(
                     ctx, event, original_data,
                     analyzer=self._analyzer,
                     prompt_version=version,
                     client_group=self._shadow_client_group,
+                    avoid_client_names={primary_client_name} if primary_client_name else None,
                 )
                 self._shadow_recorder.record(
                     original_data=original_data,
