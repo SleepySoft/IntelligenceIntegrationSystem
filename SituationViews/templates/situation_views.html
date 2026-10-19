@@ -215,9 +215,6 @@
                 </div>
                 <div id="graph-summary"></div>
                 <div class="legend" id="graph-legend"></div>
-                <label class="muted" style="display:block;margin-top:8px;font-size:12px">
-                    <input type="checkbox" id="show-all-edge-labels"> 显示全部边标签（多看用，可能很糊）
-                </label>
             </aside>
             <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
         </div>
@@ -317,7 +314,10 @@ function graphLegendHtml() {
         `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
     return `<span class="legend-heading">节点颜色 · 实体类型</span>${nodes}
         <span class="legend-heading">边颜色 · 事件类别</span>${edgeCategories}
-        <span class="legend-heading">虚线边 · 含否定事件（✗ 全部否定 / ◐ 部分）</span>`;
+        <span class="legend-heading">虚线边 · 含否定事件（✗ 全部否定 / ◐ 部分）</span>
+        <label class="legend-heading" style="cursor:pointer;display:inline-flex;gap:6px;align-items:center">
+            <input type="checkbox" id="show-all-edge-labels" ${showAllEdgeLabels ? 'checked' : ''}> 显示全部边标签（多看用，可能很糊）
+        </label>`;
 }
 
 function syncCategoryFilters() {
@@ -909,7 +909,9 @@ $('graph-role-filters').addEventListener('click', event => {
     loadGraphIntelligences(false);
 });
 $('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
-$('show-all-edge-labels').addEventListener('change', e => {
+// 复选框在图例 innerHTML 里，节点/边详情会重建侧栏 → 用事件代理保证监听存活
+document.addEventListener('change', e => {
+    if (e.target.id !== 'show-all-edge-labels') return;
     showAllEdgeLabels = e.target.checked;
     if (relabelGraphEdges) relabelGraphEdges();
 });
