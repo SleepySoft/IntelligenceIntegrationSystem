@@ -1,5 +1,6 @@
 # IntelligenceHubWebService.py
 
+import atexit
 import os
 import re
 import json
@@ -14,6 +15,7 @@ from functools import wraps
 from typing import List, Tuple, Any, Dict, Optional
 from bson import ObjectId
 from dateutil import parser as date_parser
+from markupsafe import Markup
 from flask import Flask, Blueprint, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
     make_response, Response, send_from_directory
 
@@ -25,7 +27,7 @@ from Tools.DateTimeUtility import get_aware_time, ensure_timezone_aware, time_st
 from ServiceComponent.UserManager import UserManager
 from MyPythonUtility.ArbitraryRPC import RPCService
 from ServiceComponent.RSSPublisher import RSSPublisher, FeedItem
-from ServiceComponent.PostManager import generate_html_from_markdown
+from ServiceComponent.PostManager import PostManager
 from ServiceComponent.runtime.status import format_hub_status
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from ServiceComponent.intelligence_contracts import (
@@ -161,6 +163,8 @@ class IntelligenceHubWebService:
                  access_manager: WebServiceAccessManager,
                  rss_publisher: RSSPublisher,
                  public_search_limits: Optional[Dict[str, Any]] = None,
+                 post_settings: Optional[Dict[str, Any]] = None,
+                 post_manager: Optional[PostManager] = None,
                  monitor_api=None,
                  subsystem_registry=None,
                  control_state=None):
@@ -177,6 +181,16 @@ class IntelligenceHubWebService:
         self.monitor_api = monitor_api
         self.subsystem_registry = subsystem_registry
         self.control_state = control_state
+
+        settings = dict(post_settings or {})
+        self.post_manager = post_manager or PostManager(
+            os.path.join(PRJ_PATH, "posts"),
+            # Tests and embedders that do not pass deployment settings still get
+            # request-time revalidation without spawning filesystem observers.
+            watch_enabled=bool(settings.get("watch_enabled", False)),
+            debounce_seconds=float(settings.get("debounce_ms", 2000)) / 1000.0,
+            max_wait_seconds=float(settings.get("max_wait_ms", 30_000)) / 1000.0,
+        )
 
         # ---------------- Public Search Limits ----------------
 
@@ -699,6 +713,8 @@ class IntelligenceHubWebService:
 
         self.wsgi_app = app
         self.request_tracer = RequestTracer(app)
+        self.post_manager.start()
+        atexit.register(self.post_manager.stop)
 
         # --------------------------------------------------- Config --------------------------------------------------
 
@@ -2021,27 +2037,30 @@ class IntelligenceHubWebService:
             logger.error(f"Article to rss items failed: {str(e)}")
             return []
 
-    def get_rendered_md_post(self, post_name: str) -> str:
+    def get_rendered_md_post(self, post_name: str):
         try:
-            # Sanitize input and construct safe file path
-            safe_article = post_name.replace('..', '').strip('/')  # Prevent directory traversal
-            md_file_path = os.path.join('posts', f"{safe_article}.md")
-
-            # Generate HTML from Markdown
-            rendered_html_path = generate_html_from_markdown(md_file_path)
-
-            if rendered_html_path:
-                # Extract relative template path (remove 'templates/' prefix)
-                template_path = os.path.relpath(
-                    rendered_html_path,
-                    start='templates'
-                ).replace('\\', '/')  # Windows compatibility
-
-                return render_template(template_path)
-            else:
+            post = self.post_manager.get(post_name)
+            if post is None:
                 return ''
-        except Exception as e:
-            logger.error(f'Invalid post: {post_name}')
+
+            response = make_response(render_template(
+                'post.html',
+                post_title=post.post_id.rsplit('/', 1)[-1],
+                # Posts are repository-managed trusted content. Passing the
+                # fragment as data (instead of a generated Jinja template)
+                # prevents Jinja's template cache from defeating hot reload.
+                post_content=Markup(post.html_fragment),
+            ))
+            response.set_etag(post.etag)
+            response.make_conditional(request)
+            response.cache_control.no_cache = True
+            if session.get('logged_in'):
+                response.cache_control.private = True
+            else:
+                response.cache_control.public = True
+            return response
+        except Exception:
+            logger.exception('Invalid post: %s', post_name)
             return ''
 
     def get_time_range_params(self):

@@ -96,7 +96,11 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
         @staticmethod
         def get(key, default=None):
             if key == "intelligence_hub_web_service.intelligence_views":
-                return {"enabled": True, "url_prefix": "/insight"}
+                return {
+                    "enabled": True,
+                    "public_access": False,
+                    "url_prefix": "/insight",
+                }
             return default
 
     def require_login(func):
@@ -115,6 +119,27 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     assert service is not None
     assert app.config["INTELLIGENCE_VIEWS_ENABLED"] is True
     assert app.test_client().get("/insight/").status_code == 401
+
+    class PublicConfig:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.intelligence_views":
+                return {
+                    "enabled": True,
+                    "public_access": True,
+                    "url_prefix": "/public-insight",
+                }
+            return default
+
+    public_app = Flask(__name__)
+    service = mount_to_iis(
+        public_app,
+        config=PublicConfig(),
+        subsystem_registry=Registry(),
+        wrapper=require_login,
+    )
+    assert service is not None
+    assert public_app.test_client().get("/public-insight/").status_code == 200
 
     class DisabledConfig:
         @staticmethod

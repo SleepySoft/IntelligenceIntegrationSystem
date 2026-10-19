@@ -387,6 +387,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     rss_base_url = config.get('intelligence_hub_web_service.rss.host_prefix', 'http://127.0.0.1:5000')
     public_search_limits = config.get('intelligence_hub_web_service.public_search', None)
+    post_settings = config.get('intelligence_hub_web_service.posts', None)
 
     access_manager = WebServiceAccessManager(
         rpc_api_tokens=rpc_api_tokens,
@@ -399,6 +400,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         access_manager=access_manager,
         rss_publisher=RSSPublisher(rss_base_url),
         public_search_limits=public_search_limits,
+        post_settings=post_settings,
         subsystem_registry=subsystem_registry,
         control_state=control_state,
     )
@@ -442,6 +444,10 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         intelligence_views_settings.get("situation")
         if isinstance(intelligence_views_settings, dict) else None
     )
+    views_public_access = (
+        bool(intelligence_views_settings.get("public_access", True))
+        if isinstance(intelligence_views_settings, dict) else True
+    )
 
     # 态势视图是只读的可拆卸 Web 扩展：展示范围由组合根注入，不接受页面 URL 改写。
     # 模块内部会隔离地名解析或路由初始化失败，避免影响 IIS 主服务启动。
@@ -454,6 +460,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             wrapper=hub_service.access_manager.login_required,
             data_path=DATA_PATH,
             dashboard=situation_scope,
+            public_scoped=views_public_access,
         )
     except Exception:
         logger.exception("态势视图模块加载失败，IIS 主服务继续运行。")

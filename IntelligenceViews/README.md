@@ -16,6 +16,10 @@ IIS 挂载后的默认入口为 `/views/`。URL 只可用 `view` 选择初始 Ta
 /views/?view=map
 ```
 
+入口默认公共可读；设置 `optional_subsystems.intelligence_views.public_access=false`
+可以恢复登录保护。公共模式只同步放开地图和实体图所需的固定范围 scoped API，其他
+SituationViews 查询接口不随之公开。
+
 情报列表直接加载原 `/intelligences` 页面，初始评分阈值为 6，进入列表后仍可使用原页面的
 筛选、排序和分页能力。地域和实体子页面
 使用 `/situation/embed/map` 与 `/situation/embed/entities`；二者的子系统、滚动时间窗口、

@@ -146,6 +146,12 @@ class ToggleSettings(_StrictModel):
     enabled: bool = True
 
 
+class IntelligenceViewsSettings(ToggleSettings):
+    # /views and its fixed-scope, read-only data dependencies are public by
+    # default. Unscoped SituationViews queries remain authenticated.
+    public_access: bool = True
+
+
 class EntityAliasWikidataSettings(_StrictModel):
     """Wikidata 在线建议源（本地查不到时的回落）。"""
     enabled: bool = True
@@ -177,7 +183,8 @@ class OptionalSubsystemSettings(_StrictModel):
     translation: TranslationSettings = Field(default_factory=TranslationSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
     situation: SituationSettings = Field(default_factory=SituationSettings)
-    intelligence_views: ToggleSettings = Field(default_factory=ToggleSettings)
+    intelligence_views: IntelligenceViewsSettings = Field(
+        default_factory=IntelligenceViewsSettings)
     entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings)
 
 
@@ -201,8 +208,24 @@ class PublicSearchSettings(_StrictModel):
     vector_top_n: int = Field(20, ge=1, le=1000)
 
 
+class PostSettings(_StrictModel):
+    watch_enabled: bool = True
+    # Trailing-edge quiet period: deliberately longer than common 1s auto-save
+    # intervals, so an active editing session does not compile every save.
+    debounce_ms: int = Field(2000, ge=50, le=60_000)
+    # Continuous edits still publish occasionally instead of starving forever.
+    max_wait_ms: int = Field(30_000, ge=50, le=300_000)
+
+    @model_validator(mode="after")
+    def _max_wait_covers_debounce(self):
+        if self.max_wait_ms < self.debounce_ms:
+            raise ValueError("max_wait_ms 必须大于或等于 debounce_ms")
+        return self
+
+
 class WebSettings(_StrictModel):
     public_search: PublicSearchSettings = Field(default_factory=PublicSearchSettings)
+    posts: PostSettings = Field(default_factory=PostSettings)
 
 
 class IISSettings(_StrictModel):
@@ -334,6 +357,7 @@ class IISConfig:
                 },
                 "intelligence_views": {
                     "enabled": optional_subsystems.intelligence_views.enabled,
+                    "public_access": optional_subsystems.intelligence_views.public_access,
                     "url_prefix": "/views",
                     "situation_prefix": "/situation",
                     "default_view": "list",
@@ -362,6 +386,11 @@ class IISConfig:
                     "vector_default_window_days": search.window_days,
                     "requests_per_minute": search.requests_per_minute,
                     "max_concurrent_vector": 5,
+                },
+                "posts": {
+                    "watch_enabled": settings.web.posts.watch_enabled,
+                    "debounce_ms": settings.web.posts.debounce_ms,
+                    "max_wait_ms": settings.web.posts.max_wait_ms,
                 },
             },
             "monitor": {

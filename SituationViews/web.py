@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from functools import wraps
 from pathlib import Path
 
 from flask import Blueprint, jsonify, render_template, request
@@ -22,26 +23,39 @@ class SituationViewsService:
         self.dashboard = self._dashboard_profile(dashboard)
         self._engines = {}
 
-    def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation"):
+    def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation",
+                     public_scoped=False):
         template_folder = str(Path(__file__).with_name("templates"))
         bp = Blueprint("situation_views", __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)
+        embed_protect = (lambda func: func) if public_scoped else protect
+
+        def scoped_or_protected(func):
+            protected = protect(func)
+
+            @wraps(func)
+            def dispatch(*args, **kwargs):
+                if public_scoped and self._is_scoped_request():
+                    return func(*args, **kwargs)
+                return protected(*args, **kwargs)
+
+            return dispatch
 
         @bp.get("/embed/map")
-        @protect
+        @embed_protect
         def embedded_map_dashboard():
             return self._render_dashboard(
                 "map", profile=self.dashboard, embedded=True)
 
         @bp.get("/embed/entities")
-        @protect
+        @embed_protect
         def embedded_entity_dashboard():
             return self._render_dashboard(
                 "graph", profile=self.dashboard, embedded=True)
 
         @bp.get("/api/map")
         @bp.get("/api/scoped/map")
-        @protect
+        @scoped_or_protected
         def map_api():
             try:
                 engine, query = self._request_context(fixed=self._is_scoped_request())
@@ -51,7 +65,7 @@ class SituationViewsService:
 
         @bp.get("/api/entity-graph")
         @bp.get("/api/scoped/entity-graph")
-        @protect
+        @scoped_or_protected
         def entity_graph_api():
             try:
                 fixed = self._is_scoped_request()
@@ -80,7 +94,7 @@ class SituationViewsService:
 
         @bp.get("/api/entity-graph/intelligences")
         @bp.get("/api/scoped/entity-graph/intelligences")
-        @protect
+        @scoped_or_protected
         def entity_graph_intelligences_api():
             try:
                 engine, query = self._request_context(fixed=self._is_scoped_request())
@@ -107,7 +121,7 @@ class SituationViewsService:
 
         @bp.get("/api/map/intelligences")
         @bp.get("/api/scoped/map/intelligences")
-        @protect
+        @scoped_or_protected
         def map_intelligences_api():
             try:
                 engine, query = self._request_context(fixed=self._is_scoped_request())
@@ -123,7 +137,7 @@ class SituationViewsService:
 
         @bp.post("/api/map/locations")
         @bp.post("/api/scoped/map/locations")
-        @protect
+        @scoped_or_protected
         def map_locations_api():
             try:
                 values = []

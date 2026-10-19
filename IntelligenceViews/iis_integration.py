@@ -27,7 +27,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper=None):
         )
         service.mount_to_app(
             app,
-            wrapper=wrapper,
+            wrapper=(None if settings.get("public_access", True) else wrapper),
             url_prefix=settings.get("url_prefix", "/views"),
         )
         app.config["INTELLIGENCE_VIEWS_ENABLED"] = True

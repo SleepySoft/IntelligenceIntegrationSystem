@@ -20,8 +20,10 @@ python -m SituationViews.standalone
 
 然后访问 `http://127.0.0.1:5010/situation/embed/map`。
 
-IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，复用主站的登录保护和
-`SubsystemRegistry`，但不进入 Hub 事件链。可以在 `_config/iis.yaml` 中单独关闭整个
+IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，并复用主站的
+`SubsystemRegistry`，但不进入 Hub 事件链。当 `intelligence_views.public_access=true` 时，
+仅嵌入页面和固定范围的 `/situation/api/scoped/*` 随 `/views` 公开；可自定义查询范围的
+非 scoped API 仍要求登录。可以在 `_config/iis.yaml` 中单独关闭整个
 模块或地名解析：
 
 ```yaml

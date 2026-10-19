@@ -20,6 +20,9 @@ def test_example_is_valid_and_projects_component_settings():
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.situation.min_score"
     ) == 6.0
+    assert config.get(
+        "intelligence_hub_web_service.intelligence_views.public_access"
+    ) is True
 
 
 def test_minimal_yaml_uses_code_defaults(tmp_path):
@@ -31,6 +34,9 @@ def test_minimal_yaml_uses_code_defaults(tmp_path):
     assert config.settings.server.port == 5000
     assert config.settings.hub.max_inflight == 2000
     assert config.get("intelligence_hub.vectordb.enabled") is False
+    assert config.get(
+        "intelligence_hub_web_service.intelligence_views.public_access"
+    ) is True
     assert config.get("intelligence_hub.subsystems.list") == [{
         "name": "news",
         "display_name": "国际新闻",

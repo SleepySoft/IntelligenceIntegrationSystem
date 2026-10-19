@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ post_title }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mvp.css@1.12/mvp.min.css" id="base-css">
+    <style>
+        body {
+            background: linear-gradient(135deg,
+                #F8C3CD 0%,
+                #A2E4B8 30%,
+                #87CEEB 70%,
+                #FFF5C3 100%
+            ) fixed;
+            background-size: 300% 300%;
+            animation: gradientBG 15s ease infinite;
+            padding: 20px 0;
+            min-height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .markdown-body {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(162, 228, 184, 0.2);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 245, 195, 0.3);
+        }
+
+        .theme-selector {
+            background: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid #F8C3CD !important;
+        }
+    </style>
+</head>
+<body>
+<div class="theme-selector">
+    <label for="cssSelector">页面样式</label>
+    <select id="cssSelector" onchange="changeTheme()">
+        <option value="">-- 选择样式 --</option>
+        <option value="https://cdn.jsdelivr.net/npm/mvp.css@1.12/mvp.min.css" selected>MVP.css</option>
+        <option value="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown-dark.min.css">GitHub风格（暗色）</option>
+        <option value="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.1.0/github-markdown.min.css">GitHub风格（亮色）</option>
+        <option value="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css">Water.css（暗色）</option>
+        <option value="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">Pico.css（暗色）</option>
+        <option value="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">Water.css（轻量）</option>
+        <option value="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">Bootstrap 5</option>
+        <option value="https://cdn.jsdelivr.net/npm/milligram@1.4.1/dist/milligram.min.css">Milligram（极简）</option>
+        <option value="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">Pico.css</option>
+        <option value="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">Bulma</option>
+        <option value="https://cdn.jsdelivr.net/npm/sakura.css/css/sakura.css">Sakura（樱花）</option>
+        <option value="https://cdn.jsdelivr.net/npm/holiday.css@0.9.8">Holiday.css</option>
+        <option value="https://cdn.jsdelivr.net/npm/awsm.css@3.0.7/dist/awsm.min.css">awsm.css</option>
+        <option value="https://cdn.jsdelivr.net/npm/papercss@1.6.1/dist/paper.min.css">PaperCSS（手绘风）</option>
+        <option value="https://cdn.jsdelivr.net/npm/retro.css@1.2.0/dist/retro.css">Retro（复古）</option>
+    </select>
+</div>
+
+<main class="markdown-body">
+    {{ post_content }}
+</main>
+
+<script>
+    function changeTheme() {
+        const selectedUrl = document.getElementById("cssSelector").value;
+        if (selectedUrl) {
+            document.getElementById("base-css").href = selectedUrl;
+        }
+    }
+</script>
+</body>
+</html>

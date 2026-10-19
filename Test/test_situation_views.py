@@ -494,6 +494,56 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
     assert app.test_client().get("/situation/api/scoped/map").status_code == 401
 
 
+def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):
+    from flask import Flask
+    from functools import wraps
+
+    class Config:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.situation_views":
+                return {
+                    "enabled": True,
+                    "geocoding": {"enabled": False},
+                }
+            return default
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+        @staticmethod
+        def resolve(name=None):
+            return None
+
+    def require_login(func):
+        @wraps(func)
+        def protected(*args, **kwargs):
+            return "login required", 401
+        return protected
+
+    app = Flask(__name__)
+    service = mount_to_iis(
+        app,
+        config=Config(),
+        subsystem_registry=Registry(),
+        wrapper=require_login,
+        data_path=tmp_path,
+        public_scoped=True,
+    )
+
+    assert service is not None
+    client = app.test_client()
+    assert client.get("/situation/embed/map").status_code == 200
+    # The scoped route reaches its handler (400 here because this minimal
+    # registry deliberately has no backing subsystem) instead of auth (401).
+    assert client.get("/situation/api/scoped/map").status_code == 400
+    assert client.get("/situation/api/map").status_code == 401
+    assert client.post("/situation/api/scoped/map/locations", json={}).status_code == 200
+    assert client.post("/situation/api/map/locations", json={}).status_code == 401
+
+
 def test_iis_integration_can_be_disabled_without_registering_routes(tmp_path):
     from flask import Flask
 
