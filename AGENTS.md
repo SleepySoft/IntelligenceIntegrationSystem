@@ -257,6 +257,9 @@ python VectorDB/VectorDBBService.py \
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）
 - HTTP 400（敏感词/参数错误）视为**不可重试**，标记为 `ARCHIVED_FLAG_SENSITIVE`
 - 其他错误标记为 `ARCHIVED_FLAG_ERROR`
+- Prompt 前缀缓存、V47 候选、无损校验归一化、Client 能力分层和异步 Batch 的调查结论
+  见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；该文档中的分阶段内容未完成前
+  不得视为现有运行能力。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）
