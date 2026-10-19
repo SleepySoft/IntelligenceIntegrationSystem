@@ -82,7 +82,11 @@ function activate(view, updateHistory = true) {
     document.getElementById('open-view').href = FRAME_URLS[view];
     const scopeNote = document.getElementById('scope-note');
     if (view === 'map' || view === 'entities') {
-        scopeNote.textContent = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
+        let text = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
+        if (view === 'entities' && SITUATION.min_support) {
+            text += ` · 关系需 ${SITUATION.min_support} 起印证`;
+        }
+        scopeNote.textContent = text;
         scopeNote.hidden = false;
     } else {
         scopeNote.hidden = true;

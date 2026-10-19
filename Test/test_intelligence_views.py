@@ -62,6 +62,7 @@ def test_integration_page_limits_only_situation_views_from_configuration():
         "subsystem_display_name": "财经情报",
         "window_days": 14,
         "min_score": 7.5,
+        "min_support": 2,
     }
     assert "情报视图</h1>" not in html
     assert "完整情报列表；筛选、排序与分页保持原页面行为。" not in html

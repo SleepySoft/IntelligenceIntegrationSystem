@@ -203,7 +203,7 @@
                 <svg id="graph-svg" role="img" aria-label="实体施受关系图"></svg>
                 <div class="tooltip" id="graph-tooltip"></div>
                 {% if embedded %}
-                <div class="scope-badge">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }}</div>
+                <div class="scope-badge" title="同一关系至少由 {{ dashboard_profile.min_support }} 起独立事件支撑才连线">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }} · 关系需 {{ dashboard_profile.min_support }} 起印证</div>
                 {% endif %}
             </div>
             <aside class="side" id="graph-detail">

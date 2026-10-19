@@ -60,6 +60,7 @@ class IntelligenceViewsService:
                 subsystem.get("display_name") or subsystem.get("name") or ""),
             "window_days": self._bounded_int(values, "window_days", 7, 1, 365),
             "min_score": self._bounded_float(values, "min_score", 6.0, 0, 10),
+            "min_support": self._bounded_int(values, "min_support", 2, 1, 50),
         }
 
     def _page_profile(self):
