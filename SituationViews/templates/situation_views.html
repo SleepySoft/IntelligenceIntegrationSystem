@@ -78,6 +78,7 @@
         .country { fill: light-dark(#b9d99b, #3c6b4a); stroke: light-dark(#f6fff0, #83aa8d); stroke-width: .55px; }
         .graticule { fill: none; stroke: light-dark(#78b8e5, #39749b); stroke-width: .45px; opacity: .72; }
         .hotspot { stroke: color-mix(in srgb, var(--panel) 82%, transparent); stroke-width: 2px; cursor: pointer; }
+        .hotspot-ring { fill: none; pointer-events: none; }
         .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
         .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
@@ -298,7 +299,7 @@ function legendHtml() {
             <i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}
         </button>`).join('');
     return buttons + `<div class="muted" style="font-size:11px;margin-top:6px">
-        点填充色 = 主导类别；多类别混合热点带次类别色描边，悬停看分布</div>`;
+        点填充色 = 主导类别；多类别混合热点带次类别色外环，悬停看分布</div>`;
 }
 $('map-legend').innerHTML = legendHtml();
 $('graph-legend').innerHTML = graphLegendHtml();
@@ -382,17 +383,21 @@ function renderMap() {
     root.append('g').selectAll('path').data(features).join('path').attr('class','country');
     const visible = mapData.hotspots.filter(d => centers.has(d.country_code));
     const radius = d3.scaleSqrt().domain([1, d3.max(visible, d => d.event_count) || 1]).range([5, 24]);
-    // 多类别热点：填充=主导类别，描边=次类别色（一眼识别混合点）
+    // 多类别热点：主导色圆盘 + 次类别色外环（比描边显眼）
     const ringColor = d => {
         const cats = Object.keys(d.categories || {});
         return cats.length > 1 ? (CATEGORY_COLORS[cats[1]] || CATEGORY_COLORS.other) : null;
     };
     const categoryBreakdown = d => Object.entries(d.categories || {})
         .map(([k, v]) => `${CATEGORY_LABELS[k] || k} ${v}`).join(' · ');
+    const ringData = visible.filter(d => ringColor(d));
+    const rings = root.append('g').selectAll('circle').data(ringData).join('circle')
+        .attr('class', 'hotspot-ring')
+        .attr('stroke', d => ringColor(d))
+        .attr('stroke-width', 3)
+        .attr('r', d => radius(d.event_count) + 4);
     const marks = root.append('g').selectAll('circle').data(visible).join('circle')
         .attr('class','hotspot').attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
-        .attr('stroke', d => ringColor(d) || 'color-mix(in srgb, var(--panel) 82%, transparent)')
-        .attr('stroke-width', d => ringColor(d) ? 3.5 : 2)
         .attr('r', d => radius(d.event_count))
         .on('mouseenter', (event, d) => {
             const breakdown = categoryBreakdown(d);
@@ -486,6 +491,9 @@ function renderMap() {
         root.select('.graticule').attr('d', path);
         root.selectAll('.country').attr('d', path);
         marks.attr('display', d => isFront(centers.get(d.country_code)) ? null : 'none')
+            .attr('cx', d => projection(centers.get(d.country_code))?.[0])
+            .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
+        rings.attr('display', d => isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('cx', d => projection(centers.get(d.country_code))?.[0])
             .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
         labels.attr('display', d => zoomScale >= 1.25 && zoomScale < 2.15 && isFront(centers.get(d.country_code)) ? null : 'none')
