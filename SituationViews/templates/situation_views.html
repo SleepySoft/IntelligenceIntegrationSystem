@@ -629,7 +629,10 @@ function renderGraph() {
         })
         .on('mouseleave', () => hideTooltip('graph-tooltip'))
         .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
-    const edgeLabels = root.append('g').selectAll('text').data(edges.slice(0, 40)).join('text')
+    // 标签预算：前 40 条（按支撑数排序）必有字；此外支撑数≥2 的可信关系也标注，
+    // 总量封顶 150 防文字糊屏。未标注边悬停仍有 tooltip。
+    const labeledEdges = edges.filter((d, i) => i < 40 || d.support >= 2).slice(0, 150);
+    const edgeLabels = root.append('g').selectAll('text').data(labeledEdges).join('text')
         .attr('class','node-label edge-label').attr('text-anchor','middle')
         .text(d => `${d.negated_count === d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`)
         .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
