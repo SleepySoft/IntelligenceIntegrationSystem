@@ -69,11 +69,13 @@
 | 角色引用完整性 | ★ 代码 | 实体内联（按 name 合并）后引用错误整类不存在 |
 | 限定词 `scope` | ★ 代码 | 一律 event 级；放弃 LLM 侧嵌套（见 §4.3） |
 | 关系 `target_event_id` | ★ 代码 | LLM 输出 events 数组位置序号（从 1 开始），代码转换为 E-id |
+| 时间 `precision` | ★ 代码 | 从 normalized 的 ISO 形状推导，AI 不输出 |
+| 时间 `approximate` | ★ 代码 | AI 不输出；外部无法可靠判断时填 unknown/null，不冒充精确时间 |
 | 时间 `normalized` 格式 | ★ 代码修复 | 宽松解析 + 截断/剥时区/日历校验；不可修复降级为 null 而非整次重试 |
 | 谓词选择（含 null+gloss） | LLM | 核心语义判断 |
 | 角色绑定（哪个实体填哪个角色） | LLM | 核心语义判断，调查报告的主要错误面 |
 | 实体 name/type/country_code | LLM | 需要文本理解与世界知识；gazetteer 无法处理人名/机构名的国别关联 |
-| 时间槽位选择与 surface/precision | LLM | 语义判断（事件发生在何时）；仅格式修复移交代码 |
+| 时间槽位选择与 normalized/surface | LLM | 语义判断（事件发生在何时）；只输出最小、可接地的时间对象 |
 | 限定词 type/value/by | LLM | 语义判断（计划状态、陈述主体等） |
 | attributes | LLM | 语义抽取 |
 | TIME/LOCATION/PEOPLE/ORGANIZATION 速查字段 | 代码（现状） | 归档层派生，本次不变 |
@@ -106,13 +108,15 @@
 4. **关系用位置序号**：`target` 为 events 数组的 1 起始序号，越界/自指由桥接层报出明确错误。
 5. **扁平事件结构**：去掉 `core` 一层嵌套（实证：嵌套深度是输出质量首要敌人）。
 6. **限定词无 id/scope**：一律 event 级。
-7. **时间宽松解析**：子集模型不校验 normalized 格式；桥接层修复（空白→T、剥时区、截断秒、按声明精度截断、日历校验），不可修复时降级 normalized=null（契约允许）。
+7. **时间最小契约**：AI 每个时间槽只输出 normalized 与逐字 surface；桥接层从 normalized
+   推导 precision 并做空白→T、剥时区、截断秒、日历校验。AI 不输出 approximate，外部
+   无法可靠判断时保存为 unknown/null；只有明确的 `false` 才可作为精确时序证据。
 
 ### 4.2 桥接层
 
 `event_engine.extraction.complete_core_extraction(subset, registry) -> EventExtractionResult`：
 
-1. 修复时间表达式 → 2. 遍历事件（roles → context → qualifier.by 顺序）合并实体并分配 ID →
+1. 推导并修复时间表达式、写入 approximate=unknown → 2. 遍历事件（roles → context → qualifier.by 顺序）合并实体并分配 ID →
 3. 派生/校验 Frame → 4. 编号事件与限定词、转换关系序号 →
 5. 组装完整 `event-extraction/1.0` 字典 → 6. 走原有的结构 + Registry 语义校验
    （`validate_event_extraction`，含兜底角色、限定词词值、Frame 一致性检查）。
@@ -121,7 +125,8 @@
 
 ### 4.3 表达能力分析（不降低表达能力 = 存储契约不变）
 
-存储与下游消费的仍是完整 `event-extraction/1.0`，归档、事件索引、查询、前端零改动。LLM 接口侧放弃的两项能力：
+存储与下游消费的仍是完整 `event-extraction/1.0`；`approximate` 扩展为可空三态，旧的布尔
+数据继续兼容。unknown 与 approximate 一样不参与精确事件合并和状态时序。LLM 接口侧放弃的两项能力：
 
 | 放弃项 | 影响评估 | 缓解 |
 |---|---|---|

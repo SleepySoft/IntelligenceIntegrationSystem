@@ -150,15 +150,15 @@ class TimeExpression:
 
     core.temporal 支持 ISO 年、年月、日期、日期时间。年/月/日按范围处理，日期时间
     转 UTC；当前未带时区的可解析值按 UTC 解释，调用方应优先提供显式时区。
-    不可解析或 approximate=True 的表达不会提供精确身份/状态时序证据。
+    不可解析、approximate=True 或 approximate=None 的表达不会提供精确身份/状态时序证据。
     """
 
     # 可计算 ISO 值，如 2026-09 或 2026-09-30T12:00:00+08:00；None 不回退解析 surface。
     normalized: str | None
     # 精度标记；year/month/day 会截取规范值到相应精度，其他标记目前无额外截取规则。
-    precision: str
+    precision: str | None
     # 是否近似，如“约在上月”；True 保留表述，但时间比较/状态有效时间按未知处理。
-    approximate: bool
+    approximate: bool | None
     # 原始时间措辞，用于展示与追溯；不直接用于身份评分或有效时间计算。
     surface: str
 

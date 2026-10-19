@@ -43,12 +43,15 @@ class SubsetEntity(StrictModel):
 
 
 class SubsetTimeExpression(StrictModel):
-    """宽松时间表达式：normalized 与 precision 的严格对应由桥接层修复后保证。"""
+    """AI 只需给规范值和原文；其余字段由桥接层确定性生成。
+
+    precision/approximate 暂时接收旧 Prompt 的输出以兼容在途任务，但桥接时不采信。
+    """
 
     normalized: str | None = None
-    precision: Literal["year", "month", "day", "hour", "minute"]
-    approximate: bool
     surface: str = Field(..., min_length=1)
+    precision: Literal["year", "month", "day", "hour", "minute"] | None = None
+    approximate: bool | None = None
 
 
 class SubsetTime(StrictModel):
@@ -195,9 +198,41 @@ def normalize_time_text(value: str, precision: str) -> str | None:
     return rebuilt if _valid_calendar(rebuilt, precision) else None
 
 
+def infer_time_precision(value: str | None) -> str | None:
+    """从 ISO 风格规范值确定性推导精度；不可解析时返回 None。"""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    text = re.sub(r"[Tt\s]+", "T", text)
+    text = re.sub(r"(?:[Zz]|[+-]\d{2}:?\d{2})$", "", text)
+    match = _LOOSE_TIME_PATTERN.fullmatch(text)
+    if not match:
+        return None
+    year, month, day, hour, minute = match.groups()
+    if minute is not None:
+        precision = "minute"
+    elif hour is not None:
+        precision = "hour"
+    elif day is not None:
+        precision = "day"
+    elif month is not None:
+        precision = "month"
+    elif year is not None:
+        precision = "year"
+    else:
+        return None
+    return precision if normalize_time_text(text, precision) is not None else None
+
+
 def _repair_time_expression(expr: SubsetTimeExpression) -> None:
-    if expr.normalized:
-        expr.normalized = normalize_time_text(expr.normalized, expr.precision)
+    # 不采信 AI 对 precision/approximate 的判断。precision 可由值的形状唯一推导；
+    # approximate 无法可靠机械判断，统一保留为 unknown(None)。
+    expr.precision = infer_time_precision(expr.normalized)
+    expr.normalized = (
+        normalize_time_text(expr.normalized, expr.precision)
+        if expr.normalized and expr.precision else None
+    )
+    expr.approximate = None
 
 
 _TIME_SLOTS = (

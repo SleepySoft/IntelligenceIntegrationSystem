@@ -130,9 +130,13 @@ class SemanticFixTests(unittest.TestCase):
         self.assertEqual(MatchDecision.AMBIGUOUS, result.decision)
         self.assertTrue(any("时间" in reason for reason in result.unknown))
 
-    def test_month_precision_and_approximate_attack_time_cannot_auto_merge(self):
+    def test_non_exact_attack_time_cannot_auto_merge(self):
         candidate = self.matcher.create_canonical(self.attack())
-        for expression in (time("2026-09", "month"), time("2026-09-01", approximate=True)):
+        for expression in (
+            time("2026-09", "month"),
+            time("2026-09-01", approximate=True),
+            time("2026-09-01", approximate=None),
+        ):
             event = replace(self.attack(), time={"event_time": expression})
             self.assertEqual(MatchDecision.AMBIGUOUS, self.matcher.match(event, candidate).decision)
 

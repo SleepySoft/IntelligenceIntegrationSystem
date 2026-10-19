@@ -62,14 +62,16 @@ class ExtractedPredicate(StrictModel):
 
 class ExtractedTimeExpression(StrictModel):
     normalized: str | None
-    precision: Literal["year", "month", "day", "hour", "minute"]
-    approximate: bool
+    precision: Literal["year", "month", "day", "hour", "minute"] | None = None
+    approximate: bool | None = None
     surface: str = Field(..., min_length=1)
 
     @model_validator(mode="after")
     def check_normalized_precision(self):
         if self.normalized is None:
             return self
+        if self.precision is None:
+            raise ValueError("precision is required when normalized time is present")
         import re
         patterns = {
             "year": r"^\d{4}$",

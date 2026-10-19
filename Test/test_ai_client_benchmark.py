@@ -8,7 +8,7 @@ from ServiceComponent.ai_client_benchmark import (
     load_benchmark_suite,
 )
 from ServiceComponent.analysis_messages import build_analyze_message
-from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_V47
+from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_V48
 
 
 def _valuable_payload():
@@ -104,7 +104,7 @@ def test_checked_in_example_suite_is_valid():
     assert len(cases) == 3
 
 
-def test_v47_keeps_system_prefix_stable_and_dynamic_data_in_user_message():
+def test_v48_keeps_system_prefix_stable_and_dynamic_data_in_user_message():
     first = {
         "UUID": "cache-1", "title": "第一篇", "content": "正文甲",
         "informant": "test://cache/1",
@@ -114,8 +114,8 @@ def test_v47_keeps_system_prefix_stable_and_dynamic_data_in_user_message():
         "informant": "test://cache/2",
     }
 
-    messages_a = build_analyze_message(EVENT_ANALYSIS_PROMPT_V47, first)
-    messages_b = build_analyze_message(EVENT_ANALYSIS_PROMPT_V47, second)
+    messages_a = build_analyze_message(EVENT_ANALYSIS_PROMPT_V48, first)
+    messages_b = build_analyze_message(EVENT_ANALYSIS_PROMPT_V48, second)
 
     assert [item["role"] for item in messages_a] == ["system", "user"]
     assert messages_a[0] == messages_b[0]

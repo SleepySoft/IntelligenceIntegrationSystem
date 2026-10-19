@@ -10,8 +10,16 @@ from __future__ import annotations
 from .prompt import _build_qualifier_catalog, build_predicate_catalog
 
 
-def build_core_extraction_section(registry) -> str:
+def build_core_extraction_section(registry, *, minimal_time: bool = False) -> str:
     """返回可嵌入外部 Prompt 的核心子集事件抽取章节，不包含输入和外围任务。"""
+    time_rule = (
+        '- `time` 只在能规范化时输出，槽位可选 event_time、start_time、end_time、'
+        'effective_time、deadline、expected_start_time、expected_end_time；每个槽位只写 '
+        '`{"normalized":"2026-10-17","surface":"原文时间"}`，不要输出 precision 或 approximate。'
+        if minimal_time else
+        '- `time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。\n'
+        '- 时间包含 normalized、precision、approximate、surface；surface 必须逐字摘自正文（保持原文语言），禁止翻译或概括。precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。'
+    )
     return f"""# 事件抽取协议（核心子集）
 
 输出 `event_extraction` 对象，只包含一个 `events` 数组（一至三项事件）。
@@ -70,8 +78,7 @@ country_code 用于保留原文明示的国别或地理关联。对于 facility�
 
 ## 时间、地点和属性
 
-- `time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。
-- 时间包含 normalized、precision、approximate、surface；surface 必须逐字摘自正文（保持原文语言），禁止翻译或概括。precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。
+{time_rule}
 - `context` 只使用 event_location，值为实体对象数组。决定事件身份的起点、终点、目标等位置应进入 roles。原文明示事件发生在某国时，event_location 应包含相应地点实体；若目标设施等物理实体也明确位于该国，还应同时在该目标实体上填写 country_code，以保留“目标位于哪里”的直接联系。
 - `attributes` 必须是以 amount、quantity、ratio、value_before、value_after、delta、duration、level 为键的 JSON 对象，绝不能是数组；每种键最多出现一次。
 - amount 使用 `{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}`。

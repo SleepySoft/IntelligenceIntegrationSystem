@@ -28,7 +28,9 @@ def position(value: str | None) -> tuple[datetime, datetime] | None:
 
 
 def expression_position(value: TimeExpression | None) -> tuple[datetime, datetime] | None:
-    if value is None or value.approximate:
+    # 只有明确标记为非近似的时间才能充当事件身份与状态时序的精确证据；
+    # True（近似）和 None（未知）都保守地退出精确计算。
+    if value is None or value.approximate is not False:
         return None
     normalized = value.normalized
     if normalized and value.precision == "year":

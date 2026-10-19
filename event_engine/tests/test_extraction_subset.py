@@ -154,17 +154,35 @@ class CoreSubsetBridgeTests(unittest.TestCase):
         payload["events"][0]["time"] = {
             "event_time": {
                 "normalized": "2026-10-12 14:30:45+08:00",
-                "precision": "minute",
-                "approximate": False,
                 "surface": "12日下午2点半",
             },
         }
         result = self.complete(payload)
-        self.assertEqual(result.events[0].core.time.event_time.normalized, "2026-10-12T14:30")
+        expression = result.events[0].core.time.event_time
+        self.assertEqual(expression.normalized, "2026-10-12T14:30")
+        self.assertEqual(expression.precision, "minute")
+        self.assertIsNone(expression.approximate)
         # 日历上不存在的日期降级为 null，而不是整次校验失败。
         payload["events"][0]["time"]["event_time"]["normalized"] = "2026-13-40T25:61"
         result = self.complete(payload)
-        self.assertIsNone(result.events[0].core.time.event_time.normalized)
+        expression = result.events[0].core.time.event_time
+        self.assertIsNone(expression.normalized)
+        self.assertIsNone(expression.precision)
+        self.assertIsNone(expression.approximate)
+
+    def test_legacy_ai_time_flags_are_ignored_in_favor_of_external_unknown(self):
+        payload = _attack_subset()
+        payload["events"][0]["time"] = {
+            "event_time": {
+                "normalized": "2026-10-12",
+                "precision": "minute",
+                "approximate": False,
+                "surface": "10月12日",
+            },
+        }
+        expression = self.complete(payload).events[0].core.time.event_time
+        self.assertEqual(expression.precision, "day")
+        self.assertIsNone(expression.approximate)
 
     def test_normalize_time_text_unit(self):
         self.assertEqual(normalize_time_text("2026-10-12", "day"), "2026-10-12")

@@ -5,6 +5,7 @@ from event_engine.extraction import build_event_extraction_prompt
 from prompts_event_v4 import (
     EVENT_ANALYSIS_PROMPT_V41,
     EVENT_ANALYSIS_PROMPT_V47,
+    EVENT_ANALYSIS_PROMPT_V48,
     EVENT_V4_PREDICATE_CATALOG,
 )
 from ServiceComponent.IntelligenceHubDefines_v4 import (
@@ -101,6 +102,12 @@ def test_v47_is_a_static_system_prompt_with_v46_contract():
     assert "{{CURRENT_DATE}}" not in EVENT_ANALYSIS_PROMPT_V47
     assert "NON_INTELLIGENCE_REASON" in EVENT_ANALYSIS_PROMPT_V47
     assert "核心子集" in EVENT_ANALYSIS_PROMPT_V47
+
+
+def test_v48_uses_minimal_unambiguous_time_shape():
+    assert '{{CONTENT}}' not in EVENT_ANALYSIS_PROMPT_V48
+    assert '{"normalized":"2026-10-17","surface":"原文时间"}' in EVENT_ANALYSIS_PROMPT_V48
+    assert "不要输出 precision 或 approximate" in EVENT_ANALYSIS_PROMPT_V48
 
 
 def test_catalog_and_json_schema_follow_complete_event_registry():
