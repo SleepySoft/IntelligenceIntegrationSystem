@@ -281,7 +281,8 @@ Flash。它应作为真实质量对照，而不是仅因单价接近就与 MiMo 
 Codex Client 已通过 app-server `account/rateLimits/read` 取得 primary/secondary 服务端窗口
 百分比，5 小时边界不再靠调用次数估算。当前策略：
 
-- `reserve_percent=35`，达到 65% 使用量后停止自动调度；
+- 5 小时窗口保留 35%（`primary_max_percent=65`），周窗口保留 10%
+  （`secondary_max_percent=90`）；任一窗口达到上限即停止自动调度；
 - 服务端窗口快照优先，session 中的 rate limit 事件作为降级来源；
 - 缺少快照时不把 Client 永久判坏，但应限制其进入批量路径；
 - 用于 quality tier、人工调试和管理工作，不作为便宜的持续吞吐资源。

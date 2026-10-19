@@ -57,6 +57,24 @@ N/A
 
 ## 环境配置及部署运行
 
+### 资源要求（不含 VectorDB）
+
+以下口径包含 IIS Web、Crawler、MongoDB、Nginx 和单一 headless 代理，不包含桌面 GUI、
+VectorDB 与翻译子服务：
+
+| 资源 | 最低配置 | 推荐配置 |
+|---|---:|---:|
+| CPU | 2 vCPU | 4 vCPU |
+| 内存 | 4 GiB | 8 GiB |
+| Swap | 2 GiB | 4–8 GiB |
+| 可用磁盘 | 30 GiB SSD | 100 GiB NVMe/SSD |
+| GPU | 不需要 | 不需要 |
+
+当前实测核心栈平均约占 1.0 GiB、保守峰值约 1.25 GiB；MongoDB 当前约 474 MiB，
+但会随工作集、索引和页缓存增长。“MongoDB 需要 4 GiB”应理解为整机容量建议，不是固定
+常驻 4 GiB。完整测量范围、磁盘留存和代理 GUI 差异见
+[IIS 部署资源要求](doc/deployment_resource_requirements.md)。
+
 #### 依赖软件
 
 + MongoDB

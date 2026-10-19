@@ -24,6 +24,17 @@
 /home/sleepy/anaconda3/envs/iis/bin/python Scripts/deployment_preflight.py --component all
 ```
 
+## 容量要求
+
+关闭 VectorDB 和翻译子服务、使用单一 headless 代理时，最低建议为 2 vCPU、4 GiB
+内存、2 GiB Swap 和 30 GiB 可用 SSD；推荐为 4 vCPU、8 GiB 内存、4–8 GiB Swap 和
+100 GiB NVMe/SSD。GPU 不是必需项。
+
+该口径包含 IIS Web、Crawler、MongoDB、Nginx、Playwright 临时子进程和代理 core，
+不包含桌面 Clash Verge GUI。MongoDB 内存会随工作集增长，并非固定占用 4 GiB。
+实测数据、峰值口径和磁盘留存要求见
+[部署资源要求](../doc/deployment_resource_requirements.md)。
+
 ## 安装步骤
 
 ```bash
