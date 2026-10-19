@@ -65,6 +65,9 @@ mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem -
 + 硅基流动赠金：
 > 使用邀请链接：https://cloud.siliconflow.cn/i/ml9II4B7 或 邀请码：ml9II4B7 进行注册。
 
++ Mimo体验金
+> 使用邀请链接：https://platform.xiaomimimo.com?ref=38LD4J 或 邀请码：38LD4J 进行注册。
+
 + Gemini的免费额度
 > 在Google AI Studio中创建一个免费结算额度的账号，把Token共享给我。
 
