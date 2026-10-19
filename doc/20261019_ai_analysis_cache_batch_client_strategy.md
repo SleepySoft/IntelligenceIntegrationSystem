@@ -342,6 +342,15 @@ pending → file_created → submitted → polling
 必须持久化 `job_id`、Provider、模型、Prompt 版本、协议、输入哈希、每条 UUID/custom_id、
 提交时间和结果文件状态。结果回注必须幂等，服务重启后不得重复提交或重复归档。
 
+### 8.1 PoC 落地（2026-10-19）
+
+`Scripts/batch_backlog_analysis.py`：从 cache 的 R 状态积压构建 JSONL（复用生产
+`build_analyze_message` 与当前抽样 prompt，消息结构与实时完全一致）→ 上传/提交/轮询/
+下载 → 用同一协议链校验并报告质量。`--dry-run` 只构建不提交，`--submit` 实交，
+`--download <batch_id>` 拉回校验。实测构建 20 条 = 766KB，消息已是 v48 的
+system+user 缓存友好布局（batch 价与缓存命中价可叠加）。
+回注入库（跳过 intake 去重、从 analysis 后段续接归档）留待正式版。
+
 ## 9. 分阶段实施顺序
 
 ### 阶段 A：先消除无意义重试
