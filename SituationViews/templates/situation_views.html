@@ -80,7 +80,7 @@
         .hotspot { stroke: color-mix(in srgb, var(--panel) 82%, transparent); stroke-width: 2px; cursor: pointer; }
         .hotspot-ring { fill: none; pointer-events: none; }
         .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
-        .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+        .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 1.5px; stroke-opacity: .75; stroke-linejoin: round; pointer-events: none; }
         .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
         .edge-arrow { stroke: transparent; pointer-events: none; }
         .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; cursor: pointer; }
@@ -89,7 +89,7 @@
         .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
         .node.graph-selected { stroke: var(--accent); stroke-width: 4px; }
         .graph-dim { opacity: .12 !important; }
-        .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+        .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 1.5px; stroke-opacity: .75; }
         .edge-label { pointer-events: auto; cursor: pointer; }
         .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
         .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
