@@ -372,3 +372,24 @@ pending → file_created → submitted → polling
 
 任何优化都不能只以“JSON 最终能通过”为验收条件。事件谓词、角色绑定、时间槽位、限定词
 和事实接地质量必须与 V46 基线配对比较。
+
+## 11. 付费候选实测补记（2026-10-19，3 固定样本 × v46）
+
+两个按量 key 各跑 3 条固定样本（含历史问题样本），对比脚本：`Scripts/compare_prompt_v41_v42.py`，
+分组定向隔离模型。结果文件：`_data/prompt_compare/compare_20261019T070919Z.json`（MiMo）与
+`compare_20261019T072912Z.json`（DeepSeek）。
+
+| 指标 | MiMo mimo-v2.6-flash | DeepSeek deepseek-flash |
+| --- | --- | --- |
+| 最终成功率 | 2/3 | **3/3** |
+| 平均尝试 | 1.67 | 2.00（8192 输出上限被推理占用会截断，需放宽） |
+| 谓词接地率 | **1/8**（surface 翻译/改写，不达标） | **8/8** |
+| 时间接地 | 1/1 | 4/4 |
+| 角色/议题结构 | 正确（topic 未再填人物） | 正确 |
+| 明显错误 | 1 例 phase=ongoing 语义规则失败（3 次重试不过） | 无 |
+| 平均耗时 | 124s | 125s |
+
+结论：**DeepSeek deepseek-flash 质量明显更优**（接地率满分、语义规则零失败），
+MiMo 单价低但 surface 接地不达标会影响事实核验，暂不推荐作为主力。
+DeepSeek 接入需把输出上限从 8192 放宽（推理 token 占用所致）。
+评估完成后两个评估组已在配置中 `enable: false`，恢复免费配置。
