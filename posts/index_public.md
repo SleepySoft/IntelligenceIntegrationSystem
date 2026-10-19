@@ -1,8 +1,22 @@
-# 情报整合系统 - Intelligence Integration System (IIS)
+# 情报整合系统 - Intelligence Integration System (IIS) v4
 
 ## 链接
 
-[情报视图](/views)
+[v4版本测试运行中](/views)
+
+## v4版本说明
+
+v4版本相对于v2是一个质变。
+
+在v2版本里系统仅机械提取情报的5要素，但它回答不了以下问题：
+
+1. 如果我想在地图上标记地该新闻的地点，我应该选择哪个？
+2. 不同实体在这个事件中是什么角色，施受方向如何？
+3. 情报之间如何关联成线成图？仅靠向量？还是靠实体交集？
+
+在v4版本中，地域视图和实体视图的实现更自然也更清晰，情报表述也进化为“可计算”的。
+
+v2版本在main分支，和v4版本不兼容。
 
 ## 说明
 
@@ -10,7 +24,7 @@
 
 本系统属于公开来源情报 (Open-source intelligence，OSINT) 的一个实践，当前通过RSS采集新闻以避免潜在的法律问题。
 
-本项目为开源项目，项目地址：[Intelligence Integration System](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
+本项目为开源项目，项目地址：[Intelligence Integration System](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/SubSystem)
 
 系统当前为测试状态，不能保证————但会尽量做到————7 x 24小时在线。
 
@@ -30,6 +44,8 @@
 
 + [不定期手工导出](https://pan.baidu.com/s/122mewzpNkd6A8UjMDpIMsg?pwd=tfx7)
 
+> 注：由于度盘会员到期，所以v2版本的完整数据未能上传。等我找机会续了会员再说。
+
 数据可通过MongoDB的mongoimport工具导入：
 
 ```
@@ -40,14 +56,16 @@ mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem -
 
 ## 赞助该项目
 
-本项目使用硅基流动提供的AI服务。如果你能通过我的邀请链接注册，那么我的账户将会获得14元赠金，为该系统增加约半天的AI分析额度。
+本项目在情报处理上会耗费大量的Token，我正在寻找合适的服务提供商。
 
-邀请链接：https://cloud.siliconflow.cn/i/ml9II4B7
+如果您是AI服务提供商，并且愿意为本项目提供算力，请联系我（联系方式在github说明文本中）。
 
-或邀请码：ml9II4B7
+免费的赞助方式如下：
 
-如果您愿意支持更多，可以在闲鱼搜索“硅基流动赠金”，并将上面的邀请链接提供给商家。
++ 硅基流动赠金：
+> 使用邀请链接：https://cloud.siliconflow.cn/i/ml9II4B7 或 邀请码：ml9II4B7 进行注册。
 
-如果您是AI服务提供商，愿意为本项目提供算力，请联系我（联系方式在github说明文本中）。
++ Gemini的免费额度
+> 在Google AI Studio中创建一个免费结算额度的账号，把Token共享给我。
 
 谢谢。
