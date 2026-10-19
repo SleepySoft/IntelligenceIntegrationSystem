@@ -117,6 +117,7 @@ class BasePipelinePorts:
             avoid_client_names: set[str] | None = None,
             client_group: str | None = None,
             prefer_client_name: str | None = None,
+            required_tags: set[str] | None = None,
     ) -> Any:
         self._change_runtime_stat("waiting_client", 1)
         try:
@@ -133,6 +134,8 @@ class BasePipelinePorts:
                 kwargs["estimated_input_tokens"] = estimated_input_tokens
                 kwargs["max_tokens"] = max_tokens
                 kwargs["avoid_client_names"] = avoid_client_names or set()
+                if required_tags:
+                    kwargs["required_tags"] = set(required_tags)
                 client = self._ai_client_manager.wait_for_available_client(
                     user_name,
                     timeout=self._client_wait_timeout,

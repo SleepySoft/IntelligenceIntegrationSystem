@@ -1,4 +1,8 @@
 # Copy to _config/ai_clients.yaml. Set enable: false to retain but disable an entry.
+#
+# 通用可选字段（所有工厂适用）：
+#   tags: [low_sensitivity, strong, ...]   # 能力/敏感性标签，不传给工厂，由引擎挂载；
+#                                          # IIS 内容安全被拒时会优先换 low_sensitivity 客户端兜底
 clients:
   # Any OpenAI-compatible endpoint can use the generic factory.
   # - factory: openai_compatible

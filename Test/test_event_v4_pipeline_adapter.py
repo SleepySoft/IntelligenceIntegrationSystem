@@ -1237,3 +1237,55 @@ def test_v4_analysis_stats_records_attempts_and_outcome(tmp_path):
     assert g["ai_model"] == "fake-v4"
     assert g["success_rate"] == 1.0
     assert g["attempts"] == 1 and g["items"] == 1
+
+
+def test_v4_sensitive_falls_back_to_low_sensitivity_client_once():
+    """内容安全拒绝：先换 low_sensitivity 标签客户端再试一次，成功则正常归档。"""
+    calls = []
+
+    def analyzer(client, prompt, original, record_meta=None):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return {"error": "content blocked", "api_error_code": "CONTENT_SAFETY"}
+        return _valuable()
+
+    client_manager = FakeClientManager()
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), client_manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted  # 兜底成功
+    assert len(calls) == 2
+    # 第 2 次尝试带 low_sensitivity 标签过滤，并避开被拒的客户端
+    assert client_manager.requests[1].get("required_tags") == {"low_sensitivity"}
+    assert "fake-client" in client_manager.requests[1].get("avoid_client_names", set())
+
+
+def test_v4_sensitive_terminal_when_fallback_also_blocked():
+    """兜底客户端也拒绝 → 维持敏感终态。"""
+    def analyzer(client, prompt, original, record_meta=None):
+        return {"error": "content blocked", "api_error_code": "CONTENT_SAFETY"}
+
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert not result.accepted
+    assert result.reason.startswith("analysis_failed:")
+    assert context.mongo_db_cache.updated[-1][1]["APPENDIX.__ARCHIVED__"] == "S"

@@ -599,6 +599,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # 差异化重试：结构/语义校验错误优先同模型带反馈纠错一次，而非跨模型乱跳
         prefer_client_name: str | None = None
         same_model_retried = False
+        # 敏感拒绝兑底：优先换 low_sensitivity 标签的客户端再试一次（有的话）
+        sensitive_fallback_tried = False
+        sensitive_tags: set[str] | None = None
 
         for attempt in range(1, 4):
             request_id = None
@@ -606,6 +609,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
             # prefer_client_name 只生效一次：用后立清，避免网络错误时锁死同一客户端
             prefer_now = prefer_client_name
             prefer_client_name = None
+            tags_now = sensitive_tags if sensitive_tags else None
+            sensitive_tags = None
             estimated_input_tokens = estimate_message_tokens(
                 build_analyze_message(prompt, original_data)
             )
@@ -617,6 +622,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 avoid_client_names=set(failed_client_names),
                 client_group=client_group,
                 prefer_client_name=prefer_now,
+                required_tags=tags_now,
             )
             # 模型硬避让（影子链路）：取到与避让模型相同的客户端时直接换，
             # 不发起调用——同模型的对比没有评估价值，不烧 Token。
@@ -689,6 +695,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
                         error_class=AnalysisErrorClass.CONTENT_SAFETY)
+                    # 敏感兑底：换一个带 low_sensitivity 标签的客户端再试一次（有的话）
+                    if not sensitive_fallback_tried and attempt < 3:
+                        sensitive_fallback_tried = True
+                        sensitive_tags = {"low_sensitivity"}
+                        failed_client_names.add(getattr(ai_client, "name", ""))
+                        last_error = _SensitiveAnalysisError(str(raw_result["error"]))
+                        continue
                     self._record_analysis_outcome(
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
@@ -751,6 +764,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                             "stage": "event_v4_validation",
                             "attempt": attempt,
                             "error": _compact_validation_error(exc),
+                            "error_class": attempt_error_class,
                         },
                     )
                     feedback = _compact_validation_error(exc)
