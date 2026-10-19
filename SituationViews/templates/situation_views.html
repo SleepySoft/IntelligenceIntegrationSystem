@@ -388,9 +388,20 @@ function renderMap() {
     const visible = mapData.hotspots.filter(d => centers.has(d.country_code));
     const radius = d3.scaleSqrt().domain([1, d3.max(visible, d => d.event_count) || 1]).range([5, 24]);
     // 多类别热点：主导色圆盘 + 次类别色外环（比描边显眼）
+    // 同色系（如 war/terror 都是红色系）视觉上难以区分，宁可不画环
+    const RING_COLOR_FAMILY = {war: 'red', terror: 'red', security: 'orange',
+        politics: 'purple', hazard: 'teal', economy: 'blue', industry: 'blue', other: 'gray'};
     const ringColor = d => {
         const cats = Object.keys(d.categories || {});
-        return cats.length > 1 ? (CATEGORY_COLORS[cats[1]] || CATEGORY_COLORS.other) : null;
+        if (cats.length < 2) return null;
+        const fillColor = CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other;
+        const fillFamily = RING_COLOR_FAMILY[d.dominant_category] || d.dominant_category;
+        for (let i = 1; i < cats.length; i++) {
+            const color = CATEGORY_COLORS[cats[i]] || CATEGORY_COLORS.other;
+            const family = RING_COLOR_FAMILY[cats[i]] || cats[i];
+            if (color !== fillColor && family !== fillFamily) return color;
+        }
+        return null;
     };
     const categoryBreakdown = d => Object.entries(d.categories || {})
         .map(([k, v]) => `${CATEGORY_LABELS[k] || k} ${v}`).join(' · ');
