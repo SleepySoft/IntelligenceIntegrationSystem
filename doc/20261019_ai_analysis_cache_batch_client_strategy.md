@@ -15,9 +15,10 @@
 4. 只允许信息无损、结果唯一的本地归一化。缺失的语义字段不得用默认值伪造。
 5. 实时主链和异步 Batch 分开：新情报走实时 Client，低优先级积压和历史重分析才进入
    Batch 状态机。
-6. 付费主力首选候选为 MiMo `mimo-v2.6-flash` 按量 API；DeepSeek
-   `deepseek-flash` 作为质量/可用性对照和错峰备用。最终主次关系必须由 IIS 固定样本基准
-   决定，不能只按价格决定。
+6. 付费主力候选已完成固定样本实测（见 §11）：**DeepSeek `deepseek-flash` 质量明显优于
+   MiMo `mimo-v2.6-flash`**（谓词接地率 8/8 vs 1/8，最终成功率 3/3 vs 2/3），主次关系反转，
+   DeepSeek 为首选；MiMo 暂不推荐主力（surface 接地不达标影响事实核验）。DeepSeek 接入需
+   放宽输出上限（推理 token 占用 8192 默认上限会截断）。
 7. Codex CLI 保留为受保护的质量兜底和管理用途，继续默认保留 20% 的服务端窗口额度，
    不承担批量吞吐。
 8. MiMo Token Plan 不用于 IIS 后端自动分析；官方条款明确限制非 Coding 自动脚本和自定义
@@ -220,8 +221,8 @@ ClientCapabilityProfile
 
 | Client / 服务 | 当前定位 | 选择结论 |
 | --- | --- | --- |
-| MiMo `mimo-v2.6-flash` 按量 API | 低成本实时主力候选 | 优先接入并基准；支持低价缓存输入和独立 Batch |
-| DeepSeek `deepseek-flash` | 实时对照、错峰备用或质量兜底候选 | 保留；非高峰价格有竞争力，质量胜出时可反转主次 |
+| MiMo `mimo-v2.6-flash` 按量 API | 低成本实时候选 | **实测不推荐主力**：surface 接地率 1/8（§11） |
+| DeepSeek `deepseek-flash` | 实测质量最优，首选付费主力 | **接入需放宽输出上限**（推理占用）；错峰价有竞争力 |
 | Codex CLI | 质量兜底、人工管理 | 已可读取服务端 5 小时/周窗口；默认保留 20%，不跑积压 |
 | NVIDIA 免费 Client | best-effort 补充与基准来源 | 可继续使用，但不作为有 SLA 的唯一主力 |
 | Gemini 免费池 | 可用时的配额补充 | 按模型独立额度管理，需基准后分 primary/quality，不做简单轮换 |
