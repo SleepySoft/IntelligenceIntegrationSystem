@@ -361,6 +361,7 @@ class SituationViewEngine:
                     "directed": directed,
                     "event_ids": set(),
                     "article_ids": set(),
+                    "negated_event_ids": set(),
                     "score_sum": 0.0,
                     "score_max": 0.0,
                     "surface_labels": Counter(),
@@ -370,6 +371,10 @@ class SituationViewEngine:
                     edge["article_ids"].add(article_uuid)
                     edge["score_sum"] += score
                     edge["score_max"] = max(edge["score_max"], score)
+                    # 否定关系（polarity=negated）必须计入边：否则“未发生/已取消”
+                    # 在图上与正向关系同形，意图一眼相反。
+                    if self._is_negated(event):
+                        edge["negated_event_ids"].add(event_uuid)
                     surface_label = self._predicate_label(event)
                     if surface_label:
                         edge["surface_labels"][surface_label] += 1
@@ -418,8 +423,10 @@ class SituationViewEngine:
                 key: value for key, value in edge.items()
                 if key not in {
                     "event_ids", "article_ids", "score_sum", "surface_labels",
+                    "negated_event_ids",
                 }
             }
+            payload["negated_count"] = len(edge["negated_event_ids"])
             payload["surface_labels"] = [
                 {"label": label, "count": count}
                 for label, count in edge["surface_labels"].most_common(8)
@@ -697,6 +704,15 @@ class SituationViewEngine:
         spec = self.registry.get(self._predicate_id(event)) if self.registry else None
         label = str(getattr(spec, "label", "") or "").strip()
         return label or self._predicate_label(event)
+
+    @staticmethod
+    def _is_negated(event: dict) -> bool:
+        """事件带 polarity=negated 限定词（未发生/已取消/否认）。"""
+        for qualifier in event.get("qualifiers") or []:
+            if (qualifier.get("type") == "polarity"
+                    and qualifier.get("value") == "negated"):
+                return True
+        return False
 
     def _entity_relations(self, event: dict) -> list[tuple[dict, dict, bool]]:
         roles = event.get("roles") or {}

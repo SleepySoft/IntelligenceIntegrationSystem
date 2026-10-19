@@ -601,3 +601,46 @@ def test_iis_integration_keeps_views_when_geocoder_initialization_fails(tmp_path
     assert service is not None
     assert service.geocoder is None
     assert app.test_client().get("/situation/embed/map").status_code == 200
+
+
+def test_entity_graph_marks_negated_edges():
+    """否定事件（polarity=negated）必须计入边的 negated_count。"""
+    now = datetime.now(timezone.utc)
+    normal = _attack("e1", "a", "甲方", "设施一")
+    negated = {
+        **_attack("e2", "b", "甲方", "设施一"),
+        "qualifiers": [{"type": "polarity", "value": "negated", "scope": "event"}],
+    }
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([normal, negated]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)))
+
+    assert len(result["edges"]) == 1
+    edge = result["edges"][0]
+    assert edge["support"] == 2
+    assert edge["negated_count"] == 1  # 部分否定
+
+
+def test_entity_graph_fully_negated_edge():
+    now = datetime.now(timezone.utc)
+    negated = {
+        **_attack("e1", "a", "甲方", "设施一"),
+        "qualifiers": [{"type": "polarity", "value": "negated", "scope": "event"}],
+    }
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 8)]),
+        FakeCollection([negated]),
+        DEFAULT_EVENT_REGISTRY,
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1)
+
+    edge = result["edges"][0]
+    assert edge["negated_count"] == edge["support"] == 1  # 全部否定 → 前端显示 ✗
