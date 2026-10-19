@@ -255,8 +255,10 @@ python VectorDB/VectorDBBService.py \
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）
+- 错误统一分类法（`ServiceComponent/analysis_errors.py`）：network / rate_limit / provider_fatal（4xx 非安全）/ content_safety / json_syntax / schema_shape（结构校验）/ semantic_rule（Registry 语义规则）；每类有差异化路由（`RETRY_POLICY`）：结构/语义错误**同客户端带反馈纠错一次**（按名定向），网络/限流换客户端，内容安全直接终态
 - HTTP 400（敏感词/参数错误）视为**不可重试**，标记为 `ARCHIVED_FLAG_SENSITIVE`
 - 其他错误标记为 `ARCHIVED_FLAG_ERROR`
+- **IIS 侧效果统计**（`ServiceComponent/analysis_stats.py`）：每次调用与每件终态持久化到 `_data/analysis_stats.db`（模型×prompt版本 的成功率/首过率/敏感率/错误分布/延迟），与 AIClientCenter 观测库分工（那边管客户端健康）；离线报告用 `Scripts/analysis_model_report.py`
 - Prompt 前缀缓存、V47 候选、无损校验归一化、Client 能力分层和异步 Batch 的调查结论
   见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；该文档中的分阶段内容未完成前
   不得视为现有运行能力。

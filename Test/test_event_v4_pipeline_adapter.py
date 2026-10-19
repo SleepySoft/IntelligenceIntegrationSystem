@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from ServiceComponent.adapters import EventV4PipelinePorts
+from ServiceComponent.analysis_stats import AnalysisStatsRecorder
 from ServiceComponent.IntelligenceHubDefines_v4 import validate_analysis_result_v4
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
@@ -280,7 +281,8 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     assert len(manager.released) == 2
     assert manager.requests[0]["estimated_input_tokens"] > 0
     assert manager.requests[0]["max_tokens"] == 8192
-    assert manager.requests[1]["avoid_client_names"] == {"fake-client"}
+    # 差异化路由：结构/语义校验失败优先同客户端纠错（按名定向），不再立刻避让
+    assert manager.requests[1].get("target_client_name") == "fake-client"
     assert [item["valid"] for item in manager.feedback] == [False, True]
     assert [item["request_id"] for item in manager.feedback] == ["request-1", "request-2"]
     runtime_stats = ports.statistics
@@ -1183,3 +1185,55 @@ def test_shadow_aborts_without_burning_call_when_model_matches_primary():
     assert not shadow_recorder.records
     assert ports.shadow_statistics == {"recorded": 0, "failed": 1}
     assert calls == ["v41 prompt"]    # 只有主链那一次调用，影子零消耗
+
+
+def test_v4_semantic_validation_failure_retries_same_client_first():
+    """结构/语义校验失败：第 2 次尝试定向同一客户端（同模型纠错），而非避让乱跳。"""
+    calls = []
+
+    def analyzer(client, prompt, original, record_meta=None):
+        calls.append(prompt)
+        return {"TAXONOMY": "政治与安全"} if len(calls) == 1 else _valuable()
+
+    client_manager = FakeClientManager()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), client_manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted
+    assert len(calls) == 2
+    assert len(client_manager.requests) == 2
+    # 第 2 次尝试按名定向同一客户端
+    assert client_manager.requests[1].get("target_client_name") == "fake-client"
+    # 第 2 次的 prompt 携带修正反馈
+    assert "修正要求" in calls[1]
+
+
+def test_v4_analysis_stats_records_attempts_and_outcome(tmp_path):
+    stats = AnalysisStatsRecorder(tmp_path / "stats.db")
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "v41 prompt"},
+        analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+        analysis_stats=stats,
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    assert result.accepted
+
+    groups = stats.aggregate_by_model(days=1)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g["ai_model"] == "fake-v4"
+    assert g["success_rate"] == 1.0
+    assert g["attempts"] == 1 and g["items"] == 1

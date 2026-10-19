@@ -28,6 +28,7 @@ from ServiceComponent.SubsystemRegistry import SubsystemRegistry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
 from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
+from ServiceComponent.analysis_stats import AnalysisStatsRecorder
 from ServiceComponent.intelligence_contracts import APPENDIX_TIME_ARCHIVED, appendix_path
 from AIClientCenter.core.manager import AIClientManager
 from AIClientCenter.core.state_logger import ClientStateSQLiteLogger
@@ -208,6 +209,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         shadow_client_group=(
             str(config.get('intelligence_hub.shadow_analysis.client_group', '') or '')
             or None),
+        analysis_stats=AnalysisStatsRecorder(
+            os.path.join(DATA_PATH, 'analysis_stats.db')),
         max_live_age_hours=float(config.get(
             'intelligence_hub.max_live_age_hours', 0) or 0),
         max_analysis_age_hours=float(config.get(

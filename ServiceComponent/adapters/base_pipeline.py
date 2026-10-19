@@ -116,15 +116,20 @@ class BasePipelinePorts:
             max_tokens: int | None = None,
             avoid_client_names: set[str] | None = None,
             client_group: str | None = None,
+            prefer_client_name: str | None = None,
     ) -> Any:
         self._change_runtime_stat("waiting_client", 1)
         try:
             while not self._stop_event.is_set():
                 kwargs = {}
+                # prefer_client_name：按名精确取同一客户端（语义错误的同模型纠错）；
                 # client_group 显式覆盖（如影子链路定向模型组），否则用子系统配置
-                group = client_group or getattr(ctx, "ai_client_group", None)
-                if group:
-                    kwargs["target_group_id"] = group
+                if prefer_client_name:
+                    kwargs["target_client_name"] = prefer_client_name
+                else:
+                    group = client_group or getattr(ctx, "ai_client_group", None)
+                    if group:
+                        kwargs["target_group_id"] = group
                 kwargs["estimated_input_tokens"] = estimated_input_tokens
                 kwargs["max_tokens"] = max_tokens
                 kwargs["avoid_client_names"] = avoid_client_names or set()

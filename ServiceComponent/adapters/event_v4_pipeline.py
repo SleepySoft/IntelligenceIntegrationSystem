@@ -32,6 +32,17 @@ from ServiceComponent.analysis_messages import (
     ANALYSIS_MAX_OUTPUT_TOKENS,
     build_analyze_message,
 )
+from ServiceComponent.analysis_errors import (
+    AnalysisErrorClass,
+    classify_analysis_error,
+    retry_action_for,
+    RETRY_SAME_MODEL,
+)
+from ServiceComponent.analysis_stats import (
+    OUTCOME_RETRY_SCHEDULED,
+    OUTCOME_SENSITIVE,
+    OUTCOME_SUCCESS,
+)
 from ServiceComponent.prompt_protocols import PromptCatalog
 from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
 from ServiceComponent.event_v4_archive import (
@@ -113,6 +124,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_recorder: Any = None,
         shadow_sample_rate: float = 1.0,
         shadow_client_group: str | None = None,
+        analysis_stats: Any = None,
         max_live_age_hours: float = 0.0,
         max_analysis_age_hours: float = 0.0,
         quality_enabled: bool = True,
@@ -149,6 +161,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # 影子链路定向 AI 客户端分组：固定后影子结果可与主链形成“同模型不同 prompt”
         # 或“同 prompt 不同模型”的干净对比；None = 由管理器随机分配。
         self._shadow_client_group = str(shadow_client_group or "").strip() or None
+        # IIS 侧分析效果统计（持久化、client 外评估）；None = 关闭。
+        self._analysis_stats = analysis_stats
         # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道而非主队列，
         # 防止冷启动/久停后批量旧情报淹没问题。0 = 不启用。
         self._max_live_age_hours = max(0.0, float(max_live_age_hours))
@@ -523,12 +537,45 @@ class EventV4PipelinePorts(BasePipelinePorts):
         )
         return f"R{next_level}"
 
+    def _record_analysis_attempt(self, *, original_data: dict, ctx: Any,
+                                 shadow: bool, prompt_version: int, service: str,
+                                 model: str, attempt: int, latency_ms: int,
+                                 error_class: str | None) -> None:
+        """每次 AI 调用落一条统计；任何失败都不影响主链。"""
+        recorder = self._analysis_stats
+        if recorder is None:
+            return
+        try:
+            recorder.record_attempt(
+                uuid=str(original_data.get("UUID") or ""),
+                subsystem=getattr(ctx, "name", ""), shadow=shadow,
+                prompt_version=prompt_version, ai_service=service, ai_model=model,
+                attempt_no=attempt, latency_ms=latency_ms, error_class=error_class)
+        except Exception:
+            pass
+
+    def _record_analysis_outcome(self, *, original_data: dict, ctx: Any,
+                                 shadow: bool, prompt_version: int, service: str,
+                                 model: str, outcome: str, attempts_used: int) -> None:
+        recorder = self._analysis_stats
+        if recorder is None:
+            return
+        try:
+            recorder.record_outcome(
+                uuid=str(original_data.get("UUID") or ""),
+                subsystem=getattr(ctx, "name", ""), shadow=shadow,
+                prompt_version=prompt_version, ai_service=service, ai_model=model,
+                outcome=outcome, attempts_used=attempts_used)
+        except Exception:
+            pass
+
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
         prompt_version: int | None = None, prompt_override: str | None = None,
         client_group: str | None = None,
         avoid_client_names: set[str] | None = None,
         avoid_model: str | None = None,
+        shadow: bool = False,
     ) -> tuple[AnalysisResultV4, int, str, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(self._prompt_catalog.sampling_versions())
@@ -549,9 +596,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
         validation_feedback: list[str] = []
         # avoid_client_names：跨分析避让（如影子链路避开主链所用客户端，保证模型不同）
         failed_client_names: set[str] = set(avoid_client_names or ())
+        # 差异化重试：结构/语义校验错误优先同模型带反馈纠错一次，而非跨模型乱跳
+        prefer_client_name: str | None = None
+        same_model_retried = False
 
         for attempt in range(1, 4):
             request_id = None
+            attempt_error_class: str | None = None
+            # prefer_client_name 只生效一次：用后立清，避免网络错误时锁死同一客户端
+            prefer_now = prefer_client_name
+            prefer_client_name = None
             estimated_input_tokens = estimate_message_tokens(
                 build_analyze_message(prompt, original_data)
             )
@@ -562,6 +616,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 max_tokens=ANALYSIS_MAX_OUTPUT_TOKENS,
                 avoid_client_names=set(failed_client_names),
                 client_group=client_group,
+                prefer_client_name=prefer_now,
             )
             # 模型硬避让（影子链路）：取到与避让模型相同的客户端时直接换，
             # 不发起调用——同模型的对比没有评估价值，不烧 Token。
@@ -605,6 +660,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 self._change_runtime_stat("ai_running", -1)
                 self._ai_client_manager.release_client(ai_client)
 
+            if attempt_error_class is None and raw_result is None:
+                attempt_error_class = classify_analysis_error("call", last_error)
+            if isinstance(raw_result, dict) and raw_result.get("error"):
+                attempt_error_class = classify_analysis_error(
+                    "api", None, raw_result)
             if isinstance(raw_result, dict):
                 client_meta = raw_result.pop("_ai_client_meta", None)
                 if isinstance(client_meta, dict):
@@ -624,6 +684,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     ai_service=service, ai_model=model,
                 )
                 if raw_result.get("api_error_code") == "CONTENT_SAFETY":
+                    self._record_analysis_attempt(
+                        original_data=original_data, ctx=ctx, shadow=shadow,
+                        prompt_version=prompt_version, service=service, model=model,
+                        attempt=attempt, latency_ms=call_ms,
+                        error_class=AnalysisErrorClass.CONTENT_SAFETY)
+                    self._record_analysis_outcome(
+                        original_data=original_data, ctx=ctx, shadow=shadow,
+                        prompt_version=prompt_version, service=service, model=model,
+                        outcome=OUTCOME_SENSITIVE, attempts_used=attempt)
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
                 last_error = api_error
                 failed_client_names.add(getattr(ai_client, "name", ""))
@@ -636,6 +705,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         labels={"stage": "event_v4_validation", "attempt": attempt},
                     )
                     self._change_runtime_stat("validated")
+                    self._record_analysis_attempt(
+                        original_data=original_data, ctx=ctx, shadow=shadow,
+                        prompt_version=prompt_version, service=service, model=model,
+                        attempt=attempt, latency_ms=call_ms,
+                        error_class=None)
+                    self._record_analysis_outcome(
+                        original_data=original_data, ctx=ctx, shadow=shadow,
+                        prompt_version=prompt_version, service=service, model=model,
+                        outcome=OUTCOME_SUCCESS, attempts_used=attempt)
                     return (
                         validated,
                         prompt_version,
@@ -652,6 +730,21 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         ai_service=service, ai_model=model,
                     )
                     last_error = exc
+                    # 差异化路由：结构/语义错误优先同客户端带反馈纠错一次，
+                    # 而不是立刻跨模型乱跳；已试过一次同模型后回到避让策略。
+                    attempt_error_class = classify_analysis_error("validation", exc)
+                    if (retry_action_for(attempt_error_class) == RETRY_SAME_MODEL
+                            and not same_model_retried and attempt < 3):
+                        prefer_client_name = getattr(ai_client, "name", "") or None
+                        same_model_retried = True
+                    else:
+                        prefer_client_name = None
+                        failed_client_names.add(getattr(ai_client, "name", ""))
+                    self._record_analysis_attempt(
+                        original_data=original_data, ctx=ctx, shadow=shadow,
+                        prompt_version=prompt_version, service=service, model=model,
+                        attempt=attempt, latency_ms=call_ms,
+                        error_class=attempt_error_class)
                     self._report_client_feedback(
                         ai_client, request_id, valid=False,
                         labels={
@@ -660,7 +753,6 @@ class EventV4PipelinePorts(BasePipelinePorts):
                             "error": _compact_validation_error(exc),
                         },
                     )
-                    failed_client_names.add(getattr(ai_client, "name", ""))
                     feedback = _compact_validation_error(exc)
                     validation_feedback.append(feedback)
                     prompt = (
@@ -683,6 +775,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 if delay > 0:
                     self._stop_event.wait(delay)
         assert last_error is not None
+        self._record_analysis_outcome(
+            original_data=original_data, ctx=ctx, shadow=shadow,
+            prompt_version=prompt_version, service=service, model=model,
+            outcome=OUTCOME_RETRY_SCHEDULED, attempts_used=3)
         raise last_error
 
     def _report_client_feedback(
@@ -743,6 +839,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     client_group=self._shadow_client_group,
                     avoid_client_names={primary_client_name} if primary_client_name else None,
                     avoid_model=primary_model or None,
+                    shadow=True,
                 )
                 self._shadow_recorder.record(
                     original_data=original_data,
