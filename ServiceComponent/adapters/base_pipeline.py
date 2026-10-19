@@ -115,13 +115,16 @@ class BasePipelinePorts:
             estimated_input_tokens: int | None = None,
             max_tokens: int | None = None,
             avoid_client_names: set[str] | None = None,
+            client_group: str | None = None,
     ) -> Any:
         self._change_runtime_stat("waiting_client", 1)
         try:
             while not self._stop_event.is_set():
                 kwargs = {}
-                if getattr(ctx, "ai_client_group", None):
-                    kwargs["target_group_id"] = ctx.ai_client_group
+                # client_group 显式覆盖（如影子链路定向模型组），否则用子系统配置
+                group = client_group or getattr(ctx, "ai_client_group", None)
+                if group:
+                    kwargs["target_group_id"] = group
                 kwargs["estimated_input_tokens"] = estimated_input_tokens
                 kwargs["max_tokens"] = max_tokens
                 kwargs["avoid_client_names"] = avoid_client_names or set()

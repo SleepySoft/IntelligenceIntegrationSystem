@@ -205,6 +205,9 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         shadow_versions=shadow_versions,
         shadow_recorder=shadow_recorder,
         shadow_sample_rate=shadow_sample_rate,
+        shadow_client_group=(
+            str(config.get('intelligence_hub.shadow_analysis.client_group', '') or '')
+            or None),
         max_live_age_hours=float(config.get(
             'intelligence_hub.max_live_age_hours', 0) or 0),
         max_analysis_age_hours=float(config.get(

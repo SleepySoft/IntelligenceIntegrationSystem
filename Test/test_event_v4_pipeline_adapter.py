@@ -1051,3 +1051,33 @@ def test_intake_hard_limit_allows_recent_within_limit():
     result = ports.accept(HubEvent("intake.received", recent, "news"))
 
     assert result.accepted
+
+
+def test_v4_shadow_chain_pins_client_group_when_configured():
+    def analyzer(client, prompt, original, record_meta=None):
+        return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
+
+    shadow_recorder = FakeShadowRecorder()
+    client_manager = FakeClientManager()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), client_manager,
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "full prompt"},
+        extra_prompt_versions={42: "shadow prompt"},
+        extraction_modes={41: "full", 42: "core_subset"},
+        shadow_versions=[42],
+        shadow_recorder=shadow_recorder,
+        shadow_client_group="shadow-group",
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert analyzed.accepted
+    assert len(shadow_recorder.records) == 1
+    # 两次 AI 调用：主链不带分组，影子定向 shadow-group
+    assert len(client_manager.requests) == 2
+    assert "target_group_id" not in client_manager.requests[0]
+    assert client_manager.requests[1].get("target_group_id") == "shadow-group"

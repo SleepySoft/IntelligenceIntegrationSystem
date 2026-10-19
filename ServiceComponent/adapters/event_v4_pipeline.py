@@ -112,6 +112,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         shadow_versions: Iterable[int] | None = None,
         shadow_recorder: Any = None,
         shadow_sample_rate: float = 1.0,
+        shadow_client_group: str | None = None,
         max_live_age_hours: float = 0.0,
         max_analysis_age_hours: float = 0.0,
         quality_enabled: bool = True,
@@ -145,6 +146,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._shadow_recorder = shadow_recorder
         # 影子采样率：主链成功样本按此概率进入影子链路，控制灰度 Token 成本。
         self._shadow_sample_rate = max(0.0, min(1.0, float(shadow_sample_rate)))
+        # 影子链路定向 AI 客户端分组：固定后影子结果可与主链形成“同模型不同 prompt”
+        # 或“同 prompt 不同模型”的干净对比；None = 由管理器随机分配。
+        self._shadow_client_group = str(shadow_client_group or "").strip() or None
         # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道而非主队列，
         # 防止冷启动/久停后批量旧情报淹没问题。0 = 不启用。
         self._max_live_age_hours = max(0.0, float(max_live_age_hours))
@@ -519,6 +523,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def _analyze_v4_with_retry(
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
         prompt_version: int | None = None, prompt_override: str | None = None,
+        client_group: str | None = None,
     ) -> tuple[AnalysisResultV4, int, str, str]:
         if prompt_version is None:
             prompt_version = random.choice(self._prompt_catalog.sampling_versions())
@@ -550,6 +555,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 estimated_input_tokens=estimated_input_tokens,
                 max_tokens=ANALYSIS_MAX_OUTPUT_TOKENS,
                 avoid_client_names=set(failed_client_names),
+                client_group=client_group,
             )
             self._change_runtime_stat("attempts")
             self._change_runtime_stat("ai_running", 1)
@@ -713,6 +719,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     ctx, event, original_data,
                     analyzer=self._analyzer,
                     prompt_version=version,
+                    client_group=self._shadow_client_group,
                 )
                 self._shadow_recorder.record(
                     original_data=original_data,

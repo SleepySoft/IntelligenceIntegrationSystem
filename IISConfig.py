@@ -83,6 +83,9 @@ class HubSettings(_StrictModel):
     # 影子链路采样率：1.0 = 每条主链成功样本都跑影子；0.1 = 约 10% 样本跑影子，
     # 用于控制灰度 Token 成本。仅对 shadow_versions 非空时生效。
     shadow_sample_rate: float = Field(1.0, ge=0.0, le=1.0)
+    # 影子链路定向 AI 客户端分组（ai_clients.yaml 的 group）；固定后可与主链形成
+    # 受控的 同模型比 prompt / 同 prompt 比模型 对比。空 = 随机分配。
+    shadow_client_group: str = ""
     # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道，防止冷启动/久停后
     # 旧情报淹没问题主队列。0 = 不启用（全部进主队列）。
     max_live_age_hours: float = Field(0, ge=0)
@@ -310,6 +313,7 @@ class IISConfig:
                     "enabled": bool(settings.hub.shadow_versions),
                     "versions": settings.hub.shadow_versions,
                     "sample_rate": settings.hub.shadow_sample_rate,
+                    "client_group": settings.hub.shadow_client_group,
                     "directory": "_data/analysis_shadow",
                     "max_files": 1000,
                 },

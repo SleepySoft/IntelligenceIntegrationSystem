@@ -250,7 +250,7 @@ python VectorDB/VectorDBBService.py \
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
 - `/collect` 应答契约：`resp` ∈ `queued`（已接收）/ `rejected`（明确拒绝，必带 `reason`，如 `collected_data_duplicated`、`validation_error:*`、`invalid_token`，重试无意义）/ `error`（可重试的传输或内部错误）；采集端经 `Workflow.CollectorSubmission.normalize_collect_response` 解析，拒绝记 SKIPPED、错误缓存重试。
 - intake 拒绝（校验失败、重复）会写入 `{集合前缀}intake_rejected` 审计集合（uuid/informant/source/title/reason/rejected_at），不进 cache 队列，仅用于离线审计；写入失败不影响 intake。
-- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。`intelligence_hub.shadow_analysis.sample_rate`（0-1，默认 1.0）控制影子采样率，可压低灰度 Token 成本；抽样判定对整次事件做一次，保证多影子版本配对完整。
+- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。`sample_rate`（0-1，默认 1.0）控制影子采样率；`client_group`（默认空）可把影子调用定向到指定 AI 客户端分组，与主链形成受控的 同模型比 prompt / 同 prompt 比模型 对比，不配置则由管理器随机分配。抽样判定对整次事件做一次，保证多影子版本配对完整。
 - 影子对比界面：recorder 写 JSON 的同时维护 SQLite 索引（`index.sqlite`，启动时回填）；有影子数据的情报在详情页显示「影子对比」入口，对比页 `/shadow/compare/<uuid>` 按单变量规则配对（同模型比 prompt / 同 prompt 比模型；双变量标“不可归因”仅供参考），并排展示 RATE/事件结构/抽取质量差异。CLI 版为 `Scripts/compare_shadow_records.py`。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
 
 ### 5.4 错误与重试
