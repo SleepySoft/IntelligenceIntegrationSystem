@@ -507,7 +507,7 @@ function renderMap() {
         projection.rotate([rotate[0] + event.dx * k, rotate[1] - event.dy * k]);
         redraw();
     }).on('end', () => scheduleFineLocations()));
-    svg.call(d3.zoom().scaleExtent([1, 5]).filter(event => event.type === 'wheel')
+    svg.call(d3.zoom().scaleExtent([1, 10]).filter(event => event.type === 'wheel')
         .on('zoom', event => {
             zoomScale = event.transform.k;
             projection.scale(initialScale * zoomScale);
