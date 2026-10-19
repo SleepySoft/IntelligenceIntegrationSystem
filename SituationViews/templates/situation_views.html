@@ -521,7 +521,18 @@ function renderMap() {
     redraw();
 
     const m = mapData.meta;
-    $('map-summary').innerHTML = `<div class="meta">
+    // showMapDetail 会用 innerHTML 重建侧栏（map-summary/map-legend 被抹掉）；
+    // 筛选刷新（selectedCountry 已清空）时先恢复默认侧栏结构，缩放重绘时则跳过。
+    if (!$('map-summary') && !selectedCountry) {
+        $('map-detail').innerHTML = `<h2>地图概览</h2>
+            <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+            <div id="map-summary"></div>
+            <div class="legend" id="map-legend"></div>`;
+        $('map-legend').innerHTML = legendHtml();
+        syncCategoryFilters();
+    }
+    const summaryEl = $('map-summary');
+    if (summaryEl) summaryEl.innerHTML = `<div class="meta">
         <div class="metric"><b>${m.mapped_event_count}</b>已定位事件</div>
         <div class="metric"><b>${(m.location_coverage * 100).toFixed(1)}%</b>地点覆盖率</div>
         <div class="metric"><b>${m.hotspot_count}</b>国家热点</div>
