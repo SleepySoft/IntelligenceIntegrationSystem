@@ -1,0 +1,15 @@
+[Unit]
+Description=Intelligence Integration System - Operations Dashboard
+After=iis.target
+
+[Service]
+Type=oneshot
+User=sleepy
+Group=sleepy
+WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
+ExecStart=/home/sleepy/Documents/IntelligenceIntegrationSystem/Scripts/iis_dashboard.sh start
+ExecStop=/home/sleepy/Documents/IntelligenceIntegrationSystem/Scripts/iis_dashboard.sh stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

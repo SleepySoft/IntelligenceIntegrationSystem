@@ -11,6 +11,7 @@
 | `iis-web.service` | Web 核心服务（IntelligenceHubLauncher） |
 | `iis-crawler.service` | 爬虫引擎服务（CrawlerServiceEngine） |
 | `iis.target` | 拉起当前启用的 Web 与爬虫服务（VectorDB 默认关闭） |
+| `iis-dashboard.service` | 开机创建 IIS 日志与系统监控 tmux 仪表盘 |
 
 每个服务在启动前都会运行 `Scripts/deployment_preflight.py`。检查失败时服务不会进入
 重启循环；先按报错补齐配置、模型或依赖，再重启对应服务。也可以手工运行：
@@ -73,3 +74,34 @@ systemd 现在直接管理每个进程，`launch_iis_system.sh` 仅保留供手�
 当前部署在 `_config/iis.yaml` 中关闭向量子系统，`iis.target` 因此不拉起
 `iis-vectordb.service`。若以后重新启用，需要同时恢复 target/web 对 VectorDB 单元的
 `Wants`/`After` 关系，或单独启用并启动 `iis-vectordb.service`。
+
+## 运维仪表盘
+
+一键安装并启用后台仪表盘及 GNOME 登录自启动：
+
+```bash
+Scripts/install_iis_dashboard.sh
+```
+
+仪表盘默认打开一屏四区域的监控墙，同时显示总览、Web 日志、Crawler 日志和 VectorDB
+日志；此外保留各区域的独立大窗口和 `btop`。总览显示服务状态、API 健康、
+CPU/GPU/NVMe 温度、负载、内存、磁盘、网络地址和高占用进程。VectorDB 未安装时，
+其日志窗口会显示等待提示，不会回放残留的历史日志，也不会导致仪表盘退出。
+
+```bash
+# 图形终端中一键打开
+Scripts/iis_dashboard.sh open
+
+# 当前终端中进入
+Scripts/iis_dashboard.sh attach
+
+# 查看后台会话状态
+Scripts/iis_dashboard.sh status
+```
+
+`F1` 返回监控墙；`F2` 到 `F6` 分别打开总览、Web、Crawler、VectorDB 和 `btop` 的
+独立大窗口。也可以使用 `Alt+1` 到 `Alt+6` 或鼠标点击底部标签。监控墙中可直接用
+鼠标拖动蓝色边框调整区域；`F7` 恢复四宫格，`F8` 切换主区域在左，`F9` 切换主区域
+在上，`Alt+z` 临时放大/恢复当前区域。tmux 原生的 `Ctrl-b Space` 也可循环布局，
+`Ctrl-b z` 可放大区域，`Ctrl-b d` 退出视图但保持后台运行。GNOME 登录后会自动打开
+仪表盘，应用菜单中也可搜索 “IIS Operations Dashboard”。

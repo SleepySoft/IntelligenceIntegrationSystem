@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=IIS Operations Dashboard
+Comment=Open IIS service logs and system monitoring views
+Exec=/home/sleepy/Documents/IntelligenceIntegrationSystem/Scripts/iis_dashboard.sh open
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=true
+X-GNOME-Autostart-enabled=true

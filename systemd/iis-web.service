@@ -9,6 +9,8 @@ User=sleepy
 Group=sleepy
 WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+# Codex CLI is installed per-user; system services do not inherit the login PATH.
+Environment="PATH=/home/sleepy/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStartPre=/home/sleepy/anaconda3/envs/iis/bin/python Scripts/deployment_preflight.py --component web
 ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python IntelligenceHubLauncher.py
 Restart=always
