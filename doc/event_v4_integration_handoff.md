@@ -8,6 +8,11 @@ IIS 生产主链使用 Event V4，不兼容或双读 V1/V2 存量文档。V4 延
 只在分析结果中加入 `EVENT_EXTRACTION`；没有 `analysis`、`message`、`classification`、
 `assessment` 或 `kind` 包装层。
 
+这里有两条彼此独立的版本轴：`Event V4` 是数据契约和处理主链的大版本，`Prompt vNN`
+是该契约之下的 Prompt 迭代编号。因此当前灰度应表述为“Event V4 / Prompt v50”，
+而不是“系统 v50”或“Event V50”。Prompt v50 仍输出并接受 Event V4 的同一协议，
+编号增长不表示存储结构升级。
+
 ```text
 CollectedData
 → AnalysisResultV4（V2 顶层字段 + EVENT_EXTRACTION）
@@ -28,13 +33,17 @@ CollectedData
 `TIME`、`LOCATION`、`PEOPLE`、`ORGANIZATION`；这些字段在归档时从
 `EVENT_EXTRACTION` 派生。`GEOGRAPHY` 已删除。
 
-生产 Prompt 当前版本为 `v48`：固定 system + 动态 user，模型输出核心事件子集、
-六维 RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完整事件契约和
-数字评分。低价值输出另需 `NON_INTELLIGENCE_REASON` 原因码。
+生产 Prompt 当前由 `v48` 和 `v50` 同时等概率抽样：`v48` 作为对照组，`v50`
+作为角色约束修复灰度组。两者均使用固定 system + 动态 user，模型输出核心事件子集、六维
+RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完整事件契约和
+数字评分。低价值输出另需 `NON_INTELLIGENCE_REASON` 原因码。归档中的
+`APPENDIX.__PROMPT_VERSION__` 可用于分组评估。
 
-`v49` 是独立构建的精简候选，按命名章节直接组合，不从历史 Prompt 派生；
-完整保留 Registry 目录及评级规则，与 v48 共用校验协议，暂为 `sampling=False`。
-构建路径、规则对照与验证见 [v49 精简记录](20261020_prompt_v49_compaction.md)。
+`v49` 是独立构建的精简版本，完整保留 Registry 目录及评级规则；首轮灰度
+发现角色白名单/实体类型遵循率下降，现保留为 `sampling=False` 的对照。`v50` 不改
+输出协议，在 v49 精简结构上增加 Registry 驱动的角色白名单和实体类型输出前检查。
+详见 [v49 精简记录](20261020_prompt_v49_compaction.md) 与
+[v50 夜间灰度记录](20261020_prompt_v50_role_guard_gray.md)。
 
 ## 归档文档
 

@@ -65,11 +65,12 @@ def _rich_output():
     return payload
 
 
-def test_v49_is_selectable_with_unchanged_protocol_and_production_default():
+def test_v49_remains_selectable_after_v50_replaces_it_in_gray_sampling():
     catalog = catalog_module.EVENT_V4_PROMPT_CATALOG
-    assert catalog.sampling_versions() == [48]
+    assert catalog.sampling_versions() == [48, 50]
     assert catalog.protocol_for(49) is catalog.protocol_for(48)
     assert catalog.text_for(49) == v49.EVENT_ANALYSIS_PROMPT_V49
+    assert 49 not in catalog_module.EVENT_ANALYSIS_PROMPT_TABLE
     assert catalog_module.EVENT_ANALYSIS_EXTRA_PROMPTS[49] == v49.EVENT_ANALYSIS_PROMPT_V49
 
 

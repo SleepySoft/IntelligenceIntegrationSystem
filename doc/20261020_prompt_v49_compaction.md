@@ -2,8 +2,9 @@
 
 日期：2026-10-20。
 
-状态：v49 已注册为 `sampling=False` 的可选候选；生产抽样仍为 v48。
-未调用真实模型作配对评估，静态规则等价和输出协议兼容不代表已证实模型效果等价。
+状态：v49 已完成首轮小样本生产灰度；因已登记谓词的角色白名单/实体类型
+遵循率下降，现已退出生产抽样并保留为 `sampling=False` 对照。修复版 v50 见
+[`20261020_prompt_v50_role_guard_gray.md`](20261020_prompt_v50_role_guard_gray.md)。
 
 ## 目标与边界
 
@@ -128,10 +129,10 @@ python -m pytest -q \
   event_engine/tests/test_extraction.py event_engine/tests/test_extraction_subset.py
 ```
 
-人工调试页可选择 v49；该页按现有逻辑默认选最高可选版本，因此新增后默认显示 v49，
-不代表生产抽样已切换。离线对比工具 `Scripts/compare_prompt_v41_v42.py` 也能显式选择
-`--versions 48,49`。本次没有执行真实 AI 请求。
+人工调试页可选择 v49；该页按现有逻辑默认选最高可选版本。离线对比工具
+`Scripts/compare_prompt_v41_v42.py` 也能显式选择 `--versions 48,49`。本次没有执行真实 AI 请求。
 
-后续真实模型对比须固定模型与原文，核查首次通过率、事实接地、主事件和角色、
+灰度期按模型与 Prompt 版本分组，核查首次通过率、事实接地、主事件和角色、
 计划/否认等状态、时间国别、评级分布及低价值原因；特别关注提取到公共段的关键角色
-是否仍被正确填写。模型质量验证通过后，再调整生产 sampling 声明。
+是否仍被正确填写。`python Scripts/analysis_model_report.py` 可查看模型×Prompt 版本的
+成功率、首过率、敏感率、错误分布和延迟；样本足够后再决定全量 v49 或回退为 v48。

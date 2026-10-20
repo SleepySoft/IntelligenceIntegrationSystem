@@ -71,10 +71,14 @@ def _v43_valuable():
     }
 
 
-def test_v43_production_maps_levels_to_scores_end_to_end():
+def test_v43_production_maps_levels_to_scores_end_to_end(monkeypatch):
     # 默认目录的生产版本（当前 v43+ 词表协议）：等级词 RATE + 核心子集抽取。
     from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
     production_version = EVENT_V4_PROMPT_CATALOG.sampling_versions()[0]
+    monkeypatch.setattr(
+        "ServiceComponent.adapters.event_v4_pipeline.random.choice",
+        lambda versions: versions[0],
+    )
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),

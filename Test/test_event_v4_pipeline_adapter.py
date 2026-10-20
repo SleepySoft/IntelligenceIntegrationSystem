@@ -810,7 +810,7 @@ def test_v4_adapter_core_subset_validation_failure_retries_with_feedback():
     assert ports.statistics["validation_errors"] == 1
 
 
-def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
+def test_v4_debug_prompt_catalog_exposes_all_versions_and_gray_sampling_pair():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
@@ -821,10 +821,10 @@ def test_v4_debug_prompt_catalog_exposes_extra_versions_without_sampling_them():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49}
+    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50}
     assert "核心子集" in table[42]
-    # 生产抽样表已切换为缓存友好、时间契约最小化的 v48。
-    assert list(ports._prompt_table) == [48]
+    # v48 作对照、v50 作角色约束修复灰度，两者共用输出协议。
+    assert list(ports._prompt_table) == [48, 50]
 
 
 class FakeShadowRecorder:
