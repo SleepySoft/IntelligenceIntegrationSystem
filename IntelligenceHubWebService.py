@@ -331,7 +331,7 @@ class IntelligenceHubWebService:
             'sort_by': ('content_time' if combined.get('sort_by') == 'content_time'
                         else 'archived_at'),
             'page': int(combined.get('page', 1)),
-            'per_page': int(combined.get('per_page', 10)),
+            'per_page': int(combined.get('per_page', 20)),
             'start_time': combined.get('start_time', ''),
             'end_time': combined.get('end_time', ''),
             'archive_start_time': combined.get('archive_start_time', ''),

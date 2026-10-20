@@ -215,7 +215,7 @@
                 </div>
                 <div id="graph-summary"></div>
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
-                    <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="2" style="width:52px"> 个节点</label>
+                    <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="5" style="width:52px"> 个节点</label>
                     <label>印证 ≥ <input id="graph-support-min" type="number" min="1" max="20" value="2" style="width:52px"> 起独立事件</label>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
@@ -634,7 +634,7 @@ async function refreshGraph() {
 // 前端过滤层：后端按配置出全量节点/边，前端再按“印证”与“连通网规模”过滤。
 // 印证下限 = 配置值（DASHBOARD_PROFILE.min_support），默认 2 且不得低于配置值；
 // 网络规模下限 = componentMinSize（只显示规模达到该值的连通网络）。
-let componentMinSize = 2, graphSupportMin = Math.max(2, DASHBOARD_PROFILE.min_support || 1);
+let componentMinSize = 5, graphSupportMin = Math.max(2, DASHBOARD_PROFILE.min_support || 1);
 
 function filterGraphData() {
     const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);

@@ -213,7 +213,7 @@ class AccessSettings(_StrictModel):
 
 
 class PublicSearchSettings(_StrictModel):
-    page_size: int = Field(20, ge=1, le=100)
+    page_size: int = Field(50, ge=1, le=100)
     max_pages: int = Field(5, ge=1, le=100)
     window_days: int = Field(30, ge=1, le=3650)
     requests_per_minute: int = Field(10, ge=1)
