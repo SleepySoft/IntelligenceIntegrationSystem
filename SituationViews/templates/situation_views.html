@@ -265,7 +265,7 @@ const WORLD_URL = {{ url_for('situation_views.frontend_asset', asset_name='count
 const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries.json')|tojson }};
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
-let showAllEdgeLabels = false, relabelGraphEdges = null;
+let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -743,10 +743,14 @@ function renderGraph() {
     // 避免从节点下方进入时被标签的背景描边完全遮住。
     const arrowLines = root.append('g').selectAll('line').data(edges.filter(d => d.directed)).join('line')
         .attr('class','edge-arrow').attr('marker-end','url(#arrow)');
+    // 停掉上一张图的仿真：旧 tick 会借共享的 edgeLabels 变量污染新标签的位置，
+    // 造成“标签失效/错乱”
+    if (graphSimulation) graphSimulation.stop();
     const simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(d => d.id).distance(d => 80 + Math.min(80, 160 / d.support)).strength(.35))
         .force('charge', d3.forceManyBody().strength(-240)).force('center', d3.forceCenter(width/2, height/2))
         .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 22));
+    graphSimulation = simulation;
     circles.call(d3.drag().on('start', (event,d) => { if (!event.active) simulation.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
         .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
         .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
