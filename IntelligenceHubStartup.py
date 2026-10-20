@@ -113,6 +113,11 @@ def build_ai_client_manager(config: IISConfig):
     logger.info("AI clients count: %s.", len(clients))
     logger.info("AI group limit count: %s.", len(group_limits))
 
+    # 控制面只持有重载器；配置加载失败时旧池不发生任何变化。
+    from AIClientCenter.factory_engine import AIClientConfigReloader
+    client_manager.config_reloader = AIClientConfigReloader(
+        client_manager, ai_config_path, allow_empty=False)
+
     return client_manager
 
 
@@ -594,7 +599,11 @@ def run():
     log_backend.register_router(app=wsgi_app, wrapper=ihub_service.access_manager.login_required)
 
     # 此面板挂在登录保护下；启用手动调用页以便验证指定 API/Harness Client。
-    client_manager_backend = AIDashboardService(client_manager, enable_manual_calls=True)
+    client_manager_backend = AIDashboardService(
+        client_manager,
+        enable_manual_calls=True,
+        config_reloader=getattr(client_manager, 'config_reloader', None),
+    )
     client_manager_backend.mount_to_app(
         app=wsgi_app,
         wrapper=ihub_service.access_manager.login_required,
