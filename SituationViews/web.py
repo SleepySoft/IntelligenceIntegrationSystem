@@ -3,14 +3,67 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import logging
 import re
-from functools import wraps
+from functools import lru_cache, wraps
 from pathlib import Path
+from urllib import request as urlrequest
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, Response, abort, jsonify, render_template, request
 
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, ViewQuery
+
+
+logger = logging.getLogger(__name__)
+
+# 浏览器不直接连接公共 CDN：移动网络、DNS 或代理策略经常只让这些请求失败，
+# 随后的内联代码就会表现为 ``d3 is not defined``。IIS 只代理固定版本、固定摘要
+# 的只读前端资源，并在进程内缓存；客户端仍可使用普通 HTTP 缓存。
+_FRONTEND_ASSETS = {
+    "d3.min.js": (
+        "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+        "application/javascript; charset=utf-8",
+        "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
+        300_000,
+    ),
+    "topojson-client.min.js": (
+        "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+        "application/javascript; charset=utf-8",
+        "25cd02ae486cc5063e0215a4e4cfb15de83700c87ac48bac4d57dc6aaf3ebb89",
+        20_000,
+    ),
+    "countries-110m.json": (
+        "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json",
+        "application/json; charset=utf-8",
+        "2516c915867c7baf18ddec727aec46c315541a07cfb3d79a6559b05d5e94eee8",
+        150_000,
+    ),
+    "countries.json": (
+        "https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json",
+        "application/json; charset=utf-8",
+        "359431fb9475666dfad1ea5e72e53521cef40520f65eecd08e02ba569eb8491b",
+        1_600_000,
+    ),
+}
+
+
+@lru_cache(maxsize=len(_FRONTEND_ASSETS))
+def _load_frontend_asset(asset_name: str) -> bytes:
+    url, _content_type, expected_sha256, maximum_size = _FRONTEND_ASSETS[asset_name]
+    upstream_request = urlrequest.Request(
+        url,
+        headers={"User-Agent": "IIS-SituationViews/1.0"},
+    )
+    with urlrequest.urlopen(upstream_request, timeout=20) as response:
+        payload = response.read(maximum_size + 1)
+    if len(payload) > maximum_size:
+        raise ValueError(f"frontend asset too large: {asset_name}")
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != expected_sha256:
+        raise ValueError(f"frontend asset checksum mismatch: {asset_name}")
+    return payload
 
 
 class SituationViewsService:
@@ -40,6 +93,23 @@ class SituationViewsService:
                 return protected(*args, **kwargs)
 
             return dispatch
+
+        @bp.get("/assets/<asset_name>")
+        def frontend_asset(asset_name):
+            spec = _FRONTEND_ASSETS.get(asset_name)
+            if spec is None:
+                abort(404)
+            try:
+                payload = _load_frontend_asset(asset_name)
+            except Exception:
+                logger.exception("态势视图前端资源加载失败：%s", asset_name)
+                return Response("frontend asset unavailable", status=502,
+                                content_type="text/plain; charset=utf-8")
+            response = Response(payload, content_type=spec[1])
+            response.set_etag(spec[2])
+            response.cache_control.public = True
+            response.cache_control.max_age = 7 * 24 * 60 * 60
+            return response.make_conditional(request)
 
         @bp.get("/embed/map")
         @embed_protect

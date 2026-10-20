@@ -433,6 +433,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
+    assert 'src="/situation/assets/d3.min.js"' in embedded_html
+    assert 'src="/situation/assets/topojson-client.min.js"' in embedded_html
+    assert 'const WORLD_URL = "/situation/assets/countries-110m.json"' in embedded_html
+    assert 'const COUNTRIES_URL = "/situation/assets/countries.json"' in embedded_html
+    assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html
     assert embedded_html.index("const labels = root.append('g')") < embedded_html.index(
@@ -449,6 +454,29 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert intelligence_payload.get_json()["intelligences"][0]["uuid"] == "a"
     assert location_payload.status_code == 200
     assert location_payload.get_json()["locations"][0]["name"] == "基辅"
+
+
+def test_frontend_assets_are_same_origin_cached_and_allowlisted(monkeypatch):
+    from flask import Flask
+    import SituationViews.web as web_module
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    monkeypatch.setattr(web_module, "_load_frontend_asset",
+                        lambda asset_name: f"asset:{asset_name}".encode())
+    app = Flask(__name__)
+    SituationViewsService(Registry()).mount_to_app(app, url_prefix="/situation")
+    client = app.test_client()
+
+    response = client.get("/situation/assets/d3.min.js")
+    assert response.status_code == 200
+    assert response.data == b"asset:d3.min.js"
+    assert response.headers["Cache-Control"] == "public, max-age=604800"
+    assert response.headers["Content-Type"] == "application/javascript; charset=utf-8"
+    assert client.get("/situation/assets/not-allowed.js").status_code == 404
 
 
 def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):

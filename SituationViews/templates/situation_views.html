@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }} · 态势洞察</title>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <script src="{{ url_for('situation_views.frontend_asset', asset_name='d3.min.js') }}"></script>
+    <script src="{{ url_for('situation_views.frontend_asset', asset_name='topojson-client.min.js') }}"></script>
     <style>
         :root {
             color-scheme: light dark;
@@ -261,8 +261,8 @@ const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
 const selectedEntityTypes = new Set(ALL_ENTITY_TYPES);
 const SUBSYSTEMS = {{ subsystems|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
-const WORLD_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
-const COUNTRIES_URL = 'https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json';
+const WORLD_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries-110m.json')|tojson }};
+const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries.json')|tojson }};
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null;
@@ -1012,7 +1012,12 @@ document.querySelectorAll('.side-toggle').forEach(button => button.addEventListe
     button.textContent = collapsed ? '展开图例' : '收起图例';
 }));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
-if (DASHBOARD_VIEW === 'graph') refreshGraph();
+if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
+    const dependency = typeof d3 === 'undefined' ? 'D3' : 'TopoJSON';
+    const status = DASHBOARD_VIEW === 'graph' ? $('graph-status') : $('map-status');
+    status.textContent = `可视化组件 ${dependency} 加载失败，请刷新页面重试。`;
+    status.classList.add('show');
+} else if (DASHBOARD_VIEW === 'graph') refreshGraph();
 else refreshMap();
 </script>
 </body>
