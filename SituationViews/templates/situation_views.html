@@ -652,15 +652,30 @@ function filterGraphData() {
     }
     const sizes = new Map();
     nodes.forEach(n => sizes.set(find(n.id), (sizes.get(find(n.id)) || 0) + 1));
-    const keep = new Set(nodes.filter(n => sizes.get(find(n.id)) >= componentMinSize).map(n => n.id));
+    // 零度点（印证过滤后无边的节点）不是网络，任何规模下限下都隐藏
+    const degree = new Map();
+    for (const e of edges) {
+        degree.set(e.source, (degree.get(e.source) || 0) + 1);
+        degree.set(e.target, (degree.get(e.target) || 0) + 1);
+    }
+    const keep = new Set(nodes
+        .filter(n => sizes.get(find(n.id)) >= componentMinSize && (degree.get(n.id) || 0) > 0)
+        .map(n => n.id));
     const fNodes = nodes.filter(n => keep.has(n.id));
     const fEdges = edges.filter(e => keep.has(e.source) && keep.has(e.target));
     const noteEl = $('graph-filter-note');
     if (noteEl) {
-        const hiddenNets = new Set(nodes.map(n => find(n.id))).size - new Set(fNodes.map(n => find(n.id))).size;
-        noteEl.textContent = (supportMin > (DASHBOARD_PROFILE.min_support || 1) || componentMinSize > 1)
-            ? `前端过滤中：已隐藏 ${hiddenNets} 个小网络、${graphData.edges.length - fEdges.length} 条弱边`
-            : '';
+        const isolated = nodes.filter(n => (degree.get(n.id) || 0) === 0).length;
+        // 有边但规模未达标的小网络（与孤立点不重复计数）
+        const smallNets = new Set(nodes
+            .filter(n => sizes.get(find(n.id)) < componentMinSize && (degree.get(n.id) || 0) > 0)
+            .map(n => find(n.id))).size;
+        const hiddenEdges = graphData.edges.length - fEdges.length;
+        const parts = [];
+        if (smallNets > 0) parts.push(`${smallNets} 个小网络`);
+        if (isolated > 0) parts.push(`${isolated} 个孤立点`);
+        if (hiddenEdges > 0) parts.push(`${hiddenEdges} 条弱边`);
+        noteEl.textContent = parts.length ? `前端过滤中：已隐藏 ${parts.join('、')}` : '';
     }
     return {nodes: fNodes, edges: fEdges};
 }
