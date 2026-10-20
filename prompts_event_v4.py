@@ -23,6 +23,7 @@ from ServiceComponent.IntelligenceHubDefines_v4 import (
 )
 from ServiceComponent.intelligence_contracts import NonIntelligenceReason
 from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
+from prompts_event_v49 import EVENT_ANALYSIS_PROMPT_V49, build_event_v49_prompt
 
 EXTRACTION_MODE_FULL = "full"
 EXTRACTION_MODE_CORE_SUBSET = "core_subset"
@@ -312,6 +313,7 @@ assert '"normalized":"2026-10-17","surface":"原文时间"' in EVENT_ANALYSIS_PR
 
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
 # v48（v47 缓存布局 + 最小时间契约）为当前生产版本；
+# v49 独立组合精简章节、公共角色与 Frame 分组，沿用 v48 协议，先作为对照候选；
 # v47 保留为旧时间契约的回滚/缓存对照版本；
 # v46 保留为同业务契约、旧消息布局的回滚/缓存对照版本；
 # v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
@@ -382,6 +384,9 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     catalog = PromptCatalog()
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
+    catalog.register_prompt(
+        49, build_event_v49_prompt(registry),
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)
     catalog.register_prompt(
         48, EVENT_ANALYSIS_PROMPT_V48,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=True)

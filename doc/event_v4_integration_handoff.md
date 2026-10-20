@@ -1,6 +1,6 @@
 # Event V4 生产契约
 
-更新时间：2026-10-11
+更新时间：2026-10-20
 
 ## 当前结论
 
@@ -28,8 +28,13 @@ CollectedData
 `TIME`、`LOCATION`、`PEOPLE`、`ORGANIZATION`；这些字段在归档时从
 `EVENT_EXTRACTION` 派生。`GEOGRAPHY` 已删除。
 
-生产 Prompt 当前版本为 `v41`。它明确要求六维 `RATE`、V2 扁平顶层，并从
-Event Engine 的 Registry/Prompt 生成器注入事件字段、Frame、角色、时间和关系规则。
+生产 Prompt 当前版本为 `v48`：固定 system + 动态 user，模型输出核心事件子集、
+六维 RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完整事件契约和
+数字评分。低价值输出另需 `NON_INTELLIGENCE_REASON` 原因码。
+
+`v49` 是独立构建的精简候选，按命名章节直接组合，不从历史 Prompt 派生；
+完整保留 Registry 目录及评级规则，与 v48 共用校验协议，暂为 `sampling=False`。
+构建路径、规则对照与验证见 [v49 精简记录](20261020_prompt_v49_compaction.md)。
 
 ## 归档文档
 

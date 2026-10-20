@@ -8,10 +8,12 @@ from .models import (
     validate_event_extraction,
 )
 from .prompt import (
+    build_compact_predicate_catalog,
     build_event_extraction_prompt,
     build_event_extraction_section,
     build_predicate_catalog,
 )
+from .compact_prompt import build_compact_core_extraction_section
 from .subset import (
     CoreExtractionSubset,
     SubsetEntity,
@@ -32,6 +34,8 @@ __all__ = [
     "build_event_extraction_prompt",
     "build_event_extraction_section",
     "build_predicate_catalog",
+    "build_compact_predicate_catalog",
+    "build_compact_core_extraction_section",
     "CoreExtractionSubset",
     "SubsetEntity",
     "SubsetEvent",

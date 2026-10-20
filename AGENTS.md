@@ -49,6 +49,7 @@
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
 | `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：基于 `ServiceComponent.prompt_protocols` 的协议族机制，prompt 版本绑定协议（前处理/后处理/校验链）并声明是否参与生产抽样 |
+| `prompts_event_v49.py` | v49 精简候选的独立构建入口：直接组合命名章节与权威词表，不读取或改写旧版 Prompt；与 v48 共用输出协议，暂不参与生产抽样 |
 
 ### 3.2 主要子目录
 
@@ -269,6 +270,9 @@ python VectorDB/VectorDBBService.py \
 - Prompt 前缀缓存、V48 生产消息布局、无损校验归一化、Client 能力分层和异步 Batch 的
   调查结论见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；V48 已启用，文档中
   标为后续方向的能力不得视为现有运行能力。
+- v49 将公共可选角色与完整 Frame 分组展示，完整保留谓词定义、评级词表和输出协议；
+  独立构建、不从历史 Prompt 派生，注册为 `sampling=False` 供人工调试/对照。
+  生产仍为 v48；规则对照、长度与验证见 `doc/20261020_prompt_v49_compaction.md`。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）

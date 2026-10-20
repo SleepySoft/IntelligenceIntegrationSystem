@@ -26,6 +26,43 @@ def build_predicate_catalog(registry) -> str:
     return "\n".join(lines)
 
 
+def build_compact_predicate_catalog(registry) -> str:
+    """按完整 Frame 分组、提取公共可选角色；不删减 Registry 的任何目录信息。
+
+    只提取所有谓词共有且均非必填的角色，避免把某一谓词的必填条件推广到全局。
+    分组键保留 allowed_frames 的顺序，因为核心子集桥接使用第一个 Frame。
+    """
+    items = list(registry.items())
+    if not items:
+        return "（无已登记谓词；使用开放谓词。）"
+    common_roles = set.intersection(*(
+        set(spec.role_groups) - set(spec.required_roles) for _, spec in items
+    ))
+    groups: dict[tuple[str, ...], list[str]] = {}
+    for predicate_id, spec in items:
+        frames = spec.allowed_frames or ((spec.frame,) if spec.frame is not None else ())
+        frame_key = tuple(_format_frame(frame) for frame in frames)
+        roles = ",".join(
+            f"{role}{'+' if role in spec.required_roles else '?'}"
+            for role in sorted(set(spec.role_groups) - common_roles)
+        ) or "无"
+        label = spec.label or predicate_id
+        definition = spec.definition or label
+        groups.setdefault(frame_key, []).append(
+            f"- {predicate_id} | {label} | {definition} | roles={roles}"
+        )
+    lines = [
+        "公共可选角色：" + (",".join(sorted(common_roles)) or "无"),
+        "每个谓词的允许角色为公共角色与该行 roles 的并集；"
+        "+ 表示必填，? 表示可选，roles=无表示没有额外角色。",
+        "每组标题列出组内谓词的完整 Frame（dynamics/topology/agency）；"
+        "多个 Frame 按目录顺序以 | 分隔。列格式：ID | 名称 | 定义 | roles。",
+    ]
+    for frames, rows in groups.items():
+        lines.extend(("", "### FRAME=" + (" | ".join(frames) or "open"), *rows))
+    return "\n".join(lines)
+
+
 def _build_qualifier_catalog(registry) -> str:
     values: dict[str, set[str]] = {
         key: set(items) for key, items in NON_LIFECYCLE_QUALIFIER_VALUES.items()
