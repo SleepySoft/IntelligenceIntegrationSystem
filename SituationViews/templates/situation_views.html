@@ -214,6 +214,11 @@
                     <label><span><input id="keep-singletons" type="checkbox" checked> 保留高评分单次关系</span></label>
                 </div>
                 <div id="graph-summary"></div>
+                <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
+                    <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="2" style="width:52px"> 个节点</label>
+                    <label>印证 ≥ <input id="graph-support-min" type="number" min="1" max="20" value="2" style="width:52px"> 起独立事件</label>
+                    <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
+                </div>
                 <div class="legend" id="graph-legend"></div>
             </aside>
             <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
@@ -626,12 +631,45 @@ async function refreshGraph() {
     $('graph-status').classList.remove('show');
 }
 
+// 前端过滤层：后端按配置出全量节点/边，前端再按“印证”与“连通网规模”过滤。
+// 印证下限 = 配置值（DASHBOARD_PROFILE.min_support），默认 2 且不得低于配置值；
+// 网络规模下限 = componentMinSize（只显示规模达到该值的连通网络）。
+let componentMinSize = 2, graphSupportMin = Math.max(2, DASHBOARD_PROFILE.min_support || 1);
+
+function filterGraphData() {
+    const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+    const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({...d}));
+    const nodes = graphData.nodes.map(d => ({...d}));
+    // 并查集求连通分量
+    const parent = new Map(nodes.map(n => [n.id, n.id]));
+    const find = x => {
+        while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); }
+        return x;
+    };
+    for (const e of edges) {
+        const a = find(e.source), b = find(e.target);
+        if (a !== b) parent.set(a, b);
+    }
+    const sizes = new Map();
+    nodes.forEach(n => sizes.set(find(n.id), (sizes.get(find(n.id)) || 0) + 1));
+    const keep = new Set(nodes.filter(n => sizes.get(find(n.id)) >= componentMinSize).map(n => n.id));
+    const fNodes = nodes.filter(n => keep.has(n.id));
+    const fEdges = edges.filter(e => keep.has(e.source) && keep.has(e.target));
+    const noteEl = $('graph-filter-note');
+    if (noteEl) {
+        const hiddenNets = new Set(nodes.map(n => find(n.id))).size - new Set(fNodes.map(n => find(n.id))).size;
+        noteEl.textContent = (supportMin > (DASHBOARD_PROFILE.min_support || 1) || componentMinSize > 1)
+            ? `前端过滤中：已隐藏 ${hiddenNets} 个小网络、${graphData.edges.length - fEdges.length} 条弱边`
+            : '';
+    }
+    return {nodes: fNodes, edges: fEdges};
+}
+
 function renderGraph() {
     const svg = d3.select('#graph-svg');
     svg.selectAll('*').remove();
     const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
-    const nodes = graphData.nodes.map(d => ({...d}));
-    const edges = graphData.edges.map(d => ({...d}));
+    const {nodes, edges} = filterGraphData();
     const defs = svg.append('defs');
     defs.append('marker').attr('id','arrow').attr('viewBox','0 -6 12 12').attr('refX',10).attr('refY',0)
         .attr('markerWidth',12).attr('markerHeight',12).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
@@ -931,6 +969,21 @@ $('graph-role-filters').addEventListener('click', event => {
     loadGraphIntelligences(false);
 });
 $('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
+// 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
+$('component-min-size').value = componentMinSize;
+$('component-min-size').addEventListener('change', e => {
+    componentMinSize = Math.max(1, parseInt(e.target.value) || 1);
+    renderGraph();
+});
+const _supportInput = $('graph-support-min');
+_supportInput.min = DASHBOARD_PROFILE.min_support || 1;
+_supportInput.value = graphSupportMin;
+_supportInput.addEventListener('change', e => {
+    const floor = DASHBOARD_PROFILE.min_support || 1;
+    graphSupportMin = Math.max(floor, parseInt(e.target.value) || floor);
+    e.target.value = graphSupportMin;
+    renderGraph();
+});
 // 复选框在图例 innerHTML 里，节点/边详情会重建侧栏 → 用事件代理保证监听存活
 document.addEventListener('change', e => {
     if (e.target.id !== 'show-all-edge-labels') return;
