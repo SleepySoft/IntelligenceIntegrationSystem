@@ -3,6 +3,7 @@
 # 通用可选字段（所有工厂适用）：
 #   tags: [low_sensitivity, strong, ...]   # 能力/敏感性标签，不传给工厂，由引擎挂载；
 #                                          # IIS 内容安全被拒时会优先换 low_sensitivity 客户端兜底
+#   availability: {...}                   # 外部调度时间窗，不传给工厂且不改变 Client 健康状态
 clients:
   # Any OpenAI-compatible endpoint can use the generic factory.
   # - factory: openai_compatible
@@ -24,6 +25,14 @@ clients:
     enable: true
     mode: stateless
     sandbox: read-only
+    # 可选外部调度时间窗：白天留给人工使用，IIS 只在北京时间 22:00—次日 07:00 分配。
+    availability:
+      timezone: Asia/Shanghai
+      mode: available            # available=仅窗口内可用；unavailable=仅窗口内禁用
+      periods:
+        - days: [mon, tue, wed, thu, fri, sat, sun]
+          start: "22:00"
+          end: "07:00"
     # Codex app-server 的订阅窗口快照会持久化到 SQLite；达到阈值后通过
     # AIClientManager 的预算准入接口停止分配，给人工/管理使用保留额度。
     usage_guard:
