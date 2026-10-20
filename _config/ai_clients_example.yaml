@@ -25,14 +25,10 @@ clients:
     enable: true
     mode: stateless
     sandbox: read-only
-    # 可选外部调度时间窗：白天留给人工使用，IIS 只在北京时间 22:00—次日 07:00 分配。
+    # 可选外部调度时间窗：白天留给人工使用，IIS 只在本地时间 22:00—次日 07:00 分配。
+    # timezone 可选；省略时启动/重载 warning 会确认实际采用的系统本地时区。
     availability:
-      timezone: Asia/Shanghai
-      mode: available            # available=仅窗口内可用；unavailable=仅窗口内禁用
-      periods:
-        - days: [mon, tue, wed, thu, fri, sat, sun]
-          start: "22:00"
-          end: "07:00"
+      available: "22:00-07:00"  # 或 unavailable: "07:00-22:00"
     # Codex app-server 的订阅窗口快照会持久化到 SQLite；达到阈值后通过
     # AIClientManager 的预算准入接口停止分配，给人工/管理使用保留额度。
     usage_guard:
