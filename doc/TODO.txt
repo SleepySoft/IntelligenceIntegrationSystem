@@ -56,3 +56,13 @@
 
 加入NHK新闻 - Done
 
+
+
+20261019 后续重构（待办）：
+    子系统目录统一收拢到 SubSystem/
+        现状：VectorIntelligence/ EntityAlias/ SituationViews/ IntelligenceViews/
+              BatchAnalysis/ 平铺在项目根目录，逻辑已统一（optional_subsystems.* 配置 +
+              iis_integration 装配入口），物理散装
+        时机：子系统数量继续增长（8+）时再做，收益仅观感，当前不搬
+        迁移原则：只移包、不动 URL 和配置键；先加 SubSystem/x 别名导入层过渡，再删旧路径
+        注意：VectorDB 是独立 git 子模块，不动
