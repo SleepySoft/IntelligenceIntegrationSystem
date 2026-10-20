@@ -1,9 +1,9 @@
-"""批量分析服务（Provider Batch 通道）的单元测试。"""
+"""批量分析子系统（Provider Batch 通道）的单元测试。"""
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from ServiceComponent.analysis_batch import BatchAnalysisService
+from BatchAnalysis.service import BatchAnalysisService
 from ServiceComponent.pipeline import ARCHIVE_REQUESTED
 
 
@@ -83,6 +83,7 @@ def _service(tmp_path, records):
     ports = FakePorts()
     service = BatchAnalysisService(
         FakeRegistry(ctx), ports,
+        base_url="https://batch.test/v1", model="test-model",
         api_key="sk-test", db_path=tmp_path / "batch.db",
         poll_interval_sec=9999)
     return service, ports

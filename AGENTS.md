@@ -80,6 +80,12 @@
   - `UserManager.py`：用户认证管理（SQLite）
   - `PostManager.py` / `RSSPublisher.py`：文章发布与 RSS 生成
 
+- **`BatchAnalysis/`** — 批量分析子系统（可整体禁用）
+  - `service.py`：把 R 状态未超龄积压提交 Provider Batch API（凌晨空闲、半价），完成后同协议链校验并经 `prepare_analysis_outcome` 公共后段回注归档；与实时主链共享 prompt 目录/消息构造/校验/归档后段，Batch 只换 AI 调用通道
+  - `config.py`：`optional_subsystems.batch_analysis` 配置读取（enabled/model/lookback_days/max_items/poll_interval_sec）
+  - `web.py`：`/api/control/batch_analysis` 端点；`iis_integration.py`：两阶段装配（HubApplication 前创建服务注入扩展，hub_service 后挂 Web）
+  - job/item 状态持久化 `_data/analysis_batch.db`，重启续轮询、回注幂等；启用需 `ai_clients.yaml` 有 MiMo key
+
 - **`VectorIntelligence/`** — 向量情报子系统（低耦合，可整体禁用）
   - `extension.py`：向量索引 Hub 扩展（订阅 `archive.completed` / `extension.translation.completed`，自有队列与后台线程，翻译等待基于 `text_language.needs_translation` 自判）
   - `vector_engine.py` / `aggregation.py` / `graph.py`：向量检索、情报聚合、动态图谱引擎
@@ -259,7 +265,6 @@ python VectorDB/VectorDBBService.py \
 - HTTP 400（敏感词/参数错误）视为**不可重试**，标记为 `ARCHIVED_FLAG_SENSITIVE`——但会**先换一次带 `low_sensitivity` 标签的客户端兜底一次**（`_config/ai_clients.yaml` 条目可配 `tags: [low_sensitivity]`），兜底也拒绝才终态；`strong` 等标签预留给能力分层
 - 其他错误标记为 `ARCHIVED_FLAG_ERROR`
 - **IIS 侧效果统计**（`ServiceComponent/analysis_stats.py`）：每次调用与每件终态持久化到 `_data/analysis_stats.db`（模型×prompt版本 的成功率/首过率/敏感率/错误分布/延迟），与 AIClientCenter 观测库分工（那边管客户端健康）；离线报告用 `Scripts/analysis_model_report.py`
-- **批量分析**（`ServiceComponent/analysis_batch.py`，`hub.batch_analysis.enabled=true` 启用）：把 R 状态未超龄积压提交 Provider Batch API（凌晨空闲、半价），完成后同协议链校验并经 `prepare_analysis_outcome` 公共后段回注归档——与实时主链共享 prompt 目录/消息构造/校验/归档，Batch 只换 AI 调用通道；job/item 状态持久化 `_data/analysis_batch.db`，重启续轮询、回注幂等；手动触发 `POST /api/control/batch_analysis`（控制面板有按钮）
 - Client 标签通道：`ai_clients.yaml` 条目级 `tags` 列表 → 工厂引擎挂载到 `client.tags`；`AIClientManager.wait_for_available_client(required_tags=...)` 按标签过滤；校验失败的 ClientCenter 反馈已带 `error_class` 标签
 - Prompt 前缀缓存、V48 生产消息布局、无损校验归一化、Client 能力分层和异步 Batch 的
   调查结论见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；V48 已启用，文档中

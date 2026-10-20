@@ -53,6 +53,11 @@ optional_subsystems:
   intelligence_views:
     enabled: true
     public_access: true  # 公开 /views 及其固定范围只读数据；非 scoped 态势 API 仍需登录
+  # batch_analysis:              # 批量分析子系统（Provider Batch，凌晨空闲半价回注积压）
+  #   enabled: false             # 启用需 ai_clients.yaml 中有 MiMo key
+  #   model: mimo-v2.6-flash
+  #   lookback_days: 7           # 只提交未超龄的积压
+  #   max_items: 500
   entity_alias:
     enabled: true
     url_prefix: /entity-alias

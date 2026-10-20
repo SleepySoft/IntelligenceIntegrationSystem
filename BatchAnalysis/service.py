@@ -1,16 +1,14 @@
-"""IIS 批量分析服务：积压情报经 Provider Batch API（凌晨空闲、半价）分析与回注。
+"""批量分析子系统：积压情报经 Provider Batch API（凌晨空闲、半价）分析与回注。
 
-与实时主链共用全部领域机制：prompt 目录、消息构造、协议校验、归档后段
-（prepare_analysis_outcome），Batch 只是换了一条 AI 调用通道。
+设计约束（解耦）：
+- 不 import 任何 ServiceComponent 管线实现；只依赖窄接口（见模块尾部 Protocol 注释）：
+  * subsystem_registry：enabled_subsystems() 提供 cache 访问；
+  * outcome_port：prompt 目录 / 协议 / prepare_analysis_outcome / archive repository；
+  * runtime：只用来发 ARCHIVE_REQUESTED。
+- 与实时主链的关系：只“借道”其领域机制（prompt/消息构造/校验/归档后段），
+  自身持有独立的任务状态（SQLite）、HTTP 客户端和轮询线程，可整体禁用。
 
-流程：
-  手动触发（/api/control/batch_analysis）
-    → 收集 cache 中 R 状态且未超龄的记录 → 构建 JSONL → 上传 + 创建 batch
-    → 后台轮询（凌晨 1-8 点由 Provider 执行）
-    → 完成后下载结果 → 同协议链校验 → prepare_analysis_outcome → 发 ARCHIVE_REQUESTED
-       （归档与下游订阅与实时路径完全一致；intake 去重不经过，因为记录本就在 cache）
-
-幂等：job 与 item 状态持久化在 SQLite，重启后轮询续接；已归档的记录注入前再查一次。
+流程：手动触发 → 构建 JSONL → 上传+创建 batch → 轮询 → 校验 → 回注归档。
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ import json
 import logging
 import sqlite3
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -30,8 +27,10 @@ from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://batch-api-cn.xiaomimimo.com/v1"
-DEFAULT_MODEL = "mimo-v2.6-flash"  # batch 要求小写模型名
+# outcome_port 需要满足（duck typing，由 Hub 的 EventV4PipelinePorts 直接满足）：
+#   ._prompt_catalog          PromptCatalog（sampling_table/protocol_for）
+#   .prepare_analysis_outcome(ctx, original_data, analysis, **kwargs) -> StageResult
+#   ._require_archive_repository(ctx)
 
 
 class BatchAnalysisService(HubPlugin):
@@ -47,15 +46,14 @@ class BatchAnalysisService(HubPlugin):
         " job_id TEXT, uuid TEXT, status TEXT, PRIMARY KEY (job_id, uuid));"
     )
 
-    def __init__(self, subsystem_registry: Any, pipeline_ports: Any, *,
-                 base_url: str = DEFAULT_BASE_URL, model: str = DEFAULT_MODEL,
-                 api_key: str = "", db_path: str | Path,
-                 lookback_days: int = 7, max_items: int = 500,
-                 poll_interval_sec: float = 300):
+    def __init__(self, subsystem_registry: Any, outcome_port: Any, *,
+                 base_url: str, model: str, api_key: str,
+                 db_path: str | Path, lookback_days: int = 7,
+                 max_items: int = 500, poll_interval_sec: float = 300):
         if not api_key:
             raise ValueError("Batch 分析需要 api_key")
         self.registry = subsystem_registry
-        self.ports = pipeline_ports
+        self.ports = outcome_port
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key
@@ -132,8 +130,6 @@ class BatchAnalysisService(HubPlugin):
             for record in list(cursor)[:cap - len(items)]:
                 record.pop("_id", None)
                 items.append((ctx, record))
-                if len(items) >= cap:
-                    break
         if not items:
             return {"submitted": False, "reason": "no_backlog"}
 

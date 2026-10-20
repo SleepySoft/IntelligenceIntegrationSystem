@@ -104,8 +104,6 @@ class HubSettings(_StrictModel):
     max_analysis_age_hours: float = Field(0, ge=0)
     # 未处理记录回放顺序：True = 新的优先（冷启动先消化新情报），False = 按入库顺序。
     replay_newest_first: bool = True
-    batch_analysis: BatchAnalysisSettings = Field(
-        default_factory=BatchAnalysisSettings)
     subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings)
 
 
@@ -201,6 +199,7 @@ class OptionalSubsystemSettings(_StrictModel):
     intelligence_views: IntelligenceViewsSettings = Field(
         default_factory=IntelligenceViewsSettings)
     entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings)
+    batch_analysis: BatchAnalysisSettings = Field(default_factory=BatchAnalysisSettings)
 
 
 class AccessSettings(_StrictModel):
@@ -321,7 +320,6 @@ class IISConfig:
                 "max_live_age_hours": settings.hub.max_live_age_hours,
                 "max_analysis_age_hours": settings.hub.max_analysis_age_hours,
                 "replay_newest_first": settings.hub.replay_newest_first,
-                "batch_analysis": settings.hub.batch_analysis.model_dump(),
                 "shadow_analysis": {
                     "enabled": bool(settings.hub.shadow_versions),
                     "versions": settings.hub.shadow_versions,
@@ -428,6 +426,7 @@ class IISConfig:
                     "langs": optional_subsystems.entity_alias.wikidata.langs,
                 },
             },
+            "batch_analysis": optional_subsystems.batch_analysis.model_dump(),
             "ai_client_center": {
                 "sqlite_db_file": "ai_client_state_log.db",
                 "heartbeat_interval_sec": 30,
