@@ -463,7 +463,7 @@ class SituationViewEngine:
             "max_edges": max_edges,
             "high_score_singleton_cutoff": high_score_cutoff if keep_high_score_singletons else None,
             "identity_mode": (
-                "entity_ref_resolution_with_legacy_fallback"
+                "entity_ref_resolution_with_surface_fallback"
                 if self.entity_resolver or self.entity_registry
                 else "normalized_name_type_country_with_unique_country_fill"
             ),
@@ -656,7 +656,7 @@ class SituationViewEngine:
                         "surface": str(entity.get("name") or "").strip(),
                         "type": str(entity.get("type") or "other"),
                         "country_code": entity.get("country_code"),
-                        "identity_kind": str(entity.get("_identity_kind") or "unresolved"),
+                        "identity_kind": str(entity.get("_identity_kind") or "surface"),
                         "identity_method": entity.get("_identity_method"),
                         "decision_id": entity.get("_decision_id"),
                         "target_id": entity.get("_target_id"),
@@ -703,6 +703,14 @@ class SituationViewEngine:
                 continue
             for values in (event.get("roles") or {}).values():
                 for entity in values or ():
+                    # Fake/in-memory repositories may reuse nested dictionaries between
+                    # queries. Always clear the non-persistent projection annotations.
+                    for field in (
+                        "_graph_id", "_identity_method", "_target_id", "_decision_id",
+                        "_display_name", "_identity_type", "_entity_ref", "_entity_ref_key",
+                    ):
+                        entity.pop(field, None)
+                    entity["_identity_kind"] = "surface"
                     local_id = str(entity.get("local_entity_id") or "").strip()
                     if not re.fullmatch(r"ENT[1-9][0-9]*", local_id):
                         continue
@@ -714,8 +722,6 @@ class SituationViewEngine:
                     ref_key = f"{self.subsystem}:{article_uuid}:{local_id}"
                     entity["_entity_ref"] = ref
                     entity["_entity_ref_key"] = ref_key
-                    entity["_graph_id"] = f"unresolved:{ref_key}"
-                    entity["_identity_kind"] = "unresolved"
                     entities_by_ref[ref_key].append(entity)
                     if len(entities_by_ref[ref_key]) == 1:
                         requests.append({
@@ -730,7 +736,7 @@ class SituationViewEngine:
             try:
                 resolved = self.entity_resolver.resolve_many(requests)
             except Exception:
-                logger.warning("实体图批量解析失败，未解析节点保持独立。", exc_info=True)
+                logger.warning("实体图批量解析失败，未解析节点退回名称投影。", exc_info=True)
         elif requests and self.entity_registry is not None:
             for request in requests:
                 try:

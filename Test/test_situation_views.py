@@ -261,7 +261,7 @@ def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
     assert result["meta"]["inferred_country_node_count"] == 0
 
 
-def test_entity_graph_keeps_unresolved_same_surface_refs_separate():
+def test_entity_graph_temporarily_merges_unresolved_same_surface_refs():
     now = datetime.now(timezone.utc)
     first = _attack("e1", "a", "示威者", "政府")
     second = _attack("e2", "b", "示威者", "政府")
@@ -280,11 +280,47 @@ def test_entity_graph_keeps_unresolved_same_surface_refs_separate():
     )
 
     protesters = [item for item in result["nodes"] if item["name"] == "示威者"]
-    assert len(protesters) == 2
-    assert {item["id"] for item in protesters} == {
-        "unresolved:news:a:ENT1", "unresolved:news:b:ENT1"}
-    assert all(item["identity_kind"] == "unresolved" for item in protesters)
-    assert all(item["reference_count"] == 1 for item in protesters)
+    assert len(protesters) == 1
+    assert protesters[0]["id"] == "organization|RU|示威者"
+    assert protesters[0]["identity_kind"] == "surface"
+    assert protesters[0]["reference_count"] == 2
+    assert result["edges"][0]["support"] == 2
+
+
+def test_entity_graph_manual_assignment_splits_ref_from_surface_group():
+    now = datetime.now(timezone.utc)
+    first = _attack("e1", "a", "示威者", "政府")
+    second = _attack("e2", "b", "示威者", "政府")
+    for event in (first, second):
+        event["roles"]["actor"][0]["local_entity_id"] = "ENT1"
+        event["roles"]["target"][0]["local_entity_id"] = "ENT2"
+
+    class Resolver:
+        @staticmethod
+        def resolve_many(values):
+            return {
+                "news:a:ENT1": {
+                    "kind": "contextual", "target_id": "ctx_fr_protesters",
+                    "name": "法国示威者", "type": "organization",
+                },
+            }
+
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
+        subsystem="news", entity_resolver=Resolver(),
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+    )
+
+    actors = [item for item in result["nodes"] if item["name"] in {"示威者", "法国示威者"}]
+    assert {item["id"] for item in actors} == {
+        "organization|RU|示威者", "ctx_fr_protesters",
+    }
+    assert {item["identity_kind"] for item in actors} == {"surface", "contextual"}
 
 
 def test_entity_graph_naturally_merges_refs_assigned_to_same_targets():

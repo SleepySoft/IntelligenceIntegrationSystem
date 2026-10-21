@@ -896,12 +896,12 @@ function renderGraph() {
     $('graph-summary').innerHTML = `<div class="meta">
         <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
         <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
-        <div class="warning">实体按稳定引用解析；尚未指定的实体保持独立，指向同一全局或语境实体后自然汇聚。</div>`;
+        <div class="warning">未指定实体按名称、类型和国家临时连接；人工指定到全局或语境实体后，以指定身份优先，可拆分同名误合并节点。</div>`;
     if (selectedGraphElement) updateGraphSelectionStyles();
 }
 
 function graphSearchText(node) {
-    const identityLabels = {global: '全局实体', contextual: '语境实体', unresolved: '尚未指定', legacy: '旧索引节点'};
+    const identityLabels = {global: '全局实体', contextual: '语境实体', surface: '按名称暂合并', unresolved: '尚未指定', legacy: '旧索引节点'};
     const surfaces = (node.surfaces || []).map(item => item.name);
     return [node.name, node.id, node.target_id, node.type, ENTITY_LABELS[node.type], node.country_code,
         identityLabels[node.identity_kind], ...surfaces].filter(Boolean).join('\n').toLocaleLowerCase();
@@ -1118,7 +1118,7 @@ async function loadGraphIntelligences(append) {
 }
 function showNodeDetail(d) {
     const detail = $('graph-selection-detail');
-    const identityLabels = {global: '全局实体', contextual: '语境实体', unresolved: '尚未指定', legacy: '旧索引节点'};
+    const identityLabels = {global: '全局实体', contextual: '语境实体', surface: '按名称暂合并', unresolved: '尚未指定', legacy: '旧索引节点'};
     const wiki = d.wiki_name ? `<div class="wiki-links">
         <a target="_blank" rel="noopener" href="https://baike.baidu.com/search/word?word=${encodeURIComponent(d.wiki_name)}">百度百科</a>
         <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?search=${encodeURIComponent(d.wiki_name)}">Wikipedia</a>

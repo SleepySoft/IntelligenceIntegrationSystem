@@ -115,6 +115,7 @@
   - `store.py`：MongoDB 分开保存全局解析、语境实体、语境解析和审计，避免泛称污染全局固定别名
   - `iis_integration.py`：按子系统装配并注入态势实体图；模块失败时 IIS 主服务和只读图继续运行
   - `Scripts/rebuild_entity_reference_index.py`：从权威归档重建带 `local_entity_id` 的事件索引，默认 dry-run，`--apply` 写入
+  - 实体图中未解析 ref 按“名称 + 类型 + 国家”临时连接（不持久化）；人工指定的 `ent_*`/`ctx_*` 优先，可把同名误合并 ref 拆到不同标准实体
   - 登录用户可把图的网络规模设为 1，逐个选择节点、搜索/新建并指定目标；多个引用指向同一 ID 后图节点自然汇聚
   - 设计与实施说明：`doc/20261021_entity_identity_resolution_and_wiki_design.md`、`doc/20261021_entity_resolution_implementation_plan.md`
 
