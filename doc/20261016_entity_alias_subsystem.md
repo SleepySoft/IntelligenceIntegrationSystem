@@ -4,6 +4,9 @@
 > 状态：已实施（含 Wikidata 在线建议源与查询时别名展开）
 > 模块：`EntityAlias/`；IIS 配置挂在 `optional_subsystems.entity_alias` 下
 
+> 后续设计：本文描述已实施的确定性别名能力；依赖情报 ref 的歧义专名解析、泛指实体、
+> 实体 Wiki 与人工合并方案见 `doc/20261021_entity_identity_resolution_and_wiki_design.md`。
+
 ---
 
 ## 1. 定位与架构
