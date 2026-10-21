@@ -297,12 +297,17 @@ UsageRef = EntityRef + event_uuid + role + position
 ## 10. 实体外部百科（当前范围）
 
 当前不建设本地实体 Wiki，以免分散实体解析与关系图治理的开发精力。对于已经解析到
-`ent_*` 的节点，直接用标准名拼接外部搜索链接：
+外部跳转的语义是“按当前名称搜索背景资料”，不是已经核验过的实体主页，因此所有具有非空
+显示名的节点都可以使用：`ent_*` 优先采用标准名，`ctx_*` 和未归一节点采用当前显示名。
+界面提供：
 
-- 百度百科：`https://baike.baidu.com/search/word?word=<标准名>`；
-- 中文 Wikipedia：`https://zh.wikipedia.org/w/index.php?search=<标准名>`。
+- 百度百科：`https://baike.baidu.com/search/word?word=<名称>`；
+- 中文 Wikipedia：`https://zh.wikipedia.org/w/index.php?search=<名称>`；
+- Bing：`https://www.bing.com/search?q=<名称>`；
+- Google：`https://www.google.com/search?q=<名称>`。
 
-链接必须 URL 编码并以新窗口打开。上下文实体 `ctx_*` 没有稳定百科对象，默认不显示。
+链接必须 URL 编码并以新窗口打开。上下文实体和泛称的搜索结果可能不精确，用户仍需结合情报
+语境判断；显示搜索链接不会建立固定别名、EntityRef 解析或任何外部身份断言。
 本地实体知识页、结构化地理层级和事实来源模型全部推迟，只有出现明确需求时再设计。
 
 ## 11. 人工指定实体、实体合并与作用范围

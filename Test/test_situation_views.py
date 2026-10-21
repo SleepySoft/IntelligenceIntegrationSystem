@@ -567,6 +567,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
     assert 'https://baike.baidu.com/search/word?word=' in embedded_html
     assert 'https://zh.wikipedia.org/w/index.php?search=' in embedded_html
+    assert 'https://www.bing.com/search?q=' in embedded_html
+    assert 'https://www.google.com/search?q=' in embedded_html
+    assert "const lookupName = String(d.wiki_name || d.name || '').trim()" in embedded_html
     assert "$('graph-detail').innerHTML" not in embedded_html
     assert "detail.innerHTML = ''" in embedded_html
     assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html

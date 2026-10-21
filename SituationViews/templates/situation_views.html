@@ -1141,9 +1141,14 @@ async function loadGraphIntelligences(append) {
 function showNodeDetail(d) {
     const detail = $('graph-selection-detail');
     const identityLabels = {global: '全局实体', contextual: '语境实体', surface: '按名称暂合并', unresolved: '尚未指定', legacy: '旧索引节点'};
-    const wiki = d.wiki_name ? `<div class="wiki-links">
-        <a target="_blank" rel="noopener" href="https://baike.baidu.com/search/word?word=${encodeURIComponent(d.wiki_name)}">百度百科</a>
-        <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?search=${encodeURIComponent(d.wiki_name)}">Wikipedia</a>
+    // 这是按名称发起的外部搜索，不表示搜索结果已经与该图节点完成身份核验。
+    // 全局实体优先使用标准名；未归一和语境实体也可用当前显示名查询背景资料。
+    const lookupName = String(d.wiki_name || d.name || '').trim();
+    const externalLookup = lookupName ? `<div class="wiki-links" aria-label="外部搜索">
+        <a target="_blank" rel="noopener" href="https://baike.baidu.com/search/word?word=${encodeURIComponent(lookupName)}">百度百科</a>
+        <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?search=${encodeURIComponent(lookupName)}">Wikipedia</a>
+        <a target="_blank" rel="noopener" href="https://www.bing.com/search?q=${encodeURIComponent(lookupName)}">Bing</a>
+        <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent(lookupName)}">Google</a>
     </div>` : '';
     const edit = ENTITY_EDIT_ENABLED && d.editable
         ? '<button type="button" id="edit-graph-entity" style="width:100%;margin-top:10px">指定这个实体</button>' : '';
@@ -1151,7 +1156,7 @@ function showNodeDetail(d) {
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
         <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
         <p class="muted">身份：${escapeHtml(identityLabels[d.identity_kind] || d.identity_kind)}${d.reference_count ? ` · ${d.reference_count} 个情报实体引用` : ''}</p>
-        ${wiki}${edit}`;
+        ${externalLookup}${edit}`;
     detail.hidden = false;
 }
 function showEdgeDetail(d) {
