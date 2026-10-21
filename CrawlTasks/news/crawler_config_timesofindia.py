@@ -10,7 +10,13 @@ CRAWLER_CONFIG = {
     'e_fetcher_init_param': {'log_callback': print, 'proxy': None, 'timeout_s': 20},
 
     'discoverer_name': 'ListPageDiscoverer',
-    'discoverer_init_param': {'verbose': False, 'manual_specified_signature': None, 'scope_selector': None},
+    'discoverer_init_param': {
+        'verbose': False,
+        'manual_specified_signature': None,
+        'scope_selector': None,
+        # world 列表混有推广站、专题站和 App 跳转链接。
+        'same_host_only': True,
+    },
 
     'extractor_name': 'Trafilatura',
     'extractor_init_param': {'verbose': False},
