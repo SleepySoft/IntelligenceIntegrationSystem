@@ -118,7 +118,7 @@ normalized_name -> ent_*
 
 ### 5.2 歧义专名解析进入数据库
 
-建议使用独立 MongoDB 集合 `entity_mention_resolutions`，每次指称一条记录：
+建议使用独立 MongoDB 集合 `<prefix>entity_global_resolutions`，每次指称一条记录：
 
 ```json
 {
@@ -126,9 +126,7 @@ normalized_name -> ent_*
   "ref": {
     "subsystem": "news",
     "intelligence_uuid": "...",
-    "event_uuid": "...",
-    "role": "subject",
-    "position": 0
+    "local_entity_id": "ENT1"
   },
   "surface": "肯尼迪",
   "normalized_surface": "肯尼迪",
@@ -149,16 +147,20 @@ normalized_name -> ent_*
 泛指实体至少拆为两个集合：
 
 - `contextual_entities`：保存 `ctx_*` 身份、显示名、作用域和说明；
-- `contextual_entity_mentions`：保存每个具体指称到 `ctx_*` 的关联。
+- `<prefix>contextual_entity_resolutions`：保存每个具体指称到 `ctx_*` 的关联。
 
 物理分离的目的，是从数据结构上阻止泛称被误当成全局实体：
 
 ```json
 {
   "contextual_entity_id": "ctx_*",
-  "label": "此次巴黎抗议中的示威者",
+  "name": "法国养老金改革示威者",
   "type": "collective",
-  "scope": "event_cluster",
+  "qualifiers": {
+    "countries": ["FR"],
+    "locations": ["巴黎"],
+    "topic": "养老金改革抗议"
+  },
   "created_at": "..."
 }
 ```
@@ -169,9 +171,7 @@ normalized_name -> ent_*
   "ref": {
     "subsystem": "news",
     "intelligence_uuid": "...",
-    "event_uuid": "...",
-    "role": "subject",
-    "position": 0
+    "local_entity_id": "ENT1"
   },
   "surface": "示威者",
   "target_contextual_entity_id": "ctx_*",
@@ -183,6 +183,10 @@ normalized_name -> ent_*
 不要在实体文档中维护不断增长的 ref 数组。应采用“一次指称一条关联记录”，通过
 `target_entity_id` 或 `target_contextual_entity_id` 反向查询全部情报。这样避免并发更新、
 文档膨胀和审计困难。
+
+上下文实体只要求用户填写一个便于识别的 `name`。国家、地点、时间、议题和说明等字段
+可以预留并由当前情报自动预填，但不得成为创建时的必填负担。名称用于搜索和展示，身份
+仍由 `ctx_*` 决定；名称相同不能触发自动合并。
 
 ### 5.4 为什么优先使用 MongoDB
 
@@ -207,15 +211,27 @@ MongoDB 可以复用现有运维体系、集合前缀和子系统隔离，无需
 
 ## 6. ref 与 mention 的稳定定位
 
-仅绑定情报 UUID 不总是充分：同一篇文章可能同时出现两个同名人物。因此 ref 至少支持：
+Event V4 已为每篇情报抽取出的实体分配文章内唯一 ID（`ENT1`、`ENT2` 等）。主引用采用：
 
 ```text
-subsystem + intelligence_uuid + event_uuid + role + position
+EntityRef = subsystem + intelligence_uuid + local_entity_id
 ```
 
-在落地时应生成稳定 `mention_id`。它可以由上述路径确定性生成，但必须同时保存
-`source_revision` 或源片段指纹；如果事件内容后来被重建或槽位顺序变化，系统应把旧解析
-标为待复核，而不是静默指向错误位置。
+同一 `ENT1` 可以被一篇情报里的多个事件和角色复用，因此它比数组位置更稳定，也避免为
+每次角色使用重复登记解析结论。事件查询索引必须保留 `local_entity_id`，当前仅保存名称
+快照的实现需要补齐该字段并从权威归档重建。
+
+为处理抽取错误（例如同一个 `ENT1` 被错误地复用于两个现实实体），协议预留更细粒度的：
+
+```text
+UsageRef = EntityRef + event_uuid + role + position
+```
+
+解析时 UsageRef 优先于 EntityRef。第一阶段不要求界面暴露 UsageRef，只有出现实际拆分需求
+时再启用，以免把正常操作复杂化。
+
+在落地时应生成稳定 `mention_id` 或使用复合唯一键，并保存 `source_revision` 或源结构指纹；
+如果权威抽取后来被重建，系统应把失配解析标为待复核，而不是静默指向错误位置。
 
 具体的 mention 定位协议、事件修改语义和指纹算法仍属于待讨论项。
 
@@ -246,6 +262,10 @@ subsystem + intelligence_uuid + event_uuid + role + position
 
 如果未来性能不足，可以增加可重建的物化投影或缓存，但该投影不能成为事实源。
 
+当前 Event V4 管线的 `_normalize_entity_names()` 会在归档前直接替换抽取名称，这与上述结论
+冲突。落地时应停止覆盖权威 `EVENT_EXTRACTION.entities[].name`；确定性别名也通过解析视图
+生效。历史上已经被替换的少量名称保持现状，除非以后依据原文重新抽取。
+
 ## 8. 实体图的身份解析规则
 
 实体图不应继续用“名称 + 类型 + 国家”作为最终身份。每个指称按以下优先级解析：
@@ -257,6 +277,10 @@ subsystem + intelligence_uuid + event_uuid + role + position
 
 只要多篇情报中的指称解析到同一 `ent_*` 或 `ctx_*`，它们在图上就是同一个点，事件数、
 文章数和关系印证据此累计。图仍应展示每条边和节点背后的原始 ref，以便人工核验。
+
+未解析泛称不能仅按名称聚合。两篇情报中的两个“示威者”在被用户指定到同一个 `ctx_*`
+以前，是两个独立的 unresolved 节点，不能互相贡献关系印证。界面可以提示它们名称相似，
+但提示不是身份判断。
 
 ## 9. 带前缀名称与层级实体
 
@@ -285,22 +309,28 @@ subsystem + intelligence_uuid + event_uuid + role + position
 核实结果优先。争议地区不能只有一个无来源的“所属国家”，应允许保存多个带来源和
 语义的行政、主权或声索关系。
 
-## 11. 人工合并、拆分与作用范围
+## 11. 人工指定实体、实体合并与作用范围
 
-实体图可以提供多选节点合并，但操作时必须明确作用范围：
+实体图的常规编辑动作应称为“指定实体”或“解析指称”，而不是“合并”。系统始终把单个
+`EntityRef` 指向一个目标；多个 ref 最终指向同一个目标后，图节点自然汇聚。批量选择只是
+重复执行同一指定动作的操作便利。
 
-1. 只解析当前情报中的一个指称；
-2. 解析当前选择的若干情报 ref；
-3. 把多个指称归入同一个上下文实体；
-4. 合并两个已有全局实体；
-5. 确认某名称是全局确定性别名。
+用户指定时有三个动作：
 
-前两种写 `entity_mention_resolutions`，第三种写上下文实体及其 mention 关联，第四种写
-`EntityRedirect`，只有第五种才修改 JSONL 全局别名。
+1. 搜索或新建全局实体，把当前 ref 指向 `ent_*`，但不产生全局名称规则；
+2. 搜索或新建上下文实体，把当前 ref 指向 `ctx_*`；
+3. 额外确认当前名称是全局确定性别名，才修改 JSONL 名称规则。
+
+“肯尼迪”可以依赖当前情报指向全局的 `ent_jfk`，但不能因此成为其全局固定别名；
+“示威者”则指向用户命名的 `ctx_*`。界面不应只问“是否依赖上下文”，而应分别确认目标
+是全局实体还是上下文实体，以及名称映射是否可全局复用。
+
+只有两个已经存在的 `ent_*` 被确认重复时，才使用严格意义上的“合并实体”，并写入
+`EntityRedirect`。这属于低频、高风险的高级治理操作，不与日常指定实体混在一起。
 
 所有人工治理操作都应支持：
 
-- 合并前预览涉及的名称、类型、国家、关系和支撑情报；
+- 指定或合并前预览涉及的名称、类型、国家、关系和支撑情报；
 - 记录操作者、时间、理由和影响范围；
 - 撤销合并、拆分错误实体和重新指派 ref；
 - 阻止或强提醒明显的类型冲突；
@@ -340,10 +370,10 @@ subsystem + intelligence_uuid + event_uuid + role + position
 
 以下顺序只作为后续落地讨论的起点：
 
-1. 定义稳定 mention/ref 协议和三类集合契约；
+1. 以 `subsystem + intelligence_uuid + local_entity_id` 定义 EntityRef，预留 UsageRef；
 2. 实现非破坏性解析存储、反向查询和审计；
 3. 让实体图优先使用 `ent_*` / `ctx_*`，未解析节点保持 ref 作用域；
-4. 实现图上的 ref 级解析、上下文归组、实体合并及撤销；
+4. 实现图上的单 ref“指定实体”、上下文实体搜索/新建及撤销；
 5. 改造全局名称索引，使歧义名可以召回多个候选但不能自动唯一解析；
 6. 建立高频未解析指称工作队列和历史投影重建；
 7. 建设实体 Wiki，先完善地理实体；
@@ -351,7 +381,7 @@ subsystem + intelligence_uuid + event_uuid + role + position
 
 ## 15. 后续仍需讨论的落地问题
 
-1. `mention_id` 的稳定生成规则以及 Event V4 中角色槽的定位方式；
+1. `mention_id` 使用确定性 ID 还是 Mongo 复合唯一键；
 2. 三类 Mongo 集合是全局集合带 `subsystem`，还是沿用子系统集合前缀；
 3. 原始事件修订后如何识别并处理过期解析；
 4. `ctx_*` 的允许作用域、跨文章归组条件和生命周期；
