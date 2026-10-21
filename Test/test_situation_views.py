@@ -511,6 +511,12 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
     assert 'id="entity-editor"' in embedded_html
+    assert 'id="graph-search-panel"' in embedded_html
+    assert 'id="graph-search-results"' in embedded_html
+    assert '搜索 Ctrl+F' in embedded_html
+    assert 'id="graph-manual-refresh"' in embedded_html
+    assert "showGraphNotice('实体指定已保存。" in embedded_html
+    assert "$('entity-editor').close(); refreshGraph()" not in embedded_html
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
     assert 'https://baike.baidu.com/search/word?word=' in embedded_html
     assert 'https://zh.wikipedia.org/w/index.php?search=' in embedded_html

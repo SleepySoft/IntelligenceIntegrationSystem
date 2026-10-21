@@ -88,6 +88,18 @@
         .entity-editor-status { min-height: 20px; }
         .wiki-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
         .wiki-links a { color: light-dark(#2457c5, #a9c4ff); }
+        .graph-search-open { position: absolute; left: 12px; top: 44px; z-index: 8; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
+        .graph-search-panel { position: absolute; left: 12px; top: 86px; z-index: 9; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 100px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 9px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 16px 42px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); }
+        .graph-search-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .graph-search-head h2 { margin: 0; font-size: 15px; }
+        .graph-search-head button { min-height: 30px; padding: 4px 9px; }
+        .graph-search-results { min-height: 40px; overflow: auto; display: grid; align-content: start; gap: 6px; }
+        .graph-search-result { width: 100%; min-height: 0; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; text-align: left; font-weight: 500; }
+        .graph-search-result b { display: block; color: var(--text); overflow-wrap: anywhere; }
+        .graph-search-result small { display: block; margin-top: 2px; color: var(--muted); overflow-wrap: anywhere; }
+        .graph-notice { position: absolute; left: 50%; bottom: 14px; z-index: 9; width: min(620px, calc(100% - 28px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 34px color-mix(in srgb, #000 28%, transparent); }
+        .graph-notice span { flex: 1; }
+        .graph-notice button { min-height: 32px; padding: 5px 9px; white-space: nowrap; }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
         .graph-selection-detail { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
@@ -222,6 +234,17 @@
                 <div class="status" id="graph-status">正在聚合实体关系…</div>
                 <svg id="graph-svg" role="img" aria-label="实体施受关系图"></svg>
                 <div class="tooltip" id="graph-tooltip"></div>
+                <button class="graph-search-open" type="button" id="graph-search-open">搜索 Ctrl+F</button>
+                <section class="graph-search-panel" id="graph-search-panel" aria-label="搜索实体" hidden>
+                    <div class="graph-search-head"><h2>搜索图中实体</h2><button type="button" id="graph-search-close">关闭</button></div>
+                    <input id="graph-search-input" type="search" autocomplete="off" placeholder="名称、原文表述、类型、国家或 ID">
+                    <div class="graph-search-results" id="graph-search-results"><span class="muted">输入内容后显示全部匹配节点。</span></div>
+                </section>
+                <div class="graph-notice" id="graph-notice" hidden>
+                    <span id="graph-notice-text"></span>
+                    <button type="button" id="graph-manual-refresh">刷新关系图</button>
+                    <button type="button" id="graph-notice-close">稍后</button>
+                </div>
                 {% if embedded %}
                 <div class="scope-badge" title="同一关系至少由 {{ dashboard_profile.min_support }} 起独立事件支撑才连线">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }} · 关系需 {{ dashboard_profile.min_support }} 起印证</div>
                 {% endif %}
@@ -346,6 +369,7 @@ const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='c
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
+let graphZoomBehavior = null, renderedGraphNodes = new Map();
 let editingGraphNode = null, editingReferences = [], selectedEditingRef = null;
 let editingTargetKind = 'global', selectedEditingTarget = null;
 
@@ -706,6 +730,7 @@ async function refreshGraph() {
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
         renderGraph();
+        $('graph-notice').hidden = true;
     } catch (error) {
         $('graph-status').textContent = `加载失败：${error.message}`;
         return;
@@ -767,6 +792,8 @@ function renderGraph() {
     svg.selectAll('*').remove();
     const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
     const {nodes, edges} = filterGraphData();
+    renderedGraphNodes = new Map(nodes.map(item => [item.id, item]));
+    renderGraphSearchResults();
     if (!nodes.length) {
         // 过滤叠加空态：印证过滤把网络切碎，全低于规模下限——给解释而非空白
         svg.append('text').attr('class', 'map-label').attr('text-anchor', 'middle')
@@ -780,7 +807,9 @@ function renderGraph() {
         .attr('markerWidth',12).attr('markerHeight',12).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
         .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
     const root = svg.append('g');
-    svg.call(d3.zoom().scaleExtent([.25, 4]).on('zoom', event => root.attr('transform', event.transform)));
+    graphZoomBehavior = d3.zoom().scaleExtent([.25, 4])
+        .on('zoom', event => root.attr('transform', event.transform));
+    svg.call(graphZoomBehavior);
     svg.on('click', () => clearGraphSelection());
     const edgeScale = d3.scaleSqrt().domain([1, d3.max(edges, d => d.support) || 1]).range([1, 6]);
     const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
@@ -867,8 +896,82 @@ function renderGraph() {
     $('graph-summary').innerHTML = `<div class="meta">
         <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
         <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
-        <div class="warning">当前按名称、类型和国家临时归一化；同名同类型且国家唯一时，会在投影中补齐缺失国家。别名尚未合并。</div>`;
+        <div class="warning">实体按稳定引用解析；尚未指定的实体保持独立，指向同一全局或语境实体后自然汇聚。</div>`;
     if (selectedGraphElement) updateGraphSelectionStyles();
+}
+
+function graphSearchText(node) {
+    const identityLabels = {global: '全局实体', contextual: '语境实体', unresolved: '尚未指定', legacy: '旧索引节点'};
+    const surfaces = (node.surfaces || []).map(item => item.name);
+    return [node.name, node.id, node.target_id, node.type, ENTITY_LABELS[node.type], node.country_code,
+        identityLabels[node.identity_kind], ...surfaces].filter(Boolean).join('\n').toLocaleLowerCase();
+}
+function graphSearchMatches() {
+    if (!graphData) return [];
+    const query = $('graph-search-input').value.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return graphData.nodes.filter(node => graphSearchText(node).includes(query)).sort((left, right) => {
+        const leftName = left.name.toLocaleLowerCase(), rightName = right.name.toLocaleLowerCase();
+        const leftRank = leftName === query ? 0 : leftName.startsWith(query) ? 1 : 2;
+        const rightRank = rightName === query ? 0 : rightName.startsWith(query) ? 1 : 2;
+        return leftRank - rightRank || right.importance - left.importance || left.name.localeCompare(right.name);
+    });
+}
+function renderGraphSearchResults() {
+    const target = $('graph-search-results');
+    if (!target) return;
+    const query = $('graph-search-input').value.trim();
+    if (!query) {
+        target.innerHTML = '<span class="muted">输入内容后显示全部匹配节点。</span>';
+        return;
+    }
+    const matches = graphSearchMatches();
+    const visible = matches.filter(node => renderedGraphNodes.has(node.id)).length;
+    target.innerHTML = `<div class="muted">找到 ${matches.length} 个；当前过滤后可见 ${visible} 个。</div>`
+        + matches.map(node => {
+            const alternate = (node.surfaces || []).map(item => item.name)
+                .filter(name => name && name !== node.name).slice(0, 3).join('、');
+            const meta = [ENTITY_LABELS[node.type] || node.type, node.country_code,
+                `${node.article_count} 篇情报`, renderedGraphNodes.has(node.id) ? '当前可见' : '点击后放宽前端过滤']
+                .filter(Boolean).join(' · ');
+            return `<button type="button" class="graph-search-result" data-graph-search-id="${escapeHtml(node.id)}">
+                <i class="dot" style="background:${entityColor(node.type)}"></i>
+                <span><b>${escapeHtml(node.name)}</b><small>${escapeHtml(meta)}</small>${alternate ? `<small>原文：${escapeHtml(alternate)}</small>` : ''}</span>
+            </button>`;
+        }).join('');
+    if (!matches.length) target.innerHTML += '<span class="muted">没有匹配实体。</span>';
+}
+function openGraphSearch() {
+    $('graph-search-panel').hidden = false;
+    $('graph-search-input').focus();
+    $('graph-search-input').select();
+    renderGraphSearchResults();
+}
+function closeGraphSearch() { $('graph-search-panel').hidden = true; }
+function focusGraphNode(entityId, attempt = 0) {
+    let node = renderedGraphNodes.get(entityId);
+    if (!node) {
+        componentMinSize = 1;
+        graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
+        $('component-min-size').value = componentMinSize;
+        $('graph-support-min').value = graphSupportMin;
+        renderGraph();
+        node = renderedGraphNodes.get(entityId);
+    }
+    if (!node) return;
+    if ((!Number.isFinite(node.x) || !Number.isFinite(node.y)) && attempt < 20) {
+        setTimeout(() => focusGraphNode(entityId, attempt + 1), 60);
+        return;
+    }
+    const svg = d3.select('#graph-svg'), element = svg.node();
+    const width = element.clientWidth || 900, height = element.clientHeight || 680, scale = 1.8;
+    const transform = d3.zoomIdentity.translate(width / 2 - scale * node.x, height / 2 - scale * node.y).scale(scale);
+    svg.transition().duration(450).call(graphZoomBehavior.transform, transform);
+    selectGraphNode(node);
+}
+function showGraphNotice(message) {
+    $('graph-notice-text').textContent = message;
+    $('graph-notice').hidden = false;
 }
 
 function entityColor(type) {
@@ -1276,8 +1379,8 @@ async function saveEntityAssignment() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        editorStatus('已保存，正在刷新关系图。');
-        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+        $('entity-editor').close();
+        showGraphNotice('实体指定已保存。当前图保持不变，请在合适的时候手动刷新关系图。');
     } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
 }
 async function clearEntityAssignment() {
@@ -1289,8 +1392,12 @@ async function clearEntityAssignment() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        editorStatus(data.changed ? '人工指定已清除，正在刷新关系图。' : '该引用没有人工指定。');
-        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+        if (data.changed) {
+            $('entity-editor').close();
+            showGraphNotice('人工指定已清除。当前图保持不变，请在合适的时候手动刷新关系图。');
+        } else {
+            editorStatus('该引用没有人工指定。');
+        }
     } catch (error) { editorStatus(`清除失败：${error.message}`, true); }
 }
 async function undoEntityAssignment() {
@@ -1303,8 +1410,8 @@ async function undoEntityAssignment() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        editorStatus('已撤销上次指定，正在刷新关系图。');
-        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+        $('entity-editor').close();
+        showGraphNotice('已撤销上次指定。当前图保持不变，请在合适的时候手动刷新关系图。');
     } catch (error) { editorStatus(`撤销失败：${error.message}`, true); }
 }
 $('entity-editor-close').addEventListener('click', () => $('entity-editor').close());
@@ -1317,6 +1424,26 @@ $('entity-contextual-create').addEventListener('click', createContextualEntity);
 $('entity-assign').addEventListener('click', saveEntityAssignment);
 $('entity-unassign').addEventListener('click', clearEntityAssignment);
 $('entity-undo').addEventListener('click', undoEntityAssignment);
+$('graph-search-open').addEventListener('click', openGraphSearch);
+$('graph-search-close').addEventListener('click', closeGraphSearch);
+$('graph-search-input').addEventListener('input', renderGraphSearchResults);
+$('graph-search-results').addEventListener('click', event => {
+    const button = event.target.closest('[data-graph-search-id]');
+    if (button) focusGraphNode(button.dataset.graphSearchId);
+});
+$('graph-manual-refresh').addEventListener('click', refreshGraph);
+$('graph-notice-close').addEventListener('click', () => { $('graph-notice').hidden = true; });
+document.addEventListener('keydown', event => {
+    const searchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'f';
+    if (searchShortcut && activeView === 'graph' && !$('entity-editor').open) {
+        event.preventDefault();
+        openGraphSearch();
+        return;
+    }
+    if (event.key === 'Escape' && !$('graph-search-panel').hidden && !$('entity-editor').open) {
+        closeGraphSearch();
+    }
+});
 document.querySelectorAll('.side-toggle').forEach(button => button.addEventListener('click', () => {
     const panel = $(button.dataset.side);
     const collapsed = panel.classList.toggle('is-collapsed');
