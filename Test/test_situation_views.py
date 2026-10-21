@@ -567,18 +567,22 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'type="radio" name="entity-target-kind" id="entity-kind-contextual"' in embedded_html
     assert 'type="checkbox" name="editing-ref"' in embedded_html
     assert 'id="entity-ref-select-all"' in embedded_html
-    assert 'id="entity-fixed-alias-save"' in embedded_html
-    assert '不绑定任何情报或事件' in embedded_html
-    assert '新建只完成登记；只有点击下方“保存所选消歧”才会关联具体情报' in embedded_html
-    assert '登记和消歧彼此独立' in embedded_html
-    assert 'id="entity-assign">保存所选消歧' in embedded_html
+    assert 'id="entity-limited-scope"' in embedded_html
+    assert '仅针对所选情报中的实体生效' in embedded_html
+    assert '把当前指定实体关联到上面选择的实体' in embedded_html
+    assert '即使已有结果，也始终可以添加新实体' in embedded_html
+    assert 'id="entity-assign">保存全局映射' in embedded_html
+    assert "scope.disabled = kind === 'contextual'" in embedded_html
+    assert "if (!limited) return saveGlobalEntityMapping()" in embedded_html
+    assert '目标实体与当前名称相同，无需添加重复别名' in embedded_html
+    assert 'id="entity-fixed-alias-save"' not in embedded_html
     assert 'name="entity-operation"' not in embedded_html
     assert 'entity-register-fixed-alias' not in embedded_html
     assert 'id="graph-search-panel"' in embedded_html
     assert 'id="graph-search-results"' in embedded_html
     assert '搜索 Ctrl+F' in embedded_html
     assert 'id="graph-manual-refresh"' in embedded_html
-    assert "showGraphNotice('实体消歧已保存。" in embedded_html
+    assert "showGraphNotice('所选情报的实体关联已保存。" in embedded_html
     assert "$('entity-editor').close(); refreshGraph()" not in embedded_html
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
     assert 'https://baike.baidu.com/search/word?word=' in embedded_html

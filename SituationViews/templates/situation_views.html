@@ -102,6 +102,9 @@
         .entity-kind-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
         .entity-kind-option:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
         .entity-kind-option small { display: block; margin-top: 2px; color: var(--muted); }
+        .entity-scope-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+        .entity-scope-option:has(input:checked) { border-color: var(--accent); }
+        .entity-scope-option small { display: block; margin-top: 2px; color: var(--muted); }
         .entity-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
         .entity-editor-status { min-height: 20px; }
         .wiki-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
@@ -330,16 +333,16 @@
     </div>
     <div class="entity-editor-body">
         <section class="entity-editor-section" id="entity-target-editor">
-            <h3>1. 选择或登记归一实体</h3>
-            <p class="muted" style="margin:0">先选择实体要进入哪个库。新建只完成登记；只有点击下方“保存所选消歧”才会关联具体情报。</p>
+            <h3>1. 选择目标实体</h3>
+            <p class="muted" style="margin:0">选择实体表后先搜索。没有合适结果时可以添加；即使已有结果，也始终可以添加新实体。</p>
             <div class="entity-kind-tabs" id="entity-kind-options">
                 <label class="entity-kind-option">
                     <input type="radio" name="entity-target-kind" id="entity-kind-global" value="global" checked>
-                    <span><b>录入全局实体表</b><small>登记可跨情报复用的 ent_*；不会自动建立情报关联。</small></span>
+                    <span><b>全局实体表</b><small>稳定、可跨情报复用的实体（ent_*）。</small></span>
                 </label>
                 <label class="entity-kind-option">
                     <input type="radio" name="entity-target-kind" id="entity-kind-contextual" value="contextual">
-                    <span><b>录入语境实体表</b><small>登记仅在特定语境成立的 ctx_*；不会自动建立情报关联。</small></span>
+                    <span><b>语境实体表</b><small>只在具体情报语境中成立的实体（ctx_*）。</small></span>
                 </label>
             </div>
             <div id="entity-global-editor">
@@ -349,7 +352,7 @@
                 </div>
                 <div class="entity-target-list" id="entity-global-results"></div>
                 <details>
-                    <summary>没有合适结果？新建全局实体</summary>
+                    <summary>添加新的全局实体</summary>
                     <div class="entity-editor-row" style="margin-top:8px">
                         <input id="entity-global-new-name" placeholder="标准名">
                         <select id="entity-global-new-type">
@@ -357,7 +360,7 @@
                             <option value="country">国家</option><option value="location">地点</option>
                             <option value="other">其他</option>
                         </select>
-                        <button type="button" id="entity-global-create">登记并选择</button>
+                        <button type="button" id="entity-global-create">添加并选择</button>
                     </div>
                 </details>
             </div>
@@ -367,35 +370,36 @@
                     <button type="button" id="entity-contextual-search">搜索</button>
                 </div>
                 <div class="entity-target-list" id="entity-contextual-results"></div>
-                <div class="entity-editor-row">
-                    <input id="entity-contextual-new-name" placeholder="输入一个便于识别的名称即可">
-                    <button type="button" id="entity-contextual-create">登记并选择</button>
-                </div>
-            </div>
-        </section>
-        <section class="entity-editor-section" id="entity-fixed-alias-editor">
-            <h3>可选：登记固定别名（仅全局实体）</h3>
-            <p class="muted" style="margin:0">不绑定任何情报或事件，将影响所有现有及未来数据。仅用于在任何语境下都无歧义的名称。</p>
-            <div class="entity-editor-row">
-                <input id="entity-fixed-alias-name" placeholder="例如：美利坚合众国">
-                <button type="button" id="entity-fixed-alias-save">登记为当前全局实体的固定别名</button>
+                <details>
+                    <summary>添加新的语境实体</summary>
+                    <div class="entity-editor-row" style="margin-top:8px">
+                        <input id="entity-contextual-new-name" placeholder="输入一个便于识别的名称即可">
+                        <button type="button" id="entity-contextual-create">添加并选择</button>
+                    </div>
+                </details>
             </div>
         </section>
         <section class="entity-editor-section" id="entity-resolution-refs">
-            <h3>2. 可选：把情报实体消歧到所选目标（可多选）</h3>
-            <p class="muted" style="margin:0">登记和消歧彼此独立；可以只登记，也可以登记或选择目标后立即保存这些情报的指向。</p>
-            <div class="entity-editor-row">
-                <button type="button" id="entity-ref-select-all">全选</button>
-                <button type="button" id="entity-ref-select-none">清空</button>
-                <span class="muted" id="entity-ref-selection-count"></span>
+            <h3>2. 设置关联范围</h3>
+            <p style="margin:0"><b>把当前指定实体关联到上面选择的实体。</b></p>
+            <label class="entity-scope-option">
+                <input type="checkbox" id="entity-limited-scope">
+                <span><b>仅针对所选情报中的实体生效</b><small id="entity-scope-help"></small></span>
+            </label>
+            <div id="entity-ref-scope" hidden>
+                <div class="entity-editor-row">
+                    <button type="button" id="entity-ref-select-all">全选</button>
+                    <button type="button" id="entity-ref-select-none">清空</button>
+                    <span class="muted" id="entity-ref-selection-count"></span>
+                </div>
+                <div class="entity-ref-list" id="entity-ref-list"><span class="muted">正在加载…</span></div>
             </div>
-            <div class="entity-ref-list" id="entity-ref-list"><span class="muted">正在加载…</span></div>
         </section>
         <div class="entity-editor-status muted" id="entity-editor-status"></div>
         <div class="entity-editor-actions">
             <button type="button" id="entity-undo" hidden>撤销上次指定</button>
             <button type="button" id="entity-unassign">清除所选人工指定</button>
-            <button type="button" class="primary" id="entity-assign">保存所选消歧</button>
+            <button type="button" class="primary" id="entity-assign">保存全局映射</button>
         </div>
     </div>
 </dialog>
@@ -433,6 +437,7 @@ let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
 let graphZoomBehavior = null, renderedGraphNodes = new Map();
 let editingGraphNode = null, editingReferences = [], selectedEditingRefKeys = new Set();
 let editingTargetKind = 'global', selectedEditingTarget = null;
+let editingGlobalLimitedScope = false;
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1374,7 +1379,9 @@ function currentEditingRef() {
 function syncEditingSelection() {
     const selected = currentEditingRefs();
     $('entity-ref-selection-count').textContent = `已选择 ${selected.length} / ${editingReferences.length} 个`;
-    $('entity-undo').hidden = !(selected.length === 1 && selected[0].decision_id);
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    $('entity-undo').hidden = !(limited && selected.length === 1 && selected[0].decision_id);
+    $('entity-unassign').hidden = !limited;
 }
 async function openEntityEditor(node) {
     editingGraphNode = node;
@@ -1385,7 +1392,7 @@ async function openEntityEditor(node) {
     $('entity-ref-list').innerHTML = '<span class="muted">正在加载情报实体引用…</span>';
     $('entity-global-results').innerHTML = '';
     $('entity-contextual-results').innerHTML = '';
-    $('entity-fixed-alias-name').value = node.name || '';
+    editingGlobalLimitedScope = false;
     setEditingKind('global');
     editorStatus('');
     const dialog = $('entity-editor');
@@ -1432,8 +1439,22 @@ function setEditingKind(kind) {
     $('entity-kind-contextual').checked = kind === 'contextual';
     $('entity-global-editor').hidden = kind !== 'global';
     $('entity-contextual-editor').hidden = kind !== 'contextual';
-    $('entity-fixed-alias-editor').hidden = kind !== 'global';
+    const scope = $('entity-limited-scope');
+    scope.checked = kind === 'contextual' ? true : editingGlobalLimitedScope;
+    scope.disabled = kind === 'contextual';
+    syncEditingScope();
     editorStatus('');
+}
+function syncEditingScope() {
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    $('entity-ref-scope').hidden = !limited;
+    $('entity-assign').textContent = limited ? '保存所选情报关联' : '保存全局映射';
+    $('entity-scope-help').textContent = editingTargetKind === 'contextual'
+        ? '语境实体必须绑定具体情报，不能建立全局名称映射。'
+        : limited
+            ? '只把下方勾选的情报实体关联到所选全局实体。'
+            : `当前名称“${editingGraphNode?.name || ''}”将在所有情报中映射到所选全局实体。`;
+    syncEditingSelection();
 }
 function selectEditingTarget(id, name) {
     selectedEditingTarget = {id, name};
@@ -1446,7 +1467,7 @@ function renderTargetResults(containerId, items) {
         <i class="dot" style="background:${entityColor(item.type)}"></i>
         <span><b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.type || 'other')}
         ${item.description ? `<br><small>${escapeHtml(item.description)}</small>` : ''}</span>
-    </button>`).join('') || '<span class="muted">没有找到候选。</span>';
+    </button>`).join('') || '<span class="muted">没有找到候选，请使用下方“添加新实体”。</span>';
 }
 async function searchGlobalEntities() {
     const query = $('entity-global-query').value.trim();
@@ -1498,9 +1519,11 @@ async function createContextualEntity() {
     } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
 }
 async function saveEntityAssignment() {
+    if (!selectedEditingTarget) return editorStatus('请搜索或新建并选择目标实体。', true);
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    if (!limited) return saveGlobalEntityMapping();
     const selected = currentEditingRefs();
     if (!selected.length) return editorStatus('请至少选择一个情报实体引用。', true);
-    if (!selectedEditingTarget) return editorStatus('请搜索或新建并选择目标实体。', true);
     editorStatus(`正在保存 ${selected.length} 个指定…`);
     try {
         const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/assign`, {
@@ -1512,7 +1535,27 @@ async function saveEntityAssignment() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         $('entity-editor').close();
-        showGraphNotice('实体消歧已保存。当前图保持不变，请在合适的时候手动刷新关系图。');
+        showGraphNotice('所选情报的实体关联已保存。当前图保持不变，请在合适的时候手动刷新关系图。');
+    } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
+}
+async function saveGlobalEntityMapping() {
+    const sourceName = String(editingGraphNode?.name || '').trim();
+    if (!sourceName) return editorStatus('当前实体名称为空，无法建立全局映射。', true);
+    if (sourceName.toLocaleLowerCase() === String(selectedEditingTarget.name || '').trim().toLocaleLowerCase()) {
+        $('entity-editor').close();
+        showGraphNotice('目标实体与当前名称相同，无需添加重复别名。当前图保持不变，请在合适的时候手动刷新关系图。');
+        return;
+    }
+    editorStatus(`正在保存“${sourceName}”的全局映射…`);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/fixed-aliases`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({target_id:selectedEditingTarget.id, names:[sourceName]})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        $('entity-editor').close();
+        showGraphNotice(`“${sourceName}”的全局映射已保存。当前图保持不变，请在合适的时候手动刷新关系图。`);
     } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
 }
 async function clearEntityAssignment() {
@@ -1547,25 +1590,6 @@ async function undoEntityAssignment() {
         showGraphNotice('已撤销上次指定。当前图保持不变，请在合适的时候手动刷新关系图。');
     } catch (error) { editorStatus(`撤销失败：${error.message}`, true); }
 }
-async function registerFixedAlias() {
-    const name = $('entity-fixed-alias-name').value.trim();
-    if (editingTargetKind !== 'global' || !selectedEditingTarget) {
-        return editorStatus('请先搜索或新建并选择一个全局实体。', true);
-    }
-    if (!name) return editorStatus('请填写要登记的固定别名。', true);
-    editorStatus(`正在登记全局固定别名“${name}”…`);
-    try {
-        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/fixed-aliases`, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({target_id:selectedEditingTarget.id, names:[name]})
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        editorStatus(data.registered?.length
-            ? `已登记固定别名“${name}”。它将全局生效，不关联任何具体情报。`
-            : `“${name}”已经是该实体的固定名称。`);
-    } catch (error) { editorStatus(`登记失败：${error.message}`, true); }
-}
 $('entity-editor-close').addEventListener('click', () => $('entity-editor').close());
 $('entity-ref-select-all').addEventListener('click', () => {
     selectedEditingRefKeys = new Set(editingReferences.map(item => editingRefKey(item.ref)));
@@ -1581,7 +1605,10 @@ $('entity-global-search').addEventListener('click', searchGlobalEntities);
 $('entity-contextual-search').addEventListener('click', searchContextualEntities);
 $('entity-global-create').addEventListener('click', createGlobalEntity);
 $('entity-contextual-create').addEventListener('click', createContextualEntity);
-$('entity-fixed-alias-save').addEventListener('click', registerFixedAlias);
+$('entity-limited-scope').addEventListener('change', event => {
+    if (editingTargetKind === 'global') editingGlobalLimitedScope = event.target.checked;
+    syncEditingScope();
+});
 $('entity-assign').addEventListener('click', saveEntityAssignment);
 $('entity-unassign').addEventListener('click', clearEntityAssignment);
 $('entity-undo').addEventListener('click', undoEntityAssignment);
