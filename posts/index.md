@@ -40,6 +40,8 @@
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 
++ [Alias management](/entity-alias/manage)
+
 #### Vector DB
 
 + [Vector DB Manager](/vectordb)
