@@ -41,9 +41,11 @@ RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完�
 
 `v49` 是独立构建的精简版本，完整保留 Registry 目录及评级规则；首轮灰度
 发现角色白名单/实体类型遵循率下降，现保留为 `sampling=False` 的对照。`v50` 不改
-输出协议，在 v49 精简结构上增加 Registry 驱动的角色白名单和实体类型输出前检查。
+输出协议，在 v49 精简结构上增加 Registry 驱动的角色白名单和实体类型输出前检查；
+`v51` 回到 v48，仅替换紧凑谓词目录和角色纪律，当前与 v48 等概率生产灰度。
 详见 [v49 精简记录](20261020_prompt_v49_compaction.md) 与
-[v50 夜间灰度记录](20261020_prompt_v50_role_guard_gray.md)。
+[v50 夜间灰度记录](20261020_prompt_v50_role_guard_gray.md)及
+[v51 角色目录单变量压缩灰度](20261021_prompt_v51_role_compaction_gray.md)。
 
 ## 归档文档
 

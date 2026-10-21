@@ -2,7 +2,7 @@
 
 示例：
     python Scripts/evaluate_prompt_gray.py --since 2026-10-20T22:15:00+08:00
-    python Scripts/evaluate_prompt_gray.py --control 48 --candidate 50 --hours 12
+    python Scripts/evaluate_prompt_gray.py --control 48 --candidate 51 --hours 12
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _parse_since(value: str | None, hours: int) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--control", type=int, default=48)
-    parser.add_argument("--candidate", type=int, default=50)
+    parser.add_argument("--candidate", type=int, default=51)
     parser.add_argument("--since", help="ISO 8601 起始时间，必须含时区")
     parser.add_argument("--hours", type=int, default=24, help="未给 --since 时的回看小时数")
     parser.add_argument("--stats-db", default="_data/analysis_stats.db")

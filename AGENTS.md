@@ -282,7 +282,10 @@ python VectorDB/VectorDBBService.py \
   标为后续方向的能力不得视为现有运行能力。
 - v49 将公共可选角色与完整 Frame 分组展示，完整保留谓词定义、评级词表和输出协议；
   独立构建、不从历史 Prompt 派生，注册为 `sampling=False` 供人工调试/对照。
-  生产仍为 v48；规则对照、长度与验证见 `doc/20261020_prompt_v49_compaction.md`。
+  规则对照、长度与验证见 `doc/20261020_prompt_v49_compaction.md`。
+- v51 以 v48 为基线，只用紧凑谓词目录和 v50 角色纪律替换谓词/角色章节；生产按
+  v48/v51 等概率灰度，v50 已退出抽样但保留显式对照。评估与停止条件见
+  `doc/20261021_prompt_v51_role_compaction_gray.md`。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）

@@ -25,6 +25,7 @@ from ServiceComponent.intelligence_contracts import NonIntelligenceReason
 from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
 from prompts_event_v49 import EVENT_ANALYSIS_PROMPT_V49, build_event_v49_prompt
 from prompts_event_v50 import EVENT_ANALYSIS_PROMPT_V50, build_event_v50_prompt
+from prompts_event_v51 import build_event_v51_prompt
 
 EXTRACTION_MODE_FULL = "full"
 EXTRACTION_MODE_CORE_SUBSET = "core_subset"
@@ -311,12 +312,23 @@ EVENT_ANALYSIS_PROMPT_V48 = EVENT_ANALYSIS_PROMPT_V47.replace(
 assert EVENT_ANALYSIS_PROMPT_V48 != EVENT_ANALYSIS_PROMPT_V47
 assert '"normalized":"2026-10-17","surface":"原文时间"' in EVENT_ANALYSIS_PROMPT_V48
 
+# V51：以 v48 为基线，只将重复展开的谓词/角色章节替换为紧凑目录和 v50 已验证的
+# 角色纪律。价值判断、评级、事件选择、时间、示例及其余抽取规则保持 v48 原文。
+EVENT_ANALYSIS_PROMPT_V51 = build_event_v51_prompt(
+    EVENT_ANALYSIS_PROMPT_V48,
+    EVENT_CORE_EXTRACTION_SECTION_MINIMAL_TIME,
+    DEFAULT_EVENT_REGISTRY,
+)
+assert EVENT_ANALYSIS_PROMPT_V51 != EVENT_ANALYSIS_PROMPT_V48
+
 
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
 # v48（v47 缓存布局 + 最小时间契约）作为生产对照版本；
 # v49 的首轮灰度发现已登记谓词的角色白名单/实体类型遵循率下降，退出抽样但保留对照；
-# v50 在 v49 精简结构上增加 Registry 驱动的角色与类型输出前检查。
-# v48/v50 同时参与生产等概率抽样，用归档 __PROMPT_VERSION__ 分组评估；
+# v50 在 v49 精简结构上增加 Registry 驱动的角色与类型输出前检查，首轮灰度证明
+# 角色纪律有效，但完整度随整体精简下降，现退出生产抽样并保留为显式对照。
+# v51 仅把 v50 的角色纪律和紧凑谓词目录反哺 v48；v48/v51 等概率抽样，
+# 用归档 __PROMPT_VERSION__ 分组评估单变量替换；
 # v47 保留为旧时间契约的回滚/缓存对照版本；
 # v46 保留为同业务契约、旧消息布局的回滚/缓存对照版本；
 # v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
@@ -388,8 +400,15 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
     for protocol in build_event_v4_protocols(registry):
         catalog.register_protocol(protocol)
     catalog.register_prompt(
-        50, build_event_v50_prompt(registry),
+        51, build_event_v51_prompt(
+            EVENT_ANALYSIS_PROMPT_V48,
+            EVENT_CORE_EXTRACTION_SECTION_MINIMAL_TIME,
+            registry,
+        ),
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=True)
+    catalog.register_prompt(
+        50, build_event_v50_prompt(registry),
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)
     catalog.register_prompt(
         49, build_event_v49_prompt(registry),
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)

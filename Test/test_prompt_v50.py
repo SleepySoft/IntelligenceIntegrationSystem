@@ -9,15 +9,13 @@ from event_engine.domains import registry_for
 from test_prompt_v49 import _output_example, _rich_output
 
 
-def test_v50_replaces_v49_in_production_gray_pair():
+def test_v50_remains_selectable_after_v51_replaces_it_in_gray_sampling():
     catalog = catalog_module.EVENT_V4_PROMPT_CATALOG
-    assert catalog.sampling_versions() == [48, 50]
+    assert catalog.sampling_versions() == [48, 51]
     assert catalog.protocol_for(50) is catalog.protocol_for(48)
     assert catalog.text_for(50) == v50.EVENT_ANALYSIS_PROMPT_V50
-    assert catalog_module.EVENT_ANALYSIS_PROMPT_TABLE == {
-        48: catalog_module.EVENT_ANALYSIS_PROMPT_V48,
-        50: v50.EVENT_ANALYSIS_PROMPT_V50,
-    }
+    assert 50 not in catalog_module.EVENT_ANALYSIS_PROMPT_TABLE
+    assert catalog_module.EVENT_ANALYSIS_EXTRA_PROMPTS[50] == v50.EVENT_ANALYSIS_PROMPT_V50
 
 
 def test_v50_preserves_v49_and_adds_explicit_registered_role_checks():
