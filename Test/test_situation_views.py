@@ -546,13 +546,22 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
-    assert 'class="intelligence-panel" id="map-intelligence-panel" hidden' in embedded_html
+    assert 'class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden' in embedded_html
+    assert 'class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden' in embedded_html
+    assert 'data-drawer-summary="map-intelligence-panel" aria-expanded="false"' in embedded_html
+    assert 'data-drawer-summary="graph-intelligence-panel" aria-expanded="false"' in embedded_html
+    assert 'id="map-intelligence-summary" aria-live="polite"' in embedded_html
+    assert 'id="graph-intelligence-summary" aria-live="polite"' in embedded_html
     assert 'data-drawer-toggle="map-intelligence-panel"' in embedded_html
     assert 'data-drawer-close="map-intelligence-panel"' in embedded_html
     assert 'data-drawer-toggle="graph-intelligence-panel"' in embedded_html
     assert 'data-drawer-close="graph-intelligence-panel"' in embedded_html
     assert "openIntelligenceDrawer('map-intelligence-panel')" in embedded_html
     assert "openIntelligenceDrawer('graph-intelligence-panel')" in embedded_html
+    assert "setIntelligenceDrawerCollapsed(panel, false);" not in embedded_html
+    assert "updateIntelligenceDrawerSummary('map-intelligence-panel'" in embedded_html
+    assert "updateIntelligenceDrawerSummary(\n            'graph-intelligence-panel'" in embedded_html
+    assert 'intelligence-panel.is-collapsed.has-update' in embedded_html
     assert 'id="entity-editor"' in embedded_html
     assert 'type="radio" name="entity-target-kind" id="entity-kind-global"' in embedded_html
     assert 'type="radio" name="entity-target-kind" id="entity-kind-contextual"' in embedded_html

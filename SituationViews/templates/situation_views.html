@@ -55,20 +55,26 @@
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
-        .intelligence-panel { position: fixed; left: 50%; bottom: 12px; z-index: 20; width: min(1100px, calc(100vw - 28px)); max-height: min(62vh, 620px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); animation: intelligence-drawer-rise .2s ease-out; }
+        .intelligence-panel { position: fixed; left: 50%; bottom: 12px; z-index: 20; width: min(1100px, calc(100vw - 28px)); max-height: min(62vh, 620px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); transition: max-height .18s ease, border-color .18s ease, box-shadow .18s ease; }
         .intelligence-panel[hidden] { display: none; }
-        .intelligence-panel.is-collapsed { max-height: 58px; }
+        .intelligence-panel.is-collapsed { max-height: 62px; }
         .intelligence-panel.is-collapsed .intelligence-panel-body { display: none; }
-        .intelligence-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 9px 12px 9px 14px; border-bottom: 1px solid var(--border); }
-        .intelligence-panel-head h2 { min-width: 0; margin: 0; overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+        .intelligence-panel.is-collapsed .intelligence-panel-head { border-bottom-color: transparent; }
+        .intelligence-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 7px 10px 7px 14px; border-bottom: 1px solid var(--border); }
+        .intelligence-panel-summary { min-width: 0; min-height: 0; flex: 1 1 auto; display: grid; gap: 2px; padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; text-align: left; }
+        .intelligence-panel-summary:hover, .intelligence-panel-summary:focus-visible { background: var(--soft); }
+        .intelligence-panel-title { overflow: hidden; color: var(--text); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+        .intelligence-panel-brief { overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
         .intelligence-panel-actions { display: flex; flex: 0 0 auto; gap: 7px; }
         .intelligence-panel-actions button { min-height: 32px; padding: 5px 9px; }
         .intelligence-panel-body { min-height: 0; padding: 0 14px 14px; overflow: auto; overscroll-behavior: contain; }
         .intelligence-panel-body > p { margin: 10px 0 0; }
-        @keyframes intelligence-drawer-rise {
-            from { opacity: 0; transform: translate(-50%, 28px); }
-            to { opacity: 1; transform: translate(-50%, 0); }
+        .intelligence-panel.is-collapsed.has-update { animation: intelligence-drawer-notice .9s ease-out; }
+        @keyframes intelligence-drawer-notice {
+            0%, 100% { border-color: var(--border); box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); }
+            28%, 72% { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent), 0 22px 70px color-mix(in srgb, #000 42%, transparent); }
         }
+        @media (prefers-reduced-motion: reduce) { .intelligence-panel { transition: none; } .intelligence-panel.is-collapsed.has-update { animation: none; border-color: var(--accent); } }
         .intelligence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 9px; margin-top: 12px; }
         .intelligence-card { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--soft); }
         .intelligence-card a { color: light-dark(#2457c5, #a9c4ff); font-weight: 650; text-decoration: none; }
@@ -234,11 +240,14 @@
             </aside>
             <button class="side-toggle" type="button" data-side="map-detail" aria-expanded="true">收起图例</button>
         </div>
-        <section class="intelligence-panel" id="map-intelligence-panel" hidden>
+        <section class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden>
             <div class="intelligence-panel-head">
-                <h2 id="map-intelligence-title">对应情报</h2>
+                <button class="intelligence-panel-summary" type="button" data-drawer-summary="map-intelligence-panel" aria-expanded="false">
+                    <span class="intelligence-panel-title" id="map-intelligence-title">对应情报</span>
+                    <span class="intelligence-panel-brief" id="map-intelligence-summary" aria-live="polite">选择地点后显示情报数量</span>
+                </button>
                 <div class="intelligence-panel-actions">
-                    <button type="button" data-drawer-toggle="map-intelligence-panel" aria-expanded="true">收起</button>
+                    <button type="button" data-drawer-toggle="map-intelligence-panel" aria-expanded="false">展开</button>
                     <button type="button" data-drawer-close="map-intelligence-panel" aria-label="关闭对应情报">关闭</button>
                 </div>
             </div>
@@ -288,11 +297,14 @@
             </aside>
             <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
         </div>
-        <section class="intelligence-panel" id="graph-intelligence-panel" hidden>
+        <section class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden>
             <div class="intelligence-panel-head">
-                <h2 id="graph-intelligence-title">对应情报</h2>
+                <button class="intelligence-panel-summary" type="button" data-drawer-summary="graph-intelligence-panel" aria-expanded="false">
+                    <span class="intelligence-panel-title" id="graph-intelligence-title">对应情报</span>
+                    <span class="intelligence-panel-brief" id="graph-intelligence-summary" aria-live="polite">选择实体或关系后显示情报数量</span>
+                </button>
                 <div class="intelligence-panel-actions">
-                    <button type="button" data-drawer-toggle="graph-intelligence-panel" aria-expanded="true">收起</button>
+                    <button type="button" data-drawer-toggle="graph-intelligence-panel" aria-expanded="false">展开</button>
                     <button type="button" data-drawer-close="graph-intelligence-panel" aria-label="关闭对应情报">关闭</button>
                 </div>
             </div>
@@ -509,17 +521,30 @@ async function loadJson(url, options = undefined) {
 
 function setIntelligenceDrawerCollapsed(panel, collapsed) {
     panel.classList.toggle('is-collapsed', collapsed);
-    const button = panel.querySelector('[data-drawer-toggle]');
-    if (button) {
-        button.textContent = collapsed ? '展开' : '收起';
+    panel.querySelectorAll('[data-drawer-toggle], [data-drawer-summary]').forEach(button => {
         button.setAttribute('aria-expanded', String(!collapsed));
-    }
+        if (button.hasAttribute('data-drawer-toggle')) button.textContent = collapsed ? '展开' : '收起';
+    });
 }
 
 function openIntelligenceDrawer(panelId) {
     const panel = $(panelId);
     panel.hidden = false;
-    setIntelligenceDrawerCollapsed(panel, false);
+}
+
+function updateIntelligenceDrawerSummary(panelId, message, notify = true) {
+    const panel = $(panelId);
+    const summary = panel.querySelector('.intelligence-panel-brief');
+    if (summary) summary.textContent = message;
+    if (!notify || !panel.classList.contains('is-collapsed')) return;
+    if (panel._intelligenceNoticeTimer) window.clearTimeout(panel._intelligenceNoticeTimer);
+    panel.classList.remove('has-update');
+    void panel.offsetWidth;
+    panel.classList.add('has-update');
+    panel._intelligenceNoticeTimer = window.setTimeout(() => {
+        panel.classList.remove('has-update');
+        panel._intelligenceNoticeTimer = null;
+    }, 1000);
 }
 
 async function refreshMap() {
@@ -730,6 +755,7 @@ function showMapDetail(d, countryName, locationName = null) {
     selectedCountry = `${d.country_code}|${locationName || ''}`;
     openIntelligenceDrawer('map-intelligence-panel');
     $('map-intelligence-title').textContent = `${locationName || countryName || d.country_code} · 对应情报`;
+    updateIntelligenceDrawerSummary('map-intelligence-panel', '正在加载对应情报…', false);
     $('map-intelligences').innerHTML = '<span class="muted">正在加载真实情报…</span>';
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
     const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
@@ -757,6 +783,7 @@ async function loadMapIntelligences(countryCode, locationName = null) {
         const target = $('map-intelligences');
         if (!data.intelligences.length) {
             target.innerHTML = '<span class="muted">当前筛选条件下没有对应情报。</span>';
+            updateIntelligenceDrawerSummary('map-intelligence-panel', '当前筛选条件下没有对应情报');
             return;
         }
         target.innerHTML = data.intelligences.map(item => {
@@ -768,9 +795,14 @@ async function loadMapIntelligences(countryCode, locationName = null) {
                 <div class="predicate-tags">${escapeHtml(predicates)}</div>
             </article>`;
         }).join('') + (data.meta.has_more ? `<div class="warning">共 ${data.meta.total} 条，仅显示最新 50 条。</div>` : '');
+        updateIntelligenceDrawerSummary(
+            'map-intelligence-panel',
+            `共 ${data.meta.total} 篇 · ${data.meta.has_more ? '展开查看最新 50 篇' : '点击展开查看'}`,
+        );
     } catch (error) {
         if (selectedCountry === selectionKey) {
             $('map-intelligences').innerHTML = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
+            updateIntelligenceDrawerSummary('map-intelligence-panel', '情报加载失败 · 点击展开查看原因');
         }
     }
 }
@@ -1058,6 +1090,7 @@ function selectGraphNode(d) {
     $('graph-role-filters').hidden = false;
     openIntelligenceDrawer('graph-intelligence-panel');
     $('graph-intelligence-title').textContent = `${d.name} · 对应情报`;
+    updateIntelligenceDrawerSummary('graph-intelligence-panel', '正在加载对应情报…', false);
     $('graph-intelligence-description').textContent = '显示该投影实体在当前筛选条件下参与关系的情报。';
     showNodeDetail(d);
     updateGraphSelectionStyles();
@@ -1075,6 +1108,7 @@ function selectGraphEdge(d) {
     openIntelligenceDrawer('graph-intelligence-panel');
     const arrow = d.directed ? '→' : '—';
     $('graph-intelligence-title').textContent = `${selectedGraphElement.source_name} —${d.predicate_label}${arrow} ${selectedGraphElement.target_name} · 对应情报`;
+    updateIntelligenceDrawerSummary('graph-intelligence-panel', '正在加载关系证据…', false);
     $('graph-intelligence-description').textContent = '仅显示直接支撑这条实体关系、谓词和方向的情报。';
     showEdgeDetail(d);
     updateGraphSelectionStyles();
@@ -1172,11 +1206,18 @@ async function loadGraphIntelligences(append) {
         else target.innerHTML = cards || '<span class="muted">当前筛选条件下没有对应情报。</span>';
         graphEvidenceOffset = data.meta.offset + data.intelligences.length;
         $('graph-intelligence-description').textContent = `共 ${data.meta.total} 篇，按内容时间从新到旧排列。`;
+        updateIntelligenceDrawerSummary(
+            'graph-intelligence-panel',
+            `共 ${data.meta.total} 篇 · ${selection.type === 'node' ? '实体参与证据' : '关系直接证据'} · 点击展开查看`,
+            !append,
+        );
         $('graph-load-more').hidden = !data.meta.has_more;
     } catch (error) {
         if (requestId === graphEvidenceRequest) {
             const message = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
             if (append) target.insertAdjacentHTML('beforeend', message); else target.innerHTML = message;
+            if (!append) updateIntelligenceDrawerSummary(
+                'graph-intelligence-panel', '情报加载失败 · 点击展开查看原因');
         }
     }
 }
@@ -1276,8 +1317,14 @@ document.querySelectorAll('[data-drawer-toggle]').forEach(button => button.addEv
     const panel = $(button.dataset.drawerToggle);
     setIntelligenceDrawerCollapsed(panel, !panel.classList.contains('is-collapsed'));
 }));
+document.querySelectorAll('[data-drawer-summary]').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.drawerSummary);
+    setIntelligenceDrawerCollapsed(panel, !panel.classList.contains('is-collapsed'));
+}));
 document.querySelectorAll('[data-drawer-close]').forEach(button => button.addEventListener('click', () => {
-    $(button.dataset.drawerClose).hidden = true;
+    const panel = $(button.dataset.drawerClose);
+    setIntelligenceDrawerCollapsed(panel, true);
+    panel.hidden = true;
 }));
 // 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
 $('component-min-size').value = componentMinSize;
