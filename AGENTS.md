@@ -116,7 +116,7 @@
   - `iis_integration.py`：按子系统装配并注入态势实体图；模块失败时 IIS 主服务和只读图继续运行
   - `Scripts/rebuild_entity_reference_index.py`：从权威归档重建带 `local_entity_id` 的事件索引，默认 dry-run，`--apply` 写入
   - 实体图中未解析 ref 按“名称 + 类型 + 国家”临时连接（不持久化）；人工指定的 `ent_*`/`ctx_*` 优先，可把同名误合并 ref 拆到不同标准实体
-  - 登录用户可在节点中多选具体情报引用，搜索/新建并批量指定目标；“固定别名”是独立全局操作，不接收情报 UUID，也不创建事件关联
+  - 登录用户先选择“全局登记”或“按情报消歧”；全局登记不接收情报 UUID，也不创建事件关联，消歧时可多选具体情报引用并用 radio 选择目标进入全局 `ent_*` 或语境 `ctx_*` 表
   - 设计与实施说明：`doc/20261021_entity_identity_resolution_and_wiki_design.md`、`doc/20261021_entity_resolution_implementation_plan.md`
 
 - **`VectorDB/`** — 向量数据库服务

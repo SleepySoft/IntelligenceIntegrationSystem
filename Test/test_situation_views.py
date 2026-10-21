@@ -547,10 +547,17 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
     assert 'id="entity-editor"' in embedded_html
+    assert 'type="radio" name="entity-operation" id="entity-operation-register"' in embedded_html
+    assert 'type="radio" name="entity-operation" id="entity-operation-resolve"' in embedded_html
+    assert 'type="radio" name="entity-target-kind" id="entity-kind-global"' in embedded_html
+    assert 'type="radio" name="entity-target-kind" id="entity-kind-contextual"' in embedded_html
     assert 'type="checkbox" name="editing-ref"' in embedded_html
     assert 'id="entity-ref-select-all"' in embedded_html
     assert 'id="entity-fixed-alias-save"' in embedded_html
     assert '不绑定任何情报或事件' in embedded_html
+    assert '登记操作只写入全局实体与固定别名表，不读取或保存任何情报关联' in embedded_html
+    assert "if (editingOperation !== 'resolve')" in embedded_html
+    assert "if (editingOperation !== 'register')" in embedded_html
     assert 'entity-register-fixed-alias' not in embedded_html
     assert 'id="graph-search-panel"' in embedded_html
     assert 'id="graph-search-results"' in embedded_html
