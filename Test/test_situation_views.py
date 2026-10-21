@@ -569,7 +569,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="entity-ref-select-all"' in embedded_html
     assert 'id="entity-limited-scope"' in embedded_html
     assert '仅针对所选情报中的实体生效' in embedded_html
-    assert '把当前指定实体关联到上面选择的实体' in embedded_html
+    assert 'id="entity-mapping-preview">请先在上方选择一个目标实体' in embedded_html
+    assert '将所选情报中的“${sourceName}”关联到“${targetName}”' in embedded_html
+    assert '将“${sourceName}”全局映射到“${targetName}”' in embedded_html
+    assert '已选择：${name}' not in embedded_html
     assert '即使已有结果，也始终可以添加新实体' in embedded_html
     assert 'id="entity-assign">保存全局映射' in embedded_html
     assert "scope.disabled = kind === 'contextual'" in embedded_html

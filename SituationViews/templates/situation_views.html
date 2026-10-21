@@ -381,7 +381,7 @@
         </section>
         <section class="entity-editor-section" id="entity-resolution-refs">
             <h3>2. 设置关联范围</h3>
-            <p style="margin:0"><b>把当前指定实体关联到上面选择的实体。</b></p>
+            <p style="margin:0"><b id="entity-mapping-preview">请先在上方选择一个目标实体。</b></p>
             <label class="entity-scope-option">
                 <input type="checkbox" id="entity-limited-scope">
                 <span><b>仅针对所选情报中的实体生效</b><small id="entity-scope-help"></small></span>
@@ -1447,8 +1447,15 @@ function setEditingKind(kind) {
 }
 function syncEditingScope() {
     const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    const sourceName = editingGraphNode?.name || '当前实体';
+    const targetName = selectedEditingTarget?.name;
     $('entity-ref-scope').hidden = !limited;
     $('entity-assign').textContent = limited ? '保存所选情报关联' : '保存全局映射';
+    $('entity-mapping-preview').textContent = !targetName
+        ? '请先在上方选择一个目标实体。'
+        : limited
+            ? `将所选情报中的“${sourceName}”关联到“${targetName}”。`
+            : `将“${sourceName}”全局映射到“${targetName}”。`;
     $('entity-scope-help').textContent = editingTargetKind === 'contextual'
         ? '语境实体必须绑定具体情报，不能建立全局名称映射。'
         : limited
@@ -1460,7 +1467,8 @@ function selectEditingTarget(id, name) {
     selectedEditingTarget = {id, name};
     document.querySelectorAll('.entity-target-option').forEach(item =>
         item.classList.toggle('selected', item.dataset.editTarget === id));
-    editorStatus(`已选择：${name}`);
+    syncEditingScope();
+    editorStatus('');
 }
 function renderTargetResults(containerId, items) {
     $(containerId).innerHTML = items.map(item => `<button type="button" class="entity-target-option" data-edit-target="${escapeHtml(item.id)}" data-edit-target-name="${escapeHtml(item.name)}">
