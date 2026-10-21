@@ -142,6 +142,33 @@ def test_crud_and_conflict(tmp_path):
     assert svc.resolve("人民网") is None
 
 
+def test_set_canonical_promotes_existing_name_and_preserves_old_name(tmp_path):
+    svc = _make_service(tmp_path)
+    entity = svc.create_entity(
+        "纽约时报", lang="zh", type="organization",
+        localized={"en": "The New York Times"},
+        aliases=[{"name": "NYT", "lang": "en", "role": "abbr"}])
+
+    promoted = svc.set_canonical(entity["id"], "The New York Times")
+
+    assert promoted["canonical"] == "The New York Times"
+    assert promoted["lang"] == "en"
+    assert promoted["localized"]["zh"] == "纽约时报"
+    assert "en" not in promoted["localized"]
+    assert svc.resolve("纽约时报")["canonical"] == "The New York Times"
+    assert svc.resolve("NYT")["canonical"] == "The New York Times"
+
+
+def test_update_type_rewrites_old_type_file(tmp_path):
+    svc = _make_service(tmp_path)
+    entity = svc.create_entity("测试机构", type="organization")
+
+    svc.update_entity(entity["id"], {"type": "other"})
+
+    assert "测试机构" not in (tmp_path / "organization.jsonl").read_text(encoding="utf-8")
+    assert "测试机构" in (tmp_path / "other.jsonl").read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------- meta 字段与展开
 
 def test_meta_fields_and_roles(tmp_path):
@@ -286,6 +313,27 @@ def test_api_conflict_returns_409(api_client):
     r = api_client.post("/entity-alias/api/entities", json={"canonical": "人民日报"})
     assert r.status_code == 409
     assert r.get_json()["code"] == "conflict"
+
+
+def test_management_page_and_set_canonical_api(api_client):
+    created = api_client.post("/entity-alias/api/entities", json={
+        "canonical": "美利坚合众国", "type": "country",
+        "aliases": [{"name": "美国", "lang": "zh", "role": "abbr"}],
+    }).get_json()
+
+    page = api_client.get("/entity-alias/manage")
+    assert page.status_code == 200
+    assert "全局实体别名管理" in page.get_data(as_text=True)
+    assert "本页不管理语境实体" in page.get_data(as_text=True)
+
+    response = api_client.post(
+        f"/entity-alias/api/entities/{created['id']}/canonical",
+        json={"name": "美国"},
+    )
+    assert response.status_code == 200
+    updated = response.get_json()
+    assert updated["canonical"] == "美国"
+    assert any(alias["name"] == "美利坚合众国" for alias in updated["aliases"])
 
 
 def test_mount_to_iis(tmp_path):

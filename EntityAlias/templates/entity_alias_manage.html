@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全局实体别名管理 · IIS</title>
+    <style>
+        :root { color-scheme: light dark; --bg: light-dark(#f3f6fb,#0f172a); --panel: light-dark(#fff,#172033); --soft: light-dark(#eef3f9,#202c42); --border: light-dark(#d8e1ed,#34435c); --text: light-dark(#1f2937,#e6edf7); --muted: light-dark(#64748b,#9babc0); --accent:#4f7cff; --danger:#d64b4b; }
+        * { box-sizing: border-box; }
+        body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif; }
+        button,input,select,textarea { min-height:38px; border:1px solid var(--border); border-radius:8px; padding:7px 9px; color:var(--text); background:var(--soft); font:inherit; }
+        button { cursor:pointer; font-weight:650; } button.primary { color:#fff; background:var(--accent); border-color:transparent; } button.danger { color:#fff; background:var(--danger); border-color:transparent; }
+        .shell { max-width:1420px; margin:auto; padding:18px; }
+        header { display:flex; justify-content:space-between; align-items:start; gap:16px; margin-bottom:14px; }
+        h1 { margin:0; font-size:24px; } header p { margin:5px 0 0; color:var(--muted); }
+        .badge { display:inline-block; padding:3px 7px; border-radius:999px; background:var(--soft); color:var(--muted); font-size:12px; }
+        .notice { padding:10px 12px; margin-bottom:14px; border:1px solid var(--border); border-radius:10px; background:var(--panel); color:var(--muted); }
+        .toolbar { display:grid; grid-template-columns:minmax(220px,1fr) 180px auto auto; gap:8px; margin-bottom:12px; }
+        .layout { display:grid; grid-template-columns:minmax(360px,.9fr) minmax(520px,1.4fr); gap:12px; align-items:start; }
+        .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+        .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border-bottom:1px solid var(--border); }
+        .panel-head h2 { margin:0; font-size:16px; }
+        .entity-list { max-height:calc(100vh - 220px); overflow:auto; }
+        .entity-row { width:100%; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:11px 14px; border:0; border-bottom:1px solid var(--border); border-radius:0; text-align:left; background:transparent; }
+        .entity-row:hover,.entity-row.selected { background:var(--soft); } .entity-row b { display:block; overflow-wrap:anywhere; } .entity-row small { color:var(--muted); font-weight:400; }
+        .empty { padding:24px; color:var(--muted); text-align:center; }
+        form { display:grid; gap:12px; padding:14px; }
+        .grid { display:grid; grid-template-columns:2fr 1fr 1fr; gap:9px; } label { display:grid; gap:5px; color:var(--muted); font-size:12px; }
+        textarea { min-height:78px; resize:vertical; }
+        .section-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; } .section-head h3 { margin:0; font-size:14px; }
+        .alias-list { display:grid; gap:7px; }
+        .alias-row { display:grid; grid-template-columns:minmax(150px,1fr) 75px 95px auto; gap:7px; align-items:center; }
+        .name-list { display:grid; gap:6px; }
+        .name-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 9px; border:1px solid var(--border); border-radius:8px; background:var(--soft); }
+        .name-row span { min-width:0; overflow-wrap:anywhere; } .name-row small { color:var(--muted); }
+        .actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; padding-top:4px; }
+        .status { min-height:20px; color:var(--muted); } .status.error { color:#e45d5d; }
+        [hidden] { display:none !important; }
+        @media(max-width:900px){ .layout{grid-template-columns:1fr}.entity-list{max-height:42vh}.toolbar{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr 1fr} }
+        @media(max-width:560px){ .shell{padding:10px}.toolbar,.grid,.alias-row{grid-template-columns:1fr}.actions button{flex:1 1 auto} }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <header>
+        <div><h1>全局实体别名管理</h1><p>管理 JSONL 中的 <code>ent_*</code>、固定别名与主标准名。</p></div>
+        <span class="badge">{{ status.entities }} 个实体 · {{ status.names_indexed }} 个名称</span>
+    </header>
+    <div class="notice">本页不管理语境实体 <code>ctx_*</code>，也不修改情报的 EntityRef 消歧关联。删除仍被引用的全局实体可能产生失效指向，请先确认影响。</div>
+    <div class="toolbar">
+        <input id="search" type="search" placeholder="搜索标准名或别名">
+        <select id="type-filter"><option value="">全部类型</option><option value="person">人物</option><option value="organization">组织</option><option value="country">国家</option><option value="location">地点</option><option value="animal">动物</option><option value="commodity">商品</option><option value="other">其他</option><option value="uncertain">待确认</option></select>
+        <button type="button" id="refresh">查询</button><button type="button" class="primary" id="create">新建实体</button>
+    </div>
+    <div class="layout">
+        <section class="panel"><div class="panel-head"><h2>实体列表</h2><span id="total" class="badge"></span></div><div id="entity-list" class="entity-list"><div class="empty">正在加载…</div></div></section>
+        <section class="panel"><div class="panel-head"><h2 id="editor-title">选择一个实体</h2><span id="entity-id" class="badge"></span></div>
+            <form id="editor" hidden>
+                <div class="grid"><label>主标准名<input id="canonical" required></label><label>语言<input id="lang" value="zh" placeholder="zh"></label><label>类型<select id="type"><option value="person">人物</option><option value="organization">组织</option><option value="country">国家</option><option value="location">地点</option><option value="animal">动物</option><option value="commodity">商品</option><option value="other">其他</option><option value="uncertain">待确认</option></select></label></div>
+                <label>说明<textarea id="description" placeholder="简短说明，帮助人工判断是否为同一实体"></textarea></label>
+                <label>状态<select id="status"><option value="unverified">未核实</option><option value="verified">已核实</option></select></label>
+                <div class="section-head"><h3>固定别名</h3><button type="button" id="add-alias">添加别名</button></div>
+                <div id="alias-list" class="alias-list"></div>
+                <div id="canonical-section" hidden><div class="section-head"><h3>指定主标准名</h3><small>先保存新增别名，再将它提升为标准名</small></div><div id="name-list" class="name-list"></div></div>
+                <div id="editor-status" class="status"></div>
+                <div class="actions"><button type="button" class="danger" id="delete" hidden>删除实体</button><button type="button" id="cancel">取消</button><button type="submit" class="primary">保存</button></div>
+            </form>
+            <div id="editor-empty" class="empty">从左侧选择实体，或新建一个全局实体。</div>
+        </section>
+    </div>
+</main>
+<script>
+const API = {{ url_prefix|tojson }} + '/api';
+let current = null;
+const $ = id => document.getElementById(id);
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function requestJson(url, options) { const response = await fetch(url, options); const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`); return data; }
+function status(message, error=false) { $('editor-status').textContent=message||''; $('editor-status').classList.toggle('error',error); }
+async function loadEntities() {
+    $('entity-list').innerHTML='<div class="empty">正在加载…</div>';
+    try {
+        const params=new URLSearchParams({q:$('search').value.trim(),type:$('type-filter').value,limit:'200',offset:'0'});
+        const data=await requestJson(`${API}/entities?${params}`); $('total').textContent=`${data.total} 个`;
+        $('entity-list').innerHTML=data.items.map(item=>`<button type="button" class="entity-row${current?.id===item.id?' selected':''}" data-id="${escapeHtml(item.id)}"><span><b>${escapeHtml(item.canonical)}</b><small>${escapeHtml(item.type)} · ${(item.aliases||[]).length} 个别名${item.description?` · ${escapeHtml(item.description)}`:''}</small></span><small>${escapeHtml(item.status)}</small></button>`).join('')||'<div class="empty">没有匹配实体。</div>';
+    } catch(error) { $('entity-list').innerHTML=`<div class="empty">加载失败：${escapeHtml(error.message)}</div>`; }
+}
+function aliasRow(alias={}) { return `<div class="alias-row"><input data-alias-name placeholder="别名" value="${escapeHtml(alias.name||'')}"><input data-alias-lang placeholder="语言" value="${escapeHtml(alias.lang||'')}"><select data-alias-role><option value="">一般别名</option><option value="abbr"${alias.role==='abbr'?' selected':''}>简称</option><option value="full"${alias.role==='full'?' selected':''}>全称</option><option value="former"${alias.role==='former'?' selected':''}>旧称</option><option value="native"${alias.role==='native'?' selected':''}>母语旧字段</option></select><button type="button" data-remove-alias>移除</button></div>`; }
+function renderEditor(entity) {
+    current=entity; $('editor').hidden=false; $('editor-empty').hidden=true; $('editor-title').textContent=entity?'编辑全局实体':'新建全局实体'; $('entity-id').textContent=entity?.id||'新实体';
+    $('canonical').value=entity?.canonical||''; $('canonical').readOnly=Boolean(entity); $('lang').value=entity?.lang||'zh'; $('type').value=entity?.type||'other'; $('description').value=entity?.description||''; $('status').value=entity?.status||'unverified';
+    $('alias-list').innerHTML=(entity?.aliases||[]).map(aliasRow).join(''); $('delete').hidden=!entity; $('canonical-section').hidden=!entity; status(''); renderNameChoices(entity); loadEntities();
+}
+function renderNameChoices(entity) {
+    if (!entity) return $('name-list').innerHTML='';
+    const choices=[...(entity.aliases||[]).map(v=>({name:v.name,meta:`别名 · ${v.lang||'语言未标注'}`})),...Object.entries(entity.localized||{}).map(([lang,name])=>({name,meta:`${lang} 语言标准名`}))];
+    $('name-list').innerHTML=`<div class="name-row"><span><b>${escapeHtml(entity.canonical)}</b><br><small>当前主标准名 · ${escapeHtml(entity.lang||'')}</small></span><span class="badge">当前</span></div>`+choices.map(item=>`<div class="name-row"><span><b>${escapeHtml(item.name)}</b><br><small>${escapeHtml(item.meta)}</small></span><button type="button" data-set-canonical="${escapeHtml(item.name)}">设为标准名</button></div>`).join('');
+}
+function collectAliases() { return [...document.querySelectorAll('.alias-row')].map(row=>({name:row.querySelector('[data-alias-name]').value.trim(),lang:row.querySelector('[data-alias-lang]').value.trim(),role:row.querySelector('[data-alias-role]').value})).filter(item=>item.name); }
+async function openEntity(id) { try { renderEditor(await requestJson(`${API}/entities/${encodeURIComponent(id)}`)); } catch(error){ alert(`加载失败：${error.message}`); } }
+$('entity-list').addEventListener('click',event=>{const button=event.target.closest('[data-id]');if(button)openEntity(button.dataset.id);});
+$('add-alias').addEventListener('click',()=>{$('alias-list').insertAdjacentHTML('beforeend',aliasRow());});
+$('alias-list').addEventListener('click',event=>{if(event.target.matches('[data-remove-alias]'))event.target.closest('.alias-row').remove();});
+$('name-list').addEventListener('click',async event=>{const button=event.target.closest('[data-set-canonical]');if(!button||!current)return;try{status('正在切换标准名…');const entity=await requestJson(`${API}/entities/${encodeURIComponent(current.id)}/canonical`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:button.dataset.setCanonical})});renderEditor(entity);}catch(error){status(error.message,true);}});
+$('editor').addEventListener('submit',async event=>{event.preventDefault();const payload={canonical:$('canonical').value.trim(),lang:$('lang').value.trim(),type:$('type').value,status:$('status').value,description:$('description').value.trim(),aliases:collectAliases()};try{status('正在保存…');const entity=await requestJson(current?`${API}/entities/${encodeURIComponent(current.id)}`:`${API}/entities`,{method:current?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});renderEditor(entity);}catch(error){status(error.message,true);}});
+$('delete').addEventListener('click',async()=>{if(!current||!confirm(`确认删除“${current.canonical}”？\n不会自动清理已有情报关联。`))return;try{await requestJson(`${API}/entities/${encodeURIComponent(current.id)}`,{method:'DELETE'});current=null;$('editor').hidden=true;$('editor-empty').hidden=false;$('entity-id').textContent='';await loadEntities();}catch(error){status(error.message,true);}});
+$('create').addEventListener('click',()=>renderEditor(null)); $('cancel').addEventListener('click',()=>{current=null;$('editor').hidden=true;$('editor-empty').hidden=false;$('entity-id').textContent='';loadEntities();}); $('refresh').addEventListener('click',loadEntities); $('search').addEventListener('keydown',event=>{if(event.key==='Enter')loadEntities();}); $('type-filter').addEventListener('change',loadEntities);
+loadEntities();
+</script>
+</body>
+</html>

@@ -189,9 +189,11 @@ class EntityAliasService:
 
     def update_entity(self, entity_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
-            entity = self.store.get(entity_id)
-            if entity is None:
+            stored = self.store.get(entity_id)
+            if stored is None:
                 raise AliasError(f"实体不存在：{entity_id}", "not_found")
+            # 在副本上校验后再落盘，避免失败更新污染内存，也让 store 能识别类型迁移并清理旧文件。
+            entity = Entity.from_dict(stored.to_dict())
             old_names = [e.name for e in entity.all_names()]
             if "canonical" in fields:
                 entity.canonical = str(fields["canonical"]).strip()
@@ -277,6 +279,57 @@ class EntityAliasService:
         key = normalize_name(name)
         aliases = [a.to_dict() for a in entity.aliases if normalize_name(a.name) != key]
         return self.update_entity(entity_id, {"aliases": aliases})
+
+    def set_canonical(self, entity_id: str, name: str) -> Dict[str, Any]:
+        """把一个已有别名/语言标准名提升为主标准名，并保留原主标准名。"""
+        entity = self.store.get(entity_id)
+        if entity is None:
+            raise AliasError(f"实体不存在：{entity_id}", "not_found")
+        from EntityAlias.normalize import normalize_name
+        key = normalize_name(name)
+        if not key:
+            raise AliasError("标准名不能为空", "bad_request")
+        if key == normalize_name(entity.canonical):
+            return entity.to_dict()
+
+        aliases = [a.to_dict() for a in entity.aliases]
+        localized = dict(entity.localized)
+        promoted_lang = ""
+        found = False
+        kept_aliases = []
+        for alias in aliases:
+            if not found and normalize_name(alias.get("name", "")) == key:
+                promoted_lang = str(alias.get("lang") or "").strip().lower()
+                found = True
+                continue
+            kept_aliases.append(alias)
+        if not found:
+            for lang, localized_name in list(localized.items()):
+                if normalize_name(localized_name) == key:
+                    promoted_lang = lang
+                    localized.pop(lang, None)
+                    found = True
+                    break
+        if not found:
+            raise AliasError("只能把该实体已有的别名或语言标准名设为主标准名")
+
+        old_canonical = entity.canonical
+        old_lang = entity.lang
+        new_lang = promoted_lang or old_lang
+        same_language_name = localized.pop(new_lang, None) if new_lang else None
+        if same_language_name and normalize_name(same_language_name) != key:
+            kept_aliases.append({"name": same_language_name, "lang": new_lang})
+        # 不丢失旧主标准名：语言不同且该语言槽空闲时保留为语言标准名，否则作为一般别名。
+        if old_lang and old_lang != new_lang and old_lang not in localized:
+            localized[old_lang] = old_canonical
+        else:
+            kept_aliases.append({"name": old_canonical, "lang": old_lang})
+        return self.update_entity(entity_id, {
+            "canonical": name,
+            "lang": new_lang,
+            "aliases": kept_aliases,
+            "localized": localized,
+        })
 
     # ------------------------------------------------------------------ 维护
 

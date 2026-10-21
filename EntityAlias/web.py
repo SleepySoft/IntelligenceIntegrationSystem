@@ -43,6 +43,13 @@ class EntityAliasWebService:
                                    url_prefix=url_prefix,
                                    status=service.status())
 
+        @bp.route("/manage", methods=["GET"])
+        @protect
+        def manage_page():
+            return render_template("entity_alias_manage.html",
+                                   url_prefix=url_prefix,
+                                   status=service.status())
+
         # ------------------------------ 解析/查询 API ------------------------------
 
         @bp.route("/api/resolve", methods=["GET"])
@@ -195,6 +202,16 @@ class EntityAliasWebService:
             data = request.get_json(silent=True) or {}
             try:
                 return jsonify(service.remove_alias(entity_id, data.get("name", "")))
+            except AliasError as exc:
+                return _error_response(exc)
+
+        @bp.route("/api/entities/<entity_id>/canonical", methods=["POST"])
+        @protect
+        def api_set_canonical(entity_id):
+            data = request.get_json(silent=True) or {}
+            try:
+                return jsonify(service.set_canonical(
+                    entity_id, str(data.get("name") or "")))
             except AliasError as exc:
                 return _error_response(exc)
 

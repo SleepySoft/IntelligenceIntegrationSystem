@@ -10,7 +10,8 @@
 3. **模糊与部分查询**：精确未命中时，按归一化包含 / 编辑距离 / bigram 召回候选
 4. **可选向量召回**：再未命中时用语义相似度查找最近的名字（IIS 集成时复用
    VectorDB 服务的独立集合 `entity_alias_names`；模块本身不依赖 VectorDB）
-5. **REST API + 管理页**：`/entity-alias/`（ Blueprint，登录保护由挂载方注入）
+5. **REST API + 管理页**：`/entity-alias/manage` 提供全局实体与固定别名增删改查、主标准名
+   切换；写操作及管理页的登录保护由挂载方注入
 
 ## 两个设计决策
 
@@ -34,6 +35,16 @@
 - **查询层**：启动时全量加载到内存索引（精确 dict + 模糊扫描），千级规模下
   模糊全表扫描也是毫秒级；写操作 = 内存更新 + 整文件重写。
 - **向量数据**：完全放在 VectorDB 服务（独立集合），不落文本、不入 git。
+
+这里仅保存全局 `ent_*`。非全局语境实体 `ctx_*` 位于各业务子系统 MongoDB 的
+`<prefix>contextual_entities`；具体情报指称到全局/语境实体的关联分别位于
+`<prefix>entity_global_resolutions` 和 `<prefix>contextual_entity_resolutions`，关联主键由
+`subsystem + intelligence_uuid + EVENT_EXTRACTION 内 ENT ID` 构成。它们属于
+`EntityResolution`，不会由本管理页修改。
+
+当前没有另一张可跨情报复用的“非全局别名表”：上下文相关的原始称呼以 `surface` 快照保存
+在每条 resolution 记录中。它若指向稳定对象，目标是 JSONL 中的 `ent_*`；若指向泛称或临时
+群体，目标是 `contextual_entities` 中的 `ctx_*`。因此同一个称呼可以在不同情报中指向不同目标。
 
 ## 数据格式（JSONL 每行）
 
@@ -148,6 +159,7 @@ optional_subsystems:
 | POST | `/entity-alias/api/entities` | 注册实体（登录） |
 | GET/PUT/DELETE | `/entity-alias/api/entities/<id>` | 查询/更新/删除（写需登录） |
 | POST/DELETE | `/entity-alias/api/entities/<id>/aliases` | 别名增删（登录） |
+| POST | `/entity-alias/api/entities/<id>/canonical` | 将已有别名/语言标准名提升为主标准名（登录） |
 | POST | `/entity-alias/api/rebuild_vector` | 全量重建向量索引（登录） |
 | GET | `/entity-alias/api/status` | 状态 |
 
