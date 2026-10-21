@@ -510,7 +510,6 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
-    assert 'id="include-unresolved"' in embedded_html
     assert 'id="entity-editor"' in embedded_html
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
     assert 'https://baike.baidu.com/search/word?word=' in embedded_html

@@ -327,7 +327,6 @@ class SituationViewEngine:
         max_nodes: int = 80,
         max_edges: int = 240,
         keep_high_score_singletons: bool = True,
-        include_unresolved: bool = False,
         entity_types: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         events, meta = self._load_events(query)
@@ -394,10 +393,6 @@ class SituationViewEngine:
             support = len(edge["event_ids"])
             if support < min_support and not (
                 keep_high_score_singletons and edge["score_max"] >= high_score_cutoff
-            ) and not (
-                include_unresolved
-                and (str(edge["source"]).startswith("unresolved:")
-                     or str(edge["target"]).startswith("unresolved:"))
             ):
                 continue
             edge["support"] = support
@@ -474,7 +469,6 @@ class SituationViewEngine:
             ),
             "inferred_country_node_count": len(inferred_country_nodes),
             "entity_types": sorted(entity_types) if entity_types is not None else None,
-            "include_unresolved": bool(include_unresolved),
         })
         return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
 

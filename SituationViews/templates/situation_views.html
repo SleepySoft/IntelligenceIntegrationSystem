@@ -238,7 +238,6 @@
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
                     <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="5" style="width:52px"> 个节点</label>
                     <label>印证 ≥ <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> 起独立事件</label>
-                    <label><span><input id="include-unresolved" type="checkbox"> 显示待整理实体（单次关系）</span></label>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
                 <div class="legend" id="graph-legend"></div>
@@ -347,7 +346,6 @@ const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='c
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
-let includeUnresolved = false;
 let editingGraphNode = null, editingReferences = [], selectedEditingRef = null;
 let editingTargetKind = 'global', selectedEditingTarget = null;
 
@@ -704,7 +702,6 @@ async function refreshGraph() {
             min_support: $('min-support').value,
             max_nodes: $('max-nodes').value,
             keep_high_score_singletons: $('keep-singletons').checked,
-            include_unresolved: includeUnresolved,
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
@@ -722,8 +719,7 @@ async function refreshGraph() {
 let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
 
 function filterGraphData() {
-    const supportFloor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
-    const supportMin = Math.max(supportFloor, graphSupportMin);
+    const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
     const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({...d}));
     const nodes = graphData.nodes.map(d => ({...d}));
     // 并查集求连通分量
@@ -775,7 +771,7 @@ function renderGraph() {
         // 过滤叠加空态：印证过滤把网络切碎，全低于规模下限——给解释而非空白
         svg.append('text').attr('class', 'map-label').attr('text-anchor', 'middle')
             .attr('x', width / 2).attr('y', height / 2)
-            .text(`过滤后无可见网络：印证 ≥ ${Math.max(includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1), graphSupportMin)} 的边过少，` +
+            .text(`过滤后无可见网络：印证 ≥ ${Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin)} 的边过少，` +
                   `网络全部低于规模下限 ${componentMinSize}。建议降低规模或印证。`);
         return;
     }
@@ -1114,20 +1110,10 @@ const _supportInput = $('graph-support-min');
 _supportInput.min = DASHBOARD_PROFILE.min_support || 1;
 _supportInput.value = graphSupportMin;
 _supportInput.addEventListener('change', e => {
-    const floor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
+    const floor = DASHBOARD_PROFILE.min_support || 1;
     graphSupportMin = Math.max(floor, parseInt(e.target.value) || floor);
     e.target.value = graphSupportMin;
     renderGraph();
-});
-$('include-unresolved').addEventListener('change', e => {
-    includeUnresolved = e.target.checked;
-    const floor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
-    componentMinSize = includeUnresolved ? 1 : 5;
-    graphSupportMin = floor;
-    $('component-min-size').value = componentMinSize;
-    _supportInput.min = floor;
-    _supportInput.value = graphSupportMin;
-    refreshGraph();
 });
 // 图例由 innerHTML 构建，使用事件代理绑定其中的复选框。
 document.addEventListener('change', e => {

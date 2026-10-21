@@ -156,14 +156,12 @@ class SituationViewsService:
                     max_edges = self._bounded_int("max_edges", 240, 10, 1000)
                     keep_singletons = self._bool_arg("keep_high_score_singletons", True)
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
-                include_unresolved = self._bool_arg("include_unresolved", False)
                 return jsonify(engine.entity_graph(
                     query,
                     min_support=min_support,
                     max_nodes=max_nodes,
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
-                    include_unresolved=include_unresolved,
                     entity_types=entity_types,
                 ))
             except ValueError as exc:
