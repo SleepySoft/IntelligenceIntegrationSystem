@@ -75,8 +75,8 @@ no-op。systemd 单元的 `WatchdogSec=30` 必须大于程序的 10 秒通知间
 
 ## 迁移说明
 
-旧的 `iis.service` 与 `launch_iis_system.sh` 进程组管理模式已被替换。
-systemd 现在直接管理每个进程，`launch_iis_system.sh` 仅保留供手工调试使用。
+旧的 `iis.service` 与 `launch_iis_system.sh` 进程组管理模式已移除。
+systemd 现在通过 `iis.target` 统一拉起 Web 与爬虫，并直接管理每个进程。
 
 旧 `_config/config.json` 不再被生产入口读取。升级部署必须将其拆分为
 `_config/iis.yaml`、`_config/ai_clients.yaml` 和 `_config/collector.json`；三个真实配置
