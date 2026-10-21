@@ -72,9 +72,13 @@ def test_conversion_resolves_all_references_and_uses_stable_event_uuids():
     assert first.events == second.events
     assert first.events[0]["event_uuid"] == str(uuid5(intelligence_uuid, "E1"))
     assert first.events[0]["relations"][0]["target_event_uuid"] == str(uuid5(intelligence_uuid, "E2"))
-    assert first.events[0]["roles"]["actor"] == [{"name": "A军", "type": "organization"}]
-    assert first.events[0]["qualifiers"][0]["by"] == [{"name": "A军", "type": "organization"}]
-    assert first.events[0]["event_location"] == [{"name": "B设施", "type": "facility", "country_code": "CN"}]
+    assert first.events[0]["roles"]["actor"] == [
+        {"local_entity_id": "ENT1", "name": "A军", "type": "organization"}]
+    assert first.events[0]["qualifiers"][0]["by"] == [
+        {"local_entity_id": "ENT1", "name": "A军", "type": "organization"}]
+    assert first.events[0]["event_location"] == [{
+        "local_entity_id": "ENT2", "name": "B设施", "type": "facility",
+        "country_code": "CN"}]
     assert "entity_uuid" not in str(first.events)
     projections = derive_event_projections(analysis.EVENT_EXTRACTION)
     assert projections["LOCATION"] == ["B设施", "上海"]

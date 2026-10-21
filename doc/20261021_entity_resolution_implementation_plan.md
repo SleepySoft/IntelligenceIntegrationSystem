@@ -1,7 +1,7 @@
 # 实体指称解析与实体图接入实施计划
 
 > 日期：2026-10-21  
-> 状态：待实施  
+> 状态：MVP 已实施（2026-10-21）
 > 设计依据：`doc/20261021_entity_identity_resolution_and_wiki_design.md`
 
 ## 1. 本轮目标与非目标
@@ -223,4 +223,19 @@ editable
 4. `feat: resolve stable entity identities in situation graph`；
 5. `feat: add entity assignment workflow to graph`；
 6. `ops: add entity projection backfill and coverage report`。
+
+## 11. 实施结果
+
+本轮已完成上述 MVP 闭环：
+
+- 新增 `EntityResolution/`，以 MongoDB 旁表分别保存全局实体解析、语境实体与审计记录；
+- 权威 `EVENT_EXTRACTION` 不再被确定性别名后处理改写；
+- 派生事件实体快照保留文章内稳定 `ENT*` ID，并提供 dry-run/可重复执行的历史重建脚本；
+- 实体图按 `ent_*`、`ctx_*`、带情报作用域的未解析 ref 聚合，解析服务异常时安全降级；
+- 登录用户可在图中逐条选择情报实体引用，搜索/新建目标、指定、清除或撤销；
+- “显示待整理实体”模式允许人工查看通常会被印证阈值过滤的单次未解析关系；
+- Wiki 暂不建立本地事实库，只为全局标准名提供百度百科与中文 Wikipedia 搜索跳转。
+
+尚未启用的预留能力仍包括 UsageRef 级拆分、AI 自动消歧和实体重定向。历史索引重建脚本
+通过跳过已带完整 ENT ID 的文章实现可重复续跑，而不是维护额外游标。
 

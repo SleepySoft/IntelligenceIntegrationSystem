@@ -305,8 +305,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         vector_search = vector_handles.search
 
     # ------------------------- 实体别名子系统（可拆卸装配） -------------------------
-    # 在 Hub worker 启动前创建并注入同一服务实例：分析后处理使用标准名，
-    # 查询层使用别名展开；关闭或初始化失败时两者均自然降级。
+    # 在 Hub worker 启动前创建同一服务实例。权威抽取保留原始实体名；
+    # 查询层继续使用确定性别名展开，图等派生视图再做非破坏性解析。
     entity_alias_service = None
     try:
         from EntityAlias.iis_integration import create_entity_alias
@@ -315,16 +315,24 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             vector_client=vector_handles.vector_client if vector_handles else None,
         )
         if entity_alias_service is not None:
-            def normalize_entity_name(name):
-                resolved = entity_alias_service.resolve(name)
-                return resolved.get("canonical") if resolved else None
-
-            pipeline_ports.set_entity_name_normalizer(normalize_entity_name)
             for _ctx in subsystem_registry.enabled_subsystems():
                 _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
             services["entity_alias"] = entity_alias_service
     except Exception:
         logger.exception("实体别名模块装配失败，IIS 主服务继续运行。")
+
+    # ------------------------- 情报实体解析（非破坏性旁表） -------------------------
+    entity_resolution_service = None
+    try:
+        from EntityResolution.iis_integration import create_entity_resolution
+        entity_resolution_service = create_entity_resolution(
+            subsystem_registry=subsystem_registry,
+            entity_registry=entity_alias_service,
+        )
+        if entity_resolution_service is not None:
+            services["entity_resolution"] = entity_resolution_service
+    except Exception:
+        logger.exception("EntityResolution 装配失败，实体图继续使用只读降级模式。")
 
     # 实体统计、导出和聚合触发均为外围维护能力，不参与主处理链。
     from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
@@ -520,6 +528,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             data_path=DATA_PATH,
             dashboard=situation_scope,
             public_scoped=views_public_access,
+            entity_resolution_service=entity_resolution_service,
+            entity_alias_service=entity_alias_service,
         )
     except Exception:
         logger.exception("态势视图模块加载失败，IIS 主服务继续运行。")

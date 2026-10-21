@@ -109,6 +109,15 @@
   - 查询时展开：挂载后组合根把 `expand_names` 注入各子系统 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
   - 历史补录：`Scripts/entity_alias_backfill.py scan` 产出未注册实体工作清单 → AI 填写 `action` → `register` 执行
 
+- **`EntityResolution/`** — 与具体情报绑定的实体指称解析（非破坏性旁表）
+  - `EntityRef = subsystem + intelligence_uuid + local_entity_id`，以 Event V4 的 `ENT*` 为稳定锚点；不改写权威 `EVENT_EXTRACTION`
+  - `service.py`：把单条情报实体引用指定到全局 `ent_*` 或语境 `ctx_*`，支持改派、清除、审计和撤销
+  - `store.py`：MongoDB 分开保存全局解析、语境实体、语境解析和审计，避免泛称污染全局固定别名
+  - `iis_integration.py`：按子系统装配并注入态势实体图；模块失败时 IIS 主服务和只读图继续运行
+  - `Scripts/rebuild_entity_reference_index.py`：从权威归档重建带 `local_entity_id` 的事件索引，默认 dry-run，`--apply` 写入
+  - 登录用户可在实体图打开“显示待整理实体”，逐个搜索/新建并指定目标；多个引用指向同一 ID 后图节点自然汇聚
+  - 设计与实施说明：`doc/20261021_entity_identity_resolution_and_wiki_design.md`、`doc/20261021_entity_resolution_implementation_plan.md`
+
 - **`VectorDB/`** — 向量数据库服务
   - `VectorDBBService.py`：独立 Flask 服务，提供向量存储、检索、聚类 API
   - `VectorStorageEngine.py`：底层存储引擎（基于 ChromaDB）

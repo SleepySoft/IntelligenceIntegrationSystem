@@ -10,8 +10,10 @@ from functools import lru_cache, wraps
 from pathlib import Path
 from urllib import request as urlrequest
 
-from flask import Blueprint, Response, abort, jsonify, render_template, request
+from flask import Blueprint, Response, abort, jsonify, render_template, request, session
 
+from EntityResolution.model import EntityRef, ResolutionError
+from EntityAlias.model import AliasError
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, ViewQuery
 
@@ -68,12 +70,15 @@ def _load_frontend_asset(asset_name: str) -> bytes:
 
 class SituationViewsService:
     def __init__(self, subsystem_registry, registry=None, *, detail_origin="", geocoder=None,
-                 dashboard=None):
+                 dashboard=None, entity_resolution_service=None,
+                 entity_alias_service=None):
         self.subsystem_registry = subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
         self.geocoder = geocoder
         self.dashboard = self._dashboard_profile(dashboard)
+        self.entity_resolution_service = entity_resolution_service
+        self.entity_alias_service = entity_alias_service
         self._engines = {}
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation",
@@ -151,12 +156,14 @@ class SituationViewsService:
                     max_edges = self._bounded_int("max_edges", 240, 10, 1000)
                     keep_singletons = self._bool_arg("keep_high_score_singletons", True)
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
+                include_unresolved = self._bool_arg("include_unresolved", False)
                 return jsonify(engine.entity_graph(
                     query,
                     min_support=min_support,
                     max_nodes=max_nodes,
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
+                    include_unresolved=include_unresolved,
                     entity_types=entity_types,
                 ))
             except ValueError as exc:
@@ -188,6 +195,171 @@ class SituationViewsService:
                 ))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-graph/references")
+        @protect
+        def entity_graph_references_api():
+            try:
+                engine, query = self._request_context(fixed=False)
+                return jsonify(engine.entity_graph_references(
+                    query, str(request.args.get("entity_id") or "").strip()))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-resolution/global-search")
+        @protect
+        def entity_global_search_api():
+            if self.entity_alias_service is None:
+                return jsonify({"error": "全局实体注册表未启用"}), 503
+            query = str(request.args.get("q") or "").strip()
+            if not query:
+                return jsonify({"items": []})
+            lookup = self.entity_alias_service.lookup(
+                query, limit=10, min_score=0.35, use_vector=True)
+            values = []
+            if lookup.get("exact"):
+                exact = lookup["exact"]
+                values.append({
+                    "id": exact["entity_id"], "name": exact["canonical"],
+                    "type": exact.get("type") or "other",
+                    "description": exact.get("description") or "",
+                    "status": exact.get("status") or "unverified",
+                    "match": "exact",
+                })
+            for candidate in lookup.get("candidates") or []:
+                values.append({
+                    "id": candidate["entity_id"], "name": candidate["canonical"],
+                    "type": candidate.get("type") or "other",
+                    "description": candidate.get("description") or "",
+                    "status": candidate.get("status") or "unverified",
+                    "match": candidate.get("source") or "candidate",
+                    "score": candidate.get("score"),
+                })
+            seen = set()
+            return jsonify({"items": [
+                item for item in values
+                if not (item["id"] in seen or seen.add(item["id"]))
+            ]})
+
+        @bp.post("/api/entity-resolution/global-entities")
+        @protect
+        def entity_global_create_api():
+            if self.entity_alias_service is None:
+                return jsonify({"error": "全局实体注册表未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            try:
+                entity = self.entity_alias_service.create_entity(
+                    str(data.get("name") or "").strip(),
+                    type=str(data.get("type") or "other").strip(),
+                    description=str(data.get("description") or "").strip(),
+                    status="verified",
+                )
+                return jsonify(entity), 201
+            except AliasError as exc:
+                return jsonify({"error": str(exc), "code": exc.code}), \
+                    {"not_found": 404, "conflict": 409}.get(exc.code, 400)
+
+        @bp.get("/api/entity-resolution/contextual-search")
+        @protect
+        def entity_contextual_search_api():
+            if self.entity_resolution_service is None:
+                return jsonify({"error": "实体解析服务未启用"}), 503
+            try:
+                subsystem = str(request.args.get("subsystem") or "").strip()
+                items = self.entity_resolution_service.search_contextual(
+                    subsystem, str(request.args.get("q") or "").strip(), limit=20)
+                return jsonify({"items": items})
+            except ResolutionError as exc:
+                return self._resolution_error(exc)
+
+        @bp.post("/api/entity-resolution/contextual-entities")
+        @protect
+        def entity_contextual_create_api():
+            if self.entity_resolution_service is None:
+                return jsonify({"error": "实体解析服务未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            try:
+                entity = self.entity_resolution_service.create_contextual(
+                    str(data.get("subsystem") or "").strip(),
+                    str(data.get("name") or "").strip(),
+                    actor=str(session.get("username") or "unknown"),
+                    optional_fields={key: data.get(key) for key in (
+                        "type", "countries", "locations", "time_range", "topic",
+                        "description")},
+                )
+                return jsonify(self._json_safe(entity)), 201
+            except ResolutionError as exc:
+                return self._resolution_error(exc)
+
+        @bp.post("/api/entity-resolution/assign")
+        @protect
+        def entity_assign_api():
+            if self.entity_resolution_service is None:
+                return jsonify({"error": "实体解析服务未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            try:
+                ref = EntityRef.from_mapping(data.get("ref") or {})
+                target_kind = str(data.get("target_kind") or "").strip()
+                target_id = str(data.get("target_id") or "").strip()
+                actor = str(session.get("username") or "unknown")
+                reason = str(data.get("reason") or "").strip()
+                if target_kind == "global":
+                    if data.get("register_fixed_alias"):
+                        if self.entity_alias_service is None:
+                            raise ResolutionError("全局实体注册表未启用")
+                        source = self.entity_resolution_service.get_reference(ref)
+                        surface = str(source.get("name") or "").strip()
+                        existing = self.entity_alias_service.resolve(surface)
+                        if existing and existing["entity_id"] != target_id:
+                            raise ResolutionError(
+                                f"名称 {surface!r} 已属于其它全局实体", "conflict")
+                        if not existing:
+                            self.entity_alias_service.add_alias(target_id, surface)
+                    result = self.entity_resolution_service.assign_global(
+                        ref, target_id, actor=actor, reason=reason)
+                elif target_kind == "contextual":
+                    result = self.entity_resolution_service.assign_contextual(
+                        ref, target_id, actor=actor, reason=reason)
+                else:
+                    raise ResolutionError("target_kind 必须是 global 或 contextual")
+                return jsonify(self._json_safe(result))
+            except (ResolutionError, AliasError) as exc:
+                if isinstance(exc, ResolutionError):
+                    return self._resolution_error(exc)
+                return jsonify({"error": str(exc), "code": exc.code}), \
+                    {"not_found": 404, "conflict": 409}.get(exc.code, 400)
+
+        @bp.post("/api/entity-resolution/unassign")
+        @protect
+        def entity_unassign_api():
+            if self.entity_resolution_service is None:
+                return jsonify({"error": "实体解析服务未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            try:
+                result = self.entity_resolution_service.unassign(
+                    EntityRef.from_mapping(data.get("ref") or {}),
+                    actor=str(session.get("username") or "unknown"),
+                    reason=str(data.get("reason") or "").strip(),
+                )
+                return jsonify(self._json_safe(result))
+            except ResolutionError as exc:
+                return self._resolution_error(exc)
+
+        @bp.post("/api/entity-resolution/undo")
+        @protect
+        def entity_undo_api():
+            if self.entity_resolution_service is None:
+                return jsonify({"error": "实体解析服务未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            try:
+                result = self.entity_resolution_service.undo(
+                    str(data.get("subsystem") or "").strip(),
+                    str(data.get("decision_id") or "").strip(),
+                    actor=str(session.get("username") or "unknown"),
+                )
+                return jsonify(self._json_safe(result))
+            except ResolutionError as exc:
+                return self._resolution_error(exc)
 
         @bp.get("/api/map/intelligences")
         @bp.get("/api/scoped/map/intelligences")
@@ -251,6 +423,10 @@ class SituationViewsService:
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
             api_prefix="../api/scoped" if embedded else "api",
+            edit_api_prefix="../api" if embedded else "api",
+            entity_edit_enabled=bool(
+                self.entity_resolution_service is not None
+                and session.get("logged_in", False)),
         )
 
     def _dashboard_profile(self, raw):
@@ -346,9 +522,28 @@ class SituationViewsService:
                 ctx.event_v4_intelligence_collection,
                 ctx.event_v4_event_collection,
                 self.registry,
+                subsystem=ctx.name,
+                entity_resolver=self.entity_resolution_service,
+                entity_registry=self.entity_alias_service,
             )
             self._engines[key] = engine
         return engine, query
+
+    @staticmethod
+    def _resolution_error(exc):
+        status = {"not_found": 404, "conflict": 409}.get(exc.code, 400)
+        return jsonify({"error": str(exc), "code": exc.code}), status
+
+    @staticmethod
+    def _json_safe(value):
+        if isinstance(value, dt.datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {key: SituationViewsService._json_safe(item)
+                    for key, item in value.items() if key != "_id"}
+        if isinstance(value, list):
+            return [SituationViewsService._json_safe(item) for item in value]
+        return value
 
     @staticmethod
     def _is_scoped_request():

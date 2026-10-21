@@ -124,7 +124,9 @@ def test_event_index_failure_does_not_rollback_archive_and_can_recover():
     assert repository.outbox_collection.documents[0]["status"] == "pending"
     assert repository.recover_pending() == 1
     assert repository.outbox_collection.documents[0]["status"] == "committed"
-    assert events.documents[0]["roles"]["actor"] == [{"name": "A军", "type": "organization"}]
+    assert events.documents[0]["roles"]["actor"] == [{
+        "local_entity_id": "ENT1", "name": "A军", "type": "organization",
+    }]
     assert "entity_uuid" not in str(events.documents[0])
 
 

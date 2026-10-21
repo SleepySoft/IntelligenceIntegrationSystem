@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""用 EntityAlias 标准名回填 Event V4 历史归档与派生事件索引。
+"""用 EntityAlias 标准名回填 Event V4 历史归档与派生事件索引（已弃用）。
+
+此脚本会改写权威 EVENT_EXTRACTION 的原始实体名，与当前非破坏性 EntityResolution
+设计冲突，仅保留用于审计既往操作；不要再对生产数据执行 ``--apply``。需要补齐 ENT ID
+派生索引时请使用 ``Scripts/rebuild_entity_reference_index.py``。
 
 默认仅预览；增加 ``--apply`` 才写 MongoDB。写入前会把所有待修改的原始归档
 保存为 BSON Extended JSONL，随后通过 EventV4ArchiveRepository 同步权威归档、

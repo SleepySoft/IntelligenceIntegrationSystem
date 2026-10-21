@@ -322,7 +322,7 @@ def test_v4_adapter_retries_validation_with_compact_feedback_then_archives():
     )
 
 
-def test_v4_postprocess_normalizes_known_entity_names_before_projection():
+def test_v4_postprocess_preserves_original_entity_names_for_non_destructive_resolution():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
@@ -338,8 +338,8 @@ def test_v4_postprocess_normalizes_known_entity_names_before_projection():
     assert analyzed.accepted
     archive = analyzed.payload.archive
     assert [entity.name for entity in archive.EVENT_EXTRACTION.entities] == [
-        "甲军", "B设施"]
-    assert archive.ORGANIZATION == ["甲军"]
+        "A军", "B设施"]
+    assert archive.ORGANIZATION == ["A军"]
 
 
 def test_v4_postprocess_keeps_original_name_when_normalizer_fails():

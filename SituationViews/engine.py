@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -15,6 +16,9 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_TOTAL_SCORE,
     appendix_path,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 CATEGORY_LABELS = {
@@ -71,10 +75,14 @@ class ViewQuery:
 class SituationViewEngine:
     """把归档文章与派生事件索引投影为地图和实体图响应。"""
 
-    def __init__(self, intelligence_collection: Any, event_collection: Any, registry: Any):
+    def __init__(self, intelligence_collection: Any, event_collection: Any, registry: Any,
+                 *, subsystem: str = "", entity_resolver=None, entity_registry=None):
         self.intelligence_collection = intelligence_collection
         self.event_collection = event_collection
         self.registry = registry
+        self.subsystem = str(subsystem or "").strip()
+        self.entity_resolver = entity_resolver
+        self.entity_registry = entity_registry
 
     def map_view(self, query: ViewQuery) -> dict[str, Any]:
         events, meta = self._load_events(query)
@@ -319,6 +327,7 @@ class SituationViewEngine:
         max_nodes: int = 80,
         max_edges: int = 240,
         keep_high_score_singletons: bool = True,
+        include_unresolved: bool = False,
         entity_types: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         events, meta = self._load_events(query)
@@ -385,6 +394,10 @@ class SituationViewEngine:
             support = len(edge["event_ids"])
             if support < min_support and not (
                 keep_high_score_singletons and edge["score_max"] >= high_score_cutoff
+            ) and not (
+                include_unresolved
+                and (str(edge["source"]).startswith("unresolved:")
+                     or str(edge["target"]).startswith("unresolved:"))
             ):
                 continue
             edge["support"] = support
@@ -412,6 +425,15 @@ class SituationViewEngine:
                 "name": item["name"],
                 "type": item["type"],
                 "country_code": item.get("country_code"),
+                "identity_kind": item.get("identity_kind", "legacy"),
+                "target_id": item.get("target_id"),
+                "reference_count": len(item.get("reference_keys") or ()),
+                "editable": bool(item.get("reference_keys")),
+                "wiki_name": item.get("wiki_name"),
+                "surfaces": [
+                    {"name": name, "count": count}
+                    for name, count in item.get("surfaces", Counter()).most_common(6)
+                ],
                 "event_count": len(item["event_ids"]),
                 "article_count": len(item["article_ids"]),
                 "importance": importance[key],
@@ -445,9 +467,14 @@ class SituationViewEngine:
             "max_nodes": max_nodes,
             "max_edges": max_edges,
             "high_score_singleton_cutoff": high_score_cutoff if keep_high_score_singletons else None,
-            "identity_mode": "normalized_name_type_country_with_unique_country_fill",
+            "identity_mode": (
+                "entity_ref_resolution_with_legacy_fallback"
+                if self.entity_resolver or self.entity_registry
+                else "normalized_name_type_country_with_unique_country_fill"
+            ),
             "inferred_country_node_count": len(inferred_country_nodes),
             "entity_types": sorted(entity_types) if entity_types is not None else None,
+            "include_unresolved": bool(include_unresolved),
         })
         return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
 
@@ -519,9 +546,9 @@ class SituationViewEngine:
                         continue
                     selection.update({
                         "entity_id": entity_id,
-                        "name": str(selected_entity.get("name") or "").strip(),
+                        "name": self._entity_display_name(selected_entity),
                         "entity_type": self._entity_type_group(selected_entity),
-                        "country_code": self._country_from_graph_key(entity_id),
+                        "country_code": selected_entity.get("country_code"),
                         "role": role,
                     })
                 else:
@@ -610,7 +637,51 @@ class SituationViewEngine:
         })
         return {"intelligences": results, "meta": meta}
 
+    def entity_graph_references(
+        self, query: ViewQuery, entity_id: str,
+    ) -> dict[str, Any]:
+        """返回图节点背后的稳定 EntityRef，供登录用户逐个指定实体。"""
+        entity_id = str(entity_id or "").strip()
+        if not entity_id:
+            raise ValueError("缺少 entity_id")
+        events, _ = self._load_events(query)
+        prepared_events, country_hints = self._prepare_graph_events(events, query)
+        references: dict[str, dict[str, Any]] = {}
+        for event, _category, relations in prepared_events:
+            article_uuid = str(event.get("intelligence_uuid") or "")
+            event_uuid = str(event.get("event_uuid") or "")
+            for source, target, _directed in relations:
+                for entity in (source, target):
+                    key, _ = self._graph_entity_key(entity, country_hints)
+                    ref = entity.get("_entity_ref")
+                    if key != entity_id or not isinstance(ref, dict):
+                        continue
+                    ref_key = str(entity.get("_entity_ref_key") or "")
+                    item = references.setdefault(ref_key, {
+                        "ref": dict(ref),
+                        "surface": str(entity.get("name") or "").strip(),
+                        "type": str(entity.get("type") or "other"),
+                        "country_code": entity.get("country_code"),
+                        "identity_kind": str(entity.get("_identity_kind") or "unresolved"),
+                        "identity_method": entity.get("_identity_method"),
+                        "decision_id": entity.get("_decision_id"),
+                        "target_id": entity.get("_target_id"),
+                        "title": str(event.get("_view_title") or "未命名情报"),
+                        "content_time": self._json_time(event.get("_view_content_time")),
+                        "event_ids": set(),
+                    })
+                    item["event_ids"].add(event_uuid)
+        result = []
+        for item in references.values():
+            item["event_ids"] = sorted(item["event_ids"])
+            result.append(item)
+        result.sort(key=lambda item: (
+            str(item.get("content_time") or ""), item["ref"]["intelligence_uuid"]),
+            reverse=True)
+        return {"entity_id": entity_id, "references": result, "total": len(result)}
+
     def _prepare_graph_events(self, events, query):
+        self._resolve_graph_entities(events)
         prepared_events = []
         country_hints: dict[tuple[str, str], set[str]] = defaultdict(set)
         for event in events:
@@ -627,6 +698,72 @@ class SituationViewEngine:
                     if name and country:
                         country_hints[(name, entity_type)].add(country)
         return prepared_events, country_hints
+
+    def _resolve_graph_entities(self, events) -> None:
+        """给派生事件快照附加非持久的图身份；解析失败时安全降级。"""
+        requests: list[dict[str, Any]] = []
+        entities_by_ref: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for event in events:
+            article_uuid = str(event.get("intelligence_uuid") or "").strip()
+            if not article_uuid:
+                continue
+            for values in (event.get("roles") or {}).values():
+                for entity in values or ():
+                    local_id = str(entity.get("local_entity_id") or "").strip()
+                    if not re.fullmatch(r"ENT[1-9][0-9]*", local_id):
+                        continue
+                    ref = {
+                        "subsystem": self.subsystem,
+                        "intelligence_uuid": article_uuid,
+                        "local_entity_id": local_id,
+                    }
+                    ref_key = f"{self.subsystem}:{article_uuid}:{local_id}"
+                    entity["_entity_ref"] = ref
+                    entity["_entity_ref_key"] = ref_key
+                    entity["_graph_id"] = f"unresolved:{ref_key}"
+                    entity["_identity_kind"] = "unresolved"
+                    entities_by_ref[ref_key].append(entity)
+                    if len(entities_by_ref[ref_key]) == 1:
+                        requests.append({
+                            **ref,
+                            "surface": str(entity.get("name") or "").strip(),
+                            "type": str(entity.get("type") or "other"),
+                            "country_code": entity.get("country_code"),
+                        })
+
+        resolved: dict[str, dict[str, Any]] = {}
+        if requests and self.entity_resolver is not None:
+            try:
+                resolved = self.entity_resolver.resolve_many(requests)
+            except Exception:
+                logger.warning("实体图批量解析失败，未解析节点保持独立。", exc_info=True)
+        elif requests and self.entity_registry is not None:
+            for request in requests:
+                try:
+                    exact = self.entity_registry.resolve(request["surface"])
+                except Exception:
+                    exact = None
+                if exact:
+                    key = (f"{request['subsystem']}:{request['intelligence_uuid']}:"
+                           f"{request['local_entity_id']}")
+                    resolved[key] = {
+                        "kind": "global", "target_id": exact["entity_id"],
+                        "name": exact["canonical"], "type": exact.get("type"),
+                        "method": "fixed_alias",
+                    }
+
+        for ref_key, entities in entities_by_ref.items():
+            hit = resolved.get(ref_key)
+            if not hit:
+                continue
+            for entity in entities:
+                entity["_graph_id"] = str(hit["target_id"])
+                entity["_identity_kind"] = str(hit["kind"])
+                entity["_identity_method"] = str(hit.get("method") or "manual")
+                entity["_target_id"] = str(hit["target_id"])
+                entity["_decision_id"] = hit.get("decision_id")
+                entity["_display_name"] = str(hit.get("name") or entity.get("name") or "")
+                entity["_identity_type"] = str(hit.get("type") or entity.get("type") or "other")
 
     def _load_events(self, query: ViewQuery) -> tuple[list[dict], dict[str, Any]]:
         archive_filter = {
@@ -754,6 +891,9 @@ class SituationViewEngine:
 
     @staticmethod
     def _entity_key(entity: dict) -> str:
+        local_id = str((entity or {}).get("local_entity_id") or "").strip()
+        if local_id:
+            return f"local:{local_id}"
         name, entity_type, country = SituationViewEngine._entity_identity_parts(entity)
         return f"{entity_type}|{country}|{name}" if name else ""
 
@@ -768,11 +908,18 @@ class SituationViewEngine:
 
     @staticmethod
     def _entity_type_group(entity: dict) -> str:
-        entity_type = str((entity or {}).get("type") or "other").strip().casefold()
+        entity_type = str(
+            (entity or {}).get("_identity_type")
+            or (entity or {}).get("type") or "other").strip().casefold()
+        if entity_type == "country":
+            return "geopolitical_entity"
         return entity_type if entity_type in ENTITY_TYPE_GROUPS - {"other"} else "other"
 
     @staticmethod
     def _graph_entity_key(entity: dict, country_hints) -> tuple[str, bool]:
+        resolved_key = str((entity or {}).get("_graph_id") or "").strip()
+        if resolved_key:
+            return resolved_key, False
         name, entity_type, country = SituationViewEngine._entity_identity_parts(entity)
         if not name:
             return "", False
@@ -791,19 +938,37 @@ class SituationViewEngine:
 
     @staticmethod
     def _touch_node(store, key, entity, event_uuid, article_uuid, score):
+        display_name = SituationViewEngine._entity_display_name(entity)
+        identity_kind = str(entity.get("_identity_kind") or "legacy")
+        target_id = entity.get("_target_id")
         item = store.setdefault(key, {
-            "name": str(entity.get("name") or "").strip(),
-            "type": str(entity.get("type") or "other"),
+            "name": display_name,
+            "type": SituationViewEngine._entity_type_group(entity),
             "country_code": entity.get("country_code"),
+            "identity_kind": identity_kind,
+            "target_id": target_id,
+            "wiki_name": display_name if identity_kind == "global" else None,
+            "reference_keys": set(),
+            "surfaces": Counter(),
             "event_ids": set(),
             "article_ids": set(),
             "score_max": 0.0,
         })
         item["event_ids"].add(event_uuid)
         item["article_ids"].add(article_uuid)
+        surface = str(entity.get("name") or "").strip()
+        if surface:
+            item["surfaces"][surface] += 1
+        ref_key = str(entity.get("_entity_ref_key") or "")
+        if ref_key:
+            item["reference_keys"].add(ref_key)
         item["score_max"] = max(item["score_max"], score)
         if not item.get("country_code") and entity.get("country_code"):
             item["country_code"] = entity.get("country_code")
+
+    @staticmethod
+    def _entity_display_name(entity: dict) -> str:
+        return str((entity or {}).get("_display_name") or (entity or {}).get("name") or "").strip()
 
     @staticmethod
     def _json_time(value):

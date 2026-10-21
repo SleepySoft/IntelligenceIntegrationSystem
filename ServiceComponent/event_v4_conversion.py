@@ -20,7 +20,13 @@ class EventConversionResult:
 
 
 def entity_snapshot(entity: ExtractedEntity) -> dict[str, Any]:
-    value: dict[str, Any] = {"name": entity.name.strip(), "type": entity.type}
+    # ENT ID 在一篇情报内稳定，是实体解析旁表联立权威 EVENT_EXTRACTION 的锚点。
+    # 事件集合仍是可重建索引；增加该字段不改变权威抽取协议。
+    value: dict[str, Any] = {
+        "local_entity_id": entity.id,
+        "name": entity.name.strip(),
+        "type": entity.type,
+    }
     if entity.country_code:
         value["country_code"] = entity.country_code
     return value

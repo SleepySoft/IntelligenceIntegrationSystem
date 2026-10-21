@@ -173,8 +173,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._shadow_stats_lock = threading.Lock()
         self._shadow_stats = {"recorded": 0, "failed": 0}
         self._control_state = control_state
-        # 可选后处理：EntityAlias 命中时把抽取实体名替换为系统标准名。
-        # 未启用、未命中或解析异常均保留 LLM 原始名称，不能阻塞主链。
+        # 兼容保留旧构造参数，但不再改写权威 EVENT_EXTRACTION 的原始实体名。
+        # 名称归一和上下文消歧由非破坏性的 EntityResolution 解析视图完成。
         self._entity_name_normalizer = entity_name_normalizer
 
     def set_entity_name_normalizer(
@@ -929,8 +929,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         event-extraction/1.0 的 EVENT_EXTRACTION）；各协议的差异封装在
         PromptProtocol.validate_result 内。
         """
-        analysis = self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
-        return self._normalize_entity_names(analysis)
+        return self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
 
     def _normalize_entity_names(self, analysis: AnalysisResultV4) -> AnalysisResultV4:
         """协议校验后的可选实体名规范化；任何失败均降级为保留原名。"""

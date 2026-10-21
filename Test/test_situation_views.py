@@ -261,6 +261,76 @@ def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
     assert result["meta"]["inferred_country_node_count"] == 0
 
 
+def test_entity_graph_keeps_unresolved_same_surface_refs_separate():
+    now = datetime.now(timezone.utc)
+    first = _attack("e1", "a", "示威者", "政府")
+    second = _attack("e2", "b", "示威者", "政府")
+    for event in (first, second):
+        event["roles"]["actor"][0]["local_entity_id"] = "ENT1"
+        event["roles"]["target"][0]["local_entity_id"] = "ENT2"
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
+        subsystem="news",
+    )
+
+    result = engine.entity_graph(
+        ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
+        min_support=1,
+    )
+
+    protesters = [item for item in result["nodes"] if item["name"] == "示威者"]
+    assert len(protesters) == 2
+    assert {item["id"] for item in protesters} == {
+        "unresolved:news:a:ENT1", "unresolved:news:b:ENT1"}
+    assert all(item["identity_kind"] == "unresolved" for item in protesters)
+    assert all(item["reference_count"] == 1 for item in protesters)
+
+
+def test_entity_graph_naturally_merges_refs_assigned_to_same_targets():
+    now = datetime.now(timezone.utc)
+    first = _attack("e1", "a", "示威者", "政府")
+    second = _attack("e2", "b", "抗议者", "法国政府")
+    for event in (first, second):
+        event["roles"]["actor"][0]["local_entity_id"] = "ENT1"
+        event["roles"]["target"][0]["local_entity_id"] = "ENT2"
+
+    class Resolver:
+        @staticmethod
+        def resolve_many(values):
+            result = {}
+            for value in values:
+                key = f"news:{value['intelligence_uuid']}:{value['local_entity_id']}"
+                if value["local_entity_id"] == "ENT1":
+                    result[key] = {
+                        "kind": "contextual", "target_id": "ctx_fr_protesters",
+                        "name": "法国养老金改革示威者", "type": "organization",
+                    }
+                else:
+                    result[key] = {
+                        "kind": "global", "target_id": "ent_fr_government",
+                        "name": "法国政府", "type": "organization",
+                    }
+            return result
+
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
+        subsystem="news", entity_resolver=Resolver(),
+    )
+    query = ViewQuery(now - timedelta(days=1), now + timedelta(days=1))
+
+    result = engine.entity_graph(query, min_support=2, keep_high_score_singletons=False)
+    references = engine.entity_graph_references(query, "ctx_fr_protesters")
+
+    assert len(result["nodes"]) == 2
+    assert result["edges"][0]["support"] == 2
+    assert {item["id"] for item in result["nodes"]} == {
+        "ctx_fr_protesters", "ent_fr_government"}
+    assert references["total"] == 2
+    assert {item["ref"]["intelligence_uuid"] for item in references["references"]} == {"a", "b"}
+
+
 def test_entity_graph_filters_relationships_by_both_entity_type_groups():
     now = datetime.now(timezone.utc)
     organization_edge = _attack("e1", "a", "组织甲", "组织乙")
@@ -440,6 +510,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
+    assert 'id="include-unresolved"' in embedded_html
+    assert 'id="entity-editor"' in embedded_html
+    assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
+    assert 'https://baike.baidu.com/search/word?word=' in embedded_html
+    assert 'https://zh.wikipedia.org/w/index.php?search=' in embedded_html
     assert "$('graph-detail').innerHTML" not in embedded_html
     assert "detail.innerHTML = ''" in embedded_html
     assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html
@@ -480,6 +555,30 @@ def test_frontend_assets_are_same_origin_cached_and_allowlisted(monkeypatch):
     assert response.headers["Cache-Control"] == "public, max-age=604800"
     assert response.headers["Content-Type"] == "application/javascript; charset=utf-8"
     assert client.get("/situation/assets/not-allowed.js").status_code == 404
+
+
+def test_entity_editor_is_enabled_only_for_logged_in_user():
+    from flask import Flask
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    app = Flask(__name__)
+    app.secret_key = "test-only"
+    SituationViewsService(
+        Registry(), entity_resolution_service=object(),
+    ).mount_to_app(app, url_prefix="/situation")
+    client = app.test_client()
+
+    anonymous = client.get("/situation/embed/entities").get_data(as_text=True)
+    assert "const ENTITY_EDIT_ENABLED = false" in anonymous
+    with client.session_transaction() as user_session:
+        user_session["logged_in"] = True
+        user_session["username"] = "alice"
+    logged_in = client.get("/situation/embed/entities").get_data(as_text=True)
+    assert "const ENTITY_EDIT_ENABLED = true" in logged_in
 
 
 def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
@@ -523,6 +622,10 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
     assert app.config["SITUATION_VIEWS_ENABLED"] is True
     assert app.test_client().get("/situation/embed/map").status_code == 401
     assert app.test_client().get("/situation/api/scoped/map").status_code == 401
+    assert app.test_client().get(
+        "/situation/api/entity-graph/references").status_code == 401
+    assert app.test_client().post(
+        "/situation/api/entity-resolution/assign", json={}).status_code == 401
 
 
 def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):

@@ -69,6 +69,25 @@
         .evidence-controls button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
         .evidence-controls button.active { color: white; background: var(--accent); border-color: transparent; }
         .evidence-footer { display: flex; justify-content: center; margin-top: 12px; }
+        dialog.entity-editor { width: min(760px, calc(100vw - 28px)); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--panel); color: var(--text); box-shadow: 0 24px 80px #0008; }
+        dialog.entity-editor::backdrop { background: #0008; backdrop-filter: blur(2px); }
+        .entity-editor-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+        .entity-editor-head h2 { margin: 0; font-size: 18px; }
+        .entity-editor-body { display: grid; gap: 14px; padding: 16px; }
+        .entity-editor-section { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+        .entity-editor-section h3 { margin: 0; font-size: 14px; }
+        .entity-ref-list, .entity-target-list { display: grid; gap: 7px; max-height: 220px; overflow: auto; }
+        .entity-ref-option, .entity-target-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+        .entity-ref-option small, .entity-target-option small { color: var(--muted); }
+        .entity-target-option.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+        .entity-editor-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .entity-editor-row input, .entity-editor-row select { flex: 1 1 180px; }
+        .entity-kind-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .entity-kind-tabs button.active { color: #fff; background: var(--accent); border-color: transparent; }
+        .entity-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+        .entity-editor-status { min-height: 20px; }
+        .wiki-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+        .wiki-links a { color: light-dark(#2457c5, #a9c4ff); }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
         .graph-selection-detail { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
@@ -219,6 +238,7 @@
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
                     <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="5" style="width:52px"> 个节点</label>
                     <label>印证 ≥ <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> 起独立事件</label>
+                    <label><span><input id="include-unresolved" type="checkbox"> 显示待整理实体（单次关系）</span></label>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
                 <div class="legend" id="graph-legend"></div>
@@ -240,6 +260,63 @@
     </section>
 </main>
 
+<dialog class="entity-editor" id="entity-editor">
+    <div class="entity-editor-head">
+        <h2 id="entity-editor-title">指定实体</h2>
+        <button type="button" id="entity-editor-close">关闭</button>
+    </div>
+    <div class="entity-editor-body">
+        <section class="entity-editor-section">
+            <h3>1. 选择这张图背后的具体情报实体</h3>
+            <div class="entity-ref-list" id="entity-ref-list"><span class="muted">正在加载…</span></div>
+        </section>
+        <section class="entity-editor-section">
+            <h3>2. 指定它实际指向的对象</h3>
+            <div class="entity-kind-tabs">
+                <button type="button" id="entity-kind-global" class="active">现实中的全局实体</button>
+                <button type="button" id="entity-kind-contextual">本次语境中的实体</button>
+            </div>
+            <div id="entity-global-editor">
+                <div class="entity-editor-row">
+                    <input id="entity-global-query" placeholder="搜索标准实体，例如：唐纳德·特朗普">
+                    <button type="button" id="entity-global-search">搜索</button>
+                </div>
+                <div class="entity-target-list" id="entity-global-results"></div>
+                <details>
+                    <summary>没有合适结果？新建全局实体</summary>
+                    <div class="entity-editor-row" style="margin-top:8px">
+                        <input id="entity-global-new-name" placeholder="标准名">
+                        <select id="entity-global-new-type">
+                            <option value="person">人物</option><option value="organization">组织</option>
+                            <option value="country">国家</option><option value="location">地点</option>
+                            <option value="other">其他</option>
+                        </select>
+                        <button type="button" id="entity-global-create">新建并选择</button>
+                    </div>
+                </details>
+                <label style="margin-top:8px"><span><input type="checkbox" id="entity-register-fixed-alias"> 此名称在任何语境下都唯一指向该实体，登记为固定别名</span></label>
+            </div>
+            <div id="entity-contextual-editor" hidden>
+                <div class="entity-editor-row">
+                    <input id="entity-contextual-query" placeholder="搜索已有语境实体，例如：法国养老金改革示威者">
+                    <button type="button" id="entity-contextual-search">搜索</button>
+                </div>
+                <div class="entity-target-list" id="entity-contextual-results"></div>
+                <div class="entity-editor-row">
+                    <input id="entity-contextual-new-name" placeholder="输入一个便于识别的名称即可">
+                    <button type="button" id="entity-contextual-create">新建并选择</button>
+                </div>
+            </div>
+        </section>
+        <div class="entity-editor-status muted" id="entity-editor-status"></div>
+        <div class="entity-editor-actions">
+            <button type="button" id="entity-undo" hidden>撤销上次指定</button>
+            <button type="button" id="entity-unassign">清除当前人工指定</button>
+            <button type="button" class="primary" id="entity-assign">保存指定</button>
+        </div>
+    </div>
+</dialog>
+
 <script>
 const CATEGORY_COLORS = {
     war: '#dc3545', terror: '#b42358', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
@@ -257,6 +334,8 @@ const CATEGORY_LABELS = {{ categories|tojson }};
 const DASHBOARD_VIEW = {{ dashboard_view|tojson }};
 const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
 const API_PREFIX = {{ api_prefix|tojson }};
+const EDIT_API_PREFIX = {{ edit_api_prefix|tojson }};
+const ENTITY_EDIT_ENABLED = {{ entity_edit_enabled|tojson }};
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
@@ -268,6 +347,9 @@ const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='c
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
+let includeUnresolved = false;
+let editingGraphNode = null, editingReferences = [], selectedEditingRef = null;
+let editingTargetKind = 'global', selectedEditingTarget = null;
 
 const $ = id => document.getElementById(id);
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -622,6 +704,7 @@ async function refreshGraph() {
             min_support: $('min-support').value,
             max_nodes: $('max-nodes').value,
             keep_high_score_singletons: $('keep-singletons').checked,
+            include_unresolved: includeUnresolved,
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
@@ -639,7 +722,8 @@ async function refreshGraph() {
 let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
 
 function filterGraphData() {
-    const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+    const supportFloor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
+    const supportMin = Math.max(supportFloor, graphSupportMin);
     const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({...d}));
     const nodes = graphData.nodes.map(d => ({...d}));
     // 并查集求连通分量
@@ -691,7 +775,7 @@ function renderGraph() {
         // 过滤叠加空态：印证过滤把网络切碎，全低于规模下限——给解释而非空白
         svg.append('text').attr('class', 'map-label').attr('text-anchor', 'middle')
             .attr('x', width / 2).attr('y', height / 2)
-            .text(`过滤后无可见网络：印证 ≥ ${Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin)} 的边过少，` +
+            .text(`过滤后无可见网络：印证 ≥ ${Math.max(includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1), graphSupportMin)} 的边过少，` +
                   `网络全部低于规模下限 ${componentMinSize}。建议降低规模或印证。`);
         return;
     }
@@ -935,9 +1019,18 @@ async function loadGraphIntelligences(append) {
 }
 function showNodeDetail(d) {
     const detail = $('graph-selection-detail');
+    const identityLabels = {global: '全局实体', contextual: '语境实体', unresolved: '尚未指定', legacy: '旧索引节点'};
+    const wiki = d.wiki_name ? `<div class="wiki-links">
+        <a target="_blank" rel="noopener" href="https://baike.baidu.com/search/word?word=${encodeURIComponent(d.wiki_name)}">百度百科</a>
+        <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?search=${encodeURIComponent(d.wiki_name)}">Wikipedia</a>
+    </div>` : '';
+    const edit = ENTITY_EDIT_ENABLED && d.editable
+        ? '<button type="button" id="edit-graph-entity" style="width:100%;margin-top:10px">指定这个实体</button>' : '';
     detail.innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
-        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>`;
+        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
+        <p class="muted">身份：${escapeHtml(identityLabels[d.identity_kind] || d.identity_kind)}${d.reference_count ? ` · ${d.reference_count} 个情报实体引用` : ''}</p>
+        ${wiki}${edit}`;
     detail.hidden = false;
 }
 function showEdgeDetail(d) {
@@ -1021,10 +1114,20 @@ const _supportInput = $('graph-support-min');
 _supportInput.min = DASHBOARD_PROFILE.min_support || 1;
 _supportInput.value = graphSupportMin;
 _supportInput.addEventListener('change', e => {
-    const floor = DASHBOARD_PROFILE.min_support || 1;
+    const floor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
     graphSupportMin = Math.max(floor, parseInt(e.target.value) || floor);
     e.target.value = graphSupportMin;
     renderGraph();
+});
+$('include-unresolved').addEventListener('change', e => {
+    includeUnresolved = e.target.checked;
+    const floor = includeUnresolved ? 1 : (DASHBOARD_PROFILE.min_support || 1);
+    componentMinSize = includeUnresolved ? 1 : 5;
+    graphSupportMin = floor;
+    $('component-min-size').value = componentMinSize;
+    _supportInput.min = floor;
+    _supportInput.value = graphSupportMin;
+    refreshGraph();
 });
 // 图例由 innerHTML 构建，使用事件代理绑定其中的复选框。
 document.addEventListener('change', e => {
@@ -1032,6 +1135,202 @@ document.addEventListener('change', e => {
     showAllEdgeLabels = e.target.checked;
     if (relabelGraphEdges) relabelGraphEdges();
 });
+document.addEventListener('click', event => {
+    if (event.target.id === 'edit-graph-entity' && selectedGraphElement?.type === 'node') {
+        const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
+        if (node) openEntityEditor(node);
+    }
+    const target = event.target.closest('[data-edit-target]');
+    if (target) selectEditingTarget(target.dataset.editTarget, target.dataset.editTargetName);
+});
+
+function editorStatus(message, warning = false) {
+    const element = $('entity-editor-status');
+    element.textContent = message || '';
+    element.classList.toggle('warning', warning);
+}
+function currentEditingRef() {
+    return editingReferences.find(item => item.ref.local_entity_id === selectedEditingRef?.local_entity_id
+        && item.ref.intelligence_uuid === selectedEditingRef?.intelligence_uuid) || null;
+}
+async function openEntityEditor(node) {
+    editingGraphNode = node;
+    editingReferences = [];
+    selectedEditingRef = null;
+    selectedEditingTarget = null;
+    $('entity-editor-title').textContent = `指定实体 · ${node.name}`;
+    $('entity-ref-list').innerHTML = '<span class="muted">正在加载情报实体引用…</span>';
+    $('entity-global-results').innerHTML = '';
+    $('entity-contextual-results').innerHTML = '';
+    editorStatus('');
+    const dialog = $('entity-editor');
+    if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', '');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-graph/references?${queryParams({entity_id: node.id})}`);
+        editingReferences = data.references || [];
+        selectedEditingRef = editingReferences[0]?.ref || null;
+        renderEditingReferences();
+        const first = currentEditingRef();
+        if (first) {
+            $('entity-global-query').value = first.surface;
+            $('entity-contextual-new-name').value = contextualNameSuggestion(first);
+        }
+    } catch (error) {
+        $('entity-ref-list').innerHTML = `<span class="warning">加载失败：${escapeHtml(error.message)}</span>`;
+    }
+}
+function contextualNameSuggestion(item) {
+    const country = item.country_code ? `${item.country_code} ` : '';
+    return `${country}${item.surface}`.trim();
+}
+function renderEditingReferences() {
+    $('entity-ref-list').innerHTML = editingReferences.map((item, index) => {
+        const checked = selectedEditingRef
+            && item.ref.intelligence_uuid === selectedEditingRef.intelligence_uuid
+            && item.ref.local_entity_id === selectedEditingRef.local_entity_id;
+        return `<label class="entity-ref-option">
+            <input type="radio" name="editing-ref" value="${index}" ${checked ? 'checked' : ''}>
+            <span><b>${escapeHtml(item.surface)}</b> · ${escapeHtml(item.ref.local_entity_id)}
+            <br><small>${escapeHtml(item.title)} · ${escapeHtml(item.ref.intelligence_uuid)}${item.target_id ? ` · 当前 → ${escapeHtml(item.target_id)}` : ''}</small></span>
+        </label>`;
+    }).join('') || '<span class="muted">该节点没有可编辑的稳定 ENT 引用；请先完成历史事件索引回填。</span>';
+    $('entity-undo').hidden = !currentEditingRef()?.decision_id;
+    document.querySelectorAll('input[name="editing-ref"]').forEach(input => input.addEventListener('change', () => {
+        const item = editingReferences[Number(input.value)];
+        selectedEditingRef = item?.ref || null;
+        selectedEditingTarget = null;
+        $('entity-undo').hidden = !item?.decision_id;
+        $('entity-global-query').value = item?.surface || '';
+        $('entity-contextual-new-name').value = item ? contextualNameSuggestion(item) : '';
+        document.querySelectorAll('.entity-target-option').forEach(v => v.classList.remove('selected'));
+    }));
+}
+function setEditingKind(kind) {
+    editingTargetKind = kind;
+    selectedEditingTarget = null;
+    $('entity-kind-global').classList.toggle('active', kind === 'global');
+    $('entity-kind-contextual').classList.toggle('active', kind === 'contextual');
+    $('entity-global-editor').hidden = kind !== 'global';
+    $('entity-contextual-editor').hidden = kind !== 'contextual';
+    editorStatus('');
+}
+function selectEditingTarget(id, name) {
+    selectedEditingTarget = {id, name};
+    document.querySelectorAll('.entity-target-option').forEach(item =>
+        item.classList.toggle('selected', item.dataset.editTarget === id));
+    editorStatus(`已选择：${name}`);
+}
+function renderTargetResults(containerId, items) {
+    $(containerId).innerHTML = items.map(item => `<button type="button" class="entity-target-option" data-edit-target="${escapeHtml(item.id)}" data-edit-target-name="${escapeHtml(item.name)}">
+        <i class="dot" style="background:${entityColor(item.type)}"></i>
+        <span><b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.type || 'other')}
+        ${item.description ? `<br><small>${escapeHtml(item.description)}</small>` : ''}</span>
+    </button>`).join('') || '<span class="muted">没有找到候选。</span>';
+}
+async function searchGlobalEntities() {
+    const query = $('entity-global-query').value.trim();
+    if (!query) return;
+    editorStatus('正在搜索全局实体…');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/global-search?q=${encodeURIComponent(query)}`);
+        renderTargetResults('entity-global-results', data.items || []);
+        editorStatus('');
+    } catch (error) { editorStatus(`搜索失败：${error.message}`, true); }
+}
+async function searchContextualEntities() {
+    const query = $('entity-contextual-query').value.trim();
+    editorStatus('正在搜索语境实体…');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/contextual-search?subsystem=${encodeURIComponent($('subsystem').value)}&q=${encodeURIComponent(query)}`);
+        renderTargetResults('entity-contextual-results', data.items || []);
+        editorStatus('');
+    } catch (error) { editorStatus(`搜索失败：${error.message}`, true); }
+}
+async function createGlobalEntity() {
+    const name = $('entity-global-new-name').value.trim();
+    if (!name) return editorStatus('请填写全局实体标准名。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/global-entities`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({name, type: $('entity-global-new-type').value})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        renderTargetResults('entity-global-results', [{id:data.id, name:data.canonical, type:data.type, description:data.description}]);
+        selectEditingTarget(data.id, data.canonical);
+    } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
+}
+async function createContextualEntity() {
+    const name = $('entity-contextual-new-name').value.trim();
+    if (!name) return editorStatus('请填写一个便于识别的语境实体名称。', true);
+    const current = currentEditingRef();
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/contextual-entities`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({subsystem:$('subsystem').value, name, type:current?.type || 'other',
+                countries:current?.country_code ? [current.country_code] : []})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        renderTargetResults('entity-contextual-results', [data]);
+        selectEditingTarget(data.id, data.name);
+    } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
+}
+async function saveEntityAssignment() {
+    if (!selectedEditingRef) return editorStatus('请先选择一个情报实体引用。', true);
+    if (!selectedEditingTarget) return editorStatus('请搜索或新建并选择目标实体。', true);
+    editorStatus('正在保存…');
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/assign`, {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+                ref:selectedEditingRef, target_kind:editingTargetKind,
+                target_id:selectedEditingTarget.id,
+                register_fixed_alias:editingTargetKind === 'global' && $('entity-register-fixed-alias').checked
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        editorStatus('已保存，正在刷新关系图。');
+        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+    } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
+}
+async function clearEntityAssignment() {
+    if (!selectedEditingRef) return editorStatus('请先选择一个情报实体引用。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/unassign`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ref:selectedEditingRef})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        editorStatus(data.changed ? '人工指定已清除，正在刷新关系图。' : '该引用没有人工指定。');
+        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+    } catch (error) { editorStatus(`清除失败：${error.message}`, true); }
+}
+async function undoEntityAssignment() {
+    const current = currentEditingRef();
+    if (!current?.decision_id) return editorStatus('当前引用没有可撤销的上次指定。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/undo`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({subsystem:selectedEditingRef.subsystem, decision_id:current.decision_id})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        editorStatus('已撤销上次指定，正在刷新关系图。');
+        setTimeout(() => { $('entity-editor').close(); refreshGraph(); }, 250);
+    } catch (error) { editorStatus(`撤销失败：${error.message}`, true); }
+}
+$('entity-editor-close').addEventListener('click', () => $('entity-editor').close());
+$('entity-kind-global').addEventListener('click', () => setEditingKind('global'));
+$('entity-kind-contextual').addEventListener('click', () => setEditingKind('contextual'));
+$('entity-global-search').addEventListener('click', searchGlobalEntities);
+$('entity-contextual-search').addEventListener('click', searchContextualEntities);
+$('entity-global-create').addEventListener('click', createGlobalEntity);
+$('entity-contextual-create').addEventListener('click', createContextualEntity);
+$('entity-assign').addEventListener('click', saveEntityAssignment);
+$('entity-unassign').addEventListener('click', clearEntityAssignment);
+$('entity-undo').addEventListener('click', undoEntityAssignment);
 document.querySelectorAll('.side-toggle').forEach(button => button.addEventListener('click', () => {
     const panel = $(button.dataset.side);
     const collapsed = panel.classList.toggle('is-collapsed');
