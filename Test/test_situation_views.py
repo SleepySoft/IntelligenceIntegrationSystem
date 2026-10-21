@@ -585,6 +585,16 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="graph-search-results"' in embedded_html
     assert '搜索 Ctrl+F' in embedded_html
     assert 'id="graph-manual-refresh"' in embedded_html
+    assert '.graph-notice { position: fixed;' in embedded_html
+    assert 'top: 14px; z-index: 30' in embedded_html
+    assert 'id="copy-graph-entity-name" title="复制实体名称"' in embedded_html
+    assert 'async function copyEntityName(name, button)' in embedded_html
+    assert 'id="entity-global-create-panel"' in embedded_html
+    assert 'id="entity-contextual-create-panel"' in embedded_html
+    assert "$('entity-global-new-name').value = '';" in embedded_html
+    assert "$('entity-contextual-new-name').value = '';" in embedded_html
+    assert "$('entity-global-create-panel').open = false;" in embedded_html
+    assert "$('entity-contextual-create-panel').open = false;" in embedded_html
     assert "showGraphNotice('所选情报的实体关联已保存。" in embedded_html
     assert "$('entity-editor').close(); refreshGraph()" not in embedded_html
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html

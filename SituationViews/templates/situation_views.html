@@ -118,12 +118,15 @@
         .graph-search-result { width: 100%; min-height: 0; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; text-align: left; font-weight: 500; }
         .graph-search-result b { display: block; color: var(--text); overflow-wrap: anywhere; }
         .graph-search-result small { display: block; margin-top: 2px; color: var(--muted); overflow-wrap: anywhere; }
-        .graph-notice { position: absolute; left: 50%; bottom: 14px; z-index: 9; width: min(620px, calc(100% - 28px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 34px color-mix(in srgb, #000 28%, transparent); }
+        .graph-notice { position: fixed; left: 50%; top: 14px; z-index: 30; width: min(620px, calc(100% - 28px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 34px color-mix(in srgb, #000 28%, transparent); }
         .graph-notice span { flex: 1; }
         .graph-notice button { min-height: 32px; padding: 5px 9px; white-space: nowrap; }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
         .graph-selection-detail { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+        .entity-title-row { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+        .entity-title-row h2 { min-width: 0; margin: 0; }
+        .entity-title-row button { min-height: 28px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
         .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
         .status.show { display: grid; }
         svg { width: 100%; height: 680px; display: block; touch-action: none; }
@@ -351,7 +354,7 @@
                     <button type="button" id="entity-global-search">搜索</button>
                 </div>
                 <div class="entity-target-list" id="entity-global-results"></div>
-                <details>
+                <details id="entity-global-create-panel">
                     <summary>添加新的全局实体</summary>
                     <div class="entity-editor-row" style="margin-top:8px">
                         <input id="entity-global-new-name" placeholder="标准名">
@@ -370,7 +373,7 @@
                     <button type="button" id="entity-contextual-search">搜索</button>
                 </div>
                 <div class="entity-target-list" id="entity-contextual-results"></div>
-                <details>
+                <details id="entity-contextual-create-panel">
                     <summary>添加新的语境实体</summary>
                     <div class="entity-editor-row" style="margin-top:8px">
                         <input id="entity-contextual-new-name" placeholder="输入一个便于识别的名称即可">
@@ -1240,7 +1243,7 @@ function showNodeDetail(d) {
     </div>` : '';
     const edit = ENTITY_EDIT_ENABLED && d.editable
         ? '<button type="button" id="edit-graph-entity" style="width:100%;margin-top:10px">指定这个实体</button>' : '';
-    detail.innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
+    detail.innerHTML = `<div class="entity-title-row"><h2>${escapeHtml(d.name)}</h2><button type="button" id="copy-graph-entity-name" title="复制实体名称">复制</button></div><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
         <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
         <p class="muted">身份：${escapeHtml(identityLabels[d.identity_kind] || d.identity_kind)}${d.reference_count ? ` · ${d.reference_count} 个情报实体引用` : ''}</p>
@@ -1353,6 +1356,10 @@ document.addEventListener('change', e => {
     if (relabelGraphEdges) relabelGraphEdges();
 });
 document.addEventListener('click', event => {
+    if (event.target.id === 'copy-graph-entity-name' && selectedGraphElement?.type === 'node') {
+        const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
+        if (node) copyEntityName(node.name, event.target);
+    }
     if (event.target.id === 'edit-graph-entity' && selectedGraphElement?.type === 'node') {
         const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
         if (node) openEntityEditor(node);
@@ -1360,6 +1367,31 @@ document.addEventListener('click', event => {
     const target = event.target.closest('[data-edit-target]');
     if (target) selectEditingTarget(target.dataset.editTarget, target.dataset.editTargetName);
 });
+
+async function copyEntityName(name, button) {
+    const text = String(name || '').trim();
+    if (!text) return;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const input = document.createElement('textarea');
+            input.value = text;
+            input.style.position = 'fixed';
+            input.style.opacity = '0';
+            document.body.appendChild(input);
+            input.select();
+            const copied = document.execCommand('copy');
+            input.remove();
+            if (!copied) throw new Error('copy command failed');
+        }
+        button.textContent = '已复制';
+        setTimeout(() => { if (button.isConnected) button.textContent = '复制'; }, 1200);
+    } catch (error) {
+        button.textContent = '复制失败';
+        setTimeout(() => { if (button.isConnected) button.textContent = '复制'; }, 1600);
+    }
+}
 
 function editorStatus(message, warning = false) {
     const element = $('entity-editor-status');
@@ -1392,6 +1424,12 @@ async function openEntityEditor(node) {
     $('entity-ref-list').innerHTML = '<span class="muted">正在加载情报实体引用…</span>';
     $('entity-global-results').innerHTML = '';
     $('entity-contextual-results').innerHTML = '';
+    $('entity-global-query').value = '';
+    $('entity-contextual-query').value = '';
+    $('entity-global-new-name').value = '';
+    $('entity-contextual-new-name').value = '';
+    $('entity-global-create-panel').open = false;
+    $('entity-contextual-create-panel').open = false;
     editingGlobalLimitedScope = false;
     setEditingKind('global');
     editorStatus('');
@@ -1405,15 +1443,10 @@ async function openEntityEditor(node) {
         const first = currentEditingRefs()[0];
         if (first) {
             $('entity-global-query').value = first.surface;
-            $('entity-contextual-new-name').value = contextualNameSuggestion(first);
         }
     } catch (error) {
         $('entity-ref-list').innerHTML = `<span class="warning">加载失败：${escapeHtml(error.message)}</span>`;
     }
-}
-function contextualNameSuggestion(item) {
-    const country = item.country_code ? `${item.country_code} ` : '';
-    return `${country}${item.surface}`.trim();
 }
 function renderEditingReferences() {
     $('entity-ref-list').innerHTML = editingReferences.map((item, index) => {
@@ -1508,6 +1541,8 @@ async function createGlobalEntity() {
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         renderTargetResults('entity-global-results', [{id:data.id, name:data.canonical, type:data.type, description:data.description}]);
         selectEditingTarget(data.id, data.canonical);
+        $('entity-global-new-name').value = '';
+        $('entity-global-create-panel').open = false;
     } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
 }
 async function createContextualEntity() {
@@ -1524,6 +1559,8 @@ async function createContextualEntity() {
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         renderTargetResults('entity-contextual-results', [data]);
         selectEditingTarget(data.id, data.name);
+        $('entity-contextual-new-name').value = '';
+        $('entity-contextual-create-panel').open = false;
     } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
 }
 async function saveEntityAssignment() {
