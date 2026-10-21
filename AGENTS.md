@@ -382,6 +382,7 @@ pytest Test/
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
+| `doc/20261021_prompt_v52_gray_design.md` | v51 灰度退化归因、v52 时间/实体完整度修复边界、Prompt 黏性分配及 v48/v52 灰度计划 |
 | `doc/subsystems_overview.md` | 各可选子系统的装配模式、耦合边界、配置键与挂载时序；含 SubSystem/ 收拢重构计划 |
 | `doc/feed_20261017_survey.md` | 数据源普查：死源清单、新源列表页实测（Guardian/Euronews/Moscow Times/TOI/Africanews 等）与接入建议 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |
