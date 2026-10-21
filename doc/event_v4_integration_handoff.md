@@ -33,8 +33,8 @@ CollectedData
 `TIME`、`LOCATION`、`PEOPLE`、`ORGANIZATION`；这些字段在归档时从
 `EVENT_EXTRACTION` 派生。`GEOGRAPHY` 已删除。
 
-生产 Prompt 当前由 `v48` 和 `v50` 同时等概率抽样：`v48` 作为对照组，`v50`
-作为角色约束修复灰度组。两者均使用固定 system + 动态 user，模型输出核心事件子集、六维
+生产 Prompt 当前由 `v48` 和 `v52` 同时等概率抽样：`v48` 作为对照组，`v52`
+作为紧凑目录完整度修复灰度组。两者均使用固定 system + 动态 user，模型输出核心事件子集、六维
 RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完整事件契约和
 数字评分。低价值输出另需 `NON_INTELLIGENCE_REASON` 原因码。归档中的
 `APPENDIX.__PROMPT_VERSION__` 可用于分组评估。
@@ -42,10 +42,15 @@ RATE 等级词，时间只输出 normalized 与 surface；服务端桥接为完�
 `v49` 是独立构建的精简版本，完整保留 Registry 目录及评级规则；首轮灰度
 发现角色白名单/实体类型遵循率下降，现保留为 `sampling=False` 的对照。`v50` 不改
 输出协议，在 v49 精简结构上增加 Registry 驱动的角色白名单和实体类型输出前检查；
-`v51` 回到 v48，仅替换紧凑谓词目录和角色纪律，当前与 v48 等概率生产灰度。
+`v51` 回到 v48，仅替换紧凑谓词目录和角色纪律。首轮发现其时间/实体完整度下降后，
+v52 保留紧凑目录和角色白名单，恢复完整角色
+落点规则、增加逐事件时间检查，并禁止为满足白名单省略核心参与者。生产分析首次分配
+Prompt 后会把版本写入 cache，持久化重试和重启恢复不再重新随机抽样。当前生产代码的
+灰度组合为 v48/v52；服务进程需重启后才会加载该组合。
 详见 [v49 精简记录](20261020_prompt_v49_compaction.md) 与
 [v50 夜间灰度记录](20261020_prompt_v50_role_guard_gray.md)及
-[v51 角色目录单变量压缩灰度](20261021_prompt_v51_role_compaction_gray.md)。
+[v51 角色目录单变量压缩灰度](20261021_prompt_v51_role_compaction_gray.md)、
+[v52 灰度设计](20261021_prompt_v52_gray_design.md)。
 
 ## 归档文档
 

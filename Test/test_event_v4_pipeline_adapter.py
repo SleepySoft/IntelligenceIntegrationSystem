@@ -9,10 +9,12 @@ from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_FIELD,
+    APPENDIX_PROMPT_VERSION,
     APPENDIX_RETRY_FIRST_FAILED_AT,
     APPENDIX_RETRY_LEVEL,
     APPENDIX_RETRY_NEXT_AT,
 )
+from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
 from ServiceComponent.pipeline import ARCHIVE_REQUESTED
 from ServiceComponent.runtime import HubEvent
 
@@ -474,6 +476,72 @@ def test_v4_analysis_uses_three_persistent_retry_rounds_before_terminal_error():
     assert terminal_update["$set"][f"APPENDIX.{APPENDIX_RETRY_LEVEL}"] == 3
 
 
+def test_v4_persistent_retry_reuses_first_prompt_assignment(monkeypatch):
+    context = FakeContext()
+    catalog = PromptCatalog()
+    catalog.register_protocol(PromptProtocol("full", validate_analysis_result_v4))
+    catalog.register_prompt(41, "prompt 41", protocol="full", sampling=True)
+    catalog.register_prompt(77, "prompt 77", protocol="full", sampling=True)
+    seen_versions = []
+
+    def fail(*_args, record_meta=None, **_kwargs):
+        seen_versions.append(record_meta["prompt_version"])
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(
+        "ServiceComponent.adapters.event_v4_pipeline.random.choice",
+        lambda _versions: 41,
+    )
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(), prompt_catalog=catalog,
+        analyzer=fail, scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none(),
+    )
+    original = _original()
+
+    first = ports.analyze(HubEvent("analysis.requested", original, "news"))
+
+    assert not first.accepted
+    assert seen_versions == [41, 41, 41]
+    assert context.mongo_db_cache.updated[0] == (
+        {"UUID": original["UUID"]},
+        {f"APPENDIX.{APPENDIX_PROMPT_VERSION}": 41},
+    )
+    retry_update = context.mongo_db_cache.updated[-1][1]["$set"]
+    original[APPENDIX_FIELD] = {
+        APPENDIX_PROMPT_VERSION: 41,
+        APPENDIX_RETRY_LEVEL: retry_update[f"APPENDIX.{APPENDIX_RETRY_LEVEL}"],
+        APPENDIX_RETRY_FIRST_FAILED_AT:
+            retry_update[f"APPENDIX.{APPENDIX_RETRY_FIRST_FAILED_AT}"],
+        APPENDIX_RETRY_NEXT_AT: retry_update[f"APPENDIX.{APPENDIX_RETRY_NEXT_AT}"],
+    }
+
+    def must_not_resample(_versions):
+        raise AssertionError("持久化重试不应重新抽取 Prompt")
+
+    monkeypatch.setattr(
+        "ServiceComponent.adapters.event_v4_pipeline.random.choice", must_not_resample)
+    second = ports.analyze(HubEvent("analysis.requested", original, "news"))
+
+    assert not second.accepted
+    assert seen_versions == [41, 41, 41, 41, 41, 41]
+
+
+def test_v4_persistent_assignment_can_finish_non_sampling_inflight_version():
+    context = FakeContext()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(context), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        analyzer=lambda *_, **__: _valuable(),
+        scorer_factory=lambda _: FakeScorer(), retry_wait=wait_none(),
+    )
+    original = _original()
+    original[APPENDIX_FIELD] = {APPENDIX_PROMPT_VERSION: 51}
+
+    assert ports._persistent_prompt_version(context, original) == 51
+    assert context.mongo_db_cache.updated == []
+
+
 def test_v4_archive_failure_continues_existing_persistent_retry_round():
     class FailingArchiveRepository(FakeArchiveRepository):
         def commit(self, record, events):
@@ -581,9 +649,13 @@ def test_v4_analysis_reassigns_internal_uuid_collision_for_another_source():
 
     assert result.accepted
     assert UUID(result.payload.archive.UUID) != original_id
-    assert context.mongo_db_cache.updated[-1] == (
+    assert context.mongo_db_cache.updated[-2] == (
         {"UUID": str(original_id)},
         {"UUID": result.payload.archive.UUID},
+    )
+    assert context.mongo_db_cache.updated[-1] == (
+        {"UUID": result.payload.archive.UUID},
+        {f"APPENDIX.{APPENDIX_PROMPT_VERSION}": 41},
     )
 
 
@@ -821,10 +893,10 @@ def test_v4_debug_prompt_catalog_exposes_all_versions_and_gray_sampling_pair():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51}
+    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52}
     assert "核心子集" in table[42]
-    # v48 作对照、v51 作角色目录单变量压缩灰度，两者共用输出协议。
-    assert list(ports._prompt_table) == [48, 51]
+    # v48 作对照、v52 作紧凑目录完整度修复灰度，两者共用输出协议。
+    assert list(ports._prompt_table) == [48, 52]
 
 
 class FakeShadowRecorder:

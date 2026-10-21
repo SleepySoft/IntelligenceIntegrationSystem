@@ -23,16 +23,23 @@ def _roles_in_groups(registry, *groups: SemanticRoleGroup) -> str:
     return ",".join(sorted(selected)) or "无"
 
 
-def build_role_discipline(registry=DEFAULT_EVENT_REGISTRY) -> str:
+def build_role_discipline(
+    registry=DEFAULT_EVENT_REGISTRY, *, protect_core_entities: bool = False,
+) -> str:
     """Registry 驱动的角色白名单与语义类型检查。"""
     acting_roles = _roles_in_groups(
         registry, SemanticRoleGroup.AGENT, SemanticRoleGroup.AUTHORITY)
     location_roles = _roles_in_groups(registry, SemanticRoleGroup.LOCATION)
+    entity_fallback = (
+        "- 主事件的行动方、对象等核心参与者不得为了满足白名单而省略；若核心参与者无法放入当前谓词的合法角色，必须改用 predicate.id=null 的开放谓词。只有不影响事件事实的非核心实体才可省略；禁止为了保留已登记谓词而把实体塞进语义不符的合法角色。"
+        if protect_core_entities else
+        "- 若实体无法放入当前谓词的合法角色，就省略该实体或改用 predicate.id=null 的开放谓词；不得自创角色。"
+    )
     return f"""### 已登记谓词的角色白名单（输出前逐项检查）
 
 - predicate.id 非 null 时，roles 的每个键必须精确出现在“公共可选角色”或该谓词行的 roles 中；两处都没有的角色绝对禁止输出。
 - actor、agent、subject、affected 等名称不是可跨谓词套用的通用槽位；它们只在当前谓词白名单明示出现时才合法。语义组名也不是输出角色。
-- 若实体无法放入当前谓词的合法角色，就省略该实体或改用 predicate.id=null 的开放谓词；不得自创角色。
+{entity_fallback}
 - 行动/权威类角色（{acting_roles}）的实体 type 只能是 person、organization、geopolitical_entity 或 position。政府机关、军队、企业、社会团体是 organization，不是 facility。
 - 事件、现象、政策、设施不得冒充上述行动/权威角色。自然现象作为原因且登记目录无合法槽位时，用 agency=non_agentive 的开放谓词表达。
 - 地点类角色（{location_roles}）的实体 type 只能是 location、geopolitical_entity 或 facility；topic 角色禁止使用 person 或 animal。

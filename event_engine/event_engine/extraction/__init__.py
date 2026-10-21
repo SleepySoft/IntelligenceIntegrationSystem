@@ -21,6 +21,9 @@ from .subset import (
     complete_core_extraction,
 )
 from .subset_prompt import (
+    CORE_ROLE_LANDING_SECTION,
+    FULL_TIME_RULE,
+    MINIMAL_TIME_RULE,
     build_core_extraction_prompt,
     build_core_extraction_section,
 )
@@ -35,6 +38,9 @@ __all__ = [
     "build_event_extraction_section",
     "build_predicate_catalog",
     "build_compact_predicate_catalog",
+    "CORE_ROLE_LANDING_SECTION",
+    "FULL_TIME_RULE",
+    "MINIMAL_TIME_RULE",
     "build_compact_core_extraction_section",
     "CoreExtractionSubset",
     "SubsetEntity",

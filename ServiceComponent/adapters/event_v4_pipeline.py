@@ -61,6 +61,7 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME_SOURCE,
     APPENDIX_EXTRACTION_QUALITY,
     APPENDIX_FIELD,
+    APPENDIX_PROMPT_VERSION,
     APPENDIX_RAW_DATA,
     APPENDIX_RETRY_FIRST_FAILED_AT,
     APPENDIX_RETRY_LAST_ERROR,
@@ -326,9 +327,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     ctx.mongo_db_cache.update(
                         {"UUID": previous_uuid}, {"UUID": original_data["UUID"]})
         try:
-            requested_prompt_version, prompt_override = (
-                self._transient_prompt_options(original_data) if not persist else (None, None)
-            )
+            if persist:
+                requested_prompt_version = self._persistent_prompt_version(
+                    ctx, original_data)
+                prompt_override = None
+            else:
+                requested_prompt_version, prompt_override = (
+                    self._transient_prompt_options(original_data)
+                )
             analysis, prompt_version, ai_service, ai_model, primary_client = (
                 self._analyze_v4_with_retry(
                     ctx, event, original_data,
@@ -374,6 +380,44 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 return StageResult.reject(
                     f"analysis_{retry_state.lower()}:{type(exc).__name__}:{exc}")
             return StageResult.reject(f"analysis_exception:{type(exc).__name__}:{exc}")
+
+    def _persistent_prompt_version(self, ctx: Any, original_data: dict) -> int:
+        """首次分析分配一次 Prompt，持久化重试和重启恢复继续使用同一版本。"""
+        raw_appendix = original_data.get(APPENDIX_FIELD)
+        appendix = dict(raw_appendix) if isinstance(raw_appendix, Mapping) else {}
+        assigned = appendix.get(APPENDIX_PROMPT_VERSION)
+        try:
+            assigned_version = int(assigned) if assigned is not None else None
+        except (TypeError, ValueError):
+            assigned_version = None
+        if assigned_version is not None and self._prompt_catalog.has(assigned_version):
+            appendix[APPENDIX_PROMPT_VERSION] = assigned_version
+            original_data[APPENDIX_FIELD] = appendix
+            return assigned_version
+        if assigned is not None:
+            logger.warning(
+                "Ignore unavailable persisted prompt version %r for intelligence %s",
+                assigned, original_data.get("UUID"),
+            )
+
+        version = random.choice(self._prompt_catalog.sampling_versions())
+        appendix[APPENDIX_PROMPT_VERSION] = version
+        original_data[APPENDIX_FIELD] = appendix
+        storage = getattr(ctx, "mongo_db_cache", None)
+        uuid = str(original_data.get("UUID") or "")
+        if storage is not None and uuid:
+            try:
+                storage.update(
+                    {"UUID": uuid},
+                    {appendix_path(APPENDIX_PROMPT_VERSION): version},
+                )
+            except Exception:
+                # 分配写回属于灰度归因元数据；失败不能阻塞生产分析主链。
+                logger.warning(
+                    "Persist prompt assignment failed for intelligence %s; analysis continues",
+                    uuid, exc_info=True,
+                )
+        return version
 
     def prepare_analysis_outcome(self, ctx: Any, original_data: dict,
                                  analysis: AnalysisResultV4, *,

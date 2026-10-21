@@ -10,16 +10,29 @@ from __future__ import annotations
 from .prompt import _build_qualifier_catalog, build_predicate_catalog
 
 
+CORE_ROLE_LANDING_SECTION = """## 角色落点
+
+- 严格区分谁下令、谁执行、谁是对象：“甲要求乙调查丙”中，执行方角色（如 investigator）填乙，对象角色（如 object）填丙，甲只写入 directive 限定词的 by，即 `{"type":"directive","value":"ordered","by":[甲实体]}`。
+- 调查、审查、评估的对象必须是真正的客体；“调查某作品的消息源”时 object 是消息源，不得简化为作品本身。
+- 实体名称必须保留消歧类别词，如“纪录片《NAZA》”“Rafael天然气项目”，不得只写裸专名“NAZA”。
+- 计划、拟议、威胁、要求不是已发生事实：未来或拟议事件必须加限定词（intention=planned 或 phase=planned/not_started），时间使用 expected_start_time 等预期槽位。
+- 特定机构作出的判断（如“韩军称其为武力展示”）必须用 epistemic 限定词保留陈述主体，by 填该机构实体。"""
+
+MINIMAL_TIME_RULE = (
+    '- `time` 只在能规范化时输出，槽位可选 event_time、start_time、end_time、'
+    'effective_time、deadline、expected_start_time、expected_end_time；每个槽位只写 '
+    '`{"normalized":"2026-10-17","surface":"原文时间"}`，不要输出 precision 或 approximate。'
+)
+
+FULL_TIME_RULE = (
+    '- `time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。\n'
+    '- 时间包含 normalized、precision、approximate、surface；surface 必须逐字摘自正文（保持原文语言），禁止翻译或概括。precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。'
+)
+
+
 def build_core_extraction_section(registry, *, minimal_time: bool = False) -> str:
     """返回可嵌入外部 Prompt 的核心子集事件抽取章节，不包含输入和外围任务。"""
-    time_rule = (
-        '- `time` 只在能规范化时输出，槽位可选 event_time、start_time、end_time、'
-        'effective_time、deadline、expected_start_time、expected_end_time；每个槽位只写 '
-        '`{"normalized":"2026-10-17","surface":"原文时间"}`，不要输出 precision 或 approximate。'
-        if minimal_time else
-        '- `time` 可使用 event_time、start_time、end_time、effective_time、deadline、expected_start_time、expected_end_time。\n'
-        '- 时间包含 normalized、precision、approximate、surface；surface 必须逐字摘自正文（保持原文语言），禁止翻译或概括。precision 与 normalized 必须严格对应：year=`YYYY`、month=`YYYY-MM`、day=`YYYY-MM-DD`、hour=`YYYY-MM-DDTHH`、minute=`YYYY-MM-DDTHH:MM`。不要为 hour/minute 添加秒、时区或空格；不能可靠标准化时 normalized 为 null。'
-    )
+    time_rule = MINIMAL_TIME_RULE if minimal_time else FULL_TIME_RULE
     return f"""# 事件抽取协议（核心子集）
 
 输出 `event_extraction` 对象，只包含一个 `events` 数组（一至三项事件）。
@@ -68,13 +81,7 @@ country_code 用于保留原文明示的国别或地理关联。对于 facility�
 - 优先使用目录登记角色。所有角色值都是实体对象数组，且不能为空。
 - predicate.id 为 null 时必须提供 frame，且 frame.topology 决定可用角色：intrinsic 使用 subject；relational 使用 subject、counterpart；targeted 使用 actor、target 和可选 instrument；transfer 使用 theme、可选 source、destination、agent，并至少包含 source 或 destination。
 
-## 角色落点
-
-- 严格区分谁下令、谁执行、谁是对象：“甲要求乙调查丙”中，执行方角色（如 investigator）填乙，对象角色（如 object）填丙，甲只写入 directive 限定词的 by，即 `{{"type":"directive","value":"ordered","by":[甲实体]}}`。
-- 调查、审查、评估的对象必须是真正的客体；“调查某作品的消息源”时 object 是消息源，不得简化为作品本身。
-- 实体名称必须保留消歧类别词，如“纪录片《NAZA》”“Rafael天然气项目”，不得只写裸专名“NAZA”。
-- 计划、拟议、威胁、要求不是已发生事实：未来或拟议事件必须加限定词（intention=planned 或 phase=planned/not_started），时间使用 expected_start_time 等预期槽位。
-- 特定机构作出的判断（如“韩军称其为武力展示”）必须用 epistemic 限定词保留陈述主体，by 填该机构实体。
+{CORE_ROLE_LANDING_SECTION}
 
 ## 时间、地点和属性
 

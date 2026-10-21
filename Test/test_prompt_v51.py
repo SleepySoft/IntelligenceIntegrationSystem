@@ -12,15 +12,13 @@ from prompts_event_v51 import (
 from test_prompt_v49 import _output_example, _rich_output
 
 
-def test_v51_replaces_v50_in_production_gray_pair():
+def test_v51_remains_selectable_after_v52_replaces_it_in_gray_sampling():
     catalog = catalog_module.EVENT_V4_PROMPT_CATALOG
-    assert catalog.sampling_versions() == [48, 51]
+    assert catalog.sampling_versions() == [48, 52]
     assert catalog.protocol_for(51) is catalog.protocol_for(48)
     assert catalog.text_for(51) == catalog_module.EVENT_ANALYSIS_PROMPT_V51
-    assert catalog_module.EVENT_ANALYSIS_PROMPT_TABLE == {
-        48: catalog_module.EVENT_ANALYSIS_PROMPT_V48,
-        51: catalog_module.EVENT_ANALYSIS_PROMPT_V51,
-    }
+    assert catalog_module.EVENT_ANALYSIS_EXTRA_PROMPTS[51] == (
+        catalog_module.EVENT_ANALYSIS_PROMPT_V51)
     assert catalog.extra_table()[50] == v50.EVENT_ANALYSIS_PROMPT_V50
 
 
