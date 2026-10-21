@@ -103,7 +103,7 @@
   - `model.py`：实体 = 主标准名+`localized`（lang→该语言标准名）+别名（带 `lang`/`role`: abbr/full/former）+ `native_lang` + `type`（person/organization/country/location/animal/commodity/other/uncertain）+ `status`（unverified/verified）+ `description` + `refs`（外部标识，如 wikidata QID）；`resolve` 支持 `lang=<代码>|native` 返回对应语言标准名
   - `wikidata.py`：在线建议源（本地未命中时查 Wikidata；描述性 UA、0.5s 节流、429 退避、SQLite 缓存 7 天、代理可配）；`register_from_wikidata` 预填多语言数据补录回本地
   - `index.py`：精确索引 + bigram 倒排预过滤（≥2 万名字自动启用）；容量实测与拐点见 README
-  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；`iis_integration.py`：装配入口（`optional_subsystems.entity_alias` 配置门控，经 IISConfig 投影为 `entity_alias.*` 运行时键）
+  - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；登录用户通过 `/entity-alias/manage` 独立管理全局 `ent_*`、固定别名和主标准名，标准名切换保留旧名称；该页不管理 `ctx_*` 或 EntityRef 解析，删除也不级联清理解析引用
   - 设计/容量/改进文档：`doc/20261016_entity_alias_subsystem.md`
   - `data/`：git 管理的别名数据（JSONL）；`skill/SKILL.md`：AI 调用方指南
   - 查询时展开：挂载后组合根把 `expand_names` 注入各子系统 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
