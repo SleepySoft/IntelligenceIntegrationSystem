@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 分析质量</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--text:#f1f5f9;--muted:#94a3b8;--blue:#38bdf8;--green:#4ade80;--amber:#fbbf24;--red:#f87171}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1500px;margin:auto;padding:{{ '8px' if embedded else '24px' }};}.embedded .page-head{display:none}
+.page-head,.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.page-head{margin-bottom:18px}.page-head h1{font-size:24px;margin:0}.muted{color:var(--muted);font-size:12px}.link{color:var(--blue);text-decoration:none}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}.toolbar{margin-bottom:14px}select,button{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px 10px}button{cursor:pointer}.range.active{background:var(--blue);color:#082f49;border-color:var(--blue)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px}.card{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:12px}.value{font-size:22px;font-weight:700}.label{color:var(--muted);font-size:12px}.hint{cursor:help;border-bottom:1px dotted var(--muted)}
+h2{font-size:16px;color:var(--blue);margin:0 0 12px}.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-weight:500}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--amber)}
+.badge{display:inline-block;border-radius:999px;padding:2px 8px;background:#334155;color:var(--muted);font-size:11px}.badge.stable{color:var(--green);background:#14532d55}.badge.preliminary{color:var(--amber);background:#713f1255}
+.trend{display:flex;align-items:end;height:150px;gap:3px;padding-top:12px;border-bottom:1px solid var(--line)}.bar{flex:1;min-width:5px;background:var(--blue);border-radius:3px 3px 0 0;position:relative}.bar:hover:after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#020617;padding:5px 7px;border-radius:5px;white-space:nowrap;z-index:2}
+.error{color:var(--red);padding:12px}.legend{display:flex;gap:16px;color:var(--muted);font-size:12px;margin-top:8px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;background:var(--blue)}
+</style>
+</head>
+<body class="{{ 'embedded' if embedded else '' }}"><div class="wrap">
+<div class="page-head"><div><h1>AI 分析质量与成本</h1><div class="muted">从用户任务视角关联模型调用；不含健康检查</div></div><a class="link" href="/statistics/overview">← 返回统计分析</a></div>
+<div class="panel">
+  <div class="toolbar"><div><button class="range active" data-hours="24">24 小时</button> <button class="range" data-hours="168">7 天</button> <button class="range" data-hours="720">30 天</button></div><div>对比维度 <select id="dimension"><option value="model">模型</option><option value="client">命名客户端</option><option value="service">服务商</option><option value="prompt">Prompt</option><option value="model_prompt">模型 × Prompt</option></select> <label class="muted"><input id="shadow" type="checkbox"> 含影子调用</label></div></div>
+  <div id="status" class="muted">加载中…</div>
+</div>
+<div id="content" style="display:none">
+<div class="panel"><h2>结果质量</h2><div class="cards" id="quality-cards"></div></div>
+<div class="panel"><h2>效率与成本</h2><div class="cards" id="cost-cards"></div><div class="muted" style="margin-top:10px">忙碌小时产出 = 成功件数 ÷ AI 调用耗时总和；系统空闲不进入分母，并行调用耗时会累加。Token 指标仅统计成功关联到调用事实的记录。</div></div>
+<div class="grid">
+ <div class="panel"><h2>趋势</h2><div class="trend" id="trend"></div><div class="legend"><span><i class="dot"></i>每桶调用数</span><span id="trend-note"></span></div></div>
+ <div class="panel"><h2>失败构成</h2><div class="table-wrap"><table id="errors"></table></div></div>
+</div>
+<div class="panel"><h2>维度对比</h2><div class="table-wrap"><table id="comparison"></table></div></div>
+<div class="panel"><h2>最近调用尝试</h2><div class="table-wrap"><table id="recent"></table></div></div>
+</div>
+<div id="error" class="error"></div>
+</div>
+<script>
+let hours=24;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>v==null?'—':new Intl.NumberFormat('zh-CN',{maximumFractionDigits:1}).format(v);
+const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`;
+const ms=v=>v==null?'—':v>=1000?`${(v/1000).toFixed(1)}s`:`${Math.round(v)}ms`;
+const sample=v=>({observe:'观察（<20）',preliminary:'初步（20–49）',stable:'稳定（≥50）'}[v]||v);
+const kindLabel={result:'结果',service:'服务',safety:'安全'};
+function card(label,value,title=''){return `<div class="card"><div class="value">${value}</div><div class="label ${title?'hint':''}" title="${esc(title)}">${label}</div></div>`}
+async function load(){
+ document.getElementById('status').textContent='加载中…';document.getElementById('error').textContent='';
+ const dim=document.getElementById('dimension').value,shadow=document.getElementById('shadow').checked?1:0;
+ try{
+  const resp=await fetch(`api/report?hours=${hours}&dimension=${dim}&include_shadow=${shadow}`);const d=await resp.json();if(!resp.ok)throw new Error(d.error||`HTTP ${resp.status}`);
+  render(d);document.getElementById('content').style.display='';
+ }catch(e){document.getElementById('error').textContent=`加载失败：${e.message}`;document.getElementById('content').style.display='none'}
+}
+function render(d){const o=d.overview;
+ document.getElementById('status').innerHTML=`统计窗口 ${d.window.hours} 小时 · ${num(o.started_items)} 个任务 · <span class="badge ${o.sample_level}">${sample(o.sample_level)}</span> · 调用关联覆盖 ${pct(o.link_coverage)} · 更新于 ${new Date(d.generated_at).toLocaleString()}`;
+ document.getElementById('quality-cards').innerHTML=[
+  card('一次成功率',pct(o.first_pass_rate),'首个尝试成功的任务 ÷ 窗口内开始的任务'),card('最终成功率',pct(o.final_success_rate),'成功终态 ÷ 已形成终态的任务'),card('结果错误影响率',pct(o.result_error_rate),'JSON、结构或语义规则错误影响的任务占比'),card('内容敏感率',pct(o.sensitive_rate),'内容安全终态 ÷ 已形成终态的任务'),card('服务错误影响率',pct(o.service_error_rate),'网络、限流、服务商致命错误影响的任务占比'),card('重试挽回',num(o.recovered_items),'首试失败、最终成功的任务'),card('成功 / 完成 / 开始',`${num(o.success_items)} / ${num(o.completed_items)} / ${num(o.started_items)}`),card('待持久重试',num(o.pending_retry_items))].join('');
+ document.getElementById('cost-cards').innerHTML=[
+  card('成功件 / AI 忙碌小时',num(o.busy_productivity),'按调用占用时间计算，不受系统空闲影响'),card('每 100 次调用完成',num(o.completions_per_100_calls)),card('平均尝试 / 成功件',num(o.attempts_per_success)),card('P50 / P95 延迟',`${ms(o.latency_p50_ms)} / ${ms(o.latency_p95_ms)}`),card('总 Token',num(o.total_tokens)),card('Token / 成功件',num(o.tokens_per_success)),card('缓存 Token 比例',pct(o.cache_token_rate),'缓存输入 Token ÷ 输入 Token'),card('重试 Token 比例',pct(o.retry_token_rate)),card('服务商 Token 覆盖',pct(o.reported_token_coverage),'使用服务商 usage 而非估算值的调用占比'),card('AI 忙碌小时',num(o.busy_hours))].join('');
+ const series=d.series||[],max=Math.max(1,...series.map(x=>x.calls));document.getElementById('trend').innerHTML=series.length?series.map(x=>`<div class="bar" style="height:${Math.max(2,x.calls/max*100)}%" data-tip="${esc(x.bucket)} · 调用 ${x.calls} · 成功 ${x.success_items} · Token ${x.tokens}"></div>`).join(''):'<span class="muted">暂无数据</span>';document.getElementById('trend-note').textContent=series.length?`共 ${series.length} 个时间桶`:'暂无数据';
+ document.getElementById('errors').innerHTML='<tr><th>类别</th><th>错误</th><th>调用</th><th>影响任务</th><th>调用占比</th></tr>'+((d.errors||[]).map(x=>`<tr><td>${kindLabel[x.kind]}</td><td class="${x.kind==='result'?'bad':x.kind==='safety'?'warn':''}">${esc(x.error_class)}</td><td>${x.calls}</td><td>${x.affected_items}</td><td>${pct(x.call_rate)}</td></tr>`).join('')||'<tr><td colspan="5" class="ok">无失败</td></tr>');
+ document.getElementById('comparison').innerHTML='<tr><th>对象</th><th>样本</th><th>一次成功</th><th>最终成功</th><th>结果错误</th><th>服务错误</th><th>调用</th><th>忙碌产出</th><th>P95</th><th>Token/成功</th><th>缓存率</th></tr>'+((d.comparison||[]).map(x=>`<tr><td>${esc(x.name)}</td><td>${x.started_items} <span class="badge ${x.sample_level}">${sample(x.sample_level)}</span></td><td>${pct(x.first_pass_rate)}</td><td>${pct(x.final_success_rate)}</td><td>${pct(x.result_error_rate)}</td><td>${pct(x.service_error_rate)}</td><td>${x.calls}</td><td>${num(x.busy_productivity)}</td><td>${ms(x.latency_p95_ms)}</td><td>${num(x.tokens_per_success)}</td><td>${pct(x.cache_token_rate)}</td></tr>`).join('')||'<tr><td colspan="11">暂无数据</td></tr>');
+ document.getElementById('recent').innerHTML='<tr><th>时间</th><th>模型 / 客户端</th><th>Prompt</th><th>尝试</th><th>结果</th><th>延迟</th><th>Token</th><th>关联</th></tr>'+((d.recent_attempts||[]).map(x=>`<tr><td>${new Date(x.ts).toLocaleString()}</td><td>${esc(x.model||'—')} / ${esc(x.client_name||'—')}</td><td>v${esc(x.prompt_version)}</td><td>${x.attempt_no}</td><td class="${x.success?'ok':'bad'}">${x.success?'成功':esc(x.error_class)}</td><td>${ms(x.latency_ms)}</td><td>${num(x.tokens)}</td><td>${x.linked?'是':'历史未关联'}</td></tr>`).join('')||'<tr><td colspan="8">暂无数据</td></tr>');
+}
+document.querySelectorAll('.range').forEach(b=>b.onclick=()=>{document.querySelectorAll('.range').forEach(x=>x.classList.remove('active'));b.classList.add('active');hours=Number(b.dataset.hours);load()});document.getElementById('dimension').onchange=load;document.getElementById('shadow').onchange=load;load();
+</script></body></html>

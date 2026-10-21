@@ -438,6 +438,24 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     hub_service.register_routers(wsgi_app)
 
+    # 任务效果看板是可复用的独立 Blueprint：这里只注入 IIS 的数据库路径和认证。
+    # 初始化/查询失败不得影响核心服务启动。
+    try:
+        from AnalysisObservability.web import create_blueprint as create_analysis_observability
+        observation_config = config.get('ai_client_center.call_observation', {}) or {}
+        observation_db_file = observation_config.get(
+            'sqlite_db_file', 'ai_client_observations.db')
+        wsgi_app.register_blueprint(
+            create_analysis_observability(
+                analysis_db_path=os.path.join(DATA_PATH, 'analysis_stats.db'),
+                call_db_path=os.path.join(DATA_PATH, observation_db_file),
+                wrapper=hub_service.access_manager.login_required,
+            ),
+            url_prefix='/analysis-observability',
+        )
+    except Exception:
+        logger.exception("AI 分析效果看板挂载失败，IIS 主服务继续运行。")
+
     # 批量分析子系统 Web 端点（服务已在扩展装配期创建）。
     if batch_analysis_service is not None:
         try:

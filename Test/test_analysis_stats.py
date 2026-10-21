@@ -96,3 +96,15 @@ class TestAnalysisStats:
                                 prompt_version=46, ai_service="s", ai_model="m",
                                 attempt_no=1, latency_ms=1, error_class=None)
         assert recorder.aggregate_by_model() == []
+
+    def test_terminal_failure_preserves_model_attribution(self, tmp_path):
+        recorder = AnalysisStatsRecorder(tmp_path / "terminal.db")
+        recorder.record_outcome(
+            uuid="x", subsystem="news", shadow=False, prompt_version=50,
+            ai_service="svc", ai_model="model-x",
+            outcome="retry_scheduled", attempts_used=3)
+        recorder.record_terminal_failure(uuid="x", subsystem="news")
+
+        group = recorder.aggregate_by_model(days=1)[0]
+        assert group["ai_model"] == "model-x"
+        assert group["outcome_dist"] == {"failed": 1}

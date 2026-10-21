@@ -360,6 +360,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
             if persist:
                 retry_state = self._schedule_retry(
                     ctx, original_data.get("UUID", ""), original_data, exc)
+                if retry_state == CacheArchiveState.ERROR.value:
+                    recorder = self._analysis_stats
+                    marker = getattr(recorder, "record_terminal_failure", None)
+                    if callable(marker):
+                        try:
+                            marker(
+                                uuid=str(original_data.get("UUID") or ""),
+                                subsystem=getattr(ctx, "name", ""), shadow=False)
+                        except Exception:
+                            pass
                 self._increment_stat(ctx, "error")
                 return StageResult.reject(
                     f"analysis_{retry_state.lower()}:{type(exc).__name__}:{exc}")
@@ -560,7 +570,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def _record_analysis_attempt(self, *, original_data: dict, ctx: Any,
                                  shadow: bool, prompt_version: int, service: str,
                                  model: str, attempt: int, latency_ms: int,
-                                 error_class: str | None) -> None:
+                                 error_class: str | None,
+                                 request_id: str | None = None,
+                                 client_name: str | None = None) -> None:
         """每次 AI 调用落一条统计；任何失败都不影响主链。"""
         recorder = self._analysis_stats
         if recorder is None:
@@ -570,7 +582,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 uuid=str(original_data.get("UUID") or ""),
                 subsystem=getattr(ctx, "name", ""), shadow=shadow,
                 prompt_version=prompt_version, ai_service=service, ai_model=model,
-                attempt_no=attempt, latency_ms=latency_ms, error_class=error_class)
+                attempt_no=attempt, latency_ms=latency_ms, error_class=error_class,
+                request_id=request_id, client_name=client_name)
         except Exception:
             pass
 
@@ -626,6 +639,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         for attempt in range(1, 4):
             request_id = None
             attempt_error_class: str | None = None
+            attempt_recorded = False
             # prefer_client_name 只生效一次：用后立清，避免网络错误时锁死同一客户端
             prefer_now = prefer_client_name
             prefer_client_name = None
@@ -714,7 +728,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
-                        error_class=AnalysisErrorClass.CONTENT_SAFETY)
+                        error_class=AnalysisErrorClass.CONTENT_SAFETY,
+                        request_id=request_id,
+                        client_name=getattr(ai_client, "name", ""))
+                    attempt_recorded = True
                     # 敏感兑底：换一个带 low_sensitivity 标签的客户端再试一次（有的话）
                     if not sensitive_fallback_tried and attempt < 3:
                         sensitive_fallback_tried = True
@@ -742,7 +759,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
-                        error_class=None)
+                        error_class=None, request_id=request_id,
+                        client_name=getattr(ai_client, "name", ""))
+                    attempt_recorded = True
                     self._record_analysis_outcome(
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
@@ -777,7 +796,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
-                        error_class=attempt_error_class)
+                        error_class=attempt_error_class, request_id=request_id,
+                        client_name=getattr(ai_client, "name", ""))
+                    attempt_recorded = True
                     self._report_client_feedback(
                         ai_client, request_id, valid=False,
                         labels={
@@ -801,6 +822,15 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     )
                 finally:
                     self._change_runtime_stat("validation_running", -1)
+            if not attempt_recorded:
+                self._record_analysis_attempt(
+                    original_data=original_data, ctx=ctx, shadow=shadow,
+                    prompt_version=prompt_version, service=service, model=model,
+                    attempt=attempt, latency_ms=call_ms,
+                    error_class=attempt_error_class or AnalysisErrorClass.UNKNOWN,
+                    request_id=request_id,
+                    client_name=getattr(ai_client, "name", ""),
+                )
             if attempt == 3:
                 break
             self._change_runtime_stat("retries")
