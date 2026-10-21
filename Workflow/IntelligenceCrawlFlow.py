@@ -9,6 +9,7 @@ import threading
 from uuid import uuid4
 from typing import Optional
 from functools import partial
+from pydantic import ValidationError
 
 from CrawlerServiceEngine import ServiceContext
 from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
@@ -63,9 +64,20 @@ def intelligence_crawler_result_handler(
     except CrawlSession.Flow:
         # Crawl session context will handle it.
         raise
-    except Exception as e:
-        print(f"Build collected data fail: {e}")
-        # Handle exception outside.
+    except ValidationError as e:
+        details = sorted({
+            f"{'.'.join(str(part) for part in error.get('loc', ()))}:"
+            f"{error.get('type', 'validation_error')}"
+            for error in e.errors()
+        })
+        detail_text = ','.join(details) or 'unknown:validation_error'
+        context.logger.warning(
+            "Article skipped: category=invalid_collected_data "
+            f"fields={detail_text} url={url}"
+        )
+        raise CrawlSession.Skip(f'invalid_collected_data fields={detail_text}')
+    except Exception:
+        # 未分类异常继续交给 CrawlSession 输出完整 traceback。
         raise
 
 

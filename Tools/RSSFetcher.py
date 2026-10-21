@@ -169,8 +169,16 @@ def fetch_feed(
         if result['content']:
             parsed = parse_feed(result['content'])
             return parsed
-        else:
-            raise ValueError('Emtpy feed content')
+        logger.warning(
+            "Feed skipped: category=empty_content "
+            f"url={url} action=skip_feed"
+        )
+        return FeedData(
+            meta=RssMeta(),
+            entries=[],
+            errors=['Empty feed content'],
+            fatal=True,
+        )
     except Exception as e:
         logger.error(f'Feed fetch fail: {str(e)}', exc_info=True)
 

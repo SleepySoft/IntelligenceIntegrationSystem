@@ -128,8 +128,13 @@ class CrawlContext:
             status, reason = normalize_collect_response(result)
 
             if status == 'rejected':
-                # 服务端明确拒绝（重复/校验失败等）：重试无意义，交由上层记为跳过。
-                raise ProcessSkip(f'Hub rejected: {reason}')
+                # 服务端明确拒绝（重复/超龄/校验失败等）属于预期终态。
+                # 直接使用 CrawlSession 控制流，避免被治理层当成未知异常输出 traceback。
+                self.logger.info(
+                    "Submission skipped: category=hub_rejected "
+                    f"reason={reason} group={group} url={collected_data.informant}"
+                )
+                raise CrawlSession.Skip(f'Hub rejected: {reason}')
             if status == 'error':
                 if cache_on_error:
                     # Only cache on submission error.
