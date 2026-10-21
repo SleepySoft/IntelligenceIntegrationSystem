@@ -68,3 +68,6 @@ optional_subsystems:
 选择或添加目标，再设置关联范围。全局目标默认把当前节点名称登记为全局映射；勾选“仅针对
 所选情报中的实体生效”后改为多选具体 EntityRef。语境目标必须依赖情报，因此该选项会被
 自动勾选且不能取消。保存后关系图不会自动重载，避免大图阻塞，用户可在提示条中手动刷新。
+
+接口字段投影、国家元数据瘦身、视图 bundle 拆分和性能验收计划见
+[`doc/20261021_view_api_projection_and_payload_plan.md`](../doc/20261021_view_api_projection_and_payload_plan.md)。

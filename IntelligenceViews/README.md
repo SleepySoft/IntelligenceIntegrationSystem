@@ -26,3 +26,6 @@ SituationViews 查询接口不随之公开。
 最低评分和图规模只从 `intelligence_hub_web_service.intelligence_views.situation` 配置读取，
 由组合根注入并在服务端 API 强制执行，不能用 URL 覆盖。旧的 `/situation/map`、
 `/situation/entities` 和 `/situation/` 发布入口不再提供。
+
+三类视图的接口字段审计、投影分级、静态资源瘦身和分阶段性能改造方案见
+[`doc/20261021_view_api_projection_and_payload_plan.md`](../doc/20261021_view_api_projection_and_payload_plan.md)。
