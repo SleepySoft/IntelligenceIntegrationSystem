@@ -546,6 +546,13 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
+    assert 'class="intelligence-panel" id="map-intelligence-panel" hidden' in embedded_html
+    assert 'data-drawer-toggle="map-intelligence-panel"' in embedded_html
+    assert 'data-drawer-close="map-intelligence-panel"' in embedded_html
+    assert 'data-drawer-toggle="graph-intelligence-panel"' in embedded_html
+    assert 'data-drawer-close="graph-intelligence-panel"' in embedded_html
+    assert "openIntelligenceDrawer('map-intelligence-panel')" in embedded_html
+    assert "openIntelligenceDrawer('graph-intelligence-panel')" in embedded_html
     assert 'id="entity-editor"' in embedded_html
     assert 'type="radio" name="entity-target-kind" id="entity-kind-global"' in embedded_html
     assert 'type="radio" name="entity-target-kind" id="entity-kind-contextual"' in embedded_html

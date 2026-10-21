@@ -55,10 +55,20 @@
         .dot { width: 9px; height: 9px; border-radius: 50%; }
         .list { margin: 0; padding-left: 18px; }
         .list li { margin: 4px 0; }
-        .intelligence-panel { margin-top: 12px; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .intelligence-panel { position: fixed; left: 50%; bottom: 12px; z-index: 20; width: min(1100px, calc(100vw - 28px)); max-height: min(62vh, 620px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); animation: intelligence-drawer-rise .2s ease-out; }
         .intelligence-panel[hidden] { display: none; }
-        .intelligence-panel h2 { margin: 0; font-size: 16px; }
-        .intelligence-panel > p { margin: 4px 0 0; }
+        .intelligence-panel.is-collapsed { max-height: 58px; }
+        .intelligence-panel.is-collapsed .intelligence-panel-body { display: none; }
+        .intelligence-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 9px 12px 9px 14px; border-bottom: 1px solid var(--border); }
+        .intelligence-panel-head h2 { min-width: 0; margin: 0; overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+        .intelligence-panel-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+        .intelligence-panel-actions button { min-height: 32px; padding: 5px 9px; }
+        .intelligence-panel-body { min-height: 0; padding: 0 14px 14px; overflow: auto; overscroll-behavior: contain; }
+        .intelligence-panel-body > p { margin: 10px 0 0; }
+        @keyframes intelligence-drawer-rise {
+            from { opacity: 0; transform: translate(-50%, 28px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
         .intelligence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 9px; margin-top: 12px; }
         .intelligence-card { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--soft); }
         .intelligence-card a { color: light-dark(#2457c5, #a9c4ff); font-weight: 650; text-decoration: none; }
@@ -163,6 +173,7 @@
             .filters { grid-template-columns: 1fr; }
             .intelligence-list { grid-template-columns: 1fr; }
             .canvas, svg { min-height: 520px; height: 520px; }
+            .intelligence-panel { bottom: 6px; width: calc(100vw - 12px); max-height: 72vh; }
         }
     </style>
 </head>
@@ -224,9 +235,17 @@
             <button class="side-toggle" type="button" data-side="map-detail" aria-expanded="true">收起图例</button>
         </div>
         <section class="intelligence-panel" id="map-intelligence-panel" hidden>
-            <h2 id="map-intelligence-title">对应情报</h2>
-            <p class="muted">按内容时间从新到旧排列，点击标题打开完整情报。</p>
-            <div id="map-intelligences" class="intelligence-list"></div>
+            <div class="intelligence-panel-head">
+                <h2 id="map-intelligence-title">对应情报</h2>
+                <div class="intelligence-panel-actions">
+                    <button type="button" data-drawer-toggle="map-intelligence-panel" aria-expanded="true">收起</button>
+                    <button type="button" data-drawer-close="map-intelligence-panel" aria-label="关闭对应情报">关闭</button>
+                </div>
+            </div>
+            <div class="intelligence-panel-body">
+                <p class="muted">按内容时间从新到旧排列，点击标题打开完整情报。</p>
+                <div id="map-intelligences" class="intelligence-list"></div>
+            </div>
         </section>
     </section>
 
@@ -270,16 +289,24 @@
             <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
         </div>
         <section class="intelligence-panel" id="graph-intelligence-panel" hidden>
-            <h2 id="graph-intelligence-title">对应情报</h2>
-            <p class="muted" id="graph-intelligence-description">点击节点或关系边查看支撑它的真实情报。</p>
-            <div class="evidence-controls" id="graph-role-filters" hidden>
-                <button type="button" data-graph-role="all" class="active">全部</button>
-                <button type="button" data-graph-role="subject">作为施事</button>
-                <button type="button" data-graph-role="object">作为受事</button>
-                <button type="button" data-graph-role="participant">无向参与</button>
+            <div class="intelligence-panel-head">
+                <h2 id="graph-intelligence-title">对应情报</h2>
+                <div class="intelligence-panel-actions">
+                    <button type="button" data-drawer-toggle="graph-intelligence-panel" aria-expanded="true">收起</button>
+                    <button type="button" data-drawer-close="graph-intelligence-panel" aria-label="关闭对应情报">关闭</button>
+                </div>
             </div>
-            <div id="graph-intelligences" class="intelligence-list"></div>
-            <div class="evidence-footer"><button type="button" id="graph-load-more" hidden>加载更多</button></div>
+            <div class="intelligence-panel-body">
+                <p class="muted" id="graph-intelligence-description">点击节点或关系边查看支撑它的真实情报。</p>
+                <div class="evidence-controls" id="graph-role-filters" hidden>
+                    <button type="button" data-graph-role="all" class="active">全部</button>
+                    <button type="button" data-graph-role="subject">作为施事</button>
+                    <button type="button" data-graph-role="object">作为受事</button>
+                    <button type="button" data-graph-role="participant">无向参与</button>
+                </div>
+                <div id="graph-intelligences" class="intelligence-list"></div>
+                <div class="evidence-footer"><button type="button" id="graph-load-more" hidden>加载更多</button></div>
+            </div>
         </section>
     </section>
 </main>
@@ -478,6 +505,21 @@ async function loadJson(url, options = undefined) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || response.statusText);
     return data;
+}
+
+function setIntelligenceDrawerCollapsed(panel, collapsed) {
+    panel.classList.toggle('is-collapsed', collapsed);
+    const button = panel.querySelector('[data-drawer-toggle]');
+    if (button) {
+        button.textContent = collapsed ? '展开' : '收起';
+        button.setAttribute('aria-expanded', String(!collapsed));
+    }
+}
+
+function openIntelligenceDrawer(panelId) {
+    const panel = $(panelId);
+    panel.hidden = false;
+    setIntelligenceDrawerCollapsed(panel, false);
 }
 
 async function refreshMap() {
@@ -686,7 +728,7 @@ function renderMap() {
 
 function showMapDetail(d, countryName, locationName = null) {
     selectedCountry = `${d.country_code}|${locationName || ''}`;
-    $('map-intelligence-panel').hidden = false;
+    openIntelligenceDrawer('map-intelligence-panel');
     $('map-intelligence-title').textContent = `${locationName || countryName || d.country_code} · 对应情报`;
     $('map-intelligences').innerHTML = '<span class="muted">正在加载真实情报…</span>';
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
@@ -1014,7 +1056,7 @@ function selectGraphNode(d) {
     graphEvidenceOffset = 0;
     syncGraphRoleFilters();
     $('graph-role-filters').hidden = false;
-    $('graph-intelligence-panel').hidden = false;
+    openIntelligenceDrawer('graph-intelligence-panel');
     $('graph-intelligence-title').textContent = `${d.name} · 对应情报`;
     $('graph-intelligence-description').textContent = '显示该投影实体在当前筛选条件下参与关系的情报。';
     showNodeDetail(d);
@@ -1030,7 +1072,7 @@ function selectGraphEdge(d) {
     };
     graphEvidenceOffset = 0;
     $('graph-role-filters').hidden = true;
-    $('graph-intelligence-panel').hidden = false;
+    openIntelligenceDrawer('graph-intelligence-panel');
     const arrow = d.directed ? '→' : '—';
     $('graph-intelligence-title').textContent = `${selectedGraphElement.source_name} —${d.predicate_label}${arrow} ${selectedGraphElement.target_name} · 对应情报`;
     $('graph-intelligence-description').textContent = '仅显示直接支撑这条实体关系、谓词和方向的情报。';
@@ -1230,6 +1272,13 @@ $('graph-role-filters').addEventListener('click', event => {
     loadGraphIntelligences(false);
 });
 $('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
+document.querySelectorAll('[data-drawer-toggle]').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.drawerToggle);
+    setIntelligenceDrawerCollapsed(panel, !panel.classList.contains('is-collapsed'));
+}));
+document.querySelectorAll('[data-drawer-close]').forEach(button => button.addEventListener('click', () => {
+    $(button.dataset.drawerClose).hidden = true;
+}));
 // 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
 $('component-min-size').value = componentMinSize;
 $('component-min-size').addEventListener('change', e => {
