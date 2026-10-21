@@ -20,6 +20,8 @@ class ResolutionScope:
 
 
 class EntityResolutionService:
+    MAX_BATCH_SIZE = 200
+
     def __init__(self, scopes: dict[str, ResolutionScope], *, entity_registry=None):
         self.scopes = dict(scopes)
         self.entity_registry = entity_registry
@@ -92,6 +94,35 @@ class EntityResolutionService:
         return self._assign(
             ref, "contextual", contextual_entity_id, actor=actor, reason=reason)
 
+    def assign_many(self, refs: Iterable[EntityRef], target_kind: str,
+                    target_id: str, *, actor: str,
+                    reason: str = "") -> dict[str, Any]:
+        """把多个具体指称批量指向同一目标；全局实体本身仍独立于情报。"""
+        items = self._validated_batch(refs)
+        target_kind = str(target_kind or "").strip()
+        target_id = str(target_id or "").strip()
+        if target_kind == "global":
+            if self._global_entity(target_id) is None:
+                raise ResolutionError(f"全局实体不存在：{target_id}", "not_found")
+        elif target_kind == "contextual":
+            for subsystem in {ref.subsystem for ref in items}:
+                if self._scope(subsystem).store.get_contextual(target_id) is None:
+                    raise ResolutionError(f"上下文实体不存在：{target_id}", "not_found")
+        else:
+            raise ResolutionError("target_kind 必须是 global 或 contextual")
+        # 先验证全部引用，避免因后一个引用无效造成可预见的半批写入。
+        for ref in items:
+            self._load_reference(ref)
+        results = [
+            self._assign(ref, target_kind, target_id, actor=actor, reason=reason)
+            for ref in items
+        ]
+        return {
+            "changed": sum(bool(item.get("changed")) for item in results),
+            "total": len(results),
+            "results": results,
+        }
+
     def _assign(self, ref: EntityRef, kind: str, target_id: str, *,
                 actor: str, reason: str) -> dict[str, Any]:
         source = self._load_reference(ref)
@@ -144,6 +175,18 @@ class EntityResolutionService:
                 "created_at": datetime.now(timezone.utc),
             })
         return {"changed": True, "decision_id": decision_id, "assignment": None}
+
+    def unassign_many(self, refs: Iterable[EntityRef], *, actor: str,
+                      reason: str = "") -> dict[str, Any]:
+        items = self._validated_batch(refs)
+        for ref in items:
+            self._load_reference(ref)
+        results = [self.unassign(ref, actor=actor, reason=reason) for ref in items]
+        return {
+            "changed": sum(bool(item.get("changed")) for item in results),
+            "total": len(results),
+            "results": results,
+        }
 
     def undo(self, subsystem: str, decision_id: str, *, actor: str) -> dict[str, Any]:
         store = self._scope(subsystem).store
@@ -204,6 +247,19 @@ class EntityResolutionService:
         if self.entity_registry is None:
             return None
         return self.entity_registry.get_entity(str(entity_id or "").strip())
+
+    def _validated_batch(self, refs: Iterable[EntityRef]) -> list[EntityRef]:
+        items = list(refs)
+        if not items:
+            raise ResolutionError("至少选择一个情报实体引用")
+        if len(items) > self.MAX_BATCH_SIZE:
+            raise ResolutionError(f"单次最多处理 {self.MAX_BATCH_SIZE} 个情报实体引用")
+        unique: dict[str, EntityRef] = {}
+        for ref in items:
+            if not isinstance(ref, EntityRef):
+                raise ResolutionError("无效的情报实体引用")
+            unique.setdefault(ref.key, ref)
+        return list(unique.values())
 
     @staticmethod
     def _target(value: dict[str, Any] | None):

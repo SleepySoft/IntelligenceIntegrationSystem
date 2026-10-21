@@ -129,6 +129,34 @@ def test_contextual_entity_only_requires_name_and_can_collect_multiple_refs():
     assert {value["name"] for value in resolved.values()} == {"法国示威者"}
 
 
+def test_batch_assignment_and_clear_support_multiple_intelligence_refs():
+    service, store = make_service()
+    first = EntityRef("news", "article-a", "ENT1")
+    second = EntityRef("news", "article-b", "ENT1")
+
+    assigned = service.assign_many(
+        [first, second, first], "global", "ent_jfk", actor="alice")
+
+    assert assigned["total"] == 2
+    assert assigned["changed"] == 2
+    assert set(store.assignments) == {first.key, second.key}
+    cleared = service.unassign_many([first, second], actor="alice")
+    assert cleared["total"] == 2
+    assert cleared["changed"] == 2
+    assert store.assignments == {}
+
+
+def test_batch_assignment_validates_all_refs_before_writing():
+    service, store = make_service()
+    valid = EntityRef("news", "article-a", "ENT1")
+    missing = EntityRef("news", "article-a", "ENT9")
+
+    with pytest.raises(ResolutionError, match="不存在"):
+        service.assign_many([valid, missing], "global", "ent_jfk", actor="alice")
+
+    assert store.assignments == {}
+
+
 def test_reassignment_and_undo_restore_previous_target():
     service, _ = make_service()
     ref = EntityRef("news", "article-a", "ENT1")

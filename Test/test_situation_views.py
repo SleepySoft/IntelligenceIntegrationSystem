@@ -547,6 +547,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
     assert 'id="entity-editor"' in embedded_html
+    assert 'type="checkbox" name="editing-ref"' in embedded_html
+    assert 'id="entity-ref-select-all"' in embedded_html
+    assert 'id="entity-fixed-alias-save"' in embedded_html
+    assert '不绑定任何情报或事件' in embedded_html
+    assert 'entity-register-fixed-alias' not in embedded_html
     assert 'id="graph-search-panel"' in embedded_html
     assert 'id="graph-search-results"' in embedded_html
     assert '搜索 Ctrl+F' in embedded_html
@@ -620,6 +625,73 @@ def test_entity_editor_is_enabled_only_for_logged_in_user():
         user_session["username"] = "alice"
     logged_in = client.get("/situation/embed/entities").get_data(as_text=True)
     assert "const ENTITY_EDIT_ENABLED = true" in logged_in
+
+
+def test_entity_resolution_routes_batch_refs_and_keep_fixed_alias_global():
+    from flask import Flask
+
+    class Registry:
+        @staticmethod
+        def describe():
+            return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
+
+    class ResolutionService:
+        def __init__(self):
+            self.assignments = []
+
+        def assign_many(self, refs, kind, target_id, actor, reason=""):
+            self.assignments.append((refs, kind, target_id, actor, reason))
+            return {"total": len(refs), "changed": len(refs), "results": []}
+
+        def unassign_many(self, refs, actor, reason=""):
+            return {"total": len(refs), "changed": len(refs), "results": []}
+
+    class AliasService:
+        def __init__(self):
+            self.aliases = []
+
+        @staticmethod
+        def get_entity(entity_id):
+            return {"id": entity_id, "canonical": "美国"} if entity_id == "ent_us" else None
+
+        def resolve(self, name):
+            return None
+
+        def add_alias(self, entity_id, name):
+            self.aliases.append((entity_id, name))
+
+    resolution = ResolutionService()
+    aliases = AliasService()
+    app = Flask(__name__)
+    app.secret_key = "test-only"
+    SituationViewsService(
+        Registry(), entity_resolution_service=resolution,
+        entity_alias_service=aliases,
+    ).mount_to_app(app, url_prefix="/situation")
+    client = app.test_client()
+    with client.session_transaction() as user_session:
+        user_session["username"] = "alice"
+
+    refs = [
+        {"subsystem": "news", "intelligence_uuid": "article-a", "local_entity_id": "ENT1"},
+        {"subsystem": "news", "intelligence_uuid": "article-b", "local_entity_id": "ENT2"},
+    ]
+    assigned = client.post("/situation/api/entity-resolution/assign", json={
+        "refs": refs, "target_kind": "global", "target_id": "ent_us",
+    })
+    fixed = client.post("/situation/api/entity-resolution/fixed-aliases", json={
+        "target_id": "ent_us", "names": ["美利坚合众国"],
+    })
+
+    assert assigned.status_code == 200
+    assert assigned.get_json()["total"] == 2
+    assert len(resolution.assignments[0][0]) == 2
+    assert resolution.assignments[0][1:4] == ("global", "ent_us", "alice")
+    assert fixed.status_code == 200
+    assert fixed.get_json()["registered"] == ["美利坚合众国"]
+    assert aliases.aliases == [("ent_us", "美利坚合众国")]
+    # 固定别名端点只改全局别名表，不新增任何情报引用关联。
+    assert len(resolution.assignments) == 1
 
 
 def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):

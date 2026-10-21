@@ -13,6 +13,7 @@ from urllib import request as urlrequest
 from flask import Blueprint, Response, abort, jsonify, render_template, request, session
 
 from EntityResolution.model import EntityRef, ResolutionError
+from EntityResolution.service import EntityResolutionService
 from EntityAlias.model import AliasError
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, ViewQuery
@@ -257,6 +258,51 @@ class SituationViewsService:
                 return jsonify({"error": str(exc), "code": exc.code}), \
                     {"not_found": 404, "conflict": 409}.get(exc.code, 400)
 
+        @bp.post("/api/entity-resolution/fixed-aliases")
+        @protect
+        def entity_fixed_alias_create_api():
+            """登记全局固定别名；此操作不创建任何 EntityRef/事件关联。"""
+            if self.entity_alias_service is None:
+                return jsonify({"error": "全局实体注册表未启用"}), 503
+            data = request.get_json(silent=True) or {}
+            target_id = str(data.get("target_id") or "").strip()
+            raw_names = data.get("names")
+            if raw_names is None:
+                raw_names = [data.get("name")]
+            if not isinstance(raw_names, list):
+                return jsonify({"error": "names 必须是名称数组"}), 400
+            names = list(dict.fromkeys(
+                str(value or "").strip() for value in raw_names
+                if str(value or "").strip()
+            ))
+            if not target_id or not names:
+                return jsonify({"error": "target_id 和至少一个名称不能为空"}), 400
+            if len(names) > 20:
+                return jsonify({"error": "单次最多登记 20 个固定别名"}), 400
+            try:
+                if self.entity_alias_service.get_entity(target_id) is None:
+                    raise AliasError(f"实体不存在：{target_id}", "not_found")
+                existing = {}
+                for name in names:
+                    hit = self.entity_alias_service.resolve(name)
+                    if hit and hit["entity_id"] != target_id:
+                        raise AliasError(
+                            f"名称 {name!r} 已属于其它全局实体", "conflict")
+                    existing[name] = bool(hit)
+                registered = []
+                for name in names:
+                    if not existing[name]:
+                        self.entity_alias_service.add_alias(target_id, name)
+                        registered.append(name)
+                return jsonify({
+                    "target_id": target_id,
+                    "registered": registered,
+                    "already_registered": [name for name in names if existing[name]],
+                })
+            except AliasError as exc:
+                return jsonify({"error": str(exc), "code": exc.code}), \
+                    {"not_found": 404, "conflict": 409}.get(exc.code, 400)
+
         @bp.get("/api/entity-resolution/contextual-search")
         @protect
         def entity_contextual_search_api():
@@ -296,16 +342,19 @@ class SituationViewsService:
                 return jsonify({"error": "实体解析服务未启用"}), 503
             data = request.get_json(silent=True) or {}
             try:
-                ref = EntityRef.from_mapping(data.get("ref") or {})
+                refs = self._resolution_refs(data)
                 target_kind = str(data.get("target_kind") or "").strip()
                 target_id = str(data.get("target_id") or "").strip()
                 actor = str(session.get("username") or "unknown")
                 reason = str(data.get("reason") or "").strip()
                 if target_kind == "global":
+                    # 兼容旧调用方；新界面的固定别名使用独立端点，不与具体引用绑定。
                     if data.get("register_fixed_alias"):
                         if self.entity_alias_service is None:
                             raise ResolutionError("全局实体注册表未启用")
-                        source = self.entity_resolution_service.get_reference(ref)
+                        if len(refs) != 1:
+                            raise ResolutionError("旧版固定别名参数只支持一个引用")
+                        source = self.entity_resolution_service.get_reference(refs[0])
                         surface = str(source.get("name") or "").strip()
                         existing = self.entity_alias_service.resolve(surface)
                         if existing and existing["entity_id"] != target_id:
@@ -313,13 +362,8 @@ class SituationViewsService:
                                 f"名称 {surface!r} 已属于其它全局实体", "conflict")
                         if not existing:
                             self.entity_alias_service.add_alias(target_id, surface)
-                    result = self.entity_resolution_service.assign_global(
-                        ref, target_id, actor=actor, reason=reason)
-                elif target_kind == "contextual":
-                    result = self.entity_resolution_service.assign_contextual(
-                        ref, target_id, actor=actor, reason=reason)
-                else:
-                    raise ResolutionError("target_kind 必须是 global 或 contextual")
+                result = self.entity_resolution_service.assign_many(
+                    refs, target_kind, target_id, actor=actor, reason=reason)
                 return jsonify(self._json_safe(result))
             except (ResolutionError, AliasError) as exc:
                 if isinstance(exc, ResolutionError):
@@ -334,8 +378,8 @@ class SituationViewsService:
                 return jsonify({"error": "实体解析服务未启用"}), 503
             data = request.get_json(silent=True) or {}
             try:
-                result = self.entity_resolution_service.unassign(
-                    EntityRef.from_mapping(data.get("ref") or {}),
+                result = self.entity_resolution_service.unassign_many(
+                    self._resolution_refs(data),
                     actor=str(session.get("username") or "unknown"),
                     reason=str(data.get("reason") or "").strip(),
                 )
@@ -526,6 +570,18 @@ class SituationViewsService:
             )
             self._engines[key] = engine
         return engine, query
+
+    @staticmethod
+    def _resolution_refs(data):
+        raw_refs = data.get("refs")
+        if raw_refs is None:
+            raw_refs = [data.get("ref") or {}]
+        if not isinstance(raw_refs, list):
+            raise ResolutionError("refs 必须是情报实体引用数组")
+        if len(raw_refs) > EntityResolutionService.MAX_BATCH_SIZE:
+            raise ResolutionError(
+                f"单次最多处理 {EntityResolutionService.MAX_BATCH_SIZE} 个情报实体引用")
+        return [EntityRef.from_mapping(value or {}) for value in raw_refs]
 
     @staticmethod
     def _resolution_error(exc):
