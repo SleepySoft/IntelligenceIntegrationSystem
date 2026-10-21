@@ -71,6 +71,7 @@
         .evidence-footer { display: flex; justify-content: center; margin-top: 12px; }
         .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .graph-controls label:last-child { grid-column: 1 / -1; }
+        .graph-selection-detail { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
         .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
         .status.show { display: grid; }
         svg { width: 100%; height: 680px; display: block; touch-action: none; }
@@ -207,6 +208,7 @@
                 {% endif %}
             </div>
             <aside class="side" id="graph-detail">
+                <div class="graph-selection-detail" id="graph-selection-detail" hidden></div>
                 <h2>关系图设置</h2>
                 <div class="graph-controls">
                     <label>最少独立事件数<input id="min-support" type="number" min="1" max="50" value="2"></label>
@@ -838,6 +840,11 @@ function clearGraphSelection() {
     graphEvidenceRequest += 1;
     const panel = $('graph-intelligence-panel');
     if (panel) panel.hidden = true;
+    const detail = $('graph-selection-detail');
+    if (detail) {
+        detail.hidden = true;
+        detail.innerHTML = '';
+    }
     d3.select('#graph-svg').selectAll('.graph-selected').classed('graph-selected', false);
     d3.select('#graph-svg').selectAll('.graph-dim').classed('graph-dim', false);
 }
@@ -927,22 +934,24 @@ async function loadGraphIntelligences(append) {
     }
 }
 function showNodeDetail(d) {
-    $('graph-detail').innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
+    const detail = $('graph-selection-detail');
+    detail.innerHTML = `<h2>${escapeHtml(d.name)}</h2><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
-        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
-        <div class="legend">${graphLegendHtml()}</div>`;
+        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>`;
+    detail.hidden = false;
 }
 function showEdgeDetail(d) {
     const surfaces = d.surface_labels?.length
         ? `<h3>原文表述</h3><ul class="list">${d.surface_labels.map(item =>
             `<li>${escapeHtml(item.label)}：${item.count}</li>`).join('')}</ul>`
         : '<p class="muted">原文表述与规范标签一致。</p>';
-    $('graph-detail').innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
+    const detail = $('graph-selection-detail');
+    detail.innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
         <p class="muted">谓词 ID：${escapeHtml(d.predicate)}</p>
         <div class="meta"><div class="metric"><b>${d.support}</b>独立事件</div><div class="metric"><b>${d.article_count}</b>文章</div>
         <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>
-        ${surfaces}
-        <div class="legend">${graphLegendHtml()}</div>`;
+        ${surfaces}`;
+    detail.hidden = false;
 }
 function showTooltip(id, event, html) {
     const tip = $(id), box = tip.parentElement.getBoundingClientRect();
@@ -1017,7 +1026,7 @@ _supportInput.addEventListener('change', e => {
     e.target.value = graphSupportMin;
     renderGraph();
 });
-// 复选框在图例 innerHTML 里，节点/边详情会重建侧栏 → 用事件代理保证监听存活
+// 图例由 innerHTML 构建，使用事件代理绑定其中的复选框。
 document.addEventListener('change', e => {
     if (e.target.id !== 'show-all-edge-labels') return;
     showAllEdgeLabels = e.target.checked;

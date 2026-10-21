@@ -439,6 +439,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'const COUNTRIES_URL = "/situation/assets/countries.json"' in embedded_html
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
+    assert 'id="graph-selection-detail" hidden' in embedded_html
+    assert "$('graph-detail').innerHTML" not in embedded_html
+    assert "detail.innerHTML = ''" in embedded_html
     assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html
     assert embedded_html.index("const labels = root.append('g')") < embedded_html.index(
         "const arrowLines = root.append('g')")
