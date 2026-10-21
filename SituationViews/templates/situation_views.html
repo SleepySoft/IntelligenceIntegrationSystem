@@ -36,6 +36,18 @@
         .tabs button[aria-selected="true"] { background: var(--accent); color: white; border-color: transparent; }
         .view { display: none; }
         .view.active { display: block; }
+        .time-axis { margin: 0 0 10px; padding: 10px 14px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .time-axis-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 5px; }
+        .time-axis-head b { font-size: 13px; }
+        .time-axis-head span { color: var(--muted); font-size: 12px; }
+        .dual-range { position: relative; height: 30px; }
+        .dual-range-track, .dual-range-fill { position: absolute; top: 14px; left: 0; right: 0; height: 4px; border-radius: 999px; background: var(--soft); }
+        .dual-range-fill { right: auto; background: var(--accent); }
+        .dual-range input[type="range"] { position: absolute; inset: 0; width: 100%; height: 30px; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; pointer-events: none; appearance: none; }
+        .dual-range input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; border: 3px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); pointer-events: auto; appearance: none; cursor: ew-resize; }
+        .dual-range input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border: 3px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); pointer-events: auto; cursor: ew-resize; }
+        .dual-range input[type="range"]::-moz-range-track { background: transparent; border: 0; }
+        .time-axis-scale { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
         .layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; }
         .canvas, .side { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
         .canvas { position: relative; min-height: 680px; overflow: hidden; }
@@ -228,6 +240,15 @@
     </nav>
 
     <section id="map-view" class="view{% if dashboard_view == 'map' %} active{% endif %}">
+        <section class="time-axis" aria-label="地图时间范围">
+            <div class="time-axis-head"><b>显示时间范围</b><span id="map-time-caption">正在读取时间范围…</span></div>
+            <div class="dual-range">
+                <div class="dual-range-track"></div><div class="dual-range-fill" id="map-time-fill"></div>
+                <input id="map-time-start" type="range" aria-label="地图开始时间">
+                <input id="map-time-end" type="range" aria-label="地图结束时间">
+            </div>
+            <div class="time-axis-scale"><span id="map-time-min"></span><span>拖动后在浏览器内即时过滤，不重新加载</span><span id="map-time-max"></span></div>
+        </section>
         <div class="layout">
             <div class="canvas" id="map-canvas">
                 <div class="status" id="map-status">正在加载地图与事件…</div>
@@ -265,6 +286,15 @@
     </section>
 
     <section id="graph-view" class="view{% if dashboard_view == 'graph' %} active{% endif %}">
+        <section class="time-axis" aria-label="实体图时间范围">
+            <div class="time-axis-head"><b>显示时间范围</b><span id="graph-time-caption">正在读取时间范围…</span></div>
+            <div class="dual-range">
+                <div class="dual-range-track"></div><div class="dual-range-fill" id="graph-time-fill"></div>
+                <input id="graph-time-start" type="range" aria-label="实体图开始时间">
+                <input id="graph-time-end" type="range" aria-label="实体图结束时间">
+            </div>
+            <div class="time-axis-scale"><span id="graph-time-min"></span><span>拖动仅隐藏节点和边并更新关系计数</span><span id="graph-time-max"></span></div>
+        </section>
         <div class="layout">
             <div class="canvas" id="graph-canvas">
                 <div class="status" id="graph-status">正在聚合实体关系…</div>
@@ -438,6 +468,8 @@ let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResource
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
 let graphZoomBehavior = null, renderedGraphNodes = new Map();
+let applyMapTemporalFilter = null, applyGraphTemporalFilter = null;
+const temporalRanges = {map: null, graph: null};
 let editingGraphNode = null, editingReferences = [], selectedEditingRefKeys = new Set();
 let editingTargetKind = 'global', selectedEditingTarget = null;
 let editingGlobalLimitedScope = false;
@@ -472,6 +504,63 @@ function queryParams(extra = {}) {
     if (!params.get('category')) params.delete('category');
     if (activeView !== 'map') params.delete('category');
     return params;
+}
+
+function formatAxisTime(milliseconds) {
+    const value = new Date(milliseconds);
+    return value.toLocaleString([], {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+function setupTemporalAxis(kind, meta, eventSeconds, onChange) {
+    const lower = new Date(meta.start).getTime(), upper = new Date(meta.end).getTime();
+    const points = [...new Set([lower, upper, ...(eventSeconds || [])
+        .filter(value => Number(value) > 0).map(value => Number(value) * 1000)])]
+        .filter(Number.isFinite).sort((a, b) => a - b);
+    const startInput = $(`${kind}-time-start`), endInput = $(`${kind}-time-end`);
+    if (points.length < 2) {
+        startInput.disabled = endInput.disabled = true;
+        $(`${kind}-time-caption`).textContent = '当前窗口没有可调时间点';
+        return;
+    }
+    const previous = temporalRanges[kind];
+    const closestIndex = value => {
+        let best = 0;
+        for (let i = 1; i < points.length; i++) {
+            if (Math.abs(points[i] - value) < Math.abs(points[best] - value)) best = i;
+        }
+        return best;
+    };
+    startInput.min = endInput.min = 0;
+    startInput.max = endInput.max = points.length - 1;
+    startInput.step = endInput.step = 1;
+    startInput.value = previous ? closestIndex(previous[0]) : 0;
+    endInput.value = previous ? closestIndex(previous[1]) : points.length - 1;
+    startInput.disabled = endInput.disabled = false;
+    $(`${kind}-time-min`).textContent = formatAxisTime(lower);
+    $(`${kind}-time-max`).textContent = formatAxisTime(upper);
+
+    const apply = changed => {
+        let startIndex = Number(startInput.value), endIndex = Number(endInput.value);
+        if (startIndex > endIndex) {
+            if (changed === startInput) endIndex = startIndex;
+            else startIndex = endIndex;
+            startInput.value = startIndex;
+            endInput.value = endIndex;
+        }
+        const range = [points[startIndex], points[endIndex]];
+        temporalRanges[kind] = range;
+        const denominator = Math.max(1, points.length - 1);
+        const left = startIndex / denominator * 100;
+        const right = endIndex / denominator * 100;
+        const fill = $(`${kind}-time-fill`);
+        fill.style.left = `${left}%`;
+        fill.style.width = `${right - left}%`;
+        $(`${kind}-time-caption`).textContent = `${formatAxisTime(range[0])} — ${formatAxisTime(range[1])}`;
+        onChange(range, Boolean(changed));
+    };
+    startInput.oninput = () => apply(startInput);
+    endInput.oninput = () => apply(endInput);
+    apply(null);
 }
 
 function legendHtml() {
@@ -565,6 +654,7 @@ async function refreshMap() {
             worldResources || Promise.all([d3.json(WORLD_URL), d3.json(COUNTRIES_URL)])
         ]);
         mapData = data;
+        temporalRanges.map = null;
         worldResources = resources;
         renderMap();
     } catch (error) {
@@ -613,8 +703,7 @@ function renderMap() {
     };
     const categoryBreakdown = d => Object.entries(d.categories || {})
         .map(([k, v]) => `${CATEGORY_LABELS[k] || k} ${v}`).join(' · ');
-    const ringData = visible.filter(d => ringColor(d));
-    const rings = root.append('g').selectAll('circle').data(ringData).join('circle')
+    const rings = root.append('g').selectAll('circle').data(visible).join('circle')
         .attr('class', 'hotspot-ring')
         .attr('stroke', d => ringColor(d))
         .attr('stroke-width', 3)
@@ -668,10 +757,10 @@ function renderMap() {
         fineLabels = fineLabels || fineLabelLayer.selectAll('text');
         fineRadius = fineRadius || (value => 7);
         const coordinates = d => [Number(d.longitude), Number(d.latitude)];
-        fineMarks.attr('display', d => zoomScale >= 1.7 && isFront(coordinates(d)) ? null : 'none')
+        fineMarks.attr('display', d => d.event_count > 0 && zoomScale >= 1.7 && isFront(coordinates(d)) ? null : 'none')
             .attr('cx', d => projection(coordinates(d))?.[0])
             .attr('cy', d => projection(coordinates(d))?.[1]);
-        fineLabels.attr('display', d => zoomScale >= 2.15 && isFront(coordinates(d)) ? null : 'none')
+        fineLabels.attr('display', d => d.event_count > 0 && zoomScale >= 2.15 && isFront(coordinates(d)) ? null : 'none')
             .attr('x', d => projection(coordinates(d))?.[0])
             .attr('y', d => (projection(coordinates(d))?.[1] || 0) - fineRadius(d.event_count) - 4);
     }
@@ -713,13 +802,13 @@ function renderMap() {
         root.select('.sphere').attr('d', path);
         root.select('.graticule').attr('d', path);
         root.selectAll('.country').attr('d', path);
-        marks.attr('display', d => isFront(centers.get(d.country_code)) ? null : 'none')
+        marks.attr('display', d => d._timeVisible !== false && isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('cx', d => projection(centers.get(d.country_code))?.[0])
             .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
-        rings.attr('display', d => isFront(centers.get(d.country_code)) ? null : 'none')
+        rings.attr('display', d => d._timeVisible !== false && ringColor(d) && isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('cx', d => projection(centers.get(d.country_code))?.[0])
             .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
-        labels.attr('display', d => zoomScale >= 1.25 && zoomScale < 2.15 && isFront(centers.get(d.country_code)) ? null : 'none')
+        labels.attr('display', d => d._timeVisible !== false && zoomScale >= 1.25 && zoomScale < 2.15 && isFront(centers.get(d.country_code)) ? null : 'none')
             .attr('x', d => projection(centers.get(d.country_code))?.[0])
             .attr('y', d => (projection(centers.get(d.country_code))?.[1] || 0) - radius(d.event_count) - 5);
         redrawFine();
@@ -757,6 +846,68 @@ function renderMap() {
         <div class="metric"><b>${m.hotspot_count}</b>国家热点</div>
         <div class="metric"><b>${m.event_count}</b>候选事件</div></div>
         ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
+
+    applyMapTemporalFilter = (range, changed) => {
+        if (changed && selectedCountry) {
+            selectedCountry = null;
+            $('map-intelligence-panel').hidden = true;
+            $('map-detail').innerHTML = `<h2>地图概览</h2>
+                <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+                <div id="map-summary"></div><div class="legend" id="map-legend"></div>`;
+            $('map-legend').innerHTML = legendHtml();
+            syncCategoryFilters();
+        }
+        const activeEventIds = new Set(), activeArticles = new Set();
+        for (const hotspot of visible) {
+            const rows = (hotspot.timeline || []).filter(row => row[0] * 1000 >= range[0] && row[0] * 1000 <= range[1]);
+            const categories = new Map(), predicates = new Map(), locations = new Map();
+            let scoreSum = 0, scoreMax = 0, lastTime = 0;
+            for (const row of rows) {
+                activeEventIds.add(row[1]);
+                activeArticles.add(row[2]);
+                scoreSum += Number(row[3]) || 0;
+                scoreMax = Math.max(scoreMax, Number(row[3]) || 0);
+                categories.set(row[4], (categories.get(row[4]) || 0) + 1);
+                predicates.set(row[5], (predicates.get(row[5]) || 0) + 1);
+                for (const name of row[6] || []) locations.set(name, (locations.get(name) || 0) + 1);
+                lastTime = Math.max(lastTime, Number(row[0]) || 0);
+            }
+            const orderedCategories = [...categories.entries()].sort((a, b) => b[1] - a[1]);
+            hotspot.event_count = rows.length;
+            hotspot.article_count = new Set(rows.map(row => row[2])).size;
+            hotspot.average_score = rows.length ? Math.round(scoreSum / rows.length * 100) / 100 : 0;
+            hotspot.max_score = Math.round(scoreMax * 100) / 100;
+            hotspot.categories = Object.fromEntries(orderedCategories);
+            hotspot.dominant_category = orderedCategories[0]?.[0] || 'other';
+            hotspot.predicates = Object.fromEntries([...predicates.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8));
+            hotspot.locations = [...locations.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
+                .map(([name, count]) => ({name, count}));
+            hotspot.last_time = lastTime ? new Date(lastTime * 1000).toISOString() : null;
+            hotspot._timeVisible = rows.length > 0;
+        }
+        for (const location of fineLocations) {
+            const hotspot = visible.find(item => item.country_code === location.country_code);
+            const current = hotspot?.locations?.find(item => item.name === location.name);
+            location.event_count = current?.count || 0;
+            location.dominant_category = hotspot?.dominant_category || 'other';
+        }
+        marks.attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+            .attr('r', d => radius(Math.max(1, d.event_count)));
+        rings.attr('stroke', d => ringColor(d) || 'transparent')
+            .attr('r', d => radius(Math.max(1, d.event_count)) + 4);
+        labels.text(d => `${names.get(d.country_code)} ${d.event_count}`);
+        redraw();
+        const currentSummary = $('map-summary');
+        if (currentSummary) currentSummary.innerHTML = `<div class="meta">
+            <div class="metric"><b>${activeEventIds.size}</b>当前事件</div>
+            <div class="metric"><b>${activeArticles.size}</b>当前文章</div>
+            <div class="metric"><b>${visible.filter(item => item._timeVisible).length}</b>国家热点</div>
+            <div class="metric"><b>${m.mapped_event_count}</b>窗口内事件</div></div>
+            ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
+    };
+    setupTemporalAxis('map', mapData.meta,
+        visible.flatMap(item => (item.timeline || []).map(row => row[0])),
+        applyMapTemporalFilter);
 }
 
 function showMapDetail(d, countryName, locationName = null) {
@@ -833,6 +984,7 @@ async function refreshGraph() {
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
+        temporalRanges.graph = null;
         renderGraph();
         $('graph-notice').hidden = true;
     } catch (error) {
@@ -849,8 +1001,10 @@ let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_su
 
 function filterGraphData() {
     const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
-    const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({...d}));
-    const nodes = graphData.nodes.map(d => ({...d}));
+    const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({
+        ...d, _sourceId: d.source, _targetId: d.target, _eventRefs: [...(d.event_refs || [])]
+    }));
+    const nodes = graphData.nodes.map(d => ({...d, _eventRefs: [...(d.event_refs || [])]}));
     // 并查集求连通分量
     const parent = new Map(nodes.map(n => [n.id, n.id]));
     const find = x => {
@@ -904,6 +1058,10 @@ function renderGraph() {
             .attr('x', width / 2).attr('y', height / 2)
             .text(`过滤后无可见网络：印证 ≥ ${Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin)} 的边过少，` +
                   `网络全部低于规模下限 ${componentMinSize}。建议降低规模或印证。`);
+        applyGraphTemporalFilter = () => {};
+        setupTemporalAxis('graph', graphData.meta,
+            (graphData.temporal_events || []).map(row => row[0]),
+            applyGraphTemporalFilter);
         return;
     }
     const defs = svg.append('defs');
@@ -938,6 +1096,7 @@ function renderGraph() {
         if (!edgeLabels) return;
         let shown = 0;
         edgeLabels.attr('display', (d, i) => {
+            if (d._timeVisible === false) return 'none';
             if (showAllEdgeLabels) return null;
             const candidate = i < 40 || d.support >= 2;
             const visible = candidate && ++shown <= 150;
@@ -1001,6 +1160,95 @@ function renderGraph() {
         <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
         <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
         <div class="warning">未指定实体按名称、类型和国家临时连接；人工指定到全局或语境实体后，以指定身份优先，可拆分同名误合并节点。</div>`;
+    applyGraphTemporalFilter = (range, changed) => {
+        if (changed && selectedGraphElement) clearGraphSelection();
+        const eventTable = graphData.temporal_events || [];
+        const active = reference => {
+            const row = eventTable[reference];
+            return row && row[0] * 1000 >= range[0] && row[0] * 1000 <= range[1];
+        };
+        const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+        for (const edge of edges) {
+            const rows = edge._eventRefs.filter(active).map(reference => eventTable[reference]);
+            const scores = rows.map(row => Number(row[2]) || 0);
+            edge.support = rows.length;
+            edge.article_count = new Set(rows.map(row => row[1])).size;
+            edge.average_score = rows.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / rows.length * 100) / 100 : 0;
+            edge.score_max = scores.length ? Math.max(...scores) : 0;
+            edge.negated_count = rows.filter(row => row[3]).length;
+            edge._timeVisible = edge.support >= supportMin;
+        }
+        const parent = new Map(nodes.map(item => [item.id, item.id]));
+        const find = value => {
+            while (parent.get(value) !== value) {
+                parent.set(value, parent.get(parent.get(value)));
+                value = parent.get(value);
+            }
+            return value;
+        };
+        for (const edge of edges.filter(item => item._timeVisible)) {
+            const source = edge._sourceId, target = edge._targetId;
+            const a = find(source), b = find(target);
+            if (a !== b) parent.set(a, b);
+        }
+        const degree = new Map(), componentSizes = new Map();
+        for (const edge of edges.filter(item => item._timeVisible)) {
+            degree.set(edge._sourceId, (degree.get(edge._sourceId) || 0) + 1);
+            degree.set(edge._targetId, (degree.get(edge._targetId) || 0) + 1);
+        }
+        nodes.filter(item => (degree.get(item.id) || 0) > 0).forEach(item => {
+            const rootId = find(item.id);
+            componentSizes.set(rootId, (componentSizes.get(rootId) || 0) + 1);
+        });
+        const keep = new Set(nodes.filter(item => (degree.get(item.id) || 0) > 0
+            && (componentSizes.get(find(item.id)) || 0) >= componentMinSize).map(item => item.id));
+        const importance = new Map();
+        for (const edge of edges) {
+            edge._timeVisible = edge._timeVisible && keep.has(edge._sourceId) && keep.has(edge._targetId);
+            if (!edge._timeVisible) continue;
+            importance.set(edge._sourceId, (importance.get(edge._sourceId) || 0) + edge.support);
+            importance.set(edge._targetId, (importance.get(edge._targetId) || 0) + edge.support);
+        }
+        for (const item of nodes) {
+            const rows = item._eventRefs.filter(active).map(reference => eventTable[reference]);
+            item.event_count = rows.length;
+            item.article_count = new Set(rows.map(row => row[1])).size;
+            item.max_score = rows.length ? Math.max(...rows.map(row => Number(row[2]) || 0)) : 0;
+            item.importance = importance.get(item.id) || 0;
+            item._timeVisible = keep.has(item.id) && item.importance > 0;
+        }
+        const edgeDisplay = d => d._timeVisible ? null : 'none';
+        const nodeDisplay = d => d._timeVisible ? null : 'none';
+        lines.attr('display', edgeDisplay)
+            .attr('stroke-dasharray', d => d.negated_count ? '6 4' : null);
+        hitLines.attr('display', edgeDisplay);
+        arrowLines.attr('display', edgeDisplay);
+        edgeLabels.text(d => `${d.negated_count === d.support && d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`);
+        circles.attr('display', nodeDisplay);
+        labels.attr('display', nodeDisplay);
+        applyLabelVisibility();
+        renderedGraphNodes = new Map(nodes.filter(item => item._timeVisible).map(item => [item.id, item]));
+        renderGraphSearchResults();
+        const visibleEdges = edges.filter(item => item._timeVisible);
+        const visibleEvents = new Set(visibleEdges.flatMap(item => item._eventRefs.filter(active)));
+        $('graph-summary').innerHTML = `<div class="meta">
+            <div class="metric"><b>${renderedGraphNodes.size}</b>当前节点</div><div class="metric"><b>${visibleEdges.length}</b>当前关系</div>
+            <div class="metric"><b>${visibleEvents.size}</b>关系事件</div><div class="metric"><b>${m.node_count}</b>窗口内节点</div></div>
+            <div class="warning">时间轴只改变当前图的可见投影，不重新请求数据或重跑布局。</div>`;
+        const hiddenEdges = edges.length - visibleEdges.length;
+        $('graph-filter-note').textContent = hiddenEdges > 0 ? `当前时间和网络条件下隐藏 ${hiddenEdges} 条关系` : '';
+        if (selectedGraphElement) {
+            const stillVisible = selectedGraphElement.type === 'node'
+                ? renderedGraphNodes.has(selectedGraphElement.entity_id)
+                : visibleEdges.some(edge => graphEdgeMatches(edge, selectedGraphElement));
+            if (!stillVisible) clearGraphSelection();
+            else if (selectedGraphElement.type === 'node') showNodeDetail(renderedGraphNodes.get(selectedGraphElement.entity_id));
+            else showEdgeDetail(visibleEdges.find(edge => graphEdgeMatches(edge, selectedGraphElement)));
+        }
+    };
+    setupTemporalAxis('graph', graphData.meta,
+        (graphData.temporal_events || []).map(row => row[0]),
+        applyGraphTemporalFilter);
     if (selectedGraphElement) updateGraphSelectionStyles();
 }
 

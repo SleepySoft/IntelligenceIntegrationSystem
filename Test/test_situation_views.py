@@ -71,6 +71,9 @@ def test_map_view_uses_explicit_event_locations_and_reports_coverage():
     assert result["hotspots"][0]["country_code"] == "UA"
     assert result["hotspots"][0]["event_count"] == 1
     assert result["hotspots"][0]["dominant_category"] == "war"
+    assert result["hotspots"][0]["timeline"] == [[
+        now.timestamp(), "e1", "a", 7.0, "war", "attack", ["基辅"],
+    ]]
     assert result["meta"]["location_coverage"] == 0.5
 
 
@@ -166,6 +169,12 @@ def test_entity_graph_aggregates_subject_object_and_filters_weak_edges():
     assert len(result["edges"]) == 1
     assert result["edges"][0]["support"] == 2
     assert result["edges"][0]["directed"] is True
+    assert result["edges"][0]["event_refs"] == [0, 1]
+    assert result["temporal_events"] == [
+        [now.timestamp(), "a", 7.0, 0],
+        [now.timestamp(), "b", 7.5, 0],
+    ]
+    assert all(node["event_refs"] == [0, 1] for node in result["nodes"])
     assert {item["name"] for item in result["nodes"]} == {"同一行动方", "同一目标"}
     assert result["meta"]["filtered_edge_count"] == 1
 
@@ -584,6 +593,14 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="graph-search-panel"' in embedded_html
     assert 'id="graph-search-results"' in embedded_html
     assert '搜索 Ctrl+F' in embedded_html
+    assert 'id="map-time-start" type="range"' in embedded_html
+    assert 'id="map-time-end" type="range"' in embedded_html
+    assert 'id="graph-time-start" type="range"' in embedded_html
+    assert 'id="graph-time-end" type="range"' in embedded_html
+    assert "function setupTemporalAxis(kind, meta, eventSeconds, onChange)" in embedded_html
+    assert "startInput.oninput = () => apply(startInput)" in embedded_html
+    assert "loadJson(`${API_PREFIX}/map?" not in embedded_html.split(
+        "function setupTemporalAxis", 1)[1].split("function legendHtml", 1)[0]
     assert 'id="graph-manual-refresh"' in embedded_html
     assert '.graph-notice { position: fixed;' in embedded_html
     assert 'top: 14px; z-index: 30' in embedded_html
@@ -612,8 +629,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert scoped_map.get_json()["meta"]["hotspot_count"] == 1
     assert map_payload.status_code == 200
     assert map_payload.get_json()["meta"]["hotspot_count"] == 1
+    assert map_payload.get_json()["hotspots"][0]["timeline"][0][1:3] == ["e1", "a"]
     assert graph_payload.status_code == 200
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
+    assert graph_payload.get_json()["edges"][0]["event_refs"] == [0]
+    assert graph_payload.get_json()["temporal_events"][0][1] == "a"
     assert graph_intelligences.status_code == 200
     assert graph_intelligences.get_json()["intelligences"][0]["uuid"] == "a"
     assert intelligence_payload.status_code == 200

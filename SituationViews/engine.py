@@ -113,6 +113,9 @@ class SituationViewEngine:
                     "score_sum": 0.0,
                     "score_max": 0.0,
                     "last_time": None,
+                    # 供浏览器在已加载窗口内做时间投影。数组格式比重复字段名更紧凑：
+                    # [时间戳秒, 事件 UUID, 文章 UUID, 评分, 类别, 谓词标签, 地点名列表]。
+                    "timeline": [],
                 })
                 if event_uuid in bucket["event_ids"]:
                     continue
@@ -121,16 +124,27 @@ class SituationViewEngine:
                 bucket["categories"][category] += 1
                 predicate = self._predicate_id(event)
                 bucket["predicates"][predicate] += 1
+                location_names = []
                 for item in items:
                     name = str(item.get("name") or "").strip()
                     if name:
                         bucket["locations"][name] += 1
+                        location_names.append(name)
                 score = float(event.get("_view_score") or 0)
                 bucket["score_sum"] += score
                 bucket["score_max"] = max(bucket["score_max"], score)
                 content_time = event.get("_view_content_time")
                 if content_time and (bucket["last_time"] is None or content_time > bucket["last_time"]):
                     bucket["last_time"] = content_time
+                bucket["timeline"].append([
+                    self._time_sort_value(content_time),
+                    event_uuid,
+                    str(event.get("intelligence_uuid") or ""),
+                    score,
+                    category,
+                    predicate,
+                    location_names,
+                ])
 
         hotspots = []
         for bucket in countries.values():
@@ -151,6 +165,7 @@ class SituationViewEngine:
                     for name, value in bucket["locations"].most_common(12)
                 ],
                 "last_time": self._json_time(bucket["last_time"]),
+                "timeline": sorted(bucket["timeline"], key=lambda item: item[0]),
             })
         hotspots.sort(key=lambda item: (-item["event_count"], item["country_code"]))
 
@@ -333,6 +348,23 @@ class SituationViewEngine:
         node_data: dict[str, dict[str, Any]] = {}
         edge_data: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
         prepared_events, country_hints = self._prepare_graph_events(events, query)
+        temporal_events: list[list[Any]] = []
+        temporal_refs: dict[str, int] = {}
+
+        def temporal_ref(event: dict) -> int:
+            event_uuid = str(event.get("event_uuid") or "")
+            existing = temporal_refs.get(event_uuid)
+            if existing is not None:
+                return existing
+            reference = len(temporal_events)
+            temporal_refs[event_uuid] = reference
+            temporal_events.append([
+                self._time_sort_value(event.get("_view_content_time")),
+                str(event.get("intelligence_uuid") or ""),
+                float(event.get("_view_score") or 0),
+                1 if self._is_negated(event) else 0,
+            ])
+            return reference
 
         inferred_country_nodes = set()
         for event, category, relations in prepared_events:
@@ -373,12 +405,14 @@ class SituationViewEngine:
                     "score_sum": 0.0,
                     "score_max": 0.0,
                     "surface_labels": Counter(),
+                    "event_refs": set(),
                 })
                 if event_uuid not in edge["event_ids"]:
                     edge["event_ids"].add(event_uuid)
                     edge["article_ids"].add(article_uuid)
                     edge["score_sum"] += score
                     edge["score_max"] = max(edge["score_max"], score)
+                    edge["event_refs"].add(temporal_ref(event))
                     # 否定关系（polarity=negated）必须计入边：否则“未发生/已取消”
                     # 在图上与正向关系同形，意图一眼相反。
                     if self._is_negated(event):
@@ -412,6 +446,34 @@ class SituationViewEngine:
         ][:max_edges]
         selected_nodes = {value for edge in retained for value in (edge["source"], edge["target"])}
 
+        # 剔除被节点/边上限淘汰后已经没有任何引用的时间记录，并重排为连续下标。
+        used_temporal_refs = {
+            reference
+            for edge in retained
+            for reference in edge["event_refs"]
+        }
+        for key in selected_nodes:
+            used_temporal_refs.update(
+                temporal_refs[event_uuid]
+                for event_uuid in node_data[key]["event_ids"]
+                if event_uuid in temporal_refs
+            )
+        ordered_temporal_refs = sorted(used_temporal_refs)
+        temporal_remap = {
+            old_reference: new_reference
+            for new_reference, old_reference in enumerate(ordered_temporal_refs)
+        }
+        temporal_events = [temporal_events[reference] for reference in ordered_temporal_refs]
+        temporal_refs = {
+            event_uuid: temporal_remap[reference]
+            for event_uuid, reference in temporal_refs.items()
+            if reference in temporal_remap
+        }
+        for edge in retained:
+            edge["event_refs"] = {
+                temporal_remap[reference] for reference in edge["event_refs"]
+            }
+
         nodes = []
         for key in sorted(selected_nodes, key=lambda value: (-importance[value], value)):
             item = node_data[key]
@@ -433,6 +495,11 @@ class SituationViewEngine:
                 "article_count": len(item["article_ids"]),
                 "importance": importance[key],
                 "max_score": round(item["score_max"], 2),
+                "event_refs": sorted(
+                    temporal_refs[event_uuid]
+                    for event_uuid in item["event_ids"]
+                    if event_uuid in temporal_refs
+                ),
             })
         edges = []
         for edge in retained:
@@ -441,8 +508,10 @@ class SituationViewEngine:
                 if key not in {
                     "event_ids", "article_ids", "score_sum", "surface_labels",
                     "negated_event_ids",
+                    "event_refs",
                 }
             }
+            payload["event_refs"] = sorted(edge["event_refs"])
             payload["negated_count"] = len(edge["negated_event_ids"])
             payload["surface_labels"] = [
                 {"label": label, "count": count}
@@ -470,7 +539,13 @@ class SituationViewEngine:
             "inferred_country_node_count": len(inferred_country_nodes),
             "entity_types": sorted(entity_types) if entity_types is not None else None,
         })
-        return {"nodes": nodes, "edges": edges, "meta": meta, "categories": CATEGORY_LABELS}
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "temporal_events": temporal_events,
+            "meta": meta,
+            "categories": CATEGORY_LABELS,
+        }
 
     def entity_graph_intelligences(
         self,
