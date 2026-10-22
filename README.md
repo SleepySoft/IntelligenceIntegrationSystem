@@ -1,25 +1,34 @@
 ## IntelligenceIntegrationSystem
 
-情报整合系统：通过抓取主流新闻网站的公开新闻，并使用AI进行分析和评分的情报系统。属于OSINT的一种。
+情报整合系统：抓取主流新闻网站的公开新闻，使用AI进行分析、评分以及对事件事件进行结构化抽取的情报系统。
 
-项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
-
-
-## Event V4 版本说明
-
-当前生产主链统一使用 Event V4，不再兼容或双读 V1/V2 数据结构。现有情报域共享
-`CollectedData → AnalysisResultV4 → ArchivedDataV4` 契约。归档文档内嵌
-`EVENT_EXTRACTION` 作为权威数据；事件集合只是可重建的查询索引，实体和地域以名称
-快照直接保存在事件中。查询、翻译、向量化、聚合、图谱和 Web 展示均读取该契约。
-
-历史 V1/V2 实现、Prompt、测试、训练资料和设计文档已归档到
-[`recycled/legacy_intelligence/`](recycled/legacy_intelligence/)，不会被生产代码加载。
-V4 当前结构与完成情况见 [Event V4 集成记录](doc/event_v4_integration_handoff.md)。
+项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/SubSystem)
 
 
-## 更新与通知
+## V4 版本说明
 
-N/A
+当前生产端已切换到v4版本，数据和v2基本不兼容（其实框架大致相同，但v4额外的结构化信息是v2所不具备的）。
+
+v2版本在 (main分支)[https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/main] ，不再维护。
+
+v2版本的最终数据会在我续费度盘后上传（蹲打折）。
+
+
+## V4 版本更新与通知
+
+- [主要] 增加结构化事件内容提取
+  
+- 将非核心功能提取为可插拔的子系统
+
+- 支持子情报系统（暂名，未彻底实现）
+  
+- 为缓存优化prompt结构，降低部署成本
+  
+- 修复CPU占用量过大的Issue
+
+## V4 版本特点与预览
+
+基于结构化的事件内容提取，情报能轻易地按地域及关系图谱等方式组织及浏览。正式部署几乎抛弃“模糊”且极占用资源的向量数据库。
 
 
 ## 起因
@@ -35,7 +44,7 @@ N/A
 既然媒体们自己不体面，那么我来让新闻体面。
 
 
-## 已接入的媒体
+## 已接入的媒体（TODO：等更新）
 
 ```js
 { domain: "aa.com.tr", nameCN: "阿纳多卢通讯社", country: "Turkey", flag: "🇹🇷", accessibleInChina: true },
@@ -59,21 +68,20 @@ N/A
 
 ### 资源要求（不含 VectorDB）
 
-以下口径包含 IIS Web、Crawler、MongoDB、Nginx 和单一 headless 代理，不包含桌面 GUI、
-VectorDB 与翻译子服务：
+以下口径包含 IIS Web、Crawler、MongoDB、Nginx 和单一 headless 代理，不包含桌面 GUI、VectorDB 与翻译子服务：
 
-| 资源 | 最低配置 | 推荐配置 |
-|---|---:|---:|
-| CPU | 2 vCPU | 4 vCPU |
-| 内存 | 4 GiB | 8 GiB |
-| Swap | 2 GiB | 4–8 GiB |
+| 资源     |   最低配置 |         推荐配置 |
+| -------- | ---------: | ---------------: |
+| CPU      |     2 vCPU |           4 vCPU |
+| 内存     |      4 GiB |            8 GiB |
+| Swap     |      2 GiB |          4–8 GiB |
 | 可用磁盘 | 30 GiB SSD | 100 GiB NVMe/SSD |
-| GPU | 不需要 | 不需要 |
+| GPU      |     不需要 |           不需要 |
 
 当前实测核心栈平均约占 1.0 GiB、保守峰值约 1.25 GiB；MongoDB 当前约 474 MiB，
-但会随工作集、索引和页缓存增长。“MongoDB 需要 4 GiB”应理解为整机容量建议，不是固定
-常驻 4 GiB。完整测量范围、磁盘留存和代理 GUI 差异见
-[IIS 部署资源要求](doc/deployment_resource_requirements.md)。
+但会随工作集、索引和页缓存增长。“MongoDB 需要 4 GiB”应理解为整机容量建议，不是固定常驻 4 GiB。
+
+完整测量范围、磁盘留存和代理 GUI 差异见：[IIS 部署资源要求](doc/deployment_resource_requirements.md)。
 
 #### 依赖软件
 
