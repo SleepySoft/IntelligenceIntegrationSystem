@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlencode
 
 from flask import Blueprint, render_template, request
 
 
 VIEW_NAMES = frozenset({"list", "map", "entities"})
+LIST_QUERY_NAMES = (
+    "page", "per_page", "threshold", "sort_by", "search_mode", "reference",
+    "score_threshold",
+)
 
 
 class IntelligenceViewsService:
@@ -73,8 +78,14 @@ class IntelligenceViewsService:
         return {"active_view": active_view, "situation": self.situation}
 
     def _frame_urls(self, _profile):
+        list_query = {
+            name: request.args.get(name)
+            for name in LIST_QUERY_NAMES
+            if request.args.get(name) not in (None, "")
+        }
+        list_query.setdefault("threshold", "6")
         return {
-            "list": "/intelligences?threshold=6",
+            "list": f"/intelligences?{urlencode(list_query)}",
             "map": f"{self.situation_prefix}/embed/map",
             "entities": f"{self.situation_prefix}/embed/entities",
         }

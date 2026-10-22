@@ -589,6 +589,11 @@ class IntelligenceHubWebService:
                 with self._perf_logger.timed('search_query', **perf_extra):
                     data = self._perform_search_logic(params, subsystem_name)
 
+                # 游客请求可能被服务端限额收紧；把实际分页值返回给前端，
+                # 否则前端继续用请求前的 per_page 会算错总页数。
+                data['page'] = params.get('page', 1)
+                data['per_page'] = params.get('per_page', 20)
+
                 perf_extra['result_count'] = len(data.get('results', []))
                 perf_extra['total'] = data.get('total', 0)
                 return jsonify(data)
@@ -630,6 +635,7 @@ class IntelligenceHubWebService:
 
         @bp.route('/intelligences', methods=['GET'])
         def intelligences_view():
+            is_public = not session.get('logged_in', False)
             return render_template(
                 'intelligence_list.html',
                 base_path=base_path,
@@ -637,6 +643,8 @@ class IntelligenceHubWebService:
                 vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
+                public_mode=is_public,
+                public_limits=self.public_search_limits if is_public else {},
             )
 
         @bp.route('/intelligences/search', methods=['GET'])
@@ -1032,8 +1040,11 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligences', methods=['GET'])
         def intelligences_view():
+            is_public = not session.get('logged_in', False)
             return render_template('intelligence_list.html',
                                    vector_enabled=self.intelligence_hub.vector_search_available,
+                                   public_mode=is_public,
+                                   public_limits=self.public_search_limits if is_public else {},
                                    **self._default_subsystem_plugin_params())
 
         @app.route('/recommendations', methods=['GET'])

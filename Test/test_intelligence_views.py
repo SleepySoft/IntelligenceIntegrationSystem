@@ -87,6 +87,32 @@ def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():
     assert 'let activeView = "list"' in response.get_data(as_text=True)
 
 
+def test_list_query_is_forwarded_and_parent_url_tracks_iframe_pagination():
+    app = Flask(__name__)
+    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+
+    response = app.test_client().get("/views/", query_string={
+        "view": "list",
+        "page": "2",
+        "per_page": "20",
+        "threshold": "8",
+        "sort_by": "content_time",
+        "ignored": "must-not-reach-frame",
+    })
+
+    html = response.get_data(as_text=True)
+    urls = _frame_urls(html)
+    query = dict(item.split("=", 1) for item in urlparse(urls["list"]).query.split("&"))
+    assert query == {
+        "page": "2", "per_page": "20", "threshold": "8",
+        "sort_by": "content_time",
+    }
+    assert "must-not-reach-frame" not in urls["list"]
+    assert "event.data?.type !== 'iis:list-state'" in html
+    assert "syncOuterListState(event.data.state, event.data.history_mode)" in html
+    assert "window.addEventListener('popstate'" in html
+
+
 def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     class Registry:
         @staticmethod

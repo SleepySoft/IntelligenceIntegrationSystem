@@ -61,6 +61,38 @@
 const FRAME_URLS = {{ frame_urls|tojson }};
 const SITUATION = {{ profile.situation|tojson }};
 let activeView = {{ profile.active_view|tojson }};
+const LIST_QUERY_NAMES = ['page', 'per_page', 'threshold', 'sort_by', 'search_mode', 'reference', 'score_threshold'];
+
+function listFrameUrlFromOuter() {
+    const frameUrl = new URL(FRAME_URLS.list, window.location.origin);
+    const outerUrl = new URL(window.location.href);
+    LIST_QUERY_NAMES.forEach(name => {
+        if (outerUrl.searchParams.has(name)) {
+            frameUrl.searchParams.set(name, outerUrl.searchParams.get(name));
+        } else {
+            frameUrl.searchParams.delete(name);
+        }
+    });
+    if (!frameUrl.searchParams.has('threshold')) frameUrl.searchParams.set('threshold', '6');
+    return frameUrl.pathname + frameUrl.search;
+}
+
+function syncOuterListState(state, historyMode = 'replace') {
+    const url = new URL(window.location.href);
+    LIST_QUERY_NAMES.forEach(name => url.searchParams.delete(name));
+    for (const name of LIST_QUERY_NAMES) {
+        const value = state?.[name];
+        if (value !== undefined && value !== null && value !== '') url.searchParams.set(name, String(value));
+    }
+    url.searchParams.set('view', 'list');
+    const method = historyMode === 'push' ? 'pushState' : 'replaceState';
+    history[method](null, '', url);
+    const frameParams = new URLSearchParams(
+        LIST_QUERY_NAMES.filter(name => url.searchParams.has(name))
+            .map(name => [name, url.searchParams.get(name)]));
+    FRAME_URLS.list = `/intelligences${frameParams.size ? `?${frameParams}` : ''}`;
+    if (activeView === 'list') document.getElementById('open-view').href = FRAME_URLS.list;
+}
 
 function activate(view, updateHistory = true) {
     if (!FRAME_URLS[view]) view = 'list';
@@ -103,6 +135,24 @@ document.querySelectorAll('iframe').forEach(frame => {
             document.getElementById('loading').hidden = true;
         }
     });
+});
+window.addEventListener('message', event => {
+    const listFrame = document.querySelector('iframe[data-view="list"]');
+    if (event.origin !== window.location.origin || event.source !== listFrame.contentWindow) return;
+    if (event.data?.type !== 'iis:list-state') return;
+    syncOuterListState(event.data.state, event.data.history_mode);
+});
+window.addEventListener('popstate', () => {
+    const requested = new URL(window.location.href).searchParams.get('view') || 'list';
+    activate(FRAME_URLS[requested] ? requested : 'list', false);
+    if ((FRAME_URLS[requested] ? requested : 'list') === 'list') {
+        const frame = document.querySelector('iframe[data-view="list"]');
+        const nextUrl = listFrameUrlFromOuter();
+        if (new URL(frame.src, window.location.origin).pathname + new URL(frame.src, window.location.origin).search !== nextUrl) {
+            document.getElementById('loading').hidden = false;
+            frame.src = nextUrl;
+        }
+    }
 });
 document.querySelectorAll('.tab').forEach(button => {
     button.addEventListener('click', () => activate(button.dataset.view));
