@@ -2,12 +2,14 @@
 
 情报整合系统：通过抓取主流新闻网站的公开新闻，并使用AI进行分析和评分的情报系统。属于OSINT的一种。
 
-项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
+项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem)
 
 
-## 更新与通知
+## v4版本的说明
 
-20260929 - Token额度用尽，后面的预算留给v3，当前网站停止更新。从此branch开始分叉，main分支将停留在v2，之前采集的数据在整理后会上传度盘。
+**注意，最新生产环境版本已更新到v4。当前分支依然基于v2且原则上不再更新。**
+
+v4版本：[https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/SubSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/SubSystem)
 
 
 ## v2版本的说明
