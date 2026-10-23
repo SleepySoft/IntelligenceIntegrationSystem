@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实体时间线 · 态势洞察</title>
+    <style>
+        :root { color-scheme: light dark; --bg: light-dark(#edf2f8,#0b1220); --panel: light-dark(#fff,#131d2d); --border: light-dark(#d8e1ec,#304057); --text: light-dark(#172033,#e8eef8); --muted: light-dark(#65748a,#9babc2); --accent:#4f7cff; --axis:light-dark(#a9b8cc,#4b607b); }
+        * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
+        button,input,select { font:inherit } button { cursor:pointer }
+        .shell { min-height:100vh; display:grid; grid-template-rows:auto auto minmax(420px,1fr) auto }
+        header,.controls,.range,.detail { background:var(--panel); border-bottom:1px solid var(--border) }
+        header { padding:12px 16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap }
+        h1 { margin:0; font-size:19px } .scope,.muted { color:var(--muted) }
+        .search { margin-left:auto; position:relative; min-width:min(390px,100%); display:flex; gap:7px }
+        .search input { min-width:0; flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text) }
+        .search-results { position:absolute; right:0; top:42px; width:100%; max-height:320px; overflow:auto; z-index:20; padding:6px; border:1px solid var(--border); border-radius:10px; background:var(--panel); box-shadow:0 10px 30px #0003 }
+        .search-results[hidden] { display:none } .search-result { width:100%; padding:8px; display:flex; justify-content:space-between; gap:10px; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left }
+        .search-result:hover { background:color-mix(in srgb,var(--accent) 12%,transparent) }
+        .controls { padding:9px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+        .chips { display:flex; gap:6px; flex:1; flex-wrap:wrap; min-width:220px }.chip { display:flex; align-items:center; gap:5px; padding:5px 8px; border-radius:999px; background:color-mix(in srgb,var(--accent) 13%,var(--panel)); border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border)) }.chip button { border:0; background:none; color:var(--muted) }
+        .segmented { display:flex; padding:2px; border:1px solid var(--border); border-radius:9px }.segmented button { padding:6px 9px; border:0; border-radius:6px; background:transparent; color:var(--muted) }.segmented button.active { background:var(--accent); color:white }
+        .range { padding:8px 16px; display:grid; grid-template-columns:auto minmax(120px,1fr) minmax(120px,1fr) auto; align-items:center; gap:10px }.range input { width:100% }
+        .canvas-wrap { min-height:420px; overflow:auto; padding:22px; position:relative }.empty { min-height:360px; display:grid; place-items:center; color:var(--muted); text-align:center }
+        .timeline.horizontal { min-width:900px }.lane { position:relative }.lane.horizontal { height:150px; margin:0 24px 12px 130px; border-top:2px solid var(--axis) }.lane-title { position:absolute; font-weight:700 }.lane.horizontal .lane-title { right:calc(100% + 18px); top:-12px; width:120px; text-align:right }.marker { position:absolute; width:14px; height:14px; border:2px solid var(--panel); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px #0002; background:var(--accent) }.marker.negated { border-style:dashed; border-color:#fff }.marker:hover,.marker:focus { width:19px; height:19px; z-index:5 }.marker-label { position:absolute; width:150px; transform:translateX(-50%); font-size:12px; color:var(--muted); text-align:center; pointer-events:none }.marker-label strong { display:block; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+        .timeline.vertical { display:flex; min-width:max-content; gap:110px; padding:30px 70px 40px 120px }.lane.vertical { width:210px; height:820px; border-left:2px solid var(--axis) }.lane.vertical .lane-title { bottom:calc(100% + 10px); left:-70px; width:140px; text-align:center }.lane.vertical .marker { left:0 }.lane.vertical .marker-label { left:18px; width:180px; transform:none; text-align:left }
+        .war{background:#d84949}.terror{background:#8d50c9}.security{background:#df7b31}.politics{background:#4f7cff}.hazard{background:#27a98b}.economy{background:#bea329}.industry{background:#6e8d45}.other{background:#7d8898}
+        .detail { border-top:1px solid var(--border); border-bottom:0; padding:12px 16px; min-height:74px; position:sticky; bottom:0; z-index:10 }.detail[hidden]{display:none}.detail-head{display:flex;gap:10px;align-items:center}.detail h2{margin:0;font-size:16px}.detail a{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.tag{padding:3px 7px;border-radius:999px;background:var(--bg);color:var(--muted)}
+        .warning { color:#d88a29 }.corroboration { color:#29a57e; font-weight:700 }
+        @media(max-width:760px){.search{margin-left:0;width:100%}.range{grid-template-columns:1fr 1fr}.range span:first-child,.range span:last-child{grid-column:span 1}.canvas-wrap{padding:14px}.timeline.horizontal{min-width:760px}}
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <h1>实体时间线</h1>
+        <span class="scope">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }} · 最多 8 个实体</span>
+        <div class="search">
+            <input id="entity-search" type="search" placeholder="搜索当前范围内的实体" autocomplete="off">
+            <button id="search-button" type="button">搜索</button>
+            <div class="search-results" id="search-results" hidden></div>
+        </div>
+    </header>
+    <section class="controls">
+        <div class="chips" id="chips"><span class="muted">尚未指定实体</span></div>
+        <div class="segmented" aria-label="组织方式">
+            <button type="button" data-mode="union">聚合</button><button type="button" data-mode="lanes">分轨对照</button>
+        </div>
+        <div class="segmented" aria-label="时间方向">
+            <button type="button" data-orientation="horizontal">横向</button><button type="button" data-orientation="vertical">纵向</button>
+        </div>
+    </section>
+    <section class="range" id="range-panel" hidden>
+        <span id="range-start-label"></span><input id="range-start" type="range"><input id="range-end" type="range"><span id="range-end-label"></span>
+    </section>
+    <main class="canvas-wrap" id="canvas"><div class="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div></main>
+</div>
+<aside class="detail" id="detail" hidden></aside>
+<script>
+const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, SUBSYSTEMS={{ subsystems|tojson }}, CATEGORIES={{ categories|tojson }};
+const $=id=>document.getElementById(id); let data=null, selected=[], mode='union', orientation='horizontal', rangeStart=0, rangeEnd=0, searchTimer=0;
+const initial=new URL(location.href); mode=initial.searchParams.get('mode')==='lanes'?'lanes':'union'; orientation=initial.searchParams.get('orientation')==='vertical'?'vertical':'horizontal'; selected=[...new Set(initial.searchParams.getAll('entity').filter(Boolean))].slice(0,8);
+function escapeHtml(value){const el=document.createElement('span');el.textContent=String(value??'');return el.innerHTML}
+function detailUrl(uuid){const subsystem=SUBSYSTEMS.find(item=>item.name===PROFILE.subsystem);const prefix=String(subsystem?.url_prefix||'').replace(/\/$/,'');return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`}
+function dateLabel(seconds){return new Date(seconds*1000).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function syncUrl(push=false){const url=new URL(location.href);url.searchParams.delete('entity');selected.forEach(id=>url.searchParams.append('entity',id));url.searchParams.set('mode',mode);url.searchParams.set('orientation',orientation);if(data){url.searchParams.set('from',new Date(rangeStart*1000).toISOString());url.searchParams.set('to',new Date(rangeEnd*1000).toISOString())}history[push?'pushState':'replaceState'](null,'',url);window.parent?.postMessage({type:'iis:timeline-state',state:{entities:selected,mode,orientation,from:url.searchParams.get('from'),to:url.searchParams.get('to')}},location.origin)}
+function updateButtons(){document.querySelectorAll('[data-mode]').forEach(el=>el.classList.toggle('active',el.dataset.mode===mode));document.querySelectorAll('[data-orientation]').forEach(el=>el.classList.toggle('active',el.dataset.orientation===orientation))}
+function renderChips(){const box=$('chips');box.innerHTML='';if(!selected.length){box.innerHTML='<span class="muted">尚未指定实体</span>';return}selected.forEach(id=>{const entity=data?.entities?.find(item=>item.id===id);const chip=document.createElement('span');chip.className='chip';chip.title=id;chip.append(document.createTextNode(entity?.name||id));const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除';remove.onclick=()=>{selected=selected.filter(value=>value!==id);syncUrl(true);loadTimeline()};chip.append(remove);box.append(chip)})}
+async function json(url){const response=await fetch(url,{credentials:'same-origin'});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);return payload}
+async function searchEntities(){const q=$('entity-search').value.trim(), box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent='搜索中…';try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent='当前范围内没有匹配实体';return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=`${entity.event_count} 事件`;button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=`搜索失败：${error.message}`}}
+function addEntity(id){if(selected.includes(id)){$('search-results').hidden=true;return}if(selected.length>=8){alert('一次最多选择 8 个实体');return}selected.push(id);$('entity-search').value='';$('search-results').hidden=true;syncUrl(true);loadTimeline()}
+async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;$('range-panel').hidden=true;$('canvas').innerHTML='<div class="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div>';return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('canvas').innerHTML='<div class="empty">正在加载定向时间线…</div>';try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();setupRange();render()}catch(error){$('canvas').innerHTML=`<div class="empty warning">时间线加载失败：${escapeHtml(error.message)}</div>`}}
+function setupRange(){const timestamps=data.events.map(item=>item.time.timestamp).filter(Number.isFinite);if(!timestamps.length){$('range-panel').hidden=true;return}const min=Math.min(...timestamps),max=Math.max(...timestamps),span=Math.max(1,max-min);rangeStart=Math.max(min,Date.parse(initial.searchParams.get('from')||'')/1000||min);rangeEnd=Math.min(max,Date.parse(initial.searchParams.get('to')||'')/1000||max);if(rangeStart>rangeEnd){rangeStart=min;rangeEnd=max}for(const [id,value] of [['range-start',rangeStart],['range-end',rangeEnd]]){const input=$(id);input.min=min;input.max=max;input.step=Math.max(60,Math.floor(span/1000));input.value=value}updateRangeLabels();$('range-panel').hidden=false}
+function updateRangeLabels(){$('range-start-label').textContent=dateLabel(rangeStart);$('range-end-label').textContent=dateLabel(rangeEnd)}
+function visibleEvents(){return (data?.events||[]).filter(item=>item.time.timestamp>=rangeStart&&item.time.timestamp<=rangeEnd)}
+function showDetail(item){const fallback=item.time.source==='content_time'?'<span class="warning">事件时间缺失，按报道时间定位</span>':'<span>事件抽取时间</span>';const relationNames=[...new Set(item.relations.map(value=>value.counterpart_name).filter(Boolean))];$('detail').innerHTML=`<div class="detail-head"><h2>${escapeHtml(item.predicate.label)} · ${escapeHtml(item.title)}</h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" target="_blank" rel="noopener">查看情报</a><button type="button" id="detail-close">关闭</button></div><div class="tags"><span class="tag">${escapeHtml(dateLabel(item.time.timestamp))}</span><span class="tag">评分 ${item.score}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||'其他')}</span>${fallback}${item.selected_entity_ids.length>1?'<span class="tag corroboration">多个所选实体共同出现</span>':''}${relationNames.map(name=>`<span class="tag">关联 ${escapeHtml(name)}</span>`).join('')}</div>`;$('detail').hidden=false;$('detail-close').onclick=()=>{$('detail').hidden=true}}
+function marker(item,position,offset){const marker=document.createElement('button');marker.type='button';marker.className=`marker ${item.category}${item.negated?' negated':''}`;marker.title=`${item.predicate.label} · ${item.title}`;if(orientation==='horizontal'){marker.style.left=`${position}%`;marker.style.top=`${offset}px`}else{marker.style.top=`${position}%`;marker.style.left=`${offset}px`}marker.onclick=()=>showDetail(item);const label=document.createElement('span');label.className='marker-label';label.innerHTML=`<strong>${escapeHtml(item.predicate.label)}</strong>${escapeHtml(dateLabel(item.time.timestamp))}`;if(orientation==='horizontal'){label.style.left=`${position}%`;label.style.top=`${offset+12}px`}else{label.style.top=`calc(${position}% - 8px)`;label.style.left=`${offset+18}px`}return [marker,label]}
+function render(){updateButtons();if(!data)return;const events=visibleEvents(),canvas=$('canvas');canvas.innerHTML='';if(!events.length){canvas.innerHTML='<div class="empty">当前时间范围内没有事件。</div>';return}const timeline=document.createElement('div');timeline.className=`timeline ${orientation}`;const laneDefs=mode==='union'?[{id:'__union__',name:selected.length>1?'所选实体组':data.entities[0]?.name||'所选实体'}]:data.entities;const min=rangeStart,max=rangeEnd,span=Math.max(1,max-min);laneDefs.forEach(laneDef=>{const lane=document.createElement('section');lane.className=`lane ${orientation}`;const title=document.createElement('div');title.className='lane-title';title.textContent=laneDef.name;lane.append(title);const laneEvents=mode==='union'?events:events.filter(item=>item.selected_entity_ids.includes(laneDef.id));laneEvents.forEach((item,index)=>{const position=Math.max(0,Math.min(100,(item.time.timestamp-min)*100/span));const offset=orientation==='horizontal'?((index%3)-1)*28:((index%2)*16);marker(item,position,offset).forEach(node=>lane.append(node))});timeline.append(lane)});canvas.append(timeline);const note=document.createElement('div');note.className='muted';note.textContent=`显示 ${events.length}/${data.events.length} 个事件；${data.meta.cooccurrence_event_count} 个事件含多个所选实体，${data.meta.corroboration_count} 组跨文章支撑。`;canvas.prepend(note)}
+document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{mode=el.dataset.mode;syncUrl();render()});document.querySelectorAll('[data-orientation]').forEach(el=>el.onclick=()=>{orientation=el.dataset.orientation;syncUrl();render()});
+$('search-button').onclick=searchEntities;$('entity-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(searchEntities,250)};$('entity-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();searchEntities()}};
+$('range-start').oninput=event=>{rangeStart=Math.min(Number(event.target.value),rangeEnd);event.target.value=rangeStart;updateRangeLabels();syncUrl();render()};$('range-end').oninput=event=>{rangeEnd=Math.max(Number(event.target.value),rangeStart);event.target.value=rangeEnd;updateRangeLabels();syncUrl();render()};
+document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());updateButtons();renderChips();loadTimeline();
+</script>
+</body>
+</html>

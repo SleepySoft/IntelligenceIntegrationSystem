@@ -56,6 +56,7 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     assert "情报列表" in html
     assert "地域视图" in html
     assert "实体视图" in html
+    assert "实体时间线" in html
     assert 'let activeView = "map"' in html
     assert service.situation == {
         "subsystem": "finance",
@@ -71,8 +72,35 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     assert urls["list"] == "/intelligences?threshold=6"
     assert urls["map"] == "/situation/embed/map"
     assert urls["entities"] == "/situation/embed/entities"
+    assert urls["timeline"] == "/situation/embed/timeline"
     assert not urlparse(urls["map"]).query
     assert not urlparse(urls["entities"]).query
+
+
+def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
+    app = Flask(__name__)
+    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+    response = app.test_client().get("/views/", query_string=[
+        ("view", "timeline"),
+        ("entity", "ent_us"),
+        ("entity", "organization|US|white house"),
+        ("mode", "lanes"),
+        ("orientation", "vertical"),
+        ("ignored", "no"),
+    ])
+
+    html = response.get_data(as_text=True)
+    urls = _frame_urls(html)
+    timeline = urlparse(urls["timeline"])
+    assert timeline.path == "/situation/embed/timeline"
+    assert "entity=ent_us" in timeline.query
+    assert "entity=organization%7CUS%7Cwhite+house" in timeline.query
+    assert "mode=lanes" in timeline.query
+    assert "orientation=vertical" in timeline.query
+    assert "ignored" not in timeline.query
+    assert 'let activeView = "timeline"' in html
+    assert "iis:timeline-state" in html
+    assert "iis:open-timeline" in html
 
 
 def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():

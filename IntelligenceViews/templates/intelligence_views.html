@@ -46,6 +46,7 @@
             <button class="tab" type="button" data-view="list">情报列表</button>
             <button class="tab" type="button" data-view="map">地域视图</button>
             <button class="tab" type="button" data-view="entities">实体视图</button>
+            <button class="tab" type="button" data-view="timeline">实体时间线</button>
         </nav>
         <span class="scope-note" id="scope-note" hidden></span>
         <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">单独打开</a>
@@ -55,6 +56,7 @@
         <iframe data-view="list" title="情报列表视图"></iframe>
         <iframe data-view="map" title="地域态势视图"></iframe>
         <iframe data-view="entities" title="实体关系视图"></iframe>
+        <iframe data-view="timeline" title="实体时间线视图"></iframe>
     </main>
 </div>
 <script>
@@ -62,6 +64,7 @@ const FRAME_URLS = {{ frame_urls|tojson }};
 const SITUATION = {{ profile.situation|tojson }};
 let activeView = {{ profile.active_view|tojson }};
 const LIST_QUERY_NAMES = ['page', 'per_page', 'threshold', 'sort_by', 'search_mode', 'reference', 'score_threshold'];
+const TIMELINE_QUERY_NAMES = ['mode', 'orientation', 'from', 'to'];
 
 function listFrameUrlFromOuter() {
     const frameUrl = new URL(FRAME_URLS.list, window.location.origin);
@@ -94,6 +97,46 @@ function syncOuterListState(state, historyMode = 'replace') {
     if (activeView === 'list') document.getElementById('open-view').href = FRAME_URLS.list;
 }
 
+function timelineFrameUrlFromOuter() {
+    const frameUrl = new URL(FRAME_URLS.timeline, window.location.origin);
+    const outerUrl = new URL(window.location.href);
+    frameUrl.search = '';
+    outerUrl.searchParams.getAll('entity').slice(0, 8).forEach(value => frameUrl.searchParams.append('entity', value));
+    TIMELINE_QUERY_NAMES.forEach(name => {
+        if (outerUrl.searchParams.has(name)) frameUrl.searchParams.set(name, outerUrl.searchParams.get(name));
+    });
+    return frameUrl.pathname + frameUrl.search;
+}
+
+function syncOuterTimelineState(state) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('entity');
+    (state?.entities || []).slice(0, 8).forEach(value => url.searchParams.append('entity', String(value)));
+    TIMELINE_QUERY_NAMES.forEach(name => {
+        const value = state?.[name];
+        if (value !== undefined && value !== null && value !== '') url.searchParams.set(name, String(value));
+        else url.searchParams.delete(name);
+    });
+    url.searchParams.set('view', 'timeline');
+    history.replaceState(null, '', url);
+    FRAME_URLS.timeline = timelineFrameUrlFromOuter();
+    if (activeView === 'timeline') document.getElementById('open-view').href = FRAME_URLS.timeline;
+}
+
+function openTimeline(entities) {
+    const url = new URL(window.location.href);
+    const merged = [...url.searchParams.getAll('entity'), ...(entities || [])];
+    url.searchParams.delete('entity');
+    [...new Set(merged)].slice(0, 8).forEach(value => url.searchParams.append('entity', String(value)));
+    url.searchParams.set('view', 'timeline');
+    history.pushState(null, '', url);
+    FRAME_URLS.timeline = timelineFrameUrlFromOuter();
+    const frame = document.querySelector('iframe[data-view="timeline"]');
+    frame.src = FRAME_URLS.timeline;
+    frame.dataset.loaded = 'true';
+    activate('timeline', false);
+}
+
 function activate(view, updateHistory = true) {
     if (!FRAME_URLS[view]) view = 'list';
     activeView = view;
@@ -113,7 +156,7 @@ function activate(view, updateHistory = true) {
     });
     document.getElementById('open-view').href = FRAME_URLS[view];
     const scopeNote = document.getElementById('scope-note');
-    if (view === 'map' || view === 'entities') {
+    if (view === 'map' || view === 'entities' || view === 'timeline') {
         let text = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
         if (view === 'entities' && SITUATION.min_support) {
             text += ` · 关系需 ${SITUATION.min_support} 起印证`;
@@ -138,9 +181,19 @@ document.querySelectorAll('iframe').forEach(frame => {
 });
 window.addEventListener('message', event => {
     const listFrame = document.querySelector('iframe[data-view="list"]');
-    if (event.origin !== window.location.origin || event.source !== listFrame.contentWindow) return;
-    if (event.data?.type !== 'iis:list-state') return;
-    syncOuterListState(event.data.state, event.data.history_mode);
+    const timelineFrame = document.querySelector('iframe[data-view="timeline"]');
+    const entitiesFrame = document.querySelector('iframe[data-view="entities"]');
+    if (event.origin !== window.location.origin) return;
+    if (event.source === listFrame.contentWindow) {
+        if (event.data?.type !== 'iis:list-state') return;
+        syncOuterListState(event.data.state, event.data.history_mode);
+        return;
+    }
+    if (event.source === timelineFrame.contentWindow && event.data?.type === 'iis:timeline-state') {
+        syncOuterTimelineState(event.data.state);
+    } else if (event.source === entitiesFrame.contentWindow && event.data?.type === 'iis:open-timeline') {
+        openTimeline(event.data.entities);
+    }
 });
 window.addEventListener('popstate', () => {
     const requested = new URL(window.location.href).searchParams.get('view') || 'list';
@@ -148,6 +201,13 @@ window.addEventListener('popstate', () => {
     if ((FRAME_URLS[requested] ? requested : 'list') === 'list') {
         const frame = document.querySelector('iframe[data-view="list"]');
         const nextUrl = listFrameUrlFromOuter();
+        if (new URL(frame.src, window.location.origin).pathname + new URL(frame.src, window.location.origin).search !== nextUrl) {
+            document.getElementById('loading').hidden = false;
+            frame.src = nextUrl;
+        }
+    } else if (requested === 'timeline') {
+        const frame = document.querySelector('iframe[data-view="timeline"]');
+        const nextUrl = timelineFrameUrlFromOuter();
         if (new URL(frame.src, window.location.origin).pathname + new URL(frame.src, window.location.origin).search !== nextUrl) {
             document.getElementById('loading').hidden = false;
             frame.src = nextUrl;

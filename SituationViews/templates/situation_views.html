@@ -1495,7 +1495,7 @@ function showNodeDetail(d) {
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
         <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
         <p class="muted">身份：${escapeHtml(identityLabels[d.identity_kind] || d.identity_kind)}${d.reference_count ? ` · ${d.reference_count} 个情报实体引用` : ''}</p>
-        ${externalLookup}${edit}`;
+        ${externalLookup}<button type="button" id="open-entity-timeline" style="width:100%;margin-top:10px">在实体时间线中查看</button>${edit}`;
     detail.hidden = false;
 }
 function showEdgeDetail(d) {
@@ -1611,6 +1611,16 @@ document.addEventListener('click', event => {
     if (event.target.id === 'edit-graph-entity' && selectedGraphElement?.type === 'node') {
         const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
         if (node) openEntityEditor(node);
+    }
+    if (event.target.id === 'open-entity-timeline' && selectedGraphElement?.type === 'node') {
+        const entityId = selectedGraphElement.entity_id;
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({type: 'iis:open-timeline', entities: [entityId]}, location.origin);
+        } else {
+            const url = new URL('timeline', location.href);
+            url.searchParams.append('entity', entityId);
+            location.href = url;
+        }
     }
     const target = event.target.closest('[data-edit-target]');
     if (target) selectEditingTarget(target.dataset.editTarget, target.dataset.editTargetName);

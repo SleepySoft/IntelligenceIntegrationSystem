@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import calendar
 import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from itertools import combinations, product
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME,
@@ -749,6 +751,257 @@ class SituationViewEngine:
             reverse=True)
         return {"entity_id": entity_id, "references": result, "total": len(result)}
 
+    def entity_timeline_entities(
+        self, query: ViewQuery, *, search: str = "", limit: int = 30,
+    ) -> dict[str, Any]:
+        """检索当前固定窗口内可用于时间线的实体，不受关系图规模裁剪影响。"""
+        events, meta = self._load_events(query)
+        prepared_events, country_hints = self._prepare_graph_events(events, query)
+        entities: dict[str, dict[str, Any]] = {}
+        for event, _category, relations in prepared_events:
+            event_uuid = str(event.get("event_uuid") or "")
+            for source, target, _directed in relations:
+                for entity in (source, target):
+                    key, _ = self._graph_entity_key(entity, country_hints)
+                    if not key:
+                        continue
+                    item = entities.setdefault(key, {
+                        "id": key,
+                        "name": self._entity_display_name(entity),
+                        "type": self._entity_type_group(entity),
+                        "country_code": entity.get("country_code"),
+                        "identity_kind": str(entity.get("_identity_kind") or "surface"),
+                        "event_ids": set(),
+                        "surfaces": Counter(),
+                    })
+                    item["event_ids"].add(event_uuid)
+                    surface = str(entity.get("name") or "").strip()
+                    if surface:
+                        item["surfaces"][surface] += 1
+
+        needle = " ".join(str(search or "").casefold().split())
+        values = []
+        for item in entities.values():
+            haystack = " ".join((
+                item["id"], item["name"],
+                " ".join(item["surfaces"]),
+            )).casefold()
+            if needle and needle not in haystack:
+                continue
+            values.append({
+                key: value for key, value in item.items()
+                if key not in {"event_ids", "surfaces"}
+            } | {
+                "event_count": len(item["event_ids"]),
+                "surfaces": [name for name, _ in item["surfaces"].most_common(5)],
+            })
+        values.sort(key=lambda item: (-item["event_count"], item["name"], item["id"]))
+        meta.update({"search": search, "total": len(values), "limit": limit})
+        return {"entities": values[:limit], "meta": meta}
+
+    def entity_timeline(
+        self, query: ViewQuery, *, entity_ids: Iterable[str],
+    ) -> dict[str, Any]:
+        """把指定实体的关系投影为事件时间线；所选顺序决定分轨顺序。"""
+        selected_ids = list(dict.fromkeys(
+            str(value or "").strip() for value in entity_ids if str(value or "").strip()
+        ))
+        if not selected_ids:
+            raise ValueError("至少需要一个 entity 参数")
+        if len(selected_ids) > 8:
+            raise ValueError("一次最多选择 8 个实体")
+
+        selected = set(selected_ids)
+        events, meta = self._load_events(query)
+        prepared_events, country_hints = self._prepare_graph_events(events, query)
+        entity_data: dict[str, dict[str, Any]] = {}
+        timeline_events: dict[str, dict[str, Any]] = {}
+        relation_seen: set[tuple] = set()
+
+        for event, category, relations in prepared_events:
+            event_uuid = str(event.get("event_uuid") or "")
+            article_uuid = str(event.get("intelligence_uuid") or "")
+            for source, target, directed in relations:
+                source_id, _ = self._graph_entity_key(source, country_hints)
+                target_id, _ = self._graph_entity_key(target, country_hints)
+                focus_ids = [value for value in (source_id, target_id) if value in selected]
+                if not focus_ids:
+                    continue
+                for entity_id, entity in ((source_id, source), (target_id, target)):
+                    if entity_id not in selected:
+                        continue
+                    item = entity_data.setdefault(entity_id, {
+                        "id": entity_id,
+                        "name": self._entity_display_name(entity),
+                        "type": self._entity_type_group(entity),
+                        "country_code": entity.get("country_code"),
+                        "identity_kind": str(entity.get("_identity_kind") or "surface"),
+                        "event_ids": set(),
+                    })
+                    item["event_ids"].add(event_uuid)
+
+                item = timeline_events.setdefault(event_uuid, {
+                    "id": event_uuid,
+                    "article_uuid": article_uuid,
+                    "title": str(event.get("_view_title") or "未命名情报"),
+                    "score": round(float(event.get("_view_score") or 0), 2),
+                    "category": category,
+                    "predicate": {
+                        "id": self._predicate_id(event),
+                        "label": self._canonical_predicate_label(event),
+                    },
+                    "negated": self._is_negated(event),
+                    "time": self._timeline_time(event),
+                    "content_time": self._json_time(event.get("_view_content_time")),
+                    "source_domain": str(event.get("_view_source_domain") or ""),
+                    "selected_entity_ids": set(),
+                    "relations": [],
+                })
+                item["selected_entity_ids"].update(focus_ids)
+                relation_key = (
+                    event_uuid, source_id, target_id, self._predicate_id(event), directed)
+                if relation_key in relation_seen:
+                    continue
+                relation_seen.add(relation_key)
+                internal = source_id in selected and target_id in selected
+                for focus_id in focus_ids:
+                    counterpart_id = target_id if focus_id == source_id else source_id
+                    counterpart = target if focus_id == source_id else source
+                    role = (
+                        "participant" if not directed else
+                        "subject" if focus_id == source_id else "object"
+                    )
+                    item["relations"].append({
+                        "focus_entity_id": focus_id,
+                        "counterpart_id": counterpart_id,
+                        "counterpart_name": self._entity_display_name(counterpart),
+                        "counterpart_type": self._entity_type_group(counterpart),
+                        "role": role,
+                        "directed": directed,
+                        "internal": internal,
+                    })
+
+        ordered_events = []
+        for item in timeline_events.values():
+            item["selected_entity_ids"] = [
+                value for value in selected_ids if value in item["selected_entity_ids"]]
+            ordered_events.append(item)
+        ordered_events.sort(key=lambda item: (
+            item["time"]["timestamp"], item["id"]))
+
+        # 仅作“共同出现/跨文章/跨来源”的透明计数，不把同文共现冒充独立印证。
+        occurrence_count = sum(
+            1 for item in ordered_events if len(item["selected_entity_ids"]) > 1)
+        signatures: dict[tuple, dict[str, set[str]]] = defaultdict(
+            lambda: {"articles": set(), "sources": set(), "entities": set()})
+        for item in ordered_events:
+            day = dt.datetime.fromtimestamp(
+                item["time"]["timestamp"], tz=dt.timezone.utc).date().isoformat()
+            for relation in item["relations"]:
+                signature = (
+                    day, item["predicate"]["id"], relation["counterpart_id"])
+                signatures[signature]["articles"].add(item["article_uuid"])
+                if item["source_domain"]:
+                    signatures[signature]["sources"].add(item["source_domain"])
+                signatures[signature]["entities"].add(relation["focus_entity_id"])
+        corroboration = []
+        for (day, predicate, counterpart_id), values in signatures.items():
+            if len(values["entities"]) < 2 or len(values["articles"]) < 2:
+                continue
+            corroboration.append({
+                "day": day,
+                "predicate": predicate,
+                "counterpart_id": counterpart_id,
+                "entity_ids": [value for value in selected_ids if value in values["entities"]],
+                "article_count": len(values["articles"]),
+                "source_count": len(values["sources"]),
+                "level": "cross_source" if len(values["sources"]) >= 2 else "cross_article",
+            })
+
+        entity_values = []
+        for entity_id in selected_ids:
+            item = entity_data.get(entity_id)
+            if item is None:
+                entity_values.append({
+                    "id": entity_id, "name": entity_id, "type": "other",
+                    "country_code": None, "identity_kind": "unknown", "event_count": 0,
+                })
+            else:
+                entity_values.append({
+                    key: value for key, value in item.items() if key != "event_ids"
+                } | {"event_count": len(item["event_ids"])})
+        meta.update({
+            "selected_entity_count": len(selected_ids),
+            "timeline_event_count": len(ordered_events),
+            "cooccurrence_event_count": occurrence_count,
+            "corroboration_count": len(corroboration),
+        })
+        return {
+            "entities": entity_values,
+            "events": ordered_events,
+            "corroboration": corroboration,
+            "meta": meta,
+            "categories": CATEGORY_LABELS,
+        }
+
+    @staticmethod
+    def _timeline_time(event: dict) -> dict[str, Any]:
+        """优先事件明确时间；不可用时明确回退文章内容时间。"""
+        time_values = event.get("time") or {}
+        slots = (
+            "event_time", "start_time", "effective_time", "end_time",
+            "expected_start_time", "expected_end_time", "deadline",
+        )
+        for slot in slots:
+            expression = time_values.get(slot)
+            if not isinstance(expression, dict):
+                continue
+            normalized = str(expression.get("normalized") or "").strip()
+            parsed = SituationViewEngine._normalized_time(normalized)
+            if parsed is None:
+                continue
+            precision = str(expression.get("precision") or "").strip() or {
+                4: "year", 7: "month", 10: "day", 13: "hour",
+            }.get(len(normalized), "minute")
+            return {
+                "timestamp": parsed.timestamp(),
+                "normalized": normalized,
+                "precision": precision,
+                "approximate": bool(expression.get("approximate")),
+                "surface": str(expression.get("surface") or ""),
+                "slot": slot,
+                "source": "event_time",
+            }
+        content_time = event.get("_view_content_time")
+        timestamp = SituationViewEngine._time_sort_value(content_time)
+        return {
+            "timestamp": timestamp,
+            "normalized": SituationViewEngine._json_time(content_time),
+            "precision": "datetime",
+            "approximate": False,
+            "surface": "",
+            "slot": None,
+            "source": "content_time",
+        }
+
+    @staticmethod
+    def _normalized_time(value: str) -> dt.datetime | None:
+        if not value:
+            return None
+        try:
+            if re.fullmatch(r"\d{4}", value):
+                return dt.datetime(int(value), 1, 1, tzinfo=dt.timezone.utc)
+            if re.fullmatch(r"\d{4}-\d{2}", value):
+                year, month = map(int, value.split("-"))
+                calendar.monthrange(year, month)
+                return dt.datetime(year, month, 1, tzinfo=dt.timezone.utc)
+            parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.astimezone(dt.timezone.utc)
+        except (ValueError, OverflowError):
+            return None
+
     def _prepare_graph_events(self, events, query):
         self._resolve_graph_entities(events)
         prepared_events = []
@@ -849,6 +1102,7 @@ class SituationViewEngine:
             "_id": 0,
             "UUID": 1,
             "EVENT_TITLE": 1,
+            "INFORMANT": 1,
             appendix_path(APPENDIX_CONTENT_TIME): 1,
             appendix_path(APPENDIX_TOTAL_SCORE): 1,
         }
@@ -865,6 +1119,7 @@ class SituationViewEngine:
                 "content_time": appendix.get(APPENDIX_CONTENT_TIME),
                 "score": appendix.get(APPENDIX_TOTAL_SCORE),
                 "title": item.get("EVENT_TITLE"),
+                "source_domain": urlparse(str(item.get("INFORMANT") or "")).hostname or "",
             }
         identifiers = list(article_meta)
         event_filter: dict[str, Any] = {"intelligence_uuid": {"$in": identifiers}}
@@ -876,6 +1131,7 @@ class SituationViewEngine:
             event["_view_content_time"] = data.get("content_time")
             event["_view_score"] = data.get("score")
             event["_view_title"] = data.get("title")
+            event["_view_source_domain"] = data.get("source_domain")
         return events, {
             "start": self._json_time(query.start),
             "end": self._json_time(query.end),

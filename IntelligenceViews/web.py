@@ -1,4 +1,4 @@
-"""情报三视图的纯展示集成层。"""
+"""情报多视图的纯展示集成层。"""
 
 from __future__ import annotations
 
@@ -8,11 +8,12 @@ from urllib.parse import urlencode
 from flask import Blueprint, render_template, request
 
 
-VIEW_NAMES = frozenset({"list", "map", "entities"})
+VIEW_NAMES = frozenset({"list", "map", "entities", "timeline"})
 LIST_QUERY_NAMES = (
     "page", "per_page", "threshold", "sort_by", "search_mode", "reference",
     "score_threshold",
 )
+TIMELINE_QUERY_NAMES = ("mode", "orientation", "from", "to")
 
 
 class IntelligenceViewsService:
@@ -84,10 +85,25 @@ class IntelligenceViewsService:
             if request.args.get(name) not in (None, "")
         }
         list_query.setdefault("threshold", "6")
+        timeline_query = []
+        for entity_id in request.args.getlist("entity")[:8]:
+            entity_id = str(entity_id or "").strip()
+            if entity_id:
+                timeline_query.append(("entity", entity_id))
+        timeline_query.extend(
+            (name, request.args.get(name))
+            for name in TIMELINE_QUERY_NAMES
+            if request.args.get(name) not in (None, "")
+        )
+        timeline_suffix = urlencode(timeline_query)
         return {
             "list": f"/intelligences?{urlencode(list_query)}",
             "map": f"{self.situation_prefix}/embed/map",
             "entities": f"{self.situation_prefix}/embed/entities",
+            "timeline": (
+                f"{self.situation_prefix}/embed/timeline"
+                f"{f'?{timeline_suffix}' if timeline_suffix else ''}"
+            ),
         }
 
     @staticmethod

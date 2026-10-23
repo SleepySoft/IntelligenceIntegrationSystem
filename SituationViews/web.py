@@ -129,6 +129,11 @@ class SituationViewsService:
             return self._render_dashboard(
                 "graph", profile=self.dashboard, embedded=True)
 
+        @bp.get("/embed/timeline")
+        @embed_protect
+        def embedded_entity_timeline():
+            return self._render_timeline(profile=self.dashboard, embedded=True)
+
         @bp.get("/api/map")
         @bp.get("/api/scoped/map")
         @scoped_or_protected
@@ -164,6 +169,31 @@ class SituationViewsService:
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
                     entity_types=entity_types,
+                ))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-timeline")
+        @bp.get("/api/scoped/entity-timeline")
+        @scoped_or_protected
+        def entity_timeline_api():
+            try:
+                engine, query = self._request_context(fixed=self._is_scoped_request())
+                return jsonify(engine.entity_timeline(
+                    query, entity_ids=self._entity_args()))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-timeline/entities")
+        @bp.get("/api/scoped/entity-timeline/entities")
+        @scoped_or_protected
+        def entity_timeline_entities_api():
+            try:
+                engine, query = self._request_context(fixed=self._is_scoped_request())
+                return jsonify(engine.entity_timeline_entities(
+                    query,
+                    search=str(request.args.get("q") or "").strip()[:200],
+                    limit=self._bounded_int("limit", 30, 1, 50),
                 ))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
@@ -471,6 +501,17 @@ class SituationViewsService:
                 and session.get("logged_in", False)),
         )
 
+    def _render_timeline(self, *, profile=None, embedded=False):
+        return render_template(
+            "entity_timeline.html",
+            categories=CATEGORY_LABELS,
+            subsystems=self.subsystem_registry.describe(),
+            detail_origin=self.detail_origin,
+            dashboard_profile=profile or self.dashboard,
+            embedded=embedded,
+            api_prefix="../api/scoped" if embedded else "api",
+        )
+
     def _dashboard_profile(self, raw):
         values = dict(raw or {}) if isinstance(raw, dict) else {}
         descriptions = self.subsystem_registry.describe()
@@ -654,4 +695,18 @@ class SituationViewsService:
         unknown = values.difference(allowed)
         if unknown:
             raise ValueError(f"{name} 包含未知值: {', '.join(sorted(unknown))}")
+        return values
+
+    @staticmethod
+    def _entity_args():
+        values = list(dict.fromkeys(
+            str(value or "").strip() for value in request.args.getlist("entity")
+            if str(value or "").strip()
+        ))
+        if not values:
+            raise ValueError("至少需要一个 entity 参数")
+        if len(values) > 8:
+            raise ValueError("一次最多选择 8 个实体")
+        if any(len(value) > 300 for value in values):
+            raise ValueError("entity 参数过长")
         return values

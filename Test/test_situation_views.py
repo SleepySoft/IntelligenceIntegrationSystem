@@ -462,6 +462,58 @@ def test_entity_graph_edge_intelligences_match_exact_direction_and_predicate():
     assert result["meta"]["selection"]["target_name"] == "目标"
 
 
+def test_entity_timeline_targets_multiple_entities_without_graph_size_clipping():
+    now = datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
+    first = _attack("e1", "a", "美国", "目标一")
+    first["time"] = {"event_time": {
+        "normalized": "2026-10-20", "precision": "day",
+        "approximate": False, "surface": "10月20日",
+    }}
+    second = _attack("e2", "b", "白宫", "美国")
+    second["roles"]["target"][0].update({
+        "type": "organization", "country_code": "RU",
+    })
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
+        FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
+    )
+    query = ViewQuery(now - timedelta(days=7), now + timedelta(days=1))
+    entity_ids = ["organization|RU|美国", "organization|RU|白宫"]
+
+    result = engine.entity_timeline(query, entity_ids=entity_ids)
+    suggestions = engine.entity_timeline_entities(query, search="白宫")
+
+    assert [item["id"] for item in result["entities"]] == entity_ids
+    assert result["meta"]["timeline_event_count"] == 2
+    assert result["meta"]["cooccurrence_event_count"] == 1
+    assert result["events"][0]["time"] == {
+        "timestamp": datetime(2026, 10, 20, tzinfo=timezone.utc).timestamp(),
+        "normalized": "2026-10-20", "precision": "day",
+        "approximate": False, "surface": "10月20日",
+        "slot": "event_time", "source": "event_time",
+    }
+    assert result["events"][1]["time"]["source"] == "content_time"
+    assert result["events"][1]["relations"][0]["internal"] is True
+    assert suggestions["entities"][0]["name"] == "白宫"
+
+
+def test_entity_timeline_rejects_missing_or_excessive_selection():
+    now = datetime.now(timezone.utc)
+    engine = SituationViewEngine(FakeCollection([]), FakeCollection([]), DEFAULT_EVENT_REGISTRY)
+    query = ViewQuery(now - timedelta(days=1), now)
+
+    try:
+        engine.entity_timeline(query, entity_ids=[])
+        assert False, "missing selection should fail"
+    except ValueError as exc:
+        assert "至少需要" in str(exc)
+    try:
+        engine.entity_timeline(query, entity_ids=[f"ent_{value}" for value in range(9)])
+        assert False, "too many selected entities should fail"
+    except ValueError as exc:
+        assert "最多选择 8" in str(exc)
+
+
 def test_web_service_serves_both_views_with_injected_collections():
     from flask import Flask
     from types import SimpleNamespace
@@ -516,11 +568,18 @@ def test_web_service_serves_both_views_with_injected_collections():
         "end": "bad",
         "min_score": "9",
     })
+    embedded_timeline = client.get("/situation/embed/timeline", query_string={
+        "entity": "organization|RU|行动方",
+    })
     scoped_map = client.get("/situation/api/scoped/map", query_string={
         "subsystem": "missing", "start": "bad", "min_score": "9",
     })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
+    timeline_payload = client.get(
+        "/situation/api/entity-timeline",
+        query_string=[*params.items(), ("entity", "organization|RU|行动方")],
+    )
     graph_intelligences = client.get(
         "/situation/api/entity-graph/intelligences",
         query_string={
@@ -545,6 +604,12 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert map_page.status_code == 404
     assert entity_page.status_code == 404
     assert embedded_map.status_code == 200
+    assert embedded_timeline.status_code == 200
+    timeline_html = embedded_timeline.get_data(as_text=True)
+    assert "实体时间线" in timeline_html
+    assert "data-mode=\"union\"" in timeline_html
+    assert "data-orientation=\"horizontal\"" in timeline_html
+    assert "const API_PREFIX=\"../api/scoped\"" in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
@@ -605,6 +670,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert '.graph-notice { position: fixed;' in embedded_html
     assert 'top: 14px; z-index: 30' in embedded_html
     assert 'id="copy-graph-entity-name" title="复制实体名称"' in embedded_html
+    assert 'id="open-entity-timeline"' in embedded_html
+    assert "type: 'iis:open-timeline'" in embedded_html
     assert 'async function copyEntityName(name, button)' in embedded_html
     assert 'id="entity-global-create-panel"' in embedded_html
     assert 'id="entity-contextual-create-panel"' in embedded_html
@@ -634,6 +701,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
     assert graph_payload.get_json()["edges"][0]["event_refs"] == [0]
     assert graph_payload.get_json()["temporal_events"][0][1] == "a"
+    assert timeline_payload.status_code == 200
+    assert timeline_payload.get_json()["events"][0]["id"] == "e1"
     assert graph_intelligences.status_code == 200
     assert graph_intelligences.get_json()["intelligences"][0]["uuid"] == "a"
     assert intelligence_payload.status_code == 200
