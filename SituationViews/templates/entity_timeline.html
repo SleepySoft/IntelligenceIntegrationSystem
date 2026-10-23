@@ -5,29 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实体时间线 · 态势洞察</title>
     <style>
-        :root { color-scheme: light dark; --bg: light-dark(#edf2f8,#0b1220); --panel: light-dark(#fff,#131d2d); --border: light-dark(#d8e1ec,#304057); --text: light-dark(#172033,#e8eef8); --muted: light-dark(#65748a,#9babc2); --accent:#4f7cff; --axis:light-dark(#a9b8cc,#4b607b); }
-        * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
-        button,input,select { font:inherit } button { cursor:pointer }
-        .shell { min-height:100vh; display:grid; grid-template-rows:auto auto minmax(420px,1fr) auto }
-        header,.controls,.range,.detail { background:var(--panel); border-bottom:1px solid var(--border) }
-        header { padding:12px 16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap }
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#edf2f8,#0b1220); --panel: light-dark(#fff,#131d2d);
+            --border: light-dark(#d8e1ec,#304057); --text: light-dark(#172033,#e8eef8);
+            --muted: light-dark(#65748a,#9babc2); --accent:#4f7cff;
+            --axis:light-dark(#7f91aa,#7890ad); --edge:light-dark(#7387a3,#8ca1bc);
+        }
+        * { box-sizing:border-box }
+        body { margin:0; overflow:hidden; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
+        button,input { font:inherit } button { cursor:pointer }
+        .shell { height:100vh; display:grid; grid-template-rows:auto auto minmax(0,1fr) }
+        header,.controls,.detail { background:var(--panel); border-color:var(--border) }
+        header { padding:12px 16px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border) }
         h1 { margin:0; font-size:19px } .scope,.muted { color:var(--muted) }
         .search { margin-left:auto; position:relative; min-width:min(390px,100%); display:flex; gap:7px }
         .search input { min-width:0; flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text) }
-        .search-results { position:absolute; right:0; top:42px; width:100%; max-height:320px; overflow:auto; z-index:20; padding:6px; border:1px solid var(--border); border-radius:10px; background:var(--panel); box-shadow:0 10px 30px #0003 }
-        .search-results[hidden] { display:none } .search-result { width:100%; padding:8px; display:flex; justify-content:space-between; gap:10px; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left }
+        .search-results { position:absolute; right:0; top:42px; width:100%; max-height:320px; overflow:auto; z-index:30; padding:6px; border:1px solid var(--border); border-radius:10px; background:var(--panel); box-shadow:0 10px 30px #0003 }
+        .search-results[hidden] { display:none }
+        .search-result { width:100%; padding:8px; display:flex; justify-content:space-between; gap:10px; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left }
         .search-result:hover { background:color-mix(in srgb,var(--accent) 12%,transparent) }
-        .controls { padding:9px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-        .chips { display:flex; gap:6px; flex:1; flex-wrap:wrap; min-width:220px }.chip { display:flex; align-items:center; gap:5px; padding:5px 8px; border-radius:999px; background:color-mix(in srgb,var(--accent) 13%,var(--panel)); border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border)) }.chip button { border:0; background:none; color:var(--muted) }
-        .segmented { display:flex; padding:2px; border:1px solid var(--border); border-radius:9px }.segmented button { padding:6px 9px; border:0; border-radius:6px; background:transparent; color:var(--muted) }.segmented button.active { background:var(--accent); color:white }
-        .range { padding:8px 16px; display:grid; grid-template-columns:auto minmax(120px,1fr) minmax(120px,1fr) auto; align-items:center; gap:10px }.range input { width:100% }
-        .canvas-wrap { min-height:420px; overflow:auto; padding:22px; position:relative }.empty { min-height:360px; display:grid; place-items:center; color:var(--muted); text-align:center }
-        .timeline.horizontal { min-width:900px }.lane { position:relative }.lane.horizontal { height:150px; margin:0 24px 12px 130px; border-top:2px solid var(--axis) }.lane-title { position:absolute; font-weight:700 }.lane.horizontal .lane-title { right:calc(100% + 18px); top:-12px; width:120px; text-align:right }.marker { position:absolute; width:14px; height:14px; border:2px solid var(--panel); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px #0002; background:var(--accent) }.marker.negated { border-style:dashed; border-color:#fff }.marker:hover,.marker:focus { width:19px; height:19px; z-index:5 }.marker-label { position:absolute; width:150px; transform:translateX(-50%); font-size:12px; color:var(--muted); text-align:center; pointer-events:none }.marker-label strong { display:block; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-        .timeline.vertical { display:flex; min-width:max-content; gap:110px; padding:30px 70px 40px 120px }.lane.vertical { width:210px; height:820px; border-left:2px solid var(--axis) }.lane.vertical .lane-title { bottom:calc(100% + 10px); left:-70px; width:140px; text-align:center }.lane.vertical .marker { left:0 }.lane.vertical .marker-label { left:18px; width:180px; transform:none; text-align:left }
-        .war{background:#d84949}.terror{background:#8d50c9}.security{background:#df7b31}.politics{background:#4f7cff}.hazard{background:#27a98b}.economy{background:#bea329}.industry{background:#6e8d45}.other{background:#7d8898}
-        .detail { border-top:1px solid var(--border); border-bottom:0; padding:12px 16px; min-height:74px; position:sticky; bottom:0; z-index:10 }.detail[hidden]{display:none}.detail-head{display:flex;gap:10px;align-items:center}.detail h2{margin:0;font-size:16px}.detail a{color:var(--accent)}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.tag{padding:3px 7px;border-radius:999px;background:var(--bg);color:var(--muted)}
+        .controls { padding:8px 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border) }
+        .chips { display:flex; gap:6px; flex:1; flex-wrap:wrap; min-width:220px }
+        .chip { display:flex; align-items:center; gap:5px; padding:5px 8px; border-radius:999px; background:color-mix(in srgb,var(--accent) 13%,var(--panel)); border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border)) }
+        .chip button { border:0; background:none; color:var(--muted) }
+        .segmented,.zoom-controls { display:flex; padding:2px; border:1px solid var(--border); border-radius:9px }
+        .segmented button,.zoom-controls button { padding:6px 9px; border:0; border-radius:6px; background:transparent; color:var(--muted) }
+        .segmented button.active { background:var(--accent); color:white }
+        .zoom-controls button:hover { background:color-mix(in srgb,var(--accent) 12%,transparent); color:var(--text) }
+        .canvas-wrap { min-height:0; position:relative; overflow:hidden; background:radial-gradient(circle at 1px 1px,color-mix(in srgb,var(--axis) 18%,transparent) 1px,transparent 1px); background-size:22px 22px }
+        #timeline-svg { width:100%; height:100%; display:block; touch-action:none; cursor:grab }
+        #timeline-svg:active { cursor:grabbing }
+        .empty { position:absolute; inset:0; display:grid; place-items:center; color:var(--muted); text-align:center; padding:30px }
+        .empty[hidden] { display:none }
+        .status { position:absolute; top:12px; left:12px; z-index:5; max-width:min(680px,calc(100% - 24px)); padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb,var(--panel) 91%,transparent); color:var(--muted); pointer-events:none }
+        .legend { position:absolute; right:12px; bottom:12px; z-index:5; padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:color-mix(in srgb,var(--panel) 91%,transparent); color:var(--muted); pointer-events:none }
+        .legend b { color:var(--text) }
+        .tooltip { position:fixed; z-index:50; max-width:330px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--panel); box-shadow:0 7px 24px #0004; pointer-events:none }
+        .tooltip[hidden],.detail[hidden] { display:none }
+        .axis-line { stroke:var(--axis); stroke-width:7; stroke-linecap:round }
+        .axis-time-arrow { fill:var(--axis) }
+        .axis-title { fill:var(--text); font-size:16px; font-weight:750 }
+        .axis-caption,.time-label { fill:var(--muted); font-size:11px }
+        .event-anchor { stroke:var(--panel); stroke-width:2; cursor:pointer }
+        .event-anchor.negated { stroke-dasharray:2 2; stroke-width:3 }
+        .event-anchor.internal { stroke:#ffb43f; stroke-width:3 }
+        .event-tick { stroke:var(--axis); stroke-width:1.2 }
+        .relation-edge,.internal-edge { fill:none; stroke:var(--edge); stroke-width:1.8; opacity:.72; cursor:pointer }
+        .relation-edge:hover,.internal-edge:hover { stroke:var(--accent); stroke-width:3; opacity:1 }
+        .relation-edge.negated { stroke-dasharray:6 4 }
+        .entity-node { cursor:pointer }
+        .entity-node circle { stroke:var(--panel); stroke-width:3; filter:drop-shadow(0 2px 3px #0003) }
+        .entity-node:hover circle { stroke:var(--accent); stroke-width:4 }
+        .node-name { fill:var(--text); font-size:12px; font-weight:700; text-anchor:middle; paint-order:stroke; stroke:var(--panel); stroke-width:4px; stroke-linejoin:round }
+        .node-meta { fill:var(--muted); font-size:10px; text-anchor:middle; paint-order:stroke; stroke:var(--panel); stroke-width:3px }
         .warning { color:#d88a29 }.corroboration { color:#29a57e; font-weight:700 }
-        @media(max-width:760px){.search{margin-left:0;width:100%}.range{grid-template-columns:1fr 1fr}.range span:first-child,.range span:last-child{grid-column:span 1}.canvas-wrap{padding:14px}.timeline.horizontal{min-width:760px}}
+        .detail { position:absolute; left:12px; right:12px; bottom:12px; z-index:20; max-height:36%; overflow:auto; padding:12px 14px; border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 34px #0005 }
+        .detail-head { display:flex; gap:10px; align-items:center }.detail h2 { margin:0; font-size:16px; flex:1 }.detail a { color:var(--accent) }
+        .tags { display:flex; gap:6px; flex-wrap:wrap; margin-top:7px }.tag { padding:3px 7px; border-radius:999px; background:var(--bg); color:var(--muted) }
+        @media(max-width:760px){.search{margin-left:0;width:100%}.scope{display:none}.legend{display:none}.zoom-controls .wide{display:none}}
     </style>
 </head>
 <body>
@@ -49,37 +85,135 @@
         <div class="segmented" aria-label="时间方向">
             <button type="button" data-orientation="horizontal">横向</button><button type="button" data-orientation="vertical">纵向</button>
         </div>
+        <div class="zoom-controls" aria-label="画布缩放">
+            <button id="zoom-out" type="button" title="缩小">−</button><button id="zoom-in" type="button" title="放大">＋</button>
+            <button id="zoom-fit" class="wide" type="button">适配全图</button><button id="zoom-reset" class="wide" type="button">复位</button>
+        </div>
     </section>
-    <section class="range" id="range-panel" hidden>
-        <span id="range-start-label"></span><input id="range-start" type="range"><input id="range-end" type="range"><span id="range-end-label"></span>
-    </section>
-    <main class="canvas-wrap" id="canvas"><div class="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div></main>
+    <main class="canvas-wrap" id="canvas">
+        <svg id="timeline-svg" role="img" aria-label="实体关系时间线">
+            <defs>
+                <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path></marker>
+            </defs>
+            <g id="timeline-root"></g>
+        </svg>
+        <div class="status" id="status">搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。</div>
+        <div class="legend"><b>粗线</b> 所选实体 · <b>圆点</b> 关联实体 · 箭头保持事件中的施事→受事方向</div>
+        <div class="empty" id="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div>
+        <aside class="detail" id="detail" hidden></aside>
+    </main>
 </div>
-<aside class="detail" id="detail" hidden></aside>
+<div class="tooltip" id="tooltip" hidden></div>
+<script src="../assets/d3.min.js"></script>
 <script>
 const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, SUBSYSTEMS={{ subsystems|tojson }}, CATEGORIES={{ categories|tojson }};
-const $=id=>document.getElementById(id); let data=null, selected=[], mode='union', orientation='horizontal', rangeStart=0, rangeEnd=0, searchTimer=0;
+const $=id=>document.getElementById(id); let data=null, selected=[], mode='union', orientation='horizontal', searchTimer=0, fitted=false, currentLayout=null;
 const initial=new URL(location.href); mode=initial.searchParams.get('mode')==='lanes'?'lanes':'union'; orientation=initial.searchParams.get('orientation')==='vertical'?'vertical':'horizontal'; selected=[...new Set(initial.searchParams.getAll('entity').filter(Boolean))].slice(0,8);
+const svg=d3.select('#timeline-svg'), root=d3.select('#timeline-root');
+const zoom=d3.zoom().scaleExtent([.18,5]).on('zoom',event=>root.attr('transform',event.transform)); svg.call(zoom).on('dblclick.zoom',null);
+const TYPE_COLORS={person:'#f06f78',organization:'#4f7cff',country:'#2baa82',location:'#25a5b7',animal:'#ad7c55',commodity:'#d19827',other:'#8290a3',uncertain:'#9b75cf'};
+const CATEGORY_COLORS={war:'#d84949',terror:'#8d50c9',security:'#df7b31',politics:'#4f7cff',hazard:'#27a98b',economy:'#bea329',industry:'#6e8d45',other:'#7d8898'};
 function escapeHtml(value){const el=document.createElement('span');el.textContent=String(value??'');return el.innerHTML}
 function detailUrl(uuid){const subsystem=SUBSYSTEMS.find(item=>item.name===PROFILE.subsystem);const prefix=String(subsystem?.url_prefix||'').replace(/\/$/,'');return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`}
-function dateLabel(seconds){return new Date(seconds*1000).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
-function syncUrl(push=false){const url=new URL(location.href);url.searchParams.delete('entity');selected.forEach(id=>url.searchParams.append('entity',id));url.searchParams.set('mode',mode);url.searchParams.set('orientation',orientation);if(data){url.searchParams.set('from',new Date(rangeStart*1000).toISOString());url.searchParams.set('to',new Date(rangeEnd*1000).toISOString())}history[push?'pushState':'replaceState'](null,'',url);window.parent?.postMessage({type:'iis:timeline-state',state:{entities:selected,mode,orientation,from:url.searchParams.get('from'),to:url.searchParams.get('to')}},location.origin)}
+function dateLabel(seconds,compact=false){return new Date(seconds*1000).toLocaleString('zh-CN',compact?{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}:{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function syncUrl(push=false){const url=new URL(location.href);url.searchParams.delete('entity');url.searchParams.delete('from');url.searchParams.delete('to');selected.forEach(id=>url.searchParams.append('entity',id));url.searchParams.set('mode',mode);url.searchParams.set('orientation',orientation);history[push?'pushState':'replaceState'](null,'',url);window.parent?.postMessage({type:'iis:timeline-state',state:{entities:selected,mode,orientation}},location.origin)}
 function updateButtons(){document.querySelectorAll('[data-mode]').forEach(el=>el.classList.toggle('active',el.dataset.mode===mode));document.querySelectorAll('[data-orientation]').forEach(el=>el.classList.toggle('active',el.dataset.orientation===orientation))}
 function renderChips(){const box=$('chips');box.innerHTML='';if(!selected.length){box.innerHTML='<span class="muted">尚未指定实体</span>';return}selected.forEach(id=>{const entity=data?.entities?.find(item=>item.id===id);const chip=document.createElement('span');chip.className='chip';chip.title=id;chip.append(document.createTextNode(entity?.name||id));const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除';remove.onclick=()=>{selected=selected.filter(value=>value!==id);syncUrl(true);loadTimeline()};chip.append(remove);box.append(chip)})}
 async function json(url){const response=await fetch(url,{credentials:'same-origin'});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);return payload}
-async function searchEntities(){const q=$('entity-search').value.trim(), box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent='搜索中…';try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent='当前范围内没有匹配实体';return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=`${entity.event_count} 事件`;button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=`搜索失败：${error.message}`}}
+async function searchEntities(){const q=$('entity-search').value.trim(),box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent='搜索中…';try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent='当前范围内没有匹配实体';return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=`${entity.event_count} 事件`;button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=`搜索失败：${error.message}`}}
 function addEntity(id){if(selected.includes(id)){$('search-results').hidden=true;return}if(selected.length>=8){alert('一次最多选择 8 个实体');return}selected.push(id);$('entity-search').value='';$('search-results').hidden=true;syncUrl(true);loadTimeline()}
-async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;$('range-panel').hidden=true;$('canvas').innerHTML='<div class="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div>';return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('canvas').innerHTML='<div class="empty">正在加载定向时间线…</div>';try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();setupRange();render()}catch(error){$('canvas').innerHTML=`<div class="empty warning">时间线加载失败：${escapeHtml(error.message)}</div>`}}
-function setupRange(){const timestamps=data.events.map(item=>item.time.timestamp).filter(Number.isFinite);if(!timestamps.length){$('range-panel').hidden=true;return}const min=Math.min(...timestamps),max=Math.max(...timestamps),span=Math.max(1,max-min);rangeStart=Math.max(min,Date.parse(initial.searchParams.get('from')||'')/1000||min);rangeEnd=Math.min(max,Date.parse(initial.searchParams.get('to')||'')/1000||max);if(rangeStart>rangeEnd){rangeStart=min;rangeEnd=max}for(const [id,value] of [['range-start',rangeStart],['range-end',rangeEnd]]){const input=$(id);input.min=min;input.max=max;input.step=Math.max(60,Math.floor(span/1000));input.value=value}updateRangeLabels();$('range-panel').hidden=false}
-function updateRangeLabels(){$('range-start-label').textContent=dateLabel(rangeStart);$('range-end-label').textContent=dateLabel(rangeEnd)}
-function visibleEvents(){return (data?.events||[]).filter(item=>item.time.timestamp>=rangeStart&&item.time.timestamp<=rangeEnd)}
+async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;root.selectAll('*').remove();$('empty').hidden=false;$('status').textContent='搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。';return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('empty').hidden=false;$('empty').textContent='正在加载定向时间线…';try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();render()}catch(error){root.selectAll('*').remove();$('empty').hidden=false;$('empty').innerHTML=`<span class="warning">时间线加载失败：${escapeHtml(error.message)}</span>`}}
 function showDetail(item){const fallback=item.time.source==='content_time'?'<span class="warning">事件时间缺失，按报道时间定位</span>':'<span>事件抽取时间</span>';const relationNames=[...new Set(item.relations.map(value=>value.counterpart_name).filter(Boolean))];$('detail').innerHTML=`<div class="detail-head"><h2>${escapeHtml(item.predicate.label)} · ${escapeHtml(item.title)}</h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" target="_blank" rel="noopener">查看情报</a><button type="button" id="detail-close">关闭</button></div><div class="tags"><span class="tag">${escapeHtml(dateLabel(item.time.timestamp))}</span><span class="tag">评分 ${item.score}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||'其他')}</span>${fallback}${item.selected_entity_ids.length>1?'<span class="tag corroboration">多个所选实体共同出现</span>':''}${relationNames.map(name=>`<span class="tag">关联 ${escapeHtml(name)}</span>`).join('')}</div>`;$('detail').hidden=false;$('detail-close').onclick=()=>{$('detail').hidden=true}}
-function marker(item,position,offset){const marker=document.createElement('button');marker.type='button';marker.className=`marker ${item.category}${item.negated?' negated':''}`;marker.title=`${item.predicate.label} · ${item.title}`;if(orientation==='horizontal'){marker.style.left=`${position}%`;marker.style.top=`${offset}px`}else{marker.style.top=`${position}%`;marker.style.left=`${offset}px`}marker.onclick=()=>showDetail(item);const label=document.createElement('span');label.className='marker-label';label.innerHTML=`<strong>${escapeHtml(item.predicate.label)}</strong>${escapeHtml(dateLabel(item.time.timestamp))}`;if(orientation==='horizontal'){label.style.left=`${position}%`;label.style.top=`${offset+12}px`}else{label.style.top=`calc(${position}% - 8px)`;label.style.left=`${offset+18}px`}return [marker,label]}
-function render(){updateButtons();if(!data)return;const events=visibleEvents(),canvas=$('canvas');canvas.innerHTML='';if(!events.length){canvas.innerHTML='<div class="empty">当前时间范围内没有事件。</div>';return}const timeline=document.createElement('div');timeline.className=`timeline ${orientation}`;const laneDefs=mode==='union'?[{id:'__union__',name:selected.length>1?'所选实体组':data.entities[0]?.name||'所选实体'}]:data.entities;const min=rangeStart,max=rangeEnd,span=Math.max(1,max-min);laneDefs.forEach(laneDef=>{const lane=document.createElement('section');lane.className=`lane ${orientation}`;const title=document.createElement('div');title.className='lane-title';title.textContent=laneDef.name;lane.append(title);const laneEvents=mode==='union'?events:events.filter(item=>item.selected_entity_ids.includes(laneDef.id));laneEvents.forEach((item,index)=>{const position=Math.max(0,Math.min(100,(item.time.timestamp-min)*100/span));const offset=orientation==='horizontal'?((index%3)-1)*28:((index%2)*16);marker(item,position,offset).forEach(node=>lane.append(node))});timeline.append(lane)});canvas.append(timeline);const note=document.createElement('div');note.className='muted';note.textContent=`显示 ${events.length}/${data.events.length} 个事件；${data.meta.cooccurrence_event_count} 个事件含多个所选实体，${data.meta.corroboration_count} 组跨文章支撑。`;canvas.prepend(note)}
+function showTooltip(event,html){$('tooltip').innerHTML=html;$('tooltip').hidden=false;moveTooltip(event)}
+function moveTooltip(event){const tip=$('tooltip'),pad=12;let left=event.clientX+pad,top=event.clientY+pad;if(left+tip.offsetWidth>innerWidth-pad)left=event.clientX-tip.offsetWidth-pad;if(top+tip.offsetHeight>innerHeight-pad)top=event.clientY-tip.offsetHeight-pad;tip.style.left=`${left}px`;tip.style.top=`${top}px`}
+function hideTooltip(){$('tooltip').hidden=true}
+function primaryPositions(events){const gap=150,start=150,positions=new Map();if(!events.length)return positions;positions.set(events[0].id,start);const deltas=events.slice(1).map((item,index)=>Math.max(0,item.time.timestamp-events[index].time.timestamp)).filter(Boolean).sort((a,b)=>a-b),median=deltas.length?deltas[Math.floor(deltas.length/2)]:1;let previous=start;events.slice(1).forEach((item,index)=>{const delta=Math.max(0,item.time.timestamp-events[index].time.timestamp),ratio=delta/Math.max(1,median),multiplier=Math.min(2.5,Math.max(1,1+Math.log2(Math.max(1,ratio))/3));previous+=gap*multiplier;positions.set(item.id,previous)});return positions}
+function point(primary,cross){return orientation==='horizontal'?{x:primary,y:cross}:{x:cross,y:primary}}
+function elbowPath(source,target,anchor){if(orientation==='horizontal'){const bend={x:anchor.x,y:source===anchor?target.y:source.y};return `M${source.x},${source.y} L${bend.x},${bend.y} L${target.x},${target.y}`}const bend={x:source===anchor?target.x:source.x,y:anchor.y};return `M${source.x},${source.y} L${bend.x},${bend.y} L${target.x},${target.y}`}
+function truncate(value,length=18){const text=String(value||'');return text.length>length?`${text.slice(0,length-1)}…`:text}
+function buildLayout(){
+    const events=[...(data?.events||[])].sort((a,b)=>a.time.timestamp-b.time.timestamp||String(a.id).localeCompare(String(b.id))),positions=primaryPositions(events);
+    const laneDefs=mode==='union'?[{id:'__union__',name:selected.length>1?'所选实体组':data.entities[0]?.name||'所选实体'}]:data.entities;
+    const laneGap=orientation==='horizontal'?460:500,outer=240;
+    const lanes=laneDefs.map((lane,index)=>({...lane,cross:outer+index*laneGap}));
+    const anchors=[],nodes=[],edges=[],internalEdges=[],selectedSet=new Set(selected),eventById=new Map(events.map(item=>[item.id,item]));
+    for(const lane of lanes){
+        const laneEvents=mode==='union'?events:events.filter(item=>item.selected_entity_ids.includes(lane.id));
+        const laneAnchors=new Map();
+        laneEvents.forEach(item=>{const anchor={...point(positions.get(item.id),lane.cross),item,lane,internal:false};anchors.push(anchor);laneAnchors.set(item.id,anchor)});
+        const nodeMap=new Map();
+        laneEvents.forEach(item=>{
+            const anchor=laneAnchors.get(item.id);
+            item.relations.filter(rel=>mode==='union'||rel.focus_entity_id===lane.id).forEach(rel=>{
+                if(rel.internal){
+                    anchor.internal=true;
+                    if(mode==='lanes'&&selectedSet.has(rel.counterpart_id)){
+                        const targetLane=lanes.find(value=>value.id===rel.counterpart_id);
+                        const unique=rel.role==='subject'||(rel.role==='participant'&&lane.id<rel.counterpart_id);
+                        if(targetLane&&unique){const sourcePoint=point(positions.get(item.id),lane.cross),targetPoint=point(positions.get(item.id),targetLane.cross);internalEdges.push({source:sourcePoint,target:targetPoint,item,directed:rel.directed})}
+                    }
+                    return;
+                }
+                const key=rel.counterpart_id||`${rel.counterpart_name}|${rel.counterpart_type}`;
+                let node=nodeMap.get(key);
+                if(!node){node={key,name:rel.counterpart_name||'未命名实体',type:rel.counterpart_type||'other',relations:[],lane};nodeMap.set(key,node)}
+                node.relations.push({rel,item,anchor});
+            });
+        });
+        const sideGroups={above:[],below:[]};
+        for(const node of nodeMap.values()){
+            const subjectCount=node.relations.filter(value=>value.rel.role==='subject').length,objectCount=node.relations.filter(value=>value.rel.role==='object').length;
+            node.side=objectCount>subjectCount?'above':subjectCount>objectCount?'below':(sideGroups.above.length<=sideGroups.below.length?'above':'below');
+            node.desired=d3.median(node.relations,value=>positions.get(value.item.id));sideGroups[node.side].push(node);
+        }
+        for(const [side,group] of Object.entries(sideGroups)){
+            group.sort((a,b)=>a.desired-b.desired);const last=[-Infinity,-Infinity,-Infinity];
+            group.forEach(node=>{let level=last.findIndex(value=>node.desired-value>=130);if(level<0)level=last.indexOf(Math.min(...last));node.primary=Math.max(120,node.desired);last[level]=node.primary;node.level=level;const sign=side==='above'?-1:1;Object.assign(node,point(node.primary,lane.cross+sign*(125+level*92)));nodes.push(node);node.relations.forEach(({rel,item,anchor})=>{const nodePoint={x:node.x,y:node.y};const source=rel.role==='object'?nodePoint:anchor,target=rel.role==='object'?anchor:nodePoint;edges.push({source,target,anchor,node,item,rel,path:elbowPath(source,target,anchor)})})});
+        }
+    }
+    const lastPrimary=Math.max(900,...events.map(item=>positions.get(item.id)||0))+170;
+    const crossEnd=lanes.at(-1).cross+outer;
+    const width=orientation==='horizontal'?lastPrimary:crossEnd,height=orientation==='horizontal'?crossEnd:lastPrimary;
+    return {events,positions,lanes,anchors,nodes,edges,internalEdges,eventById,width,height,primaryEnd:lastPrimary-60};
+}
+function bindTip(selection,html){selection.on('mouseenter',(event,value)=>showTooltip(event,html(value))).on('mousemove',moveTooltip).on('mouseleave',hideTooltip)}
+function render(){
+    updateButtons();root.selectAll('*').remove();if(!data)return;const layout=buildLayout();currentLayout=layout;
+    if(!layout.events.length){$('empty').hidden=false;$('empty').textContent='当前配置范围内没有事件。';return}$('empty').hidden=true;
+    const axisGroup=root.append('g').attr('class','axes');
+    layout.lanes.forEach(lane=>{
+        const start=point(110,lane.cross),end=point(Math.max(820,layout.primaryEnd),lane.cross);
+        axisGroup.append('line').attr('class','axis-line').attr('x1',start.x).attr('y1',start.y).attr('x2',end.x).attr('y2',end.y);
+        const arrow=orientation==='horizontal'?`${end.x+14},${end.y} ${end.x-2},${end.y-9} ${end.x-2},${end.y+9}`:`${end.x},${end.y+14} ${end.x-9},${end.y-2} ${end.x+9},${end.y-2}`;
+        axisGroup.append('polygon').attr('class','axis-time-arrow').attr('points',arrow);
+        const titlePos=orientation==='horizontal'?{x:start.x,y:start.y-18}:{x:start.x-18,y:start.y};
+        axisGroup.append('text').attr('class','axis-title').attr('x',titlePos.x).attr('y',titlePos.y).attr('text-anchor',orientation==='horizontal'?'start':'end').text(lane.name);
+        axisGroup.append('text').attr('class','axis-caption').attr('x',end.x).attr('y',end.y+(orientation==='horizontal'?25:0)).attr('dx',orientation==='vertical'?18:0).attr('text-anchor',orientation==='horizontal'?'end':'start').text('时间 →');
+    });
+    root.append('g').selectAll('path').data(layout.internalEdges).join('path').attr('class','internal-edge').attr('d',value=>elbowPath(value.source,value.target,value.source)).attr('marker-end',value=>value.directed?'url(#relation-arrow)':null).on('click',(event,value)=>{event.stopPropagation();showDetail(value.item)});
+    const edgeSelection=root.append('g').selectAll('path').data(layout.edges).join('path').attr('class',value=>`relation-edge${value.item.negated?' negated':''}`).attr('d',value=>value.path).attr('marker-end',value=>value.rel.directed?'url(#relation-arrow)':null).on('click',(event,value)=>{event.stopPropagation();showDetail(value.item)});
+    bindTip(edgeSelection,value=>{const focus=value.anchor.lane.name,relation=value.rel.directed?(value.rel.role==='object'?`${value.node.name} → ${focus}`:`${focus} → ${value.node.name}`):`${focus} ↔ ${value.node.name}`;return `<b>${escapeHtml(value.item.predicate.label)}</b><br>${escapeHtml(relation)}<br><span class="muted">${escapeHtml(dateLabel(value.item.time.timestamp))}</span>`});
+    const tickGroup=root.append('g');
+    tickGroup.selectAll('line').data(layout.anchors).join('line').attr('class','event-tick').attr('x1',value=>value.x-(orientation==='vertical'?9:0)).attr('x2',value=>value.x+(orientation==='vertical'?9:0)).attr('y1',value=>value.y-(orientation==='horizontal'?9:0)).attr('y2',value=>value.y+(orientation==='horizontal'?9:0));
+    const anchorSelection=tickGroup.selectAll('circle').data(layout.anchors).join('circle').attr('class',value=>`event-anchor${value.item.negated?' negated':''}${value.internal?' internal':''}`).attr('cx',value=>value.x).attr('cy',value=>value.y).attr('r',7).attr('fill',value=>CATEGORY_COLORS[value.item.category]||CATEGORY_COLORS.other).on('click',(event,value)=>{event.stopPropagation();showDetail(value.item)});
+    bindTip(anchorSelection,value=>`<b>${escapeHtml(value.item.predicate.label)}</b> · ${escapeHtml(value.item.title)}<br><span class="muted">${escapeHtml(dateLabel(value.item.time.timestamp))}${value.internal?' · 所选实体间关系':''}</span>`);
+    const labelEvery=Math.max(1,Math.ceil(layout.anchors.length/24));
+    tickGroup.selectAll('text').data(layout.anchors.filter((_,index)=>index%labelEvery===0)).join('text').attr('class','time-label').attr('x',value=>value.x+(orientation==='vertical'?13:0)).attr('y',value=>value.y+(orientation==='horizontal'?22:4)).attr('text-anchor',orientation==='horizontal'?'middle':'start').text(value=>dateLabel(value.item.time.timestamp,true));
+    const nodeSelection=root.append('g').selectAll('g').data(layout.nodes).join('g').attr('class','entity-node').attr('transform',value=>`translate(${value.x},${value.y})`).on('click',(event,value)=>{event.stopPropagation();showDetail(value.relations[0].item)});
+    nodeSelection.append('circle').attr('r',28).attr('fill',value=>TYPE_COLORS[value.type]||TYPE_COLORS.other);
+    nodeSelection.append('text').attr('class','node-name').attr('y',42).text(value=>truncate(value.name));
+    nodeSelection.append('text').attr('class','node-meta').attr('y',56).text(value=>`${value.relations.length} 条关系`);
+    bindTip(nodeSelection,value=>`<b>${escapeHtml(value.name)}</b><br><span class="muted">${escapeHtml(value.type)} · ${value.relations.length} 条关系；点击查看其中一条情报</span>`);
+    $('status').textContent=`${layout.events.length} 个事件 · ${layout.nodes.length} 个关联实体 · ${data.meta.cooccurrence_event_count} 个事件含多个所选实体。滚轮缩放，拖动画布平移。`;
+    fitted=false;requestAnimationFrame(focusGraph);
+}
+function focusGraph(){const box=$('canvas').getBoundingClientRect(),lane=currentLayout?.lanes?.[0];if(!lane||!box.width||!box.height)return;const scale=.72,tx=orientation==='horizontal'?35-scale*80:box.width/2-scale*lane.cross,ty=orientation==='horizontal'?box.height/2-scale*lane.cross:35-scale*80;svg.call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));fitted=false}
+function fitGraph(){const node=root.node(),box=$('canvas').getBoundingClientRect();if(!node||!box.width||!box.height)return;const bounds=node.getBBox();if(!bounds.width||!bounds.height)return;const scale=Math.max(.18,Math.min(1.15,(box.width-70)/bounds.width,(box.height-70)/bounds.height));const tx=(box.width-scale*(bounds.x+bounds.width/2))/2,ty=(box.height-scale*(bounds.y+bounds.height/2))/2;svg.transition().duration(250).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));fitted=true}
+function resetGraph(){svg.transition().duration(200).call(zoom.transform,d3.zoomIdentity.translate(35,35))}
 document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{mode=el.dataset.mode;syncUrl();render()});document.querySelectorAll('[data-orientation]').forEach(el=>el.onclick=()=>{orientation=el.dataset.orientation;syncUrl();render()});
+$('zoom-in').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1.3);$('zoom-out').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1/1.3);$('zoom-fit').onclick=fitGraph;$('zoom-reset').onclick=resetGraph;
 $('search-button').onclick=searchEntities;$('entity-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(searchEntities,250)};$('entity-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();searchEntities()}};
-$('range-start').oninput=event=>{rangeStart=Math.min(Number(event.target.value),rangeEnd);event.target.value=rangeStart;updateRangeLabels();syncUrl();render()};$('range-end').oninput=event=>{rangeEnd=Math.max(Number(event.target.value),rangeStart);event.target.value=rangeEnd;updateRangeLabels();syncUrl();render()};
-document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());updateButtons();renderChips();loadTimeline();
+document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});updateButtons();renderChips();loadTimeline();
 </script>
 </body>
 </html>

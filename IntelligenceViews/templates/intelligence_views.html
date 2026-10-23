@@ -64,7 +64,7 @@ const FRAME_URLS = {{ frame_urls|tojson }};
 const SITUATION = {{ profile.situation|tojson }};
 let activeView = {{ profile.active_view|tojson }};
 const LIST_QUERY_NAMES = ['page', 'per_page', 'threshold', 'sort_by', 'search_mode', 'reference', 'score_threshold'];
-const TIMELINE_QUERY_NAMES = ['mode', 'orientation', 'from', 'to'];
+const TIMELINE_QUERY_NAMES = ['mode', 'orientation'];
 
 function listFrameUrlFromOuter() {
     const frameUrl = new URL(FRAME_URLS.list, window.location.origin);

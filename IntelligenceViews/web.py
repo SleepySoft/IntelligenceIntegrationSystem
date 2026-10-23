@@ -13,7 +13,7 @@ LIST_QUERY_NAMES = (
     "page", "per_page", "threshold", "sort_by", "search_mode", "reference",
     "score_threshold",
 )
-TIMELINE_QUERY_NAMES = ("mode", "orientation", "from", "to")
+TIMELINE_QUERY_NAMES = ("mode", "orientation")
 
 
 class IntelligenceViewsService:

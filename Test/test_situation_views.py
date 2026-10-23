@@ -651,6 +651,13 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "data-mode=\"union\"" in timeline_html
     assert "data-orientation=\"horizontal\"" in timeline_html
     assert "const API_PREFIX=\"../api/scoped\"" in timeline_html
+    assert 'id="timeline-svg"' in timeline_html
+    assert 'src="../assets/d3.min.js"' in timeline_html
+    assert 'id="zoom-fit"' in timeline_html
+    assert 'id="zoom-reset"' in timeline_html
+    assert 'id="range-start"' not in timeline_html
+    assert 'id="range-end"' not in timeline_html
+    assert "d3.zoom()" in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
