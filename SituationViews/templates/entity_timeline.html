@@ -210,8 +210,8 @@ function render(){
     tickGroup.selectAll('text').data(layout.anchors.filter((_,index)=>index%labelEvery===0)).join('text').attr('class','time-label').attr('x',value=>value.x+(orientation==='vertical'?13:0)).attr('y',value=>value.y+(orientation==='horizontal'?22:4)).attr('text-anchor',orientation==='horizontal'?'middle':'start').text(value=>timelineTimeLabel(value.item,true));
     const nodeSelection=root.append('g').selectAll('g').data(layout.nodes).join('g').attr('class','entity-node').attr('transform',value=>`translate(${value.x},${value.y})`).on('click',(event,value)=>{event.stopPropagation();showDetail(value.relations[0].item)});
     nodeSelection.append('circle').attr('r',28).attr('fill',value=>TYPE_COLORS[value.type]||TYPE_COLORS.other);
-    nodeSelection.append('text').attr('class','node-name').attr('y',42).text(value=>truncate(value.name));
-    nodeSelection.append('text').attr('class','node-meta').attr('y',56).text(value=>`${value.relations.length} 条关系`);
+    nodeSelection.append('text').attr('class','node-name').attr('y',value=>value.side==='above'?-40:42).text(value=>truncate(value.name));
+    nodeSelection.append('text').attr('class','node-meta').attr('y',value=>value.side==='above'?-54:56).text(value=>`${value.relations.length} 条关系`);
     bindTip(nodeSelection,value=>`<b>${escapeHtml(value.name)}</b><br><span class="muted">${escapeHtml(value.type)} · ${value.relations.length} 条关系；点击查看其中一条情报</span>`);
     $('status').textContent=`${layout.events.length} 个事件 · ${layout.nodes.length} 个关联实体 · ${data.meta.cooccurrence_event_count} 个事件含多个所选实体。滚轮缩放，拖动画布平移。`;
     fitted=false;requestAnimationFrame(focusGraph);
