@@ -51,6 +51,29 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25, "scroll_pages": 0,
     },
     "extractor_kwargs": {},
+    "url_filter": {
+        "allowed_hosts": ["agenciabrasil.ebc.com.br"],
+        "path_includes": [
+            "/en/politica/noticia/", "/en/economia/noticia/",
+            "/en/internacional/noticia/", "/en/justica/noticia/",
+            "/en/meio-ambiente/noticia/",
+        ],
+        "query_policy": "allow",
+    },
+    "url_filter_samples": [
+        {
+            "url": "https://agenciabrasil.ebc.com.br/en/politica/noticia/2026-10/example",
+            "allowed": True,
+        },
+        {
+            "url": "https://agenciabrasil.ebc.com.br/en/esportes/noticia/2026-10/example",
+            "allowed": False,
+        },
+        {
+            "url": "https://outside.test/en/politica/noticia/2026-10/example",
+            "allowed": False,
+        },
+    ],
     "article_filter": _is_relevant_article,
     "content_handler": None,
     "exception_handler": None,

@@ -31,6 +31,16 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25, "scroll_pages": 0,
     },
     "extractor_kwargs": {},
+    "url_filter": {
+        "allowed_hosts": ["en.mercopress.com"],
+        "path_excludes": ["/sports", "/tourism", "/entertainment"],
+        "query_policy": "allow",
+    },
+    "url_filter_samples": [
+        {"url": "https://en.mercopress.com/2026/10/20/example", "allowed": True},
+        {"url": "https://en.mercopress.com/tourism/2026/10/20/example", "allowed": False},
+        {"url": "https://outside.test/2026/10/20/example", "allowed": False},
+    ],
     "article_filter": _is_relevant_article,
     "content_handler": None,
     "exception_handler": None,

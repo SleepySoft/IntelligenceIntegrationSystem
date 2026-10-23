@@ -46,6 +46,26 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25, "scroll_pages": 0,
     },
     "extractor_kwargs": {},
+    "url_filter": {
+        "allowed_hosts": ["www.thejakartapost.com"],
+        "path_includes": ["/indonesia/", "/business/"],
+        "path_excludes": ["/opinion/", "/culture/", "/sports/"],
+        "query_policy": "reject",
+    },
+    "url_filter_samples": [
+        {
+            "url": "https://www.thejakartapost.com/indonesia/2026/10/20/example",
+            "allowed": True,
+        },
+        {
+            "url": "https://www.thejakartapost.com/world/2026/10/20/example",
+            "allowed": False,
+        },
+        {
+            "url": "https://www.thejakartapost.com/business/2026/10/20/example?ref=home",
+            "allowed": False,
+        },
+    ],
     "article_filter": _is_relevant_article,
     "content_handler": None,
     "exception_handler": None,

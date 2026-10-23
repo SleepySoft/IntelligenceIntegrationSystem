@@ -34,6 +34,17 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25, "scroll_pages": 0,
     },
     "extractor_kwargs": {},
+    "url_filter": {
+        "allowed_hosts": ["www.channelnewsasia.com"],
+        "path_includes": ["/asia/"],
+        "path_excludes": ["/commentary/", "/sport/", "/lifestyle/", "/watch/"],
+        "query_policy": "allow",
+    },
+    "url_filter_samples": [
+        {"url": "https://www.channelnewsasia.com/asia/example-123", "allowed": True},
+        {"url": "https://www.channelnewsasia.com/sport/example-123", "allowed": False},
+        {"url": "https://outside.test/asia/example-123", "allowed": False},
+    ],
     "article_filter": _is_relevant_article,
     "content_handler": None,
     "exception_handler": None,

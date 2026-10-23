@@ -14,6 +14,7 @@ from CrawlTasks.news.crawler_config_mercopress import (
     CRAWLER_CONFIG as MERCOPRESS_CONFIG,
     _is_relevant_article as mercopress_relevant,
 )
+from IntelligenceCrawler.URLFilter import validate_url_filter_samples
 
 
 def test_cna_only_uses_asia_feed_and_rejects_non_news_content():
@@ -53,3 +54,10 @@ def test_agencia_brasil_only_accepts_selected_english_sections():
         "https://agenciabrasil.ebc.com.br/en/esportes/noticia/2026-10/example")
     assert not agencia_relevant(
         "https://agenciabrasil.ebc.com.br/politica/noticia/2026-10/example")
+
+
+def test_regional_configs_declarative_filter_samples_match_custom_filters():
+    for config in (CNA_CONFIG, JAKARTA_CONFIG, MERCOPRESS_CONFIG, AGENCIA_CONFIG):
+        assert config["url_filter"]
+        assert len(config["url_filter_samples"]) >= 3
+        assert validate_url_filter_samples(config) == []
