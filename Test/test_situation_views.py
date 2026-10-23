@@ -665,6 +665,7 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "value.side==='above'?-40:42" in timeline_html
     assert "edgesByAnchor=d3.group" in timeline_html
     assert "getPointAtLength" in timeline_html
+    assert "box.width/2-scale*(bounds.x+bounds.width/2)" in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
