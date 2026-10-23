@@ -5,6 +5,11 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME, APPENDIX_RAW_DATA, APPENDIX_TIME_ARCHIVED,
     APPENDIX_TIME_GOT, APPENDIX_TIME_PUB, APPENDIX_TOTAL_SCORE, appendix_path,
 )
+from ServiceComponent.intelligence_projections import (
+    CARD_RESPONSE_FIELDS,
+    IntelligenceProjectionProfile,
+    archive_mongo_projection,
+)
 
 
 class FakeCursor(list):
@@ -23,6 +28,7 @@ class FakeCursor(list):
 class RecordingCollection:
     def __init__(self, documents=()):
         self.documents, self.queries, self.sorts, self.find_one_sorts = list(documents), [], [], []
+        self.projections = []
 
     def find_one(self, query, projection=None, sort=None):
         self.find_one_sorts.append(sort)
@@ -31,6 +37,7 @@ class RecordingCollection:
 
     def find(self, query, projection=None):
         self.queries.append(query)
+        self.projections.append(projection)
         values = list(self.documents)
         if isinstance(query.get("UUID"), dict) and "$in" in query["UUID"]:
             values = [item for item in values if item.get("UUID") in query["UUID"]["$in"]]
@@ -86,6 +93,34 @@ def test_v4_query_builds_top_level_and_appendix_filters():
     assert any(appendix_path(APPENDIX_TIME_ARCHIVED) in clause for clause in query["$and"])
     fields = {next(iter(item)) for clause in query["$and"] if "$or" in clause for item in clause["$or"]}
     assert {"EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT", appendix_path(APPENDIX_RAW_DATA) + ".content"} <= fields
+    assert intelligence.projections[0] == archive_mongo_projection(
+        IntelligenceProjectionProfile.CARD)
+    assert set(result[0]) <= CARD_RESPONSE_FIELDS
+    assert not {"EVENT_TEXT", "EVENT_EXTRACTION", "RATE", "APPENDIX", "events"} & set(result[0])
+
+
+def test_named_card_and_detail_profiles_use_fixed_mongo_projections():
+    archive = _archive("a") | {
+        "EVENT_BRIEF": "摘要", "EVENT_TEXT": "正文", "RATE": {"影响广度": 5},
+        "EVENT_EXTRACTION": {"schema_version": "event-extraction/1.0"},
+    }
+    intelligence = RecordingCollection([archive])
+    events = RecordingCollection([{
+        "event_uuid": "event-a", "intelligence_uuid": "a",
+    }])
+    engine = EventV4QueryEngine(intelligence, events)
+
+    card = engine.get_intelligence("a", profile="card")
+    detail = engine.get_intelligence("a", profile="detail")
+
+    assert intelligence.projections[0] == archive_mongo_projection("card")
+    assert intelligence.projections[1] == archive_mongo_projection("detail")
+    assert set(card) <= CARD_RESPONSE_FIELDS
+    assert "EVENT_TEXT" not in card and "EVENT_EXTRACTION" not in card
+    assert detail["EVENT_TEXT"] == "正文"
+    assert detail["EVENT_EXTRACTION"]["schema_version"] == "event-extraction/1.0"
+    # 第一阶段只优化读取投影；详情派生 events 去重留在独立迁移中。
+    assert detail["events"][0]["event_uuid"] == "event-a"
 
 
 def test_v4_query_defaults_to_archive_order_and_can_use_content_order():

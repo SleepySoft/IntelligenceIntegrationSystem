@@ -144,6 +144,58 @@ class SituationViewsService:
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
+        # 地图主投影、证据卡片和细化地点解析保持相邻，避免同一接口族散落。
+        @bp.get("/api/map/intelligences")
+        @bp.get("/api/scoped/map/intelligences")
+        @scoped_or_protected
+        def map_intelligences_api():
+            try:
+                engine, query = self._request_context(fixed=self._is_scoped_request())
+                country_code = request.args.get("country_code")
+                location_name = str(request.args.get("location_name") or "").strip() or None
+                offset = self._bounded_int("offset", 0, 0, 100000)
+                limit = self._bounded_int("limit", 50, 1, 100)
+                return jsonify(engine.map_intelligences(
+                    query, country_code, location_name=location_name,
+                    offset=offset, limit=limit))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.post("/api/map/locations")
+        @bp.post("/api/scoped/map/locations")
+        @scoped_or_protected
+        def map_locations_api():
+            try:
+                values = []
+                raw_values = (request.get_json(silent=True) or {}).get("locations") or []
+                for item in raw_values[:120]:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip()[:200]
+                    code = str(item.get("country_code") or "").strip().upper()
+                    if not name or not re.fullmatch(r"[A-Z]{2}", code):
+                        continue
+                    try:
+                        event_count = max(1, int(item.get("event_count") or 1))
+                    except (TypeError, ValueError):
+                        event_count = 1
+                    values.append({
+                        "name": name,
+                        "country_code": code,
+                        "event_count": event_count,
+                        "dominant_category": str(
+                            item.get("dominant_category") or "other"),
+                    })
+                if self.geocoder is None:
+                    return jsonify({
+                        "locations": [], "pending_count": 0,
+                        "unavailable": True,
+                    })
+                return jsonify(self.geocoder.resolve_many(values))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        # 实体图主投影、证据和人工编辑所需引用查询保持为连续路由组。
         @bp.get("/api/entity-graph")
         @bp.get("/api/scoped/entity-graph")
         @scoped_or_protected
@@ -169,31 +221,6 @@ class SituationViewsService:
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
                     entity_types=entity_types,
-                ))
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
-
-        @bp.get("/api/entity-timeline")
-        @bp.get("/api/scoped/entity-timeline")
-        @scoped_or_protected
-        def entity_timeline_api():
-            try:
-                engine, query = self._request_context(fixed=self._is_scoped_request())
-                return jsonify(engine.entity_timeline(
-                    query, entity_ids=self._entity_args()))
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
-
-        @bp.get("/api/entity-timeline/entities")
-        @bp.get("/api/scoped/entity-timeline/entities")
-        @scoped_or_protected
-        def entity_timeline_entities_api():
-            try:
-                engine, query = self._request_context(fixed=self._is_scoped_request())
-                return jsonify(engine.entity_timeline_entities(
-                    query,
-                    search=str(request.args.get("q") or "").strip()[:200],
-                    limit=self._bounded_int("limit", 30, 1, 50),
                 ))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
@@ -232,6 +259,32 @@ class SituationViewsService:
                 engine, query = self._request_context(fixed=False)
                 return jsonify(engine.entity_graph_references(
                     query, str(request.args.get("entity_id") or "").strip()))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        # 实体时间线主投影和候选实体检索保持相邻。
+        @bp.get("/api/entity-timeline")
+        @bp.get("/api/scoped/entity-timeline")
+        @scoped_or_protected
+        def entity_timeline_api():
+            try:
+                engine, query = self._request_context(fixed=self._is_scoped_request())
+                return jsonify(engine.entity_timeline(
+                    query, entity_ids=self._entity_args()))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        @bp.get("/api/entity-timeline/entities")
+        @bp.get("/api/scoped/entity-timeline/entities")
+        @scoped_or_protected
+        def entity_timeline_entities_api():
+            try:
+                engine, query = self._request_context(fixed=self._is_scoped_request())
+                return jsonify(engine.entity_timeline_entities(
+                    query,
+                    search=str(request.args.get("q") or "").strip()[:200],
+                    limit=self._bounded_int("limit", 30, 1, 50),
+                ))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
@@ -432,56 +485,6 @@ class SituationViewsService:
                 return jsonify(self._json_safe(result))
             except ResolutionError as exc:
                 return self._resolution_error(exc)
-
-        @bp.get("/api/map/intelligences")
-        @bp.get("/api/scoped/map/intelligences")
-        @scoped_or_protected
-        def map_intelligences_api():
-            try:
-                engine, query = self._request_context(fixed=self._is_scoped_request())
-                country_code = request.args.get("country_code")
-                location_name = str(request.args.get("location_name") or "").strip() or None
-                offset = self._bounded_int("offset", 0, 0, 100000)
-                limit = self._bounded_int("limit", 50, 1, 100)
-                return jsonify(engine.map_intelligences(
-                    query, country_code, location_name=location_name,
-                    offset=offset, limit=limit))
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
-
-        @bp.post("/api/map/locations")
-        @bp.post("/api/scoped/map/locations")
-        @scoped_or_protected
-        def map_locations_api():
-            try:
-                values = []
-                raw_values = (request.get_json(silent=True) or {}).get("locations") or []
-                for item in raw_values[:120]:
-                    if not isinstance(item, dict):
-                        continue
-                    name = str(item.get("name") or "").strip()[:200]
-                    code = str(item.get("country_code") or "").strip().upper()
-                    if not name or not re.fullmatch(r"[A-Z]{2}", code):
-                        continue
-                    try:
-                        event_count = max(1, int(item.get("event_count") or 1))
-                    except (TypeError, ValueError):
-                        event_count = 1
-                    values.append({
-                        "name": name,
-                        "country_code": code,
-                        "event_count": event_count,
-                        "dominant_category": str(
-                            item.get("dominant_category") or "other"),
-                    })
-                if self.geocoder is None:
-                    return jsonify({
-                        "locations": [], "pending_count": 0,
-                        "unavailable": True,
-                    })
-                return jsonify(self.geocoder.resolve_many(values))
-            except ValueError as exc:
-                return jsonify({"error": str(exc)}), 400
 
         app.register_blueprint(bp, url_prefix=url_prefix)
 

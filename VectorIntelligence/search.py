@@ -9,6 +9,10 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from VectorIntelligence.vector_engine import IntelligenceVectorDBEngine
+from ServiceComponent.intelligence_projections import (
+    IntelligenceProjectionProfile,
+    card_with_vector_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,9 @@ def do_vector_search(p: Dict[str, Any], *,
         text = p.get('keywords', '')
     elif p['search_mode'] == 'vector_similar':
         if ref_uuids := p.get('reference', ''):
-            intelligence = get_intelligence(ref_uuids, subsystem=subsystem_name)
+            intelligence = get_intelligence(
+                ref_uuids, subsystem=subsystem_name,
+                profile=IntelligenceProjectionProfile.CARD)
             if intelligence:
                 text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
     if not text:
@@ -75,11 +81,15 @@ def do_vector_search(p: Dict[str, Any], *,
     for doc_id, score, _ in page_items:
         uuids.append(doc_id)
         score_map[doc_id] = score
-    articles = get_intelligence(uuids, subsystem=subsystem_name)
+    articles = get_intelligence(
+        uuids, subsystem=subsystem_name,
+        profile=IntelligenceProjectionProfile.CARD)
 
-    for article in articles:
-        doc_id = str(article.get('UUID') or '')
-        article['vector_score'] = score_map.get(doc_id, 0.0)
+    articles = [
+        card_with_vector_score(
+            article, score_map.get(str(article.get('UUID') or ''), 0.0))
+        for article in articles
+    ]
 
     articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
 

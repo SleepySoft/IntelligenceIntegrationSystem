@@ -17,6 +17,12 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_TOTAL_SCORE,
     appendix_path,
 )
+from ServiceComponent.intelligence_projections import (
+    IntelligenceProjectionProfile,
+    archive_mongo_projection,
+    archive_response_view,
+    normalize_projection_profile,
+)
 
 
 class EventV4QueryEngine:
@@ -30,8 +36,31 @@ class EventV4QueryEngine:
         self.alias_expander = None
 
     def get_intelligence(self, intelligence_uuid: str | Iterable[str],
-                         light_weight: bool = False, include_appendix: bool = False):
-        projection = {"_id": 0}
+                         light_weight: bool = False, include_appendix: bool = False,
+                         profile: IntelligenceProjectionProfile | str | None = None):
+        """按固定 profile 读取归档。
+
+        ``light_weight``/``include_appendix`` 是内部旧调用兼容参数；新 Web 调用必须显式
+        使用 ``card`` 或 ``detail``。外部请求不能传任意 Mongo 字段。
+        """
+        selected_profile = normalize_projection_profile(profile) if profile else None
+        projection = (
+            archive_mongo_projection(selected_profile)
+            if selected_profile else {"_id": 0}
+        )
+
+        def project(document):
+            if light_weight and selected_profile is None:
+                return self._light_view(document)
+            if selected_profile is not None:
+                value = archive_response_view(document, selected_profile)
+                # 详情暂时保留派生 events，待单独验证 EVENT_EXTRACTION 渲染后再去重。
+                if selected_profile is IntelligenceProjectionProfile.DETAIL:
+                    return self._enrich(value)
+                return value
+            value = document if include_appendix else archive_public_view(document)
+            return self._enrich(value)
+
         if isinstance(intelligence_uuid, (list, tuple, set)):
             identifiers = [str(value) for value in intelligence_uuid if value]
             if not identifiers:
@@ -40,10 +69,7 @@ class EventV4QueryEngine:
                 {"UUID": {"$in": identifiers}}, projection))
             by_id = {str(item["UUID"]): strip_mongo_id(item) for item in documents}
             ordered = [by_id[value] for value in identifiers if value in by_id]
-            if light_weight:
-                return [self._light_view(item) for item in ordered]
-            values = ordered if include_appendix else [archive_public_view(item) for item in ordered]
-            return [self._enrich(item) for item in values]
+            return [project(item) for item in ordered]
         if not intelligence_uuid:
             return None
         document = self.intelligence_collection.find_one(
@@ -51,9 +77,7 @@ class EventV4QueryEngine:
         strip_mongo_id(document)
         if not document:
             return None
-        if light_weight:
-            return self._light_view(document)
-        return self._enrich(document if include_appendix else archive_public_view(document))
+        return project(document)
 
     def get_intelligence_summary(self) -> dict[str, Any]:
         newest = self.intelligence_collection.find_one(
@@ -131,14 +155,19 @@ class EventV4QueryEngine:
         total = self.intelligence_collection.count_documents(query)
         sort_key = (APPENDIX_CONTENT_TIME
                     if sort_by == "content_time" else APPENDIX_TIME_ARCHIVED)
-        projection = {"_id": 0}
+        # /intelligences/query 的契约就是列表卡片；在 MongoDB 阶段即排除正文、
+        # RAW_DATA、EVENT_EXTRACTION 与详情评分字段，而不是序列化前再删除。
+        projection = archive_mongo_projection(IntelligenceProjectionProfile.CARD)
         cursor = (
             self.intelligence_collection.find(query, projection)
             .sort([(appendix_path(sort_key), DESCENDING), ("UUID", DESCENDING)])
             .skip(max(0, int(skip)))
             .limit(max(0, int(limit)))
         )
-        return [archive_public_view(item) for item in cursor], total
+        return [
+            archive_response_view(item, IntelligenceProjectionProfile.CARD)
+            for item in cursor
+        ], total
 
     def aggregate(self, pipeline: list) -> list:
         # 聚合结果中的 ``_id`` 往往是分组键，并非 Mongo 文档内部 ID，不能删除。

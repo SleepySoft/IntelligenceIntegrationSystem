@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple
 
 from MyPythonUtility.proc_utils import find_processes
 from ServiceComponent.event_v4_archive import ArchivedDataV4
+from ServiceComponent.intelligence_projections import IntelligenceProjectionProfile
 from ServiceComponent.runtime import DeferredServicePlugin, HubPlugin
 from VectorDB.VectorDBClient import VectorDBClient
 
@@ -81,7 +82,8 @@ def create_vector_intelligence(config, *, subsystem_registry) -> Optional[Vector
             period = (latest - 24 * 3600, latest)
         service.trigger_offline(
             overrides=None, time_range=period,
-            doc_fetcher=lambda identifiers: query_engine.get_intelligence(identifiers, light_weight=True))
+            doc_fetcher=lambda identifiers: query_engine.get_intelligence(
+                identifiers, profile=IntelligenceProjectionProfile.CARD))
 
     aggregation_extension = DeferredServicePlugin(
         lambda: vector_extension.ready,

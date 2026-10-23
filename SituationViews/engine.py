@@ -38,6 +38,30 @@ ENTITY_TYPE_GROUPS = frozenset({
     "person", "organization", "geopolitical_entity", "location", "facility", "other",
 })
 
+# 态势视图只读取派生事件索引中实际参与投影的字段。三个具名投影与页面用途绑定，
+# 不接受浏览器传入 fields，避免为了一个视图重新读取完整事件文档。
+MAP_EVENT_PROJECTION = {
+    "event_uuid": 1,
+    "intelligence_uuid": 1,
+    "predicate": 1,
+    "event_location": 1,
+    "is_primary": 1,
+}
+GRAPH_EVENT_PROJECTION = {
+    "event_uuid": 1,
+    "intelligence_uuid": 1,
+    "frame.topology": 1,
+    "predicate": 1,
+    "roles": 1,
+    "qualifiers.type": 1,
+    "qualifiers.value": 1,
+    "is_primary": 1,
+}
+TIMELINE_EVENT_PROJECTION = {
+    **GRAPH_EVENT_PROJECTION,
+    "time": 1,
+}
+
 # 独立视图的展示归类。Registry tag 优先；这里仅是展示层的兼容回退，
 # 不参与 Event V4 的抽取、校验、身份合并或持久化契约。
 PREDICATE_CATEGORIES = {
@@ -87,7 +111,7 @@ class SituationViewEngine:
         self.entity_registry = entity_registry
 
     def map_view(self, query: ViewQuery) -> dict[str, Any]:
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, MAP_EVENT_PROJECTION)
         countries: dict[str, dict[str, Any]] = {}
         mapped_events: set[str] = set()
 
@@ -181,7 +205,11 @@ class SituationViewEngine:
             "location_coverage": round(len(mapped_events) / eligible, 4) if eligible else 0,
             "hotspot_count": len(hotspots),
         })
-        return {"hotspots": hotspots, "meta": meta, "categories": CATEGORY_LABELS}
+        meta = {key: meta[key] for key in (
+            "start", "end", "event_count", "truncated", "mapped_event_count",
+            "location_coverage", "hotspot_count",
+        )}
+        return {"hotspots": hotspots, "meta": meta}
 
     def map_intelligences(
         self,
@@ -198,7 +226,7 @@ class SituationViewEngine:
             raise ValueError("country_code 必须是 ISO 两位国家代码")
         normalized_location = " ".join(str(location_name or "").casefold().split())
 
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, MAP_EVENT_PROJECTION)
         articles: dict[str, dict[str, Any]] = {}
         for event in events:
             category = self._category(event)
@@ -227,20 +255,13 @@ class SituationViewEngine:
                 "score": float(event.get("_view_score") or 0),
                 "content_time": event.get("_view_content_time"),
                 "event_ids": set(),
-                "categories": Counter(),
                 "predicates": Counter(),
-                "locations": Counter(),
             })
             event_uuid = str(event.get("event_uuid") or "")
             if event_uuid in item["event_ids"]:
                 continue
             item["event_ids"].add(event_uuid)
-            item["categories"][category] += 1
             item["predicates"][self._predicate_label(event)] += 1
-            for location in matched_locations:
-                name = str(location.get("name") or "").strip()
-                if name:
-                    item["locations"][name] += 1
 
         ordered = sorted(
             articles.values(),
@@ -253,26 +274,25 @@ class SituationViewEngine:
         page = ordered[offset:offset + limit]
         results = []
         for item in page:
-            categories = dict(item["categories"].most_common())
             results.append({
                 "uuid": item["uuid"],
                 "title": item["title"],
                 "score": round(item["score"], 2),
                 "content_time": self._json_time(item["content_time"]),
                 "event_count": len(item["event_ids"]),
-                "dominant_category": next(iter(categories), "other"),
-                "categories": categories,
-                "predicates": [name for name, _ in item["predicates"].most_common(6)],
-                "locations": [name for name, _ in item["locations"].most_common(6)],
+                "predicates": [
+                    {"label": name, "count": count}
+                    for name, count in item["predicates"].most_common(6)
+                ],
             })
-        meta.update({
+        meta = {
             "country_code": code,
             "location_name": str(location_name or "").strip() or None,
             "total": len(ordered),
             "offset": offset,
             "limit": limit,
             "has_more": offset + len(results) < len(ordered),
-        })
+        }
         return {"intelligences": results, "meta": meta}
 
     def map_locations(
@@ -289,7 +309,7 @@ class SituationViewEngine:
         }
         if not codes:
             return []
-        events, _ = self._load_events(query)
+        events, _ = self._load_events(query, MAP_EVENT_PROJECTION)
         locations: dict[tuple[str, str], dict[str, Any]] = {}
         for event in events:
             category = self._category(event)
@@ -346,7 +366,7 @@ class SituationViewEngine:
         keep_high_score_singletons: bool = True,
         entity_types: frozenset[str] | None = None,
     ) -> dict[str, Any]:
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, GRAPH_EVENT_PROJECTION)
         node_data: dict[str, dict[str, Any]] = {}
         edge_data: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
         prepared_events, country_hints = self._prepare_graph_events(events, query)
@@ -541,12 +561,15 @@ class SituationViewEngine:
             "inferred_country_node_count": len(inferred_country_nodes),
             "entity_types": sorted(entity_types) if entity_types is not None else None,
         })
+        meta = {key: meta[key] for key in (
+            "start", "end", "truncated", "relational_event_count", "node_count",
+            "edge_count", "filtered_edge_count",
+        )}
         return {
             "nodes": nodes,
             "edges": edges,
             "temporal_events": temporal_events,
             "meta": meta,
-            "categories": CATEGORY_LABELS,
         }
 
     def entity_graph_intelligences(
@@ -574,10 +597,9 @@ class SituationViewEngine:
         if role not in {"all", "subject", "object", "participant"}:
             raise ValueError("role 必须是 all、subject、object 或 participant")
 
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, GRAPH_EVENT_PROJECTION)
         prepared_events, country_hints = self._prepare_graph_events(events, query)
         articles: dict[str, dict[str, Any]] = {}
-        selection = {"type": selection_type}
 
         for event, category, relations in prepared_events:
             article_uuid = str(event.get("intelligence_uuid") or "").strip()
@@ -606,22 +628,13 @@ class SituationViewEngine:
                     if entity_id == source_key:
                         matched_role = "subject" if relation_directed else "participant"
                         counterpart = target
-                        selected_entity = source
                     elif entity_id == target_key:
                         matched_role = "object" if relation_directed else "participant"
                         counterpart = source
-                        selected_entity = target
                     else:
                         continue
                     if role != "all" and matched_role != role:
                         continue
-                    selection.update({
-                        "entity_id": entity_id,
-                        "name": self._entity_display_name(selected_entity),
-                        "entity_type": self._entity_type_group(selected_entity),
-                        "country_code": selected_entity.get("country_code"),
-                        "role": role,
-                    })
                 else:
                     if (
                         source_key != source_id or target_key != target_id
@@ -629,15 +642,6 @@ class SituationViewEngine:
                         or relation_directed != directed
                     ):
                         continue
-                    selection.update({
-                        "source_id": source_id,
-                        "source_name": str(source.get("name") or "").strip(),
-                        "target_id": target_id,
-                        "target_name": str(target.get("name") or "").strip(),
-                        "predicate": predicate,
-                        "predicate_label": predicate_label,
-                        "directed": directed,
-                    })
 
                 item = articles.setdefault(article_uuid, {
                     "uuid": article_uuid,
@@ -698,14 +702,12 @@ class SituationViewEngine:
                 ],
             })
 
-        meta.update({
-            "selection": selection,
+        meta = {
             "total": len(ordered),
             "offset": offset,
             "limit": limit,
             "has_more": offset + len(results) < len(ordered),
-            "entity_types": sorted(entity_types) if entity_types is not None else None,
-        })
+        }
         return {"intelligences": results, "meta": meta}
 
     def entity_graph_references(
@@ -715,7 +717,7 @@ class SituationViewEngine:
         entity_id = str(entity_id or "").strip()
         if not entity_id:
             raise ValueError("缺少 entity_id")
-        events, _ = self._load_events(query)
+        events, _ = self._load_events(query, GRAPH_EVENT_PROJECTION)
         prepared_events, country_hints = self._prepare_graph_events(events, query)
         references: dict[str, dict[str, Any]] = {}
         for event, _category, relations in prepared_events:
@@ -755,7 +757,7 @@ class SituationViewEngine:
         self, query: ViewQuery, *, search: str = "", limit: int = 30,
     ) -> dict[str, Any]:
         """检索当前固定窗口内可用于时间线的实体，不受关系图规模裁剪影响。"""
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, TIMELINE_EVENT_PROJECTION)
         prepared_events, country_hints = self._prepare_graph_events(events, query)
         entities: dict[str, dict[str, Any]] = {}
         for event, _category, relations in prepared_events:
@@ -796,8 +798,10 @@ class SituationViewEngine:
                 "surfaces": [name for name, _ in item["surfaces"].most_common(5)],
             })
         values.sort(key=lambda item: (-item["event_count"], item["name"], item["id"]))
-        meta.update({"search": search, "total": len(values), "limit": limit})
-        return {"entities": values[:limit], "meta": meta}
+        return {
+            "entities": values[:limit],
+            "meta": {"search": search, "total": len(values), "limit": limit},
+        }
 
     def entity_timeline(
         self, query: ViewQuery, *, entity_ids: Iterable[str],
@@ -812,7 +816,7 @@ class SituationViewEngine:
             raise ValueError("一次最多选择 8 个实体")
 
         selected = set(selected_ids)
-        events, meta = self._load_events(query)
+        events, meta = self._load_events(query, TIMELINE_EVENT_PROJECTION)
         prepared_events, country_hints = self._prepare_graph_events(events, query)
         entity_data: dict[str, dict[str, Any]] = {}
         timeline_events: dict[str, dict[str, Any]] = {}
@@ -917,6 +921,8 @@ class SituationViewEngine:
                 "source_count": len(values["sources"]),
                 "level": "cross_source" if len(values["sources"]) >= 2 else "cross_article",
             })
+        for item in ordered_events:
+            item.pop("source_domain", None)
 
         entity_values = []
         for entity_id in selected_ids:
@@ -930,18 +936,18 @@ class SituationViewEngine:
                 entity_values.append({
                     key: value for key, value in item.items() if key != "event_ids"
                 } | {"event_count": len(item["event_ids"])})
-        meta.update({
+        meta = {
+            "truncated": meta["truncated"],
             "selected_entity_count": len(selected_ids),
             "timeline_event_count": len(ordered_events),
             "cooccurrence_event_count": occurrence_count,
             "corroboration_count": len(corroboration),
-        })
+        }
         return {
             "entities": entity_values,
             "events": ordered_events,
             "corroboration": corroboration,
             "meta": meta,
-            "categories": CATEGORY_LABELS,
         }
 
     @staticmethod
@@ -1093,7 +1099,10 @@ class SituationViewEngine:
                 entity["_display_name"] = str(hit.get("name") or entity.get("name") or "")
                 entity["_identity_type"] = str(hit.get("type") or entity.get("type") or "other")
 
-    def _load_events(self, query: ViewQuery) -> tuple[list[dict], dict[str, Any]]:
+    def _load_events(
+        self, query: ViewQuery, event_projection: dict[str, int],
+    ) -> tuple[list[dict], dict[str, Any]]:
+        """读取固定窗口的归档头和指定态势用途的最小事件投影。"""
         archive_filter = {
             appendix_path(APPENDIX_CONTENT_TIME): {"$gte": query.start, "$lte": query.end},
             appendix_path(APPENDIX_TOTAL_SCORE): {"$gte": query.min_score},
@@ -1125,7 +1134,8 @@ class SituationViewEngine:
         event_filter: dict[str, Any] = {"intelligence_uuid": {"$in": identifiers}}
         if query.primary_only:
             event_filter["is_primary"] = True
-        events = list(self.event_collection.find(event_filter, {"_id": 0})) if identifiers else []
+        projection = {"_id": 0, **event_projection}
+        events = list(self.event_collection.find(event_filter, projection)) if identifiers else []
         for event in events:
             data = article_meta.get(str(event.get("intelligence_uuid"))) or {}
             event["_view_content_time"] = data.get("content_time")

@@ -4,7 +4,13 @@ from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME, APPENDIX_TOTAL_SCORE,
 )
-from SituationViews.engine import SituationViewEngine, ViewQuery
+from SituationViews.engine import (
+    GRAPH_EVENT_PROJECTION,
+    MAP_EVENT_PROJECTION,
+    TIMELINE_EVENT_PROJECTION,
+    SituationViewEngine,
+    ViewQuery,
+)
 from SituationViews.iis_integration import mount_to_iis
 from SituationViews.web import SituationViewsService
 
@@ -17,8 +23,10 @@ class FakeCursor(list):
 class FakeCollection:
     def __init__(self, values):
         self.values = list(values)
+        self.projections = []
 
     def find(self, query, projection=None):
+        self.projections.append(projection)
         values = list(self.values)
         if "intelligence_uuid" in query:
             allowed = set(query["intelligence_uuid"]["$in"])
@@ -77,6 +85,31 @@ def test_map_view_uses_explicit_event_locations_and_reports_coverage():
     assert result["meta"]["location_coverage"] == 0.5
 
 
+def test_situation_uses_separate_fixed_event_projections():
+    now = datetime.now(timezone.utc)
+    event = _attack("e1", "a", "行动方", "目标")
+    event["time"] = {"event_time": {
+        "normalized": "2026-10-20", "precision": "day",
+        "approximate": False, "surface": "10月20日",
+    }}
+    events = FakeCollection([event])
+    engine = SituationViewEngine(
+        FakeCollection([_archive("a", now, 8)]), events, DEFAULT_EVENT_REGISTRY)
+    query = ViewQuery(now - timedelta(days=1), now + timedelta(days=1))
+
+    engine.map_view(query)
+    engine.entity_graph(query, min_support=1)
+    engine.entity_timeline(query, entity_ids=["organization|RU|行动方"])
+
+    assert events.projections == [
+        {"_id": 0, **MAP_EVENT_PROJECTION},
+        {"_id": 0, **GRAPH_EVENT_PROJECTION},
+        {"_id": 0, **TIMELINE_EVENT_PROJECTION},
+    ]
+    assert "time" not in GRAPH_EVENT_PROJECTION
+    assert TIMELINE_EVENT_PROJECTION["time"] == 1
+
+
 def test_map_view_accepts_multiple_event_categories():
     now = datetime.now(timezone.utc)
     war = _attack("e1", "a", "甲方", "设施一")
@@ -93,8 +126,8 @@ def test_map_view_accepts_multiple_event_categories():
         categories=frozenset({"war", "security"}),
     ))
 
-    assert result["meta"]["eligible_event_count"] == 2
-    assert result["meta"]["categories"] == ["security", "war"]
+    assert "eligible_event_count" not in result["meta"]
+    assert "categories" not in result["meta"]
     assert result["hotspots"][0]["categories"] == {"war": 1, "security": 1}
 
 
@@ -115,7 +148,15 @@ def test_map_intelligences_returns_real_article_summaries_for_country():
     assert result["meta"]["total"] == 2
     assert result["intelligences"][0]["uuid"] == "a"
     assert result["intelligences"][0]["title"] == "event-a"
-    assert result["intelligences"][0]["predicates"] == ["攻击"]
+    assert result["intelligences"][0]["predicates"] == [
+        {"label": "攻击", "count": 1},
+    ]
+    assert set(result["intelligences"][0]) == {
+        "uuid", "title", "score", "content_time", "event_count", "predicates",
+    }
+    assert set(result["meta"]) == {
+        "country_code", "location_name", "total", "offset", "limit", "has_more",
+    }
 
     filtered = engine.map_intelligences(
         ViewQuery(now - timedelta(days=1), now + timedelta(days=1)),
@@ -217,7 +258,7 @@ def test_entity_graph_keeps_high_score_singleton_for_review():
 
     assert len(result["edges"]) == 1
     assert result["edges"][0]["support"] == 1
-    assert result["meta"]["high_score_singleton_cutoff"] == 8.0
+    assert "high_score_singleton_cutoff" not in result["meta"]
 
 
 def test_entity_graph_merges_missing_country_when_same_name_has_one_country():
@@ -241,7 +282,7 @@ def test_entity_graph_merges_missing_country_when_same_name_has_one_country():
     assert len(actors) == 1
     assert actors[0]["country_code"] == "YE"
     assert result["edges"][0]["support"] == 2
-    assert result["meta"]["inferred_country_node_count"] == 1
+    assert "inferred_country_node_count" not in result["meta"]
 
 
 def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
@@ -267,7 +308,7 @@ def test_entity_graph_does_not_guess_country_when_candidates_are_ambiguous():
 
     actors = [node for node in result["nodes"] if node["name"] == "同名组织"]
     assert {node["country_code"] for node in actors} == {"YE", "IR", None}
-    assert result["meta"]["inferred_country_node_count"] == 0
+    assert "inferred_country_node_count" not in result["meta"]
 
 
 def test_entity_graph_temporarily_merges_unresolved_same_surface_refs():
@@ -395,7 +436,7 @@ def test_entity_graph_filters_relationships_by_both_entity_type_groups():
 
     assert len(result["edges"]) == 1
     assert {node["type"] for node in result["nodes"]} == {"organization"}
-    assert result["meta"]["entity_types"] == ["organization"]
+    assert "entity_types" not in result["meta"]
 
 
 def test_entity_graph_node_intelligences_support_role_filtering():
@@ -431,6 +472,7 @@ def test_entity_graph_node_intelligences_support_role_filtering():
     ]
     assert result["intelligences"][0]["counterparts"][0]["name"] in {"目标一", "目标二"}
     assert excluded["meta"]["total"] == 0
+    assert set(result["meta"]) == {"total", "offset", "limit", "has_more"}
 
 
 def test_entity_graph_edge_intelligences_match_exact_direction_and_predicate():
@@ -458,8 +500,6 @@ def test_entity_graph_edge_intelligences_match_exact_direction_and_predicate():
     assert result["intelligences"][0]["predicates"] == [
         {"label": "攻击", "count": 1},
     ]
-    assert result["meta"]["selection"]["source_name"] == "行动方"
-    assert result["meta"]["selection"]["target_name"] == "目标"
 
 
 def test_entity_timeline_targets_multiple_entities_without_graph_size_clipping():
@@ -494,6 +534,7 @@ def test_entity_timeline_targets_multiple_entities_without_graph_size_clipping()
     }
     assert result["events"][1]["time"]["source"] == "content_time"
     assert result["events"][1]["relations"][0]["internal"] is True
+    assert "source_domain" not in result["events"][0]
     assert suggestions["entities"][0]["name"] == "白宫"
 
 

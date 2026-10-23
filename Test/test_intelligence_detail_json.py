@@ -4,6 +4,7 @@ from uuid import uuid4
 from flask import Flask
 
 from IntelligenceHubWebService import IntelligenceHubWebService
+from ServiceComponent.intelligence_projections import IntelligenceProjectionProfile
 
 
 class _Hub:
@@ -11,8 +12,8 @@ class _Hub:
         self.document = document
         self.calls = []
 
-    def get_intelligence(self, intelligence_uuid, subsystem=None):
-        self.calls.append((intelligence_uuid, subsystem))
+    def get_intelligence(self, intelligence_uuid, subsystem=None, profile=None):
+        self.calls.append((intelligence_uuid, subsystem, profile))
         return self.document
 
 
@@ -50,4 +51,5 @@ def test_intelligence_detail_api_returns_public_v4_shape_without_storage_metadat
     assert "_id" not in payload["data"]
     assert "APPENDIX" not in payload["data"]
     assert payload["data"]["archived_at"] == "2026-10-10T00:00:00+00:00"
-    assert hub.calls == [("intelligence-id", "news")]
+    assert hub.calls == [(
+        "intelligence-id", "news", IntelligenceProjectionProfile.DETAIL)]

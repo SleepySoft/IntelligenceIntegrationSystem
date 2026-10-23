@@ -2,7 +2,43 @@
 
 日期：2026-10-21
 
-状态：设计完成，尚未实施
+状态：第一阶段已实施（CARD、DETAIL 读取投影及态势事件专用投影）；详情事件去重、页面拆分与缓存待实施
+
+## 0. 正式接口分级与裁剪矩阵
+
+以下表格是代码和评审使用的正式契约。归档 profile 的单一事实源位于
+`ServiceComponent/intelligence_projections.py`；HTTP 路由不得接收或拼装任意 `fields=`。
+
+| HTTP/调用入口 | 固定级别 | Mongo 读取 | 响应保留 | 明确裁剪 |
+|---|---|---|---|---|
+| `GET/POST /intelligences/query`（含具名子系统） | `card` | 卡片顶层字段 + 已批准 APPENDIX 时间/评分/模型字段 | 标题、摘要、分类、来源、显示时间、总分、Prompt、模型 | `RAW_DATA`、正文、`EVENT_EXTRACTION`、RATE、影响、建议、理由、实体速查字段、派生 `events` |
+| 向量搜索 UUID 回填、聚类摘要/成员 | `card` | 与普通列表相同 | CARD；向量结果可额外带查询期 `vector_score` | 与普通列表相同 |
+| `GET /api/intelligence/<uuid>`（含具名子系统） | `detail` | 完整分析展示字段、权威 `EVENT_EXTRACTION`、批准的 APPENDIX 元数据 | 正文、评分、实体、事件抽取、人工评分、显示元数据 | `RAW_DATA` 和未批准 APPENDIX 字段 |
+| 归档、翻译、影子对比等服务端调用 | `internal` | 显式完整归档 | 由内部调用方处理，禁止直接序列化到 Web | 无默认裁剪；没有对应公共 HTTP 路由 |
+| 地图/实体图/时间线证据卡片 | `evidence` DTO | 对应态势事件专用投影 + 归档头 | 标题、时间、评分、谓词及必要角色/对端摘要 | 正文、原始数据、完整事件抽取和无关事件字段 |
+
+归档 Mongo 投影表：
+
+| 字段组 | `card` | `detail` | `internal` |
+|---|:---:|:---:|:---:|
+| `UUID`、`INFORMANT` | ✓ | ✓ | ✓ |
+| 标题、摘要、分类 | ✓ | ✓ | ✓ |
+| 正文、RATE、IMPACT、TIPS、REASON | — | ✓ | ✓ |
+| `EVENT_EXTRACTION`、实体速查字段 | — | ✓ | ✓ |
+| 内容/发布/采集/归档时间、总分、Prompt、AI 服务/模型 | ✓ | ✓ | ✓ |
+| 人工评分 | — | ✓ | ✓ |
+| `APPENDIX.RAW_DATA`、内部重试/运行字段 | — | — | ✓ |
+| 派生事件集合 `events` | — | 暂时保留，第二阶段移除 | 不属于归档 profile |
+
+相关代码必须按边界集中放置：
+
+| 边界 | 代码位置 |
+|---|---|
+| profile、Mongo 投影和响应 DTO | `ServiceComponent/intelligence_projections.py` |
+| 归档查询执行 | `ServiceComponent/EventV4QueryEngine.py` |
+| CARD/DETAIL HTTP 适配和路由公共函数 | `IntelligenceHubWebService.py` 的“情报读取接口契约”区段 |
+| 地图、实体图、时间线事件投影与聚合 | `SituationViews/engine.py` |
+| 态势 scoped/unscoped 路由 | `SituationViews/web.py` |
 
 ## 1. 问题与目标
 
@@ -55,16 +91,33 @@
 2. 105 KB 的嵌入页重复携带另一视图和编辑器代码；
 3. 实体图在高上限配置下返回近 0.8 MB 数据，并在浏览器运行千节点力导向布局。
 
-## 3. 当前边界的问题
+### 2.1 第一阶段实施后复测（2026-10-23）
+
+使用同一生产 MongoDB 做只读 BSON 测量，未重启或修改数据库：
+
+| 项目 | 完整读取 | 固定投影 | 降幅 |
+|---|---:|---:|---:|
+| 最新 10 条列表归档 | 77,586 B | 7,764 B | 90.0% |
+| 最新 10 条 CARD JSON DTO | — | 8,118 B | 已低于 15 KB 目标 |
+| 最近 7 天地图事件（994 条） | 1,376,894 B | 300,233 B | 78.2% |
+| 最近 7 天实体图事件（994 条） | 1,376,894 B | 682,444 B | 50.4% |
+| 最近 7 天实体时间线事件（994 条） | 1,376,894 B | 754,072 B | 45.2% |
+
+这组结果验证了 Mongo 投影本身已经达到第 9 节的列表、地图和实体图读取降幅目标。它不代表
+浏览器最终耗时；实体图仍可能主要受响应规模和力导向布局影响，需在服务重启后继续记录
+`perf.log` 中的 CARD 响应字节与 p50/p95。
+
+## 3. 改造前边界的问题（基线记录）
 
 ### 3.1 情报列表是事后删字段
 
-`EventV4QueryEngine.query_intelligence()` 当前使用 `{"_id": 0}`，MongoDB 仍返回完整归档
+实施前 `EventV4QueryEngine.query_intelligence()` 使用 `{"_id": 0}`，MongoDB 会返回完整归档
 文档。`archive_public_view()` 去掉 `APPENDIX` 后，Web 层的 `exclude_raw_data()` 再删除
 `EVENT_TEXT` 和 `events`，但 `RAW_DATA`、正文和 `EVENT_EXTRACTION` 已经完成数据库传输与
 反序列化，`EVENT_EXTRACTION` 最终仍进入列表响应。
 
-向量列表也有相同问题：向量召回 UUID 后调用完整 `get_intelligence()`，最后才清理。
+向量列表也曾有相同问题：向量召回 UUID 后调用完整 `get_intelligence()`，最后才清理。
+第一阶段已将普通列表、向量回填和聚类卡片统一切换为 `card`。
 
 ### 3.2 详情返回两份事件表达
 
@@ -75,11 +128,12 @@
 
 ### 3.3 态势接口共用完整事件读取
 
-`SituationViewEngine._load_events()` 对归档头部已经做了合理投影，但对事件集合使用
+实施前 `SituationViewEngine._load_events()` 对归档头部已经做了合理投影，但对事件集合使用
 `{"_id": 0}`。地图只需要地点和谓词；实体图需要角色、关系拓扑和极性限定。时间、属性、
 事件间关系、metadata 等字段不应为这些聚合一并读取。
 
-地图/实体证据列表返回的文章对象本身已是摘要，不包含 `RAW_DATA` 或
+第一阶段已按地图、实体图和实体时间线拆成固定事件投影。地图/实体证据列表返回的文章对象
+本身已是摘要，不包含 `RAW_DATA` 或
 `EVENT_EXTRACTION`；其主要问题是每次点击都会重新加载并扫描整个窗口的事件，而不是响应
 对象过大。
 
@@ -193,7 +247,22 @@ is_primary
 实体图响应的根本上限仍由 `max_nodes/max_edges` 控制。若千节点布局继续成为瓶颈，应另做图
 规模分层或服务端布局，不能把“删字段”误当成布局优化。
 
-### 5.3 窗口数据复用
+### 5.3 实体时间线事件投影
+
+实体时间线与实体图共用身份和关系字段，但只有时间线额外读取抽取时间：
+
+```text
+event_uuid, intelligence_uuid,
+frame.topology, predicate, roles,
+qualifiers.type, qualifiers.value,
+time,
+is_primary
+```
+
+实体搜索、聚合时间线和分轨时间线共用这一投影。来源域名来自已经很小的归档头投影，不读取
+正文或 `EVENT_EXTRACTION`。时间线按指定实体定向生成，不受实体图 `max_nodes/max_edges` 裁剪。
+
+### 5.4 窗口数据复用
 
 地图热点、点击后的地图证据、实体图及实体证据目前会各自执行窗口读取。实施字段投影后再测量
 数据库耗时；若重复扫描仍显著，可为固定 scoped 查询增加短 TTL 的窗口快照缓存。缓存键中的
@@ -222,7 +291,7 @@ is_primary
 - 仅实体页面加载的 graph/editor bundle；
 - 可缓存的静态 JS/CSS，而不是每次响应重复内联。
 
-`IntelligenceViews` 现有 iframe 按 Tab 懒加载机制保留，不同时预加载三个视图。
+`IntelligenceViews` 现有 iframe 按 Tab 懒加载机制保留，不同时预加载四个视图。
 
 ### 6.3 压缩
 
@@ -233,18 +302,18 @@ is_primary
 
 ### 阶段 A：观测与契约测试
 
-1. 为列表、详情、地图、实体图和证据接口记录总耗时、Mongo 耗时、结果数量和响应字节数；
-2. 日志只记录数字和 profile，不记录情报正文；
-3. 增加字段白名单契约测试，明确禁止列表出现 `RAW_DATA/EVENT_TEXT/EVENT_EXTRACTION/events`；
-4. 记录改造前基线，避免只凭主观感受判断。
+1. 为列表、详情、地图、实体图和证据接口记录总耗时、Mongo 耗时、结果数量和响应字节数；（列表已记录 profile、总耗时、数量和响应字节；其余及 Mongo 分段待补）
+2. 日志只记录数字和 profile，不记录情报正文；（列表已实施）
+3. 增加字段白名单契约测试，明确禁止列表出现 `RAW_DATA/EVENT_TEXT/EVENT_EXTRACTION/events`；（已实施）
+4. 记录改造前基线，避免只凭主观感受判断。（已记录于第 2 节）
 
 ### 阶段 B：高收益、低风险改造
 
-1. 生成紧凑国家元数据并切换地图；
-2. 新增集中式 `card/detail/internal` 投影定义和 DTO 构造器；
-3. 普通与向量列表统一使用 `card`，在 Mongo 查询阶段投影；
-4. 地图/实体图分别使用专用事件投影；
-5. 精简地图、图和 evidence 的 meta/未消费字段。
+1. 生成紧凑国家元数据并切换地图；（待实施）
+2. 新增集中式 `card/detail/internal` 投影定义和 DTO 构造器；（已实施）
+3. 普通、向量与聚类列表统一使用 `card`，在 Mongo 查询阶段投影；（已实施）
+4. 地图/实体图/实体时间线分别使用专用事件投影；（已实施）
+5. 精简地图、图、时间线和 evidence 的 meta/未消费字段。（已实施）
 
 ### 阶段 C：详情去重与页面资源拆分
 

@@ -947,7 +947,8 @@ async function loadMapIntelligences(countryCode, locationName = null) {
         }
         target.innerHTML = data.intelligences.map(item => {
             const time = item.content_time ? new Date(item.content_time).toLocaleString() : '时间未知';
-            const predicates = item.predicates.length ? item.predicates.join('、') : '未分类谓词';
+            const predicates = item.predicates.length
+                ? item.predicates.map(value => value.label).join('、') : '未分类谓词';
             return `<article class="intelligence-card">
                 <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
                 <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个事件</span></div>

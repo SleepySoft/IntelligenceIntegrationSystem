@@ -14,6 +14,8 @@ from pathlib import Path
 import dateutil.parser
 from flask import Blueprint, jsonify, render_template, request, session
 
+from ServiceComponent.intelligence_projections import IntelligenceProjectionProfile
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,7 +133,8 @@ class VectorWebService:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
 
                 def doc_fetcher(uuids):
-                    return hub.get_intelligence(uuids, light_weight=True)
+                    return hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 result = agg.build_rich_clusters_latest(
                     doc_fetcher=doc_fetcher,
@@ -159,7 +162,8 @@ class VectorWebService:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
 
                 def doc_fetcher(uuids):
-                    return hub.get_intelligence(uuids, light_weight=True)
+                    return hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 result = agg.build_rich_cluster_members(
                     cluster_id=cluster_id,
@@ -197,7 +201,8 @@ class VectorWebService:
                     return jsonify({"error": "Engine not ready"}), 503
 
                 def doc_fetcher(uuids):
-                    return hub.get_intelligence(uuids, light_weight=True)
+                    return hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 job_id = agg_engine.trigger_offline(time_range=time_range, doc_fetcher=doc_fetcher)
                 return jsonify({

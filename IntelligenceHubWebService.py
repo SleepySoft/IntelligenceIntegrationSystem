@@ -34,6 +34,11 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_FIELD, APPENDIX_TIME_ARCHIVED, appendix_path,
     CACHE_ARCHIVED_FLAG_FIELD, CacheArchiveState, unarchived_cache_query,
 )
+from ServiceComponent.intelligence_projections import (
+    CARD_RESPONSE_FIELD_ORDER,
+    IntelligenceProjectionProfile,
+    card_with_vector_score,
+)
 from IntelligenceHub import IntelligenceHub
 from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
 from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
@@ -97,13 +102,20 @@ def to_bool(value, default=False):
 
 
 def exclude_raw_data(result: List[dict]):
-    """Remove APPENDIX and full text from list responses without mutating results."""
+    """列表响应的最终 CARD 白名单闸门。
+
+    Mongo 查询应已经使用 CARD 投影；这里仍按白名单重建结果，防止向量插件或兼容调用方
+    意外带入详情字段。``vector_score`` 是唯一允许的查询期扩展字段。
+    """
     summary_result = []
     for source in result:
-        data = dict(source)
-        data.pop(APPENDIX_FIELD, None)
-        data.pop("EVENT_TEXT", None)
-        data.pop("events", None)
+        data = {
+            key: source.get(key)
+            for key in CARD_RESPONSE_FIELD_ORDER
+            if key in source
+        }
+        if "vector_score" in source:
+            data["vector_score"] = source["vector_score"]
         summary_result.append(data)
     return summary_result
 
@@ -270,12 +282,18 @@ class IntelligenceHubWebService:
         """注入向量搜索实现（由 VectorIntelligence.iis_integration.mount_to_iis 调用）。"""
         self._vector_search_handler = handler
 
+    # ====================== 情报读取接口契约（路由只调用本组函数） ======================
+    # /intelligences/query                  -> CARD
+    # /api/intelligence/<uuid>              -> DETAIL
+    # INTERNAL 没有 HTTP 路由，只允许服务端组件经 HubApplication 显式使用。
+
     def _intelligence_detail_json(self, intelligence_uuid: str,
                                   subsystem: Optional[str] = None):
-        """返回可 JSON 序列化的完整情报详情，包括 Mongo 嵌套 BSON 值。"""
+        """DETAIL：返回可 JSON 序列化的单篇详情，包括权威事件抽取。"""
         try:
             intelligence = self.intelligence_hub.get_intelligence(
-                intelligence_uuid, subsystem=subsystem)
+                intelligence_uuid, subsystem=subsystem,
+                profile=IntelligenceProjectionProfile.DETAIL)
             if not intelligence:
                 return jsonify({"error": "Intelligence not found"}), 404
             return jsonify({
@@ -463,7 +481,9 @@ class IntelligenceHubWebService:
             text = p.get('keywords', '')
         elif p['search_mode'] == 'vector_similar':
             if ref_uuids := p.get('reference', ''):
-                intelligence = self.intelligence_hub.get_intelligence(ref_uuids, subsystem=subsystem_name)
+                intelligence = self.intelligence_hub.get_intelligence(
+                    ref_uuids, subsystem=subsystem_name,
+                    profile=IntelligenceProjectionProfile.CARD)
                 if intelligence:
                     text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
         if not text:
@@ -501,11 +521,15 @@ class IntelligenceHubWebService:
         for doc_id, score, _ in page_items:
             uuids.append(doc_id)
             score_map[doc_id] = score
-        articles = self.intelligence_hub.get_intelligence(uuids, subsystem=subsystem_name)
+        articles = self.intelligence_hub.get_intelligence(
+            uuids, subsystem=subsystem_name,
+            profile=IntelligenceProjectionProfile.CARD)
 
-        for article in articles:
-            doc_id = str(article.get('UUID') or '')
-            article['vector_score'] = score_map.get(doc_id, 0.0)
+        articles = [
+            card_with_vector_score(
+                article, score_map.get(str(article.get('UUID') or ''), 0.0))
+            for article in articles
+        ]
 
         articles.sort(key=lambda x: x.get('vector_score', 0.0), reverse=True)
 
@@ -524,7 +548,7 @@ class IntelligenceHubWebService:
         return {'results': summary_result, 'total': total}
 
     def _query_api(self, subsystem_name: Optional[str] = None) -> Any:
-        """子系统情报查询接口（具名子系统与默认子系统共用）。"""
+        """CARD：列表/搜索接口；具名子系统与默认子系统共用。"""
         try:
             params = self._get_combined_params()
         except Exception as e:
@@ -586,17 +610,24 @@ class IntelligenceHubWebService:
                 sem_acquired = True
 
             try:
-                with self._perf_logger.timed('search_query', **perf_extra):
+                # 把 DTO 构造与 JSON 序列化纳入同一性能区间；只记录数字和 profile，
+                # 不把标题、正文、查询词等情报内容写进性能日志。
+                with self._perf_logger.timed('search_query', **perf_extra) as perf_span:
                     data = self._perform_search_logic(params, subsystem_name)
-
-                # 游客请求可能被服务端限额收紧；把实际分页值返回给前端，
-                # 否则前端继续用请求前的 per_page 会算错总页数。
-                data['page'] = params.get('page', 1)
-                data['per_page'] = params.get('per_page', 20)
-
-                perf_extra['result_count'] = len(data.get('results', []))
-                perf_extra['total'] = data.get('total', 0)
-                return jsonify(data)
+                    # 游客请求可能被服务端限额收紧；把实际分页值返回给前端，
+                    # 否则前端继续用请求前的 per_page 会算错总页数。
+                    data['page'] = params.get('page', 1)
+                    data['per_page'] = params.get('per_page', 20)
+                    response = jsonify(data)
+                    response_metrics = {
+                        'profile': IntelligenceProjectionProfile.CARD.value,
+                        'result_count': len(data.get('results', [])),
+                        'total': data.get('total', 0),
+                        'response_bytes': response.calculate_content_length(),
+                    }
+                    if perf_span is not None and hasattr(perf_span, 'ctx'):
+                        perf_span.ctx.update(response_metrics)
+                return response
 
             finally:
                 if sem_acquired:
@@ -661,6 +692,7 @@ class IntelligenceHubWebService:
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
             )
 
+        # 情报读取路由保持相邻：列表只走 CARD，单篇 JSON 只走 DETAIL。
         @bp.route('/intelligences/query', methods=['GET', 'POST'])
         def intelligences_query_api():
             return self._query_api(subsystem_name)
@@ -1118,7 +1150,8 @@ class IntelligenceHubWebService:
 
                 # 建立一个闭包透传 fetcher 给 engine
                 def doc_fetcher(uuids):
-                    return hub.get_intelligence(uuids, light_weight=True)
+                    return hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 result = agg.build_rich_clusters_latest(
                     doc_fetcher=doc_fetcher,
@@ -1177,7 +1210,8 @@ class IntelligenceHubWebService:
                             return jsonify(payload), 200
 
                 def doc_fetcher(uuids):
-                    return hub.get_intelligence(uuids, light_weight=True)
+                    return hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 result = agg.build_rich_cluster_members(
                     cluster_id=cluster_id,
@@ -1827,7 +1861,8 @@ class IntelligenceHubWebService:
 
                 # 新增传入 fetcher 以便后台监控线程使用
                 def doc_fetcher(uuids):
-                    return self.intelligence_hub.get_intelligence(uuids, light_weight=True)
+                    return self.intelligence_hub.get_intelligence(
+                        uuids, profile=IntelligenceProjectionProfile.CARD)
 
                 job_id = agg_engine.trigger_offline(time_range=time_range, doc_fetcher=doc_fetcher)
                 return jsonify({

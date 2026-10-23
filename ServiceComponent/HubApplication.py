@@ -244,11 +244,12 @@ class HubApplication:
 
     def get_intelligence(self, intelligence_uuid, light_weight: bool = False,
                          subsystem: Optional[str] = None,
-                         include_appendix: bool = False):
+                         include_appendix: bool = False,
+                         profile=None):
         ctx = self._context(subsystem)
         return ctx.event_v4_query_engine.get_intelligence(
             intelligence_uuid, light_weight=light_weight,
-            include_appendix=include_appendix)
+            include_appendix=include_appendix, profile=profile)
 
     def query_intelligence(self, *, subsystem: Optional[str] = None, **kwargs):
         ctx = self._context(subsystem)
