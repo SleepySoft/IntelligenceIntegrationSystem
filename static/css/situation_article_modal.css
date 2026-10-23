@@ -1,0 +1,12 @@
+/* Bootstrap Icons 不可用时仍让详情弹窗操作按钮保持可辨识。 */
+.article-modal-actions i { font-style: normal; }
+.article-modal-actions .bi-link-45deg::before { content: "复制链接"; }
+.article-modal-actions .bi-box-arrow-up-right::before { content: "新标签"; }
+.article-modal-actions .bi-x-lg::before { content: "关闭"; }
+
+.situation-article-title {
+    color: var(--accent, #1a73e8);
+    cursor: pointer;
+    text-decoration: none;
+}
+.situation-article-title:hover { text-decoration: underline; }

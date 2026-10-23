@@ -680,6 +680,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "edgesByAnchor=d3.group" in timeline_html
     assert "getPointAtLength" in timeline_html
     assert "box.width/2-scale*(bounds.x+bounds.width/2)" in timeline_html
+    assert 'src="/static/js/article_modal_manager.js"' in timeline_html
+    assert 'src="/static/js/situation_article_modal.js"' in timeline_html
+    assert 'class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}"' in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html
@@ -744,6 +747,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="open-map-entity-timeline"' in embedded_html
     assert "type: 'iis:open-timeline'" in embedded_html
     assert "async function openMapEntityTimeline(button)" in embedded_html
+    assert 'src="/static/js/article_modal_manager.js"' in embedded_html
+    assert 'src="/static/js/situation_article_modal.js"' in embedded_html
+    assert 'class="situation-article-title" data-uuid="${escapeHtml(item.uuid)}"' in embedded_html
+    assert 'target="_blank" rel="noopener">${escapeHtml(item.title)}</a>' not in embedded_html
     assert 'async function copyEntityName(name, button)' in embedded_html
     assert 'id="entity-global-create-panel"' in embedded_html
     assert 'id="entity-contextual-create-panel"' in embedded_html

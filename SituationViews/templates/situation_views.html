@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }} · 态势洞察</title>
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+    <link rel="stylesheet" href="/static/css/situation_article_modal.css">
     <script src="{{ url_for('situation_views.frontend_asset', asset_name='d3.min.js') }}"></script>
     <script src="{{ url_for('situation_views.frontend_asset', asset_name='topojson-client.min.js') }}"></script>
     <style>
@@ -20,7 +22,7 @@
         }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
-        body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+        body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
         button, input, select { font: inherit; }
         .shell { max-width: 1500px; margin: auto; padding: 20px; }
         header { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 16px; }
@@ -437,6 +439,11 @@
     </div>
 </dialog>
 
+<script src="/static/js/intelligence_contracts.js"></script>
+<script src="/static/js/subsystem_render_protocol.js"></script>
+<script src="/static/js/article_detail_renderer.js"></script>
+<script src="/static/js/article_modal_manager.js"></script>
+<script src="/static/js/situation_article_modal.js"></script>
 <script>
 const CATEGORY_COLORS = {
     war: '#dc3545', terror: '#b42358', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
@@ -952,7 +959,7 @@ async function loadMapIntelligences(countryCode, locationName = null) {
             const predicates = item.predicates.length
                 ? item.predicates.map(value => value.label).join('、') : '未分类谓词';
             return `<article class="intelligence-card">
-                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.uuid)}">${escapeHtml(item.title)}</a>
                 <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个事件</span></div>
                 <div class="predicate-tags">${escapeHtml(predicates)}</div>
             </article>`;
@@ -1456,7 +1463,7 @@ async function loadGraphIntelligences(append) {
             const roles = item.roles.map(value => roleNames[value.role] || value.role).join('、');
             const reason = [roles, counterparts ? `对方：${counterparts}` : '', predicates].filter(Boolean).join(' · ');
             return `<article class="intelligence-card">
-                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.uuid)}">${escapeHtml(item.title)}</a>
                 <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个匹配事件</span></div>
                 <div class="predicate-tags">${escapeHtml(reason)}</div>
             </article>`;
@@ -1974,6 +1981,7 @@ document.querySelectorAll('.side-toggle').forEach(button => button.addEventListe
     button.textContent = collapsed ? '展开图例' : '收起图例';
 }));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
+SituationArticleModal.init({subsystems: SUBSYSTEMS, subsystemName: DASHBOARD_PROFILE.subsystem, detailOrigin: DETAIL_ORIGIN});
 if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
     const dependency = typeof d3 === 'undefined' ? 'D3' : 'TopoJSON';
     const status = DASHBOARD_VIEW === 'graph' ? $('graph-status') : $('map-status');

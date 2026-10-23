@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>实体时间线 · 态势洞察</title>
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+    <link rel="stylesheet" href="/static/css/situation_article_modal.css">
     <style>
         :root {
             color-scheme: light dark;
@@ -13,7 +15,7 @@
             --axis:light-dark(#7f91aa,#7890ad); --edge:light-dark(#7387a3,#8ca1bc);
         }
         * { box-sizing:border-box }
-        body { margin:0; overflow:hidden; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
+        body { margin:0; padding:0; overflow:hidden; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif }
         button,input { font:inherit } button { cursor:pointer }
         .shell { height:100vh; display:grid; grid-template-rows:auto auto minmax(0,1fr) }
         header,.controls,.detail { background:var(--panel); border-color:var(--border) }
@@ -105,6 +107,11 @@
     </main>
 </div>
 <div class="tooltip" id="tooltip" hidden></div>
+<script src="/static/js/intelligence_contracts.js"></script>
+<script src="/static/js/subsystem_render_protocol.js"></script>
+<script src="/static/js/article_detail_renderer.js"></script>
+<script src="/static/js/article_modal_manager.js"></script>
+<script src="/static/js/situation_article_modal.js"></script>
 <script src="../assets/d3.min.js"></script>
 <script>
 const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, SUBSYSTEMS={{ subsystems|tojson }}, CATEGORIES={{ categories|tojson }};
@@ -129,7 +136,7 @@ async function json(url){const response=await fetch(url,{credentials:'same-origi
 async function searchEntities(){const q=$('entity-search').value.trim(),box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent='搜索中…';try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent='当前范围内没有匹配实体';return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=`${entity.event_count} 事件`;button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=`搜索失败：${error.message}`}}
 function addEntity(id){if(selected.includes(id)){$('search-results').hidden=true;return}if(selected.length>=MAX_ENTITIES){alert(`一次最多选择 ${MAX_ENTITIES} 个实体`);return}selected.push(id);$('entity-search').value='';$('search-results').hidden=true;syncUrl(true);loadTimeline()}
 async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;root.selectAll('*').remove();$('empty').hidden=false;$('status').textContent='搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。';return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('empty').hidden=false;$('empty').textContent='正在加载定向时间线…';try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();render()}catch(error){root.selectAll('*').remove();$('empty').hidden=false;$('empty').innerHTML=`<span class="warning">时间线加载失败：${escapeHtml(error.message)}</span>`}}
-function showDetail(item){const coarse=isCoarseTime(item),fallback=item.time.source==='content_time'?'<span class="warning">事件时间缺失，按报道时间定位</span>':coarse?`<span class="warning">事件时间 ${escapeHtml(item.time.normalized||item.time.surface||'未知')}（${escapeHtml(precisionLabel(item.time.precision))}级精度，轴上按报道日期定位）</span>`:'<span>事件抽取时间</span>';const relationNames=[...new Set(item.relations.map(value=>value.counterpart_name).filter(Boolean))];$('detail').innerHTML=`<div class="detail-head"><h2>${escapeHtml(item.predicate.label)} · ${escapeHtml(item.title)}</h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" target="_blank" rel="noopener">查看情报</a><button type="button" id="detail-close">关闭</button></div><div class="tags"><span class="tag">轴上位置 ${escapeHtml(timelineTimeLabel(item))}</span><span class="tag">评分 ${item.score}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||'其他')}</span>${fallback}${item.selected_entity_ids.length>1?'<span class="tag corroboration">多个所选实体共同出现</span>':''}${relationNames.map(name=>`<span class="tag">关联 ${escapeHtml(name)}</span>`).join('')}</div>`;$('detail').hidden=false;$('detail-close').onclick=()=>{$('detail').hidden=true}}
+function showDetail(item){const coarse=isCoarseTime(item),fallback=item.time.source==='content_time'?'<span class="warning">事件时间缺失，按报道时间定位</span>':coarse?`<span class="warning">事件时间 ${escapeHtml(item.time.normalized||item.time.surface||'未知')}（${escapeHtml(precisionLabel(item.time.precision))}级精度，轴上按报道日期定位）</span>`:'<span>事件抽取时间</span>';const relationNames=[...new Set(item.relations.map(value=>value.counterpart_name).filter(Boolean))];$('detail').innerHTML=`<div class="detail-head"><h2>${escapeHtml(item.predicate.label)} · ${escapeHtml(item.title)}</h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}">查看完整情报</a><button type="button" id="detail-close">关闭</button></div><div class="tags"><span class="tag">轴上位置 ${escapeHtml(timelineTimeLabel(item))}</span><span class="tag">评分 ${item.score}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||'其他')}</span>${fallback}${item.selected_entity_ids.length>1?'<span class="tag corroboration">多个所选实体共同出现</span>':''}${relationNames.map(name=>`<span class="tag">关联 ${escapeHtml(name)}</span>`).join('')}</div>`;$('detail').hidden=false;$('detail-close').onclick=()=>{$('detail').hidden=true}}
 function showTooltip(event,html){$('tooltip').innerHTML=html;$('tooltip').hidden=false;moveTooltip(event)}
 function moveTooltip(event){const tip=$('tooltip'),pad=12;let left=event.clientX+pad,top=event.clientY+pad;if(left+tip.offsetWidth>innerWidth-pad)left=event.clientX-tip.offsetWidth-pad;if(top+tip.offsetHeight>innerHeight-pad)top=event.clientY-tip.offsetHeight-pad;tip.style.left=`${left}px`;tip.style.top=`${top}px`}
 function hideTooltip(){$('tooltip').hidden=true}
@@ -225,7 +232,7 @@ function resetGraph(){svg.transition().duration(200).call(zoom.transform,d3.zoom
 document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{mode=el.dataset.mode;syncUrl();render()});document.querySelectorAll('[data-orientation]').forEach(el=>el.onclick=()=>{orientation=el.dataset.orientation;syncUrl();render()});
 $('zoom-in').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1.3);$('zoom-out').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1/1.3);$('zoom-fit').onclick=fitGraph;$('zoom-reset').onclick=resetGraph;
 $('search-button').onclick=searchEntities;$('entity-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(searchEntities,250)};$('entity-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();searchEntities()}};
-document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});updateButtons();renderChips();loadTimeline();
+document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});SituationArticleModal.init({subsystems:SUBSYSTEMS,subsystemName:PROFILE.subsystem,detailOrigin:DETAIL_ORIGIN});updateButtons();renderChips();loadTimeline();
 </script>
 </body>
 </html>
