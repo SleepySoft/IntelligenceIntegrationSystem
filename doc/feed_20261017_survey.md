@@ -98,3 +98,18 @@ Mandarin、Pashto、Persian、Russian、Ukrainian 英文译稿流持续更新，
 
 本轮只接新闻媒体，不接 IDF、外交部等官方声明。官方声明需要先补充来源类型、主张者、
 独立来源计数和前端标识，避免把单方声明直接显示为已证实事实。
+
+### 2026-10-23 东南亚与南美最小补源
+
+考虑到国际政治主链仍由少数关键地区和媒体承担，本轮不追求逐国铺满，只采用“区域主源 +
+主要国家本地源”的小组合，并主动排除体育、生活、观点及全量 Latest Feed：
+
+| 区域 | 源 | 接入口径 | 上线前实测 |
+|---|---|---|---|
+| 东南亚 | CNA Asia | 仅官方 Asia RSS；排除 commentary/sport/lifestyle/watch | 发现 20 条，URL 过滤后 12 条；抽样正文 2.8k 字符 |
+| 东南亚 | Jakarta Post | 仅 Indonesia 列表中的规范 Indonesia/Business URL | 7 条；抽样正文 2.3k–3.0k 字符 |
+| 南美 | MercoPress | 仅 Latin America RSS | 10 条；抽样正文约 2.4k 字符 |
+| 南美 | Agência Brasil English | 仅政治、经济、国际、司法、环境英文栏目 | 8 条；抽样正文约 3.2k 字符 |
+
+CNA RSS 条款限定个人、非商业使用；部署用途变化时需重新审查。Agência Brasil 只接低流量
+英文页，不接葡萄牙语全量 Feed，避免巴西单一来源淹没南美其它国家信号。
