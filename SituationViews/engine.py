@@ -804,7 +804,7 @@ class SituationViewEngine:
         }
 
     def entity_timeline(
-        self, query: ViewQuery, *, entity_ids: Iterable[str],
+        self, query: ViewQuery, *, entity_ids: Iterable[str], max_entities: int = 8,
     ) -> dict[str, Any]:
         """把指定实体的关系投影为事件时间线；所选顺序决定分轨顺序。"""
         selected_ids = list(dict.fromkeys(
@@ -812,8 +812,9 @@ class SituationViewEngine:
         ))
         if not selected_ids:
             raise ValueError("至少需要一个 entity 参数")
-        if len(selected_ids) > 8:
-            raise ValueError("一次最多选择 8 个实体")
+        maximum = max(1, min(32, int(max_entities)))
+        if len(selected_ids) > maximum:
+            raise ValueError(f"一次最多选择 {maximum} 个实体")
 
         selected = set(selected_ids)
         events, meta = self._load_events(query, TIMELINE_EVENT_PROJECTION)

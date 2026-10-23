@@ -23,6 +23,12 @@ def test_example_is_valid_and_projects_component_settings():
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.public_access"
     ) is True
+    assert config.get(
+        "intelligence_hub_web_service.intelligence_views.public_timeline_max_entities"
+    ) == 8
+    assert config.get(
+        "intelligence_hub_web_service.intelligence_views.situation.public_window_days"
+    ) is None
 
 
 def test_minimal_yaml_uses_code_defaults(tmp_path):

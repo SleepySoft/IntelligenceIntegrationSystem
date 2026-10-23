@@ -62,6 +62,9 @@ def test_integration_page_limits_only_situation_views_from_configuration():
         "subsystem": "finance",
         "subsystem_display_name": "财经情报",
         "window_days": 14,
+        "public_window_days": 14,
+        "timeline_max_entities": 8,
+        "public_timeline_max_entities": 8,
         "min_score": 7.5,
         "min_support": 2,
     }
@@ -101,6 +104,40 @@ def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
     assert 'let activeView = "timeline"' in html
     assert "iis:timeline-state" in html
     assert "iis:open-timeline" in html
+
+
+def test_public_timeline_limits_entities_and_logged_in_view_uses_full_scope():
+    app = Flask(__name__)
+    app.secret_key = "test"
+    service = IntelligenceViewsService(SUBSYSTEMS, settings={
+        "public_access": True,
+        "situation": {
+            "window_days": 14,
+            "public_window_days": 5,
+            "timeline_max_entities": 8,
+            "public_timeline_max_entities": 2,
+        },
+    })
+    service.mount_to_app(app, url_prefix="/views")
+    client = app.test_client()
+    query = [("view", "timeline"), ("entity", "ent_a"),
+             ("entity", "ent_b"), ("entity", "ent_c")]
+
+    public_html = client.get("/views/", query_string=query).get_data(as_text=True)
+    public_urls = _frame_urls(public_html)
+    assert "entity=ent_a" in public_urls["timeline"]
+    assert "entity=ent_b" in public_urls["timeline"]
+    assert "entity=ent_c" not in public_urls["timeline"]
+    assert '"timeline_max_entities": 2' in public_html
+    assert '"window_days": 5' in public_html
+
+    with client.session_transaction() as values:
+        values["logged_in"] = True
+    logged_html = client.get("/views/", query_string=query).get_data(as_text=True)
+    logged_urls = _frame_urls(logged_html)
+    assert "entity=ent_c" in logged_urls["timeline"]
+    assert '"timeline_max_entities": 8' in logged_html
+    assert '"window_days": 14' in logged_html
 
 
 def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():

@@ -120,19 +120,25 @@ class SituationViewsService:
         @bp.get("/embed/map")
         @embed_protect
         def embedded_map_dashboard():
+            scoped = public_scoped and not session.get("logged_in", False)
             return self._render_dashboard(
-                "map", profile=self.dashboard, embedded=True)
+                "map", profile=self._viewer_profile(scoped), embedded=True,
+                scoped=scoped)
 
         @bp.get("/embed/entities")
         @embed_protect
         def embedded_entity_dashboard():
+            scoped = public_scoped and not session.get("logged_in", False)
             return self._render_dashboard(
-                "graph", profile=self.dashboard, embedded=True)
+                "graph", profile=self._viewer_profile(scoped), embedded=True,
+                scoped=scoped)
 
         @bp.get("/embed/timeline")
         @embed_protect
         def embedded_entity_timeline():
-            return self._render_timeline(profile=self.dashboard, embedded=True)
+            scoped = public_scoped and not session.get("logged_in", False)
+            return self._render_timeline(
+                profile=self._viewer_profile(scoped), embedded=True, scoped=scoped)
 
         @bp.get("/api/map")
         @bp.get("/api/scoped/map")
@@ -268,9 +274,12 @@ class SituationViewsService:
         @scoped_or_protected
         def entity_timeline_api():
             try:
-                engine, query = self._request_context(fixed=self._is_scoped_request())
+                scoped = self._is_scoped_request()
+                engine, query = self._request_context(fixed=scoped)
+                maximum = self._timeline_entity_limit(scoped)
                 return jsonify(engine.entity_timeline(
-                    query, entity_ids=self._entity_args()))
+                    query, entity_ids=self._entity_args(maximum),
+                    max_entities=maximum))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
@@ -488,7 +497,9 @@ class SituationViewsService:
 
         app.register_blueprint(bp, url_prefix=url_prefix)
 
-    def _render_dashboard(self, view, *, profile=None, embedded=False):
+    def _render_dashboard(self, view, *, profile=None, embedded=False, scoped=None):
+        if scoped is None:
+            scoped = embedded
         return render_template(
             "situation_views.html",
             categories=CATEGORY_LABELS,
@@ -497,14 +508,16 @@ class SituationViewsService:
             dashboard_view=view,
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
-            api_prefix="../api/scoped" if embedded else "api",
+            api_prefix="../api/scoped" if scoped else ("../api" if embedded else "api"),
             edit_api_prefix="../api" if embedded else "api",
             entity_edit_enabled=bool(
                 self.entity_resolution_service is not None
                 and session.get("logged_in", False)),
         )
 
-    def _render_timeline(self, *, profile=None, embedded=False):
+    def _render_timeline(self, *, profile=None, embedded=False, scoped=None):
+        if scoped is None:
+            scoped = embedded
         return render_template(
             "entity_timeline.html",
             categories=CATEGORY_LABELS,
@@ -512,7 +525,7 @@ class SituationViewsService:
             detail_origin=self.detail_origin,
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
-            api_prefix="../api/scoped" if embedded else "api",
+            api_prefix="../api/scoped" if scoped else ("../api" if embedded else "api"),
         )
 
     def _dashboard_profile(self, raw):
@@ -527,10 +540,18 @@ class SituationViewsService:
             subsystem = default
         selected = next(
             (item for item in descriptions if item.get("name") == subsystem), {})
+        window_days = self._coerce_number(values.get("window_days"), 7, 1, 365, int)
+        public_window_days = self._coerce_number(
+            values.get("public_window_days"), window_days, 1, window_days, int)
         return {
             "subsystem": subsystem,
             "subsystem_display_name": selected.get("display_name") or subsystem,
-            "window_days": self._coerce_number(values.get("window_days"), 7, 1, 365, int),
+            "window_days": window_days,
+            "public_window_days": public_window_days,
+            "timeline_max_entities": self._coerce_number(
+                values.get("timeline_max_entities"), 8, 1, 8, int),
+            "public_timeline_max_entities": self._coerce_number(
+                values.get("public_timeline_max_entities"), 8, 1, 8, int),
             "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
             "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
             "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 5000, int),
@@ -541,6 +562,19 @@ class SituationViewsService:
             "keep_high_score_singletons": self._coerce_bool(
                 values.get("keep_high_score_singletons"), True),
         }
+
+    def _viewer_profile(self, public: bool):
+        profile = dict(self.dashboard)
+        if public:
+            profile["window_days"] = profile["public_window_days"]
+            profile["timeline_max_entities"] = self._timeline_entity_limit(True)
+        return profile
+
+    def _timeline_entity_limit(self, public: bool) -> int:
+        maximum = int(self.dashboard["timeline_max_entities"])
+        if public:
+            maximum = min(maximum, int(self.dashboard["public_timeline_max_entities"]))
+        return maximum
 
     @staticmethod
     def _coerce_number(value, default, minimum, maximum, converter):
@@ -566,15 +600,16 @@ class SituationViewsService:
         now = dt.datetime.now(dt.timezone.utc)
         if fixed:
             end = now
-            start = end - dt.timedelta(days=self.dashboard["window_days"])
+            start = end - dt.timedelta(days=self.dashboard["public_window_days"])
         else:
-            start = self._datetime_arg("start", now - dt.timedelta(days=7))
+            start = self._datetime_arg(
+                "start", now - dt.timedelta(days=self.dashboard["window_days"]))
             end = self._datetime_arg("end", now)
         if start >= end:
             raise ValueError("start 必须早于 end")
         min_score = (
             self.dashboard["min_score"] if fixed
-            else self._bounded_float("min_score", 6.0, 0, 10)
+            else self._bounded_float("min_score", self.dashboard["min_score"], 0, 10)
         )
         raw_categories = str(request.args.get("category") or "").strip()
         if not raw_categories:
@@ -701,15 +736,15 @@ class SituationViewsService:
         return values
 
     @staticmethod
-    def _entity_args():
+    def _entity_args(maximum=8):
         values = list(dict.fromkeys(
             str(value or "").strip() for value in request.args.getlist("entity")
             if str(value or "").strip()
         ))
         if not values:
             raise ValueError("至少需要一个 entity 参数")
-        if len(values) > 8:
-            raise ValueError("一次最多选择 8 个实体")
+        if len(values) > maximum:
+            raise ValueError(f"一次最多选择 {maximum} 个实体")
         if any(len(value) > 300 for value in values):
             raise ValueError("entity 参数过长")
         return values

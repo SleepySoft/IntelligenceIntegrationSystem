@@ -101,7 +101,7 @@ function timelineFrameUrlFromOuter() {
     const frameUrl = new URL(FRAME_URLS.timeline, window.location.origin);
     const outerUrl = new URL(window.location.href);
     frameUrl.search = '';
-    outerUrl.searchParams.getAll('entity').slice(0, 8).forEach(value => frameUrl.searchParams.append('entity', value));
+    outerUrl.searchParams.getAll('entity').slice(0, SITUATION.timeline_max_entities).forEach(value => frameUrl.searchParams.append('entity', value));
     TIMELINE_QUERY_NAMES.forEach(name => {
         if (outerUrl.searchParams.has(name)) frameUrl.searchParams.set(name, outerUrl.searchParams.get(name));
     });
@@ -111,7 +111,7 @@ function timelineFrameUrlFromOuter() {
 function syncOuterTimelineState(state) {
     const url = new URL(window.location.href);
     url.searchParams.delete('entity');
-    (state?.entities || []).slice(0, 8).forEach(value => url.searchParams.append('entity', String(value)));
+    (state?.entities || []).slice(0, SITUATION.timeline_max_entities).forEach(value => url.searchParams.append('entity', String(value)));
     TIMELINE_QUERY_NAMES.forEach(name => {
         const value = state?.[name];
         if (value !== undefined && value !== null && value !== '') url.searchParams.set(name, String(value));
@@ -127,7 +127,7 @@ function openTimeline(entities) {
     const url = new URL(window.location.href);
     const merged = [...url.searchParams.getAll('entity'), ...(entities || [])];
     url.searchParams.delete('entity');
-    [...new Set(merged)].slice(0, 8).forEach(value => url.searchParams.append('entity', String(value)));
+    [...new Set(merged)].slice(0, SITUATION.timeline_max_entities).forEach(value => url.searchParams.append('entity', String(value)));
     url.searchParams.set('view', 'timeline');
     history.pushState(null, '', url);
     FRAME_URLS.timeline = timelineFrameUrlFromOuter();
@@ -183,6 +183,7 @@ window.addEventListener('message', event => {
     const listFrame = document.querySelector('iframe[data-view="list"]');
     const timelineFrame = document.querySelector('iframe[data-view="timeline"]');
     const entitiesFrame = document.querySelector('iframe[data-view="entities"]');
+    const mapFrame = document.querySelector('iframe[data-view="map"]');
     if (event.origin !== window.location.origin) return;
     if (event.source === listFrame.contentWindow) {
         if (event.data?.type !== 'iis:list-state') return;
@@ -191,7 +192,8 @@ window.addEventListener('message', event => {
     }
     if (event.source === timelineFrame.contentWindow && event.data?.type === 'iis:timeline-state') {
         syncOuterTimelineState(event.data.state);
-    } else if (event.source === entitiesFrame.contentWindow && event.data?.type === 'iis:open-timeline') {
+    } else if ((event.source === entitiesFrame.contentWindow || event.source === mapFrame.contentWindow)
+            && event.data?.type === 'iis:open-timeline') {
         openTimeline(event.data.entities);
     }
 });

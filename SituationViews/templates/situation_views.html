@@ -919,12 +919,14 @@ function showMapDetail(d, countryName, locationName = null) {
     const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
     const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
     const predicates = Object.entries(d.predicates).map(([k,v]) => `<li>${escapeHtml(k)}：${v}</li>`).join('');
+    const timelineLookup = String(locationName || countryName || '').trim();
+    const timelineButton = timelineLookup ? `<button type="button" id="open-map-entity-timeline" data-lookup="${escapeHtml(timelineLookup)}" data-country="${escapeHtml(d.country_code)}" style="width:100%;margin-top:10px">在实体时间线中查看此地域</button>` : '';
     $('map-detail').innerHTML = `<h2>${escapeHtml(countryName || d.country_code)}</h2>
         <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
         <h3>类别</h3><ul class="list">${categories}</ul>
         <h3>提取地点</h3><ul class="list">${locations}</ul>
         <h3>谓词</h3><ul class="list">${predicates}</ul>
-        <p class="muted">国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。</p>
+        <p class="muted">国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。</p>${timelineButton}
         <div class="legend">${legendHtml()}</div>`;
     loadMapIntelligences(d.country_code, locationName);
 }
@@ -1614,18 +1616,47 @@ document.addEventListener('click', event => {
         if (node) openEntityEditor(node);
     }
     if (event.target.id === 'open-entity-timeline' && selectedGraphElement?.type === 'node') {
-        const entityId = selectedGraphElement.entity_id;
-        if (window.parent && window.parent !== window) {
-            window.parent.postMessage({type: 'iis:open-timeline', entities: [entityId]}, location.origin);
-        } else {
-            const url = new URL('timeline', location.href);
-            url.searchParams.append('entity', entityId);
-            location.href = url;
-        }
+        openTimelineEntities([selectedGraphElement.entity_id]);
+    }
+    if (event.target.id === 'open-map-entity-timeline') {
+        openMapEntityTimeline(event.target);
     }
     const target = event.target.closest('[data-edit-target]');
     if (target) selectEditingTarget(target.dataset.editTarget, target.dataset.editTargetName);
 });
+
+function openTimelineEntities(entityIds) {
+    const maximum = Number(DASHBOARD_PROFILE.timeline_max_entities) || 8;
+    const entities = [...new Set((entityIds || []).filter(Boolean))].slice(0, maximum);
+    if (!entities.length) return;
+    if (window.parent && window.parent !== window) {
+        window.parent.postMessage({type: 'iis:open-timeline', entities}, location.origin);
+    } else {
+        const url = new URL('timeline', location.href);
+        entities.forEach(entityId => url.searchParams.append('entity', entityId));
+        location.href = url;
+    }
+}
+
+async function openMapEntityTimeline(button) {
+    const lookup = String(button.dataset.lookup || '').trim(), country = String(button.dataset.country || '').trim();
+    if (!lookup) return;
+    const oldText = button.textContent; button.disabled = true; button.textContent = '正在匹配地域实体…';
+    try {
+        const result = await loadJson(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(lookup)}&limit=50`);
+        const candidates = (result.entities || []).filter(item => !country || !item.country_code || item.country_code === country);
+        candidates.sort((a, b) => Number(b.name === lookup) - Number(a.name === lookup)
+            || Number(['geopolitical_entity','location'].includes(b.type)) - Number(['geopolitical_entity','location'].includes(a.type))
+            || b.event_count - a.event_count);
+        const entities = candidates.slice(0, 1).map(item => item.id);
+        if (!entities.length) throw new Error(`当前窗口内没有可用于时间线的“${lookup}”实体`);
+        openTimelineEntities(entities);
+    } catch (error) {
+        alert(`无法打开实体时间线：${error.message}`);
+    } finally {
+        button.disabled = false; button.textContent = oldText;
+    }
+}
 
 async function copyEntityName(name, button) {
     const text = String(name || '').trim();

@@ -53,6 +53,8 @@ optional_subsystems:
   intelligence_views:
     enabled: true
     public_access: true  # 公开 /views 及其固定范围只读数据；非 scoped 态势 API 仍需登录
+    # public_window_days: 7              # 未登录用户的地图、实体图及时间线窗口；空 = 沿用 situation.window_days
+    # public_timeline_max_entities: 4    # 未登录用户一次可选择的时间线实体数（1-8）
   # batch_analysis:              # 批量分析子系统（Provider Batch，凌晨空闲半价回注积压）
   #   enabled: false             # 启用需 ai_clients.yaml 中有 MiMo key
   #   model: mimo-v2.6-flash

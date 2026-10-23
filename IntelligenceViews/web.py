@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlencode
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, session
 
 
 VIEW_NAMES = frozenset({"list", "map", "entities", "timeline"})
@@ -24,6 +24,7 @@ class IntelligenceViewsService:
         if not self.subsystems:
             raise ValueError("情报视图至少需要一个可用子系统。")
         self.settings = dict(settings or {}) if isinstance(settings, dict) else {}
+        self.public_access = bool(self.settings.get("public_access", True))
         self.situation_prefix = "/" + str(situation_prefix or "situation").strip("/")
         self.situation = self._situation_profile(self.settings.get("situation"))
 
@@ -60,11 +61,19 @@ class IntelligenceViewsService:
         )
         if subsystem is None:
             subsystem = default_subsystem
+        window_days = self._bounded_int(values, "window_days", 7, 1, 365)
+        public_window_days = self._bounded_int(
+            values, "public_window_days", window_days, 1, window_days)
         return {
             "subsystem": str(subsystem.get("name") or ""),
             "subsystem_display_name": str(
                 subsystem.get("display_name") or subsystem.get("name") or ""),
-            "window_days": self._bounded_int(values, "window_days", 7, 1, 365),
+            "window_days": window_days,
+            "public_window_days": public_window_days,
+            "timeline_max_entities": self._bounded_int(
+                values, "timeline_max_entities", 8, 1, 8),
+            "public_timeline_max_entities": self._bounded_int(
+                values, "public_timeline_max_entities", 8, 1, 8),
             "min_score": self._bounded_float(values, "min_score", 6.0, 0, 10),
             "min_support": self._bounded_int(values, "min_support", 2, 1, 50),
         }
@@ -76,7 +85,14 @@ class IntelligenceViewsService:
         if active_view not in VIEW_NAMES:
             active_view = "list"
 
-        return {"active_view": active_view, "situation": self.situation}
+        situation = dict(self.situation)
+        if self.public_access and not session.get("logged_in", False):
+            situation["window_days"] = situation["public_window_days"]
+            situation["timeline_max_entities"] = min(
+                situation["timeline_max_entities"],
+                situation["public_timeline_max_entities"],
+            )
+        return {"active_view": active_view, "situation": situation}
 
     def _frame_urls(self, _profile):
         list_query = {
@@ -86,7 +102,8 @@ class IntelligenceViewsService:
         }
         list_query.setdefault("threshold", "6")
         timeline_query = []
-        for entity_id in request.args.getlist("entity")[:8]:
+        entity_limit = int(_profile["situation"]["timeline_max_entities"])
+        for entity_id in request.args.getlist("entity")[:entity_limit]:
             entity_id = str(entity_id or "").strip()
             if entity_id:
                 timeline_query.append(("entity", entity_id))

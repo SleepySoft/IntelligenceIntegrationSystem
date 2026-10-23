@@ -163,6 +163,10 @@ class IntelligenceViewsSettings(ToggleSettings):
     # /views and its fixed-scope, read-only data dependencies are public by
     # default. Unscoped SituationViews queries remain authenticated.
     public_access: bool = True
+    # 公开访问使用更小的固定窗口；空值表示沿用 situation.window_days。
+    public_window_days: int | None = Field(None, ge=1, le=365)
+    # 登录用户仍可使用时间线自身的 8 实体上限。
+    public_timeline_max_entities: int = Field(8, ge=1, le=8)
 
 
 class EntityAliasWikidataSettings(_StrictModel):
@@ -373,12 +377,20 @@ class IISConfig:
                 "intelligence_views": {
                     "enabled": optional_subsystems.intelligence_views.enabled,
                     "public_access": optional_subsystems.intelligence_views.public_access,
+                    "public_window_days": optional_subsystems.intelligence_views.public_window_days,
+                    "public_timeline_max_entities": (
+                        optional_subsystems.intelligence_views.public_timeline_max_entities),
                     "url_prefix": "/views",
                     "situation_prefix": "/situation",
                     "default_view": "list",
                     "situation": {
                         "subsystem": situation_subsystem,
                         "window_days": situation.window_days,
+                        "public_window_days": (
+                            optional_subsystems.intelligence_views.public_window_days),
+                        "timeline_max_entities": 8,
+                        "public_timeline_max_entities": (
+                            optional_subsystems.intelligence_views.public_timeline_max_entities),
                         "min_score": situation.min_score,
                         "min_support": situation.min_support,
                         "max_nodes": situation.max_nodes,

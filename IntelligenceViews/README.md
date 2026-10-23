@@ -21,6 +21,11 @@ IIS 挂载后的默认入口为 `/views/`。URL 只可用 `view` 选择初始 Ta
 可以恢复登录保护。公共模式只同步放开地图和实体图所需的固定范围 scoped API，其他
 SituationViews 查询接口不随之公开。
 
+公开范围可单独收紧：`public_window_days` 同时限制地域、实体和时间线的数据窗口，
+`public_timeline_max_entities` 限制未登录用户可带入时间线的实体数量。两项限制均由服务端
+强制执行；登录用户继续使用 `optional_subsystems.situation.window_days` 和 8 个实体上限。
+实体图与地域图通过同源消息把已选实体参数带到时间线，父页面会再次按当前用户上限裁剪。
+
 情报列表直接加载原 `/intelligences` 页面，初始评分阈值为 6，进入列表后仍可使用原页面的
 筛选、排序和分页能力。地域、实体图和实体时间线子页面使用 `/situation/embed/map`、
 `/situation/embed/entities` 与 `/situation/embed/timeline`；三者的子系统、滚动时间窗口、

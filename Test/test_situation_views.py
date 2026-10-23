@@ -553,6 +553,12 @@ def test_entity_timeline_rejects_missing_or_excessive_selection():
         assert False, "too many selected entities should fail"
     except ValueError as exc:
         assert "最多选择 8" in str(exc)
+    try:
+        engine.entity_timeline(
+            query, entity_ids=["ent_a", "ent_b", "ent_c"], max_entities=2)
+        assert False, "configured entity limit should fail"
+    except ValueError as exc:
+        assert "最多选择 2" in str(exc)
 
 
 def test_web_service_serves_both_views_with_injected_collections():
@@ -589,9 +595,12 @@ def test_web_service_serves_both_views_with_injected_collections():
     app = Flask(__name__)
     SituationViewsService(
         Registry(), geocoder=Geocoder(),
-        dashboard={"subsystem": "news", "window_days": 7, "min_score": 6},
+        dashboard={
+            "subsystem": "news", "window_days": 7, "public_window_days": 3,
+            "min_score": 6, "public_timeline_max_entities": 1,
+        },
     ).mount_to_app(
-        app, url_prefix="/situation")
+        app, url_prefix="/situation", public_scoped=True)
     client = app.test_client()
     params = {
         "subsystem": "news",
@@ -620,6 +629,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     timeline_payload = client.get(
         "/situation/api/entity-timeline",
         query_string=[*params.items(), ("entity", "organization|RU|行动方")],
+    )
+    timeline_over_limit = client.get(
+        "/situation/api/scoped/entity-timeline",
+        query_string=[*params.items(), ("entity", "ent_a"), ("entity", "ent_b")],
     )
     graph_intelligences = client.get(
         "/situation/api/entity-graph/intelligences",
@@ -658,7 +671,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="range-start"' not in timeline_html
     assert 'id="range-end"' not in timeline_html
     assert "d3.zoom()" in timeline_html
-    assert "最近 7 天收录情报" in timeline_html
+    assert "最近 3 天收录情报" in timeline_html
+    assert "最多 1 个实体" in timeline_html
     assert "function flowingPath" in timeline_html
     assert "attr('class','edge-label')" in timeline_html
     assert "function isCoarseTime" in timeline_html
@@ -727,7 +741,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'top: 14px; z-index: 30' in embedded_html
     assert 'id="copy-graph-entity-name" title="复制实体名称"' in embedded_html
     assert 'id="open-entity-timeline"' in embedded_html
+    assert 'id="open-map-entity-timeline"' in embedded_html
     assert "type: 'iis:open-timeline'" in embedded_html
+    assert "async function openMapEntityTimeline(button)" in embedded_html
     assert 'async function copyEntityName(name, button)' in embedded_html
     assert 'id="entity-global-create-panel"' in embedded_html
     assert 'id="entity-contextual-create-panel"' in embedded_html
@@ -759,6 +775,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert graph_payload.get_json()["temporal_events"][0][1] == "a"
     assert timeline_payload.status_code == 200
     assert timeline_payload.get_json()["events"][0]["id"] == "e1"
+    assert timeline_over_limit.status_code == 400
+    assert "最多选择 1" in timeline_over_limit.get_json()["error"]
     assert graph_intelligences.status_code == 200
     assert graph_intelligences.get_json()["intelligences"][0]["uuid"] == "a"
     assert intelligence_payload.status_code == 200
