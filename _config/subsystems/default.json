@@ -1,0 +1,10 @@
+{
+  "name": "default",
+  "url_prefix": "/",
+  "prompt_versions": [25],
+  "db_collection_prefix": "intelligence",
+  "vector_summary_name": "intelligence_summary",
+  "vector_fulltext_name": "intelligence_full_text",
+  "ai_analysis_thread": 1,
+  "enabled": true
+}

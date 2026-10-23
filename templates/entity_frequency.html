@@ -260,18 +260,6 @@
 
         <li class="nav-item" role="presentation">
             <button class="nav-link"
-                    id="tab-geography"
-                    data-bs-toggle="tab"
-                    data-bs-target="#pane-geography"
-                    type="button"
-                    role="tab"
-                    onclick="switchTab('GEOGRAPHY')">
-                <i class="fas fa-globe me-2"></i>地域
-            </button>
-        </li>
-
-        <li class="nav-item" role="presentation">
-            <button class="nav-link"
                     id="tab-people"
                     data-bs-toggle="tab"
                     data-bs-target="#pane-people"
@@ -301,10 +289,6 @@
             <div id="content-LOCATION"></div>
         </div>
 
-        <div class="tab-pane fade" id="pane-geography" role="tabpanel">
-            <div id="content-GEOGRAPHY"></div>
-        </div>
-
         <div class="tab-pane fade" id="pane-people" role="tabpanel">
             <div id="content-PEOPLE"></div>
         </div>
@@ -323,18 +307,16 @@
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 
 <script>
-const ENTITY_TYPES = ['LOCATION', 'GEOGRAPHY', 'PEOPLE', 'ORGANIZATION'];
+const ENTITY_TYPES = ['LOCATION', 'PEOPLE', 'ORGANIZATION'];
 
 const ENTITY_LABELS = {
     LOCATION: '地点',
-    GEOGRAPHY: '地域',
     PEOPLE: '人物',
     ORGANIZATION: '组织'
 };
 
 const ENTITY_SEARCH_PARAM = {
     LOCATION: 'locations',
-    GEOGRAPHY: 'geography',
     PEOPLE: 'peoples',
     ORGANIZATION: 'organizations'
 };

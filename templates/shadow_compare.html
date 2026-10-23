@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>影子分析对比</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#f4f6fa, #0d1420);
+            --panel: light-dark(#ffffff, #16202f);
+            --border: light-dark(#dde4ee, #2d3c52);
+            --text: light-dark(#1a2433, #e6edf7);
+            --muted: light-dark(#66748a, #93a3bb);
+            --accent: #4f7cff;
+            --diff: light-dark(#fff3cd, #4a3d12);
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text);
+               font: 14px/1.5 system-ui, sans-serif; }
+        .wrap { max-width: 1400px; margin: 0 auto; padding: 16px; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        .muted { color: var(--muted); }
+        a { color: var(--accent); text-decoration: none; }
+        .panel { background: var(--panel); border: 1px solid var(--border);
+                 border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+        .pair-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        select { font: inherit; padding: 6px 8px; border-radius: 6px;
+                 border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+        .warn { color: #b8860b; font-size: 12px; }
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .side-head { font-weight: 700; padding: 8px 10px; border-radius: 8px;
+                     background: color-mix(in srgb, var(--accent) 10%, transparent); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
+                 vertical-align: top; }
+        th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+        td.diff { background: var(--diff); }
+        .roles { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
+        .section-title { font-weight: 700; margin: 12px 0 6px; }
+        .error { color: #d64545; padding: 12px; }
+        @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1 id="title">影子分析对比</h1>
+    <div class="muted" style="margin-bottom:14px">
+        <a href="javascript:history.back()">← 返回</a> · UUID: <span id="uuid"></span>
+    </div>
+
+    <div class="panel pair-bar">
+        <strong>对比配对：</strong>
+        <select id="pair-select"></select>
+        <span class="warn" id="pair-warn"></span>
+    </div>
+
+    <div id="content" style="display:none">
+        <div class="cols">
+            <div class="panel"><div class="side-head" id="left-head"></div><div id="left-meta" class="muted"></div></div>
+            <div class="panel"><div class="side-head" id="right-head"></div><div id="right-meta" class="muted"></div></div>
+        </div>
+
+        <div class="panel">
+            <div class="section-title">评分对比（RATE）</div>
+            <table id="rate-table"></table>
+        </div>
+
+        <div class="panel">
+            <div class="section-title">标题与简报</div>
+            <table id="text-table"></table>
+        </div>
+
+        <div class="cols">
+            <div class="panel">
+                <div class="section-title" id="left-events-title">事件结构（左）</div>
+                <div id="left-events"></div>
+            </div>
+            <div class="panel">
+                <div class="section-title" id="right-events-title">事件结构（右）</div>
+                <div id="right-events"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="section-title">抽取质量指标</div>
+            <table id="quality-table"></table>
+        </div>
+    </div>
+    <div class="error" id="error" style="display:none"></div>
+</div>
+
+<script>
+const UUID = {{ uuid|tojson }};
+document.getElementById('uuid').textContent = UUID;
+let SIDES = [], PAIRS = [], PRIMARY_DOC = null, cache = {};
+
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"]/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function sideLabel(side) {
+    if (side.id === '__primary__') return `主链 · v${side.prompt_version} · ${side.model}`;
+    return `影子 · v${side.prompt_version} · ${side.model}`;
+}
+
+async function init() {
+    const resp = await fetch(`/api/intelligence/${encodeURIComponent(UUID)}/shadow`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    document.getElementById('title').textContent =
+        `影子分析对比 · ${data.title || ''}`;
+    if (!data.available) {
+        document.getElementById('error').style.display = '';
+        document.getElementById('error').textContent =
+            '该情报没有影子分析数据（需配置 shadow_analysis 且该样本被抽样）。';
+        return;
+    }
+    SIDES = data.sides; PAIRS = data.pairs;
+    PRIMARY_DOC = data.primary_document || {};
+    const select = document.getElementById('pair-select');
+    select.innerHTML = PAIRS.map((p, i) => {
+        const l = SIDES.find(s => s.id === p.left), r = SIDES.find(s => s.id === p.right);
+        return `<option value="${i}">[${p.kind_label}] ${sideLabel(l)} ⇄ ${sideLabel(r)}</option>`;
+    }).join('');
+    select.onchange = () => renderPair(PAIRS[select.value]);
+    if (PAIRS.length) renderPair(PAIRS[0]);
+}
+
+async function loadSide(side) {
+    if (side.id === '__primary__') return PRIMARY_DOC;
+    if (!cache[side.id]) {
+        const resp = await fetch(`/api/shadow/record?file=${encodeURIComponent(side.id)}`);
+        const record = await resp.json();
+        const analysis = record.analysis || {};
+        analysis.__shadow_quality = record.extraction_quality || null;
+        cache[side.id] = analysis;
+    }
+    return cache[side.id];
+}
+
+function qualityOf(side, analysis) {
+    if (side.id === '__primary__') {
+        return (analysis.APPENDIX || {}).__EXTRACTION_QUALITY__ || null;
+    }
+    // 影子记录的质量统计在 record.extraction_quality（loadSide 已剥离，这里从缓存原始记录取）
+    return analysis.__shadow_quality || null;
+}
+
+function renderEvents(el, analysis) {
+    const ext = (analysis || {}).EVENT_EXTRACTION || {};
+    const entities = {};
+    (ext.entities || []).forEach(e => entities[e.id] = e);
+    const rows = (ext.events || []).map(ev => {
+        const core = ev.core || {};
+        const pred = core.predicate || {};
+        const roles = Object.entries(core.roles || {}).map(([role, ids]) =>
+            `${role}: ${ids.map(i => (entities[i] || {}).name || i).join(', ')}`).join('\n');
+        const primary = ev.id === ext.primary_event_id ? '★ ' : '';
+        return `<tr><td>${primary}${esc(ev.id)}</td><td>${esc(pred.id)}<br><span class="muted">${esc(pred.surface)}</span></td>` +
+               `<td class="roles">${esc(roles)}</td></tr>`;
+    }).join('');
+    el.innerHTML = rows
+        ? `<table><tr><th>事件</th><th>谓词</th><th>角色</th></tr>${rows}</table>`
+        : '<span class="muted">无事件抽取</span>';
+}
+
+async function renderPair(pair) {
+    const left = SIDES.find(s => s.id === pair.left);
+    const right = SIDES.find(s => s.id === pair.right);
+    document.getElementById('pair-warn').textContent =
+        pair.kind === 'confounded' ? '⚠ 双变量配对：以下差异无法归因到单一因素' : '';
+
+    const [la, ra] = await Promise.all([loadSide(left), loadSide(right)]);
+    document.getElementById('content').style.display = '';
+    document.getElementById('left-head').textContent = sideLabel(left);
+    document.getElementById('right-head').textContent = sideLabel(right);
+    document.getElementById('left-meta').textContent = left.id === '__primary__' ? '生产归档' : `影子文件: ${left.id}`;
+    document.getElementById('right-meta').textContent = right.id === '__primary__' ? '生产归档' : `影子文件: ${right.id}`;
+
+    // RATE 对比
+    const dims = new Set([...Object.keys(la.RATE || {}), ...Object.keys(ra.RATE || {})]);
+    const lt = (la.APPENDIX || {}).__TOTAL_SCORE__ ?? la.__total_score__;
+    const rt = (ra.APPENDIX || {}).__TOTAL_SCORE__ ?? ra.__total_score__;
+    const rows = [...dims].map(d => {
+        const lv = (la.RATE || {})[d], rv = (ra.RATE || {})[d];
+        const diff = lv !== rv ? ' class="diff"' : '';
+        return `<tr><th>${esc(d)}</th><td${diff}>${esc(lv)}</td><td${diff}>${esc(rv)}</td></tr>`;
+    });
+    rows.push(`<tr><th>总分</th><td${lt !== rt ? ' class="diff"' : ''}>${esc(lt)}</td>` +
+              `<td${lt !== rt ? ' class="diff"' : ''}>${esc(rt)}</td></tr>`);
+    document.getElementById('rate-table').innerHTML =
+        `<tr><th>维度</th><th>${esc(sideLabel(left))}</th><th>${esc(sideLabel(right))}</th></tr>` + rows.join('');
+
+    // 文本对比
+    const textRows = ['EVENT_TITLE', 'EVENT_BRIEF', 'TAXONOMY'].map(k => {
+        const lv = la[k], rv = ra[k];
+        return `<tr><th>${esc(k)}</th><td${lv !== rv ? ' class="diff"' : ''}>${esc(lv)}</td>` +
+               `<td${lv !== rv ? ' class="diff"' : ''}>${esc(rv)}</td></tr>`;
+    });
+    document.getElementById('text-table').innerHTML = textRows.join('');
+
+    // 事件结构
+    renderEvents(document.getElementById('left-events'), la);
+    renderEvents(document.getElementById('right-events'), ra);
+
+    // 质量指标
+    const lq = qualityOf(left, la) || {}, rq = qualityOf(right, ra) || {};
+    const qRows = [
+        ['未登记角色', lq.unregistered_role_count, rq.unregistered_role_count],
+        ['角色类型冲突', lq.role_type_conflict_count, rq.role_type_conflict_count],
+        ['谓词接地率',
+         lq.surface_grounding ? `${lq.surface_grounding.predicate.hit}/${lq.surface_grounding.predicate.total}` : '—',
+         rq.surface_grounding ? `${rq.surface_grounding.predicate.hit}/${rq.surface_grounding.predicate.total}` : '—'],
+    ].map(([k, lv, rv]) =>
+        `<tr><th>${esc(k)}</th><td${lv !== rv ? ' class="diff"' : ''}>${esc(lv ?? '—')}</td>` +
+        `<td${lv !== rv ? ' class="diff"' : ''}>${esc(rv ?? '—')}</td></tr>`);
+    document.getElementById('quality-table').innerHTML = qRows.join('');
+}
+
+init().catch(e => {
+    document.getElementById('error').style.display = '';
+    document.getElementById('error').textContent = `加载失败: ${e.message}`;
+});
+</script>
+</body>
+</html>

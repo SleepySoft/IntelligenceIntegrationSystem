@@ -1,76 +1,69 @@
-import json
-import time
-import logging
 import datetime
-import traceback
+import json
+import logging
+import time
 import json_repair
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, ValidationError
 
-from AIClientCenter.AIClientManager import BaseAIClient
+from AIClientCenter.core.manager import BaseAIClient
 from MyPythonUtility.FileSqliteHyridDB import HybridDB
-from MyPythonUtility.DictTools import dict_list_to_markdown
+from ServiceComponent.analysis_messages import (
+    ANALYSIS_MAX_OUTPUT_TOKENS,
+    AIMessage,
+    build_analyze_message,
+    build_analyze_user_message,
+    extract_pure_json_text,
+    extract_pure_response,
+)
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-MAX_OUTPUT_TOKEN = 8192         # The limit of Gemini
+MAX_OUTPUT_TOKEN = ANALYSIS_MAX_OUTPUT_TOKENS
 CONVERSATION_PATH = 'conversation'
 conversation_db = HybridDB(CONVERSATION_PATH)
 
 
-class AIMessage(BaseModel):
-    UUID: str
-    content: str
-    title: str | None = None
-    authors: List[str] = []
-    pub_time: object | None = None
-    informant: str | None = None
+def record_conversation(category: str, messages: list, response: dict, meta: dict = None) -> int:
+    """记录一次 AI 交互：原始请求、原始响应、结构化元数据。
 
+    文件格式（2026-10-15 起，旧文件为 [system]/[user]/[reply] 纯文本）：
 
-def extract_pure_response(text: str):
-    while '<think>' in text and '</think>' in text:
-        start_idx = text.find('<think>')
-        end_idx = text.find('</think>', start_idx) + len('</think>')
-        text = text[:start_idx] + text[end_idx:]
-    text = text.replace('<answer>', '').replace('</answer>', '')
-    return text.strip()
-
-
-def extract_pure_json_text(text: str):
-    return text.strip().removeprefix('```json').removesuffix('```').strip()
-
-
-def record_conversation(category: str, messages: list, response: dict) -> int:
-    # folder_path = os.path.join('conversation', folder)
-    # os.makedirs(folder_path, exist_ok=True)
-    # file_path = os.path.join(folder_path, f"conversation_{datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.txt")
-    #
-    # with open(file_path, 'wt', encoding='utf-8') as f:
-
+        [meta]      单行 JSON：时间、类别、模型、usage、耗时、调用参数及调用方附加信息
+        [request]   原始请求消息（按 [system]/[user] 分块，内容与发送一致）
+        [response]  完整原始响应 JSON（含 usage、model、客户端元数据）
+    """
     writer = conversation_db.raw_file(
         content_type='text',
         category=category,
         name=category)
 
     with writer as f:
-        index = 0
-
-        if len(messages) > 1:
-            f.write("[system]\n\n")
-            f.write(messages[index]['content'])
-            index += 1
+        f.write("[meta]\n")
+        meta_payload = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "category": category,
+            "model": response.get("model") if isinstance(response, Dict) else None,
+            "usage": response.get("usage") if isinstance(response, Dict) else None,
+            "client_meta": (response or {}).get("_ai_client_meta")
+            if isinstance(response, Dict) else None,
+        }
+        if meta:
+            meta_payload.update(meta)
+        f.write(json.dumps(meta_payload, ensure_ascii=False, default=str))
 
         f.write("\n\n")
-        f.write("[user]\n\n")
-        f.write(messages[index]['content'])
+        f.write("[request]\n")
+        for message in messages:
+            f.write(f"\n[{message.get('role', 'unknown')}]\n\n")
+            f.write(str(message.get('content', '')))
 
         f.write("\n\n")
-        f.write("[reply]\n\n")
-        if isinstance(response, Dict) and "choices" in response:
-            f.write(response["choices"][0]["message"]["content"])
+        f.write("[response]\n")
+        if isinstance(response, Dict):
+            f.write(json.dumps(response, ensure_ascii=False, indent=2, default=str))
         else:
             f.write('<None>')
 
@@ -88,40 +81,35 @@ def parse_ai_response(response: dict) -> dict:
             return parsed_output
 
         except json.JSONDecodeError:
-            logger.warning(f'Error when parsing AI reply to json, try to repair...')
-
             try:
-                repaired_data = json_repair.loads(ai_json)
-                fixed_json_str = json.dumps(repaired_data, ensure_ascii=False, indent=4)
-
-                parsed_output = json.loads(fixed_json_str)
-                if isinstance(parsed_output, dict):
-                    parsed_output['warning'] = 'Json repaired.'
-
-                logger.info(f'Json repare success.')
-
-                return parsed_output
-            except json.JSONDecodeError:
-                logger.error(f'Json cannot be repaired.')
+                parsed_output = json_repair.loads(ai_json)
+            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                # 模型偶发输出损坏属于可预期失败：交给上层重试，只记录摘要，不打印 traceback。
+                logger.warning("AI response JSON repair failed: %s", exc)
                 return {'error': "Cannot parse AI response to JSON."}
+            except Exception:
+                # 解析器自身或运行环境异常才需要 traceback，便于定位代码缺陷。
+                logger.exception("Unexpected exception while repairing AI response JSON")
+                return {'error': "Unexpected error while parsing AI response JSON."}
 
-            except:
-                raise
+            # 修复信息属于诊断元数据，不能写回 extra=forbid 的领域 Payload。
+            logger.info("AI response JSON syntax repaired")
+            return parsed_output
 
-        except Exception as e:
-            logger.error(f'Exception when parsing AI response')
-            print(traceback.format_exc())
+        except Exception:
+            logger.exception("Unexpected exception while parsing AI response JSON")
+            return {'error': "Unexpected error while parsing AI response JSON."}
 
     else:
         return {'error': "Invalid AI response."}
 
 
-def conversation_common_process(category, messages, response) -> dict:
+def conversation_common_process(category, messages, response, meta: dict = None) -> dict:
     if 'error' in response:
         logger.error(f'Get error from response.')
         return response
 
-    record_index = record_conversation(category, messages, response)
+    record_index = record_conversation(category, messages, response, meta=meta)
     ai_json = parse_ai_response(response)
 
     record = conversation_db.get_by_index(record_index, False)
@@ -135,6 +123,10 @@ def conversation_common_process(category, messages, response) -> dict:
     if isinstance(ai_json, dict):
         # For recommendation, it's not a dict.
         ai_json['record_file'] = record_file_rel_path
+        # 内部调用标识供业务校验回填质量结果；进入领域模型前会被移除。
+        client_meta = response.get('_ai_client_meta') if isinstance(response, Dict) else None
+        if isinstance(client_meta, dict):
+            ai_json['_ai_client_meta'] = dict(client_meta)
 
     if isinstance(ai_json, dict) and 'error' in ai_json:
         logger.error(f'AI {category} conversation fail.', extra={'link_file': record_file_web_path})
@@ -144,63 +136,12 @@ def conversation_common_process(category, messages, response) -> dict:
     return ai_json
 
 
-def build_analyze_user_message(structured_data: Dict[str, Any]) -> str:
-    sanitized_data = AIMessage.model_validate(structured_data).model_dump(exclude_unset=True, exclude_none=True)
-    metadata_items = [f"- {k}: {v}" for k, v in sanitized_data.items() if k != "content"]
-    metadata_block = '## metadata\n' + "\n".join(metadata_items)
-    content_block = f"\n\n## 正文内容\n{sanitized_data['content']}"
-    user_message = metadata_block + content_block
-    return user_message
-
-
-def build_analyze_message(
-    prompt: str,
-    structured_data: Dict[str, Any],
-    context: Optional[List[Dict[str, str]]] = None
-):
-    has_content_placeholder = '{{CONTENT}}' in prompt
-
-    try:
-        user_message = build_analyze_user_message(structured_data)
-    except ValidationError as e:
-        logger.error(f'AI require data field missing: {e}')
-        raise
-    except Exception as e:
-        logger.error(f'Validate AI data fail: {e}')
-        raise
-
-    date_str = datetime.date.today().strftime("%Y-%m-%d")
-    # Similar messages is a reserved feature.
-    prepared_prompt = (prompt.
-                       replace('{{CURRENT_DATE}}', date_str).
-                       replace('{{SIMILAR_MESSAGES}}', ''))
-
-    messages = list(context) if context else []
-
-    if has_content_placeholder:
-        prepared_prompt = prepared_prompt.replace('{{CONTENT}}', user_message)
-        messages.append({
-            "role": "user",
-            "content": prepared_prompt
-        })
-    else:
-        messages.append({
-            "role": "system",
-            "content": prepared_prompt
-        })
-        messages.append({
-            "role": "user",
-            "content": user_message
-        })
-
-    return messages
-
-
 def analyze_with_ai(
         ai_client: BaseAIClient,
         prompt: str,
         structured_data: Dict[str, Any],
-        context: Optional[List[Dict[str, str]]] = None
+        context: Optional[List[Dict[str, str]]] = None,
+        record_meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Use the OpenAI API to analyze the input prompt and structured data, and return a formatted JSON result.
@@ -210,79 +151,47 @@ def analyze_with_ai(
     prompt (str): The main prompt, used to specify the role and rules for analysis.
     structured_data (Dict[str, Any]): Structured data, which must contain the 'content' field of the main content.
     context (Optional[List[Dict[str, str]]]): Dialogue context, optional.
+    record_meta (Optional[Dict]): 附加到对话记录 [meta] 的信息（如 prompt_version、uuid）。
 
     Returns:
     Dict[str, Any]: JSON object processed by AI, converted to a Python dictionary.
     """
     messages = build_analyze_message(prompt, structured_data, context)
 
-    start = time.time()
-
+    started = time.perf_counter()
     response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
     )
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
+    meta = {
+        "elapsed_ms": elapsed_ms,
+        "temperature": 0,
+        "max_tokens": MAX_OUTPUT_TOKEN,
+    }
+    if record_meta:
+        meta.update(record_meta)
+    return conversation_common_process('analysis', messages, response, meta=meta)
 
-    return conversation_common_process('analysis', messages, response)
 
-
-def aggressive_by_ai(
+def analyze_with_ai_transient(
         ai_client: BaseAIClient,
         prompt: str,
-        new_data: Dict[str, Any],
-        history_data: List[Dict[str, str]]
-) -> Dict:
-    new_data_text = \
-        f"{new_data['EVENT_TITLE']}\n\n"\
-        f"{new_data['EVENT_BRIEF']}\n\n"
-    history_data_md_table = dict_list_to_markdown(history_data)
-
-    user_message = \
-        f"# 新情报\n {new_data_text}"\
-        f"# 历史情报\n {history_data_md_table}"
-
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": user_message}]
-
-    start = time.time()
-
+        structured_data: Dict[str, Any],
+        context: Optional[List[Dict[str, str]]] = None
+) -> Dict[str, Any]:
+    """执行一次不记录 conversation 文件/数据库的临时分析。"""
+    messages = build_analyze_message(prompt, structured_data, context)
     response = ai_client.chat(
         messages=messages,
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKEN
     )
+    if not isinstance(response, Dict):
+        return {'error': "Invalid AI response."}
+    if 'error' in response:
+        return response
+    return parse_ai_response(response)
 
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
-
-    return conversation_common_process('aggressive', messages, response)
-
-
-def generate_recommendation_by_ai(
-        ai_client: BaseAIClient,
-        prompt: str,
-        intelligence_list: List[Dict[str, str]]
-) -> List[str] or Dict:
-
-    intelligence_table = dict_list_to_markdown(intelligence_list)
-    messages = [
-        {"role": "system", "content": prompt},
-        {"role": "user", "content": intelligence_table}]
-
-    start = time.time()
-
-    response = ai_client.chat(
-        messages=messages,
-        temperature=0,
-        max_tokens=MAX_OUTPUT_TOKEN
-    )
-
-    elapsed = time.time() - start
-    print(f"AI response spends {elapsed} s")
-
-    return conversation_common_process('recommendation', messages, response)

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Entity Alias - IIS</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container py-4">
+    <h1 class="h3 mb-3">实体别名子系统</h1>
+    <p><a class="btn btn-primary" href="{{ url_prefix }}/manage">打开全局别名管理</a></p>
+    <table class="table table-sm" style="max-width: 480px;">
+        <tr><th>实体数</th><td>{{ status.entities }}</td></tr>
+        <tr><th>索引名字数</th><td>{{ status.names_indexed }}</td></tr>
+        <tr><th>向量召回</th><td>{{ '可用' if status.vector_available else '未启用' }}</td></tr>
+        <tr><th>数据文件</th><td>{{ status.data_files | join(', ') }}</td></tr>
+    </table>
+    <h2 class="h5 mt-4">API</h2>
+    <ul class="list-group" style="max-width: 640px;">
+        <li class="list-group-item"><code>GET {{ url_prefix }}/api/resolve?name=X</code> — 精确解析标准名</li>
+        <li class="list-group-item"><code>POST {{ url_prefix }}/api/resolve_batch</code> — 批量解析</li>
+        <li class="list-group-item"><code>GET {{ url_prefix }}/api/lookup?name=X</code> — 精确 + 模糊/部分 + 向量候选</li>
+        <li class="list-group-item"><code>POST {{ url_prefix }}/api/lookup_batch</code> — 批量候选查询</li>
+        <li class="list-group-item"><code>GET/POST {{ url_prefix }}/api/entities</code> — 实体列表 / 注册</li>
+        <li class="list-group-item"><code>GET/PUT/DELETE {{ url_prefix }}/api/entities/&lt;id&gt;</code> — 实体管理</li>
+    </ul>
+</body>
+</html>

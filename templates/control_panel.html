@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIS 运行控制</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card-bg: #1e293b; --card-border: #334155;
+            --primary: #38bdf8; --success: #4ade80; --warning: #fbbf24;
+            --danger: #f87171; --text: #f1f5f9; --muted: #94a3b8; --hover: #27354f;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+               margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 24px; margin: 0; }
+        h2 { font-size: 17px; margin: 0 0 12px; color: var(--primary); }
+        .subtitle { color: var(--muted); font-size: 13px; }
+        header { display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--card-border); }
+        .section { background: var(--card-bg); border: 1px solid var(--card-border);
+                   border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+        .scope-row { display: flex; align-items: center; justify-content: space-between;
+                     padding: 12px; border: 1px solid var(--card-border); border-radius: 10px;
+                     margin-bottom: 10px; background: var(--bg); }
+        .scope-name { font-weight: 600; }
+        .scope-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+        .switch-btn { border: 1px solid var(--card-border); border-radius: 8px; padding: 6px 18px;
+                      font-size: 13px; cursor: pointer; min-width: 96px; }
+        .switch-btn.running { background: rgba(74,222,128,.15); color: var(--success); }
+        .switch-btn.paused { background: rgba(248,113,113,.15); color: var(--danger); }
+        .maintenance-banner { display: none; background: rgba(248,113,113,.12);
+                              border: 1px solid var(--danger); border-radius: 10px;
+                              padding: 12px 16px; margin-bottom: 16px; color: var(--danger);
+                              font-weight: 600; }
+        .error { color: var(--danger); font-size: 13px; padding: 8px 0; }
+        .link { color: var(--primary); text-decoration: none; font-size: 13px; }
+        .link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div>
+            <h1>运行控制</h1>
+            <div class="subtitle">暂停/恢复处理环节 · 维护模式（仅发布页面可用，零 AI 消耗）</div>
+        </div>
+        <div>
+            <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
+            <a class="link" href="/monitor/runtime">运行监控 →</a>
+        </div>
+    </header>
+
+    <div class="maintenance-banner" id="maintenance-banner">
+        ⚠ 维护模式已开启：采集、分析与影子链路均已暂停，只读页面不受影响。
+    </div>
+
+    <div class="section">
+        <h2>处理环节开关</h2>
+        <div id="scopes"></div>
+        <div class="error" id="control-error" style="display:none"></div>
+        <div class="subtitle">暂停期间：内存队列中的事件保留，恢复后继续分析；重启后未分析记录由
+        cache 重放机制续接。实时运行状态见 <a class="link" href="/monitor/runtime">运行监控</a>。</div>
+    </div>
+
+    <div class="section">
+        <h2>积压处理</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            暂停/维护时间较长时，cache 中积压的未分析内容可能已失去时效。
+            此操作将其全部标记为弃用（不再分析、不再回放、不消耗 token），不可撤销。
+            内存队列中的在途事件不受影响。
+        </div>
+        <button class="switch-btn paused" onclick="discardPending('pending')">弃用全部未分析积压</button>
+        <button class="switch-btn paused" onclick="discardPending('retry')">弃用全部重试中记录</button>
+        <span class="subtitle" id="discard-result"></span>
+    </div>
+
+    <div class="section">
+        <h2>未分析记录回放</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            启动时是否自动回放由配置 hub.replay_unarchived 控制；关闭后可在准备就绪时
+            用此按钮手工触发一次回放（防止重启即面对大量积压）。
+        </div>
+        <button class="switch-btn" onclick="replayUnarchived()">手工回放未分析记录</button>
+        <span class="subtitle" id="replay-result"></span>
+    </div>
+
+    <div class="section">
+        <h2>批量分析（Provider Batch）</h2>
+        <div class="subtitle" style="margin-bottom:12px">
+            把重试积压提交到 Provider 批量通道（凌晨空闲时段执行、半价），完成后自动校验回注归档。
+            需在配置中启用 hub.batch_analysis。
+        </div>
+        <button class="switch-btn" onclick="submitBatch()">提交积压到批量分析</button>
+        <span class="subtitle" id="batch-result"></span>
+        <div id="batch-jobs" style="margin-top:8px"></div>
+    </div>
+</div>
+
+<script>
+const SCOPE_META = [
+    {key: 'maintenance', name: '维护模式（总开关）',
+     desc: '暂停全部处理环节；情报列表/搜索/详情等只读页面保持可用，用于发布测试'},
+    {key: 'intake', name: '采集接收',
+     desc: '暂停后 /collect 返回 503，爬虫提交将被拒绝并稍后重试'},
+    {key: 'analysis', name: 'AI 分析',
+     desc: '暂停后分析事件在队列中等待，不再调用 AI（零 token 消耗）'},
+    {key: 'shadow', name: '影子分析',
+     desc: '暂停后不再执行影子 prompt 版本的并行分析'},
+    {key: 'translation', name: '翻译回写（预留）', desc: '扩展插件接入后生效'},
+    {key: 'vector', name: '向量索引（预留）', desc: '扩展插件接入后生效'},
+];
+
+function showError(msg) {
+    const el = document.getElementById('control-error');
+    el.style.display = msg ? '' : 'none';
+    el.textContent = msg || '';
+}
+
+async function postScope(action, scope) {
+    const resp = await fetch(`/api/control/${action}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scope}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    return data;
+}
+
+async function toggleScope(scope, currentlyPaused) {
+    const action = currentlyPaused ? 'resume' : 'pause';
+    if (!currentlyPaused && (scope === 'maintenance' || scope === 'intake')) {
+        const name = scope === 'maintenance' ? '维护模式（全部处理暂停）' : '采集接收';
+        if (!confirm(`确认暂停【${name}】？`)) return;
+    }
+    try {
+        await postScope(action, scope);
+        showError(null);
+        await loadStatus();
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function loadStatus() {
+    try {
+        const resp = await fetch('/api/control/status');
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        document.getElementById('maintenance-banner').style.display =
+            data.maintenance ? '' : 'none';
+        const container = document.getElementById('scopes');
+        container.innerHTML = '';
+        for (const meta of SCOPE_META) {
+            const paused = meta.key === 'maintenance'
+                ? data.maintenance
+                : (data.scopes || {})[meta.key];
+            const explicit = (data.explicitly_paused || []).includes(meta.key);
+            const row = document.createElement('div');
+            row.className = 'scope-row';
+            row.innerHTML =
+                `<div><div class="scope-name">${meta.name}</div>` +
+                `<div class="scope-desc">${meta.desc}</div></div>`;
+            const btn = document.createElement('button');
+            btn.className = 'switch-btn ' + (paused ? 'paused' : 'running');
+            btn.textContent = paused
+                ? (explicit ? '已暂停 · 恢复' : '已暂停（总开关）')
+                : '运行中 · 暂停';
+            btn.onclick = () => toggleScope(meta.key, explicit);
+            row.appendChild(btn);
+            container.appendChild(row);
+        }
+        showError(null);
+    } catch (e) { showError(`状态加载失败: ${e.message}`); }
+}
+
+async function discardPending(scope) {
+    const label = scope === 'retry' ? '重试中（R）记录' : '未分析积压';
+    if (!confirm(`确认弃用全部${label}？\n此操作不可撤销，这些记录将不再被分析。`)) return;
+    if (!confirm('再次确认：弃用后需要重新抓取才能获得这些内容。')) return;
+    try {
+        const resp = await fetch('/api/control/discard_pending', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({scope}),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        const detail = Object.entries(data.details || {})
+            .map(([k, v]) => `${k}: ${Object.values(v).reduce((t, x) => t + x.deprecated, 0)} 条`)
+            .join('，');
+        document.getElementById('discard-result').textContent =
+            ` 已弃用 ${data.deprecated_total} 条（${detail}）`;
+        showError(null);
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function replayUnarchived() {
+    if (!confirm('确认手工回放全部未分析记录？\n它们将进入分析队列（消耗 token）。')) return;
+    try {
+        const resp = await fetch('/api/control/replay_unarchived', {method: 'POST'});
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        document.getElementById('replay-result').textContent = data.started
+            ? ' 回放已启动（后台进行，进度见运行监控）'
+            : ` 未启动：${data.reason}`;
+        showError(null);
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function submitBatch() {
+    if (!confirm('确认把重试积压提交到批量分析？\n凌晨 1-8 点执行，按批量价计费。')) return;
+    try {
+        const resp = await fetch('/api/control/batch_analysis', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        document.getElementById('batch-result').textContent = data.submitted
+            ? ` 已提交 ${data.item_count} 条，job=${data.job_id}`
+            : ` 未提交：${data.reason}`;
+        showError(null);
+        await loadBatchJobs();
+    } catch (e) { showError(`操作失败: ${e.message}`); }
+}
+
+async function loadBatchJobs() {
+    try {
+        const resp = await fetch('/api/control/batch_analysis');
+        const data = await resp.json();
+        if (!resp.ok) return;
+        const jobs = data.jobs || [];
+        document.getElementById('batch-jobs').innerHTML = jobs.length
+            ? '<table style="width:100%;font-size:12px"><tr><th>时间</th><th>状态</th><th>条数</th><th>备注</th></tr>' +
+              jobs.map(j => `<tr><td>${(j.created_at || '').slice(5, 16)}</td><td>${j.status}</td>` +
+                  `<td>${j.item_count ?? ''}</td><td>${j.note || ''}</td></tr>`).join('') + '</table>'
+            : '';
+    } catch (e) { /* 未启用时静默 */ }
+}
+loadBatchJobs();
+
+loadStatus();
+setInterval(loadStatus, 5000);
+</script>
+</body>
+</html>

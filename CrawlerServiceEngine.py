@@ -1,8 +1,11 @@
 import hashlib
 import sys
+import os
 import time
+import argparse
 import queue
 import logging
+import signal
 import threading
 import traceback
 from pathlib import Path
@@ -27,12 +30,69 @@ logger.info(f"[BOOT] pid={os.getpid()}")
 project_root = os.path.dirname(os.path.abspath(__file__))
 
 
+COLLECTOR_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector.json')
+COLLECTOR_ALTER_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector_example.json')
+
+
+def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
+    """
+    加载采集器独立配置（IIS 主配置与采集器配置互相独立）。
+    优先级：显式参数 / IIS_COLLECTOR_CONFIG 环境变量 / _config/collector.json
+            / _config/collector_example.json。
+    """
+    path = config_path or os.environ.get('IIS_COLLECTOR_CONFIG') or COLLECTOR_CONFIG_FILE
+    if os.path.isfile(path):
+        return EasyConfig(config_file=path, config_file_alter=COLLECTOR_ALTER_CONFIG_FILE)
+    if os.path.isfile(COLLECTOR_ALTER_CONFIG_FILE):
+        logger.warning(f"Collector config not found: {path}, fallback to example: {COLLECTOR_ALTER_CONFIG_FILE}")
+        return EasyConfig(config_file=path, config_file_alter=COLLECTOR_ALTER_CONFIG_FILE)
+    raise ValueError(
+        f"Collector config not found: {path}; example also missing: "
+        f"{COLLECTOR_ALTER_CONFIG_FILE}")
+
+
+def resolve_task_dirs(config: EasyConfig) -> Dict[str, str]:
+    """
+    解析"子系统 -> 任务目录"映射（collector.task_dirs）。
+    目录可以是绝对路径，或相对 collector 配置文件所在目录 / 项目根 / _config 目录，
+    便于采集器作为独立仓库部署（配置文件与任务目录在同一仓库内）。
+    """
+    raw = config.get('collector.task_dirs') or {}
+    result: Dict[str, str] = {}
+    config_dir = None
+    config_file = getattr(config, 'config_file', None)
+    if config_file:
+        config_dir = os.path.dirname(os.path.abspath(str(config_file)))
+    for subsystem, directory in raw.items():
+        subsystem = str(subsystem).strip()
+        path = str(directory)
+        if not subsystem or not path:
+            continue
+        if not os.path.isabs(path):
+            candidates = []
+            if config_dir:
+                candidates.append(os.path.join(config_dir, path))
+            candidates.append(os.path.join(project_root, path))
+            candidates.append(os.path.join(CONFIG_PATH, path))
+            existing = [c for c in candidates if os.path.isdir(c)]
+            # 存在则取第一个；都不存在时回退到项目根下的规范位置（由 scan 自动创建）
+            path = existing[0] if existing else os.path.join(project_root, path)
+        result[subsystem] = os.path.normpath(path)
+    return result
+
+
 def _file_sig(path: str) -> str:
     h = hashlib.blake2b(digest_size=16)
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def is_task_plugin_path(path: str) -> bool:
+    """Return whether a Python file follows the crawler task plugin convention."""
+    filename = os.path.basename(path)
+    return filename.startswith('task_crawl_') and filename.endswith('.py')
 
 
 class ServiceContext:
@@ -43,12 +103,14 @@ class ServiceContext:
             self,
             module_logger: Optional[logging.Logger] = None,
             module_config: Optional[EasyConfig] = None,
-            crawler_governor: GovernanceManager = None
+            crawler_governor: GovernanceManager = None,
+            subsystem: Optional[str] = None
     ):
         self.sys = sys
         self.logger = module_logger or logger
         self.config = module_config or EasyConfig()
         self.crawler_governor = crawler_governor
+        self.subsystem = subsystem
         self.project_root = project_root
 
     def solve_import_path(self):
@@ -81,12 +143,25 @@ class TaskCmd:
 class TaskManager:
     THREAD_JOIN_TIMEOUT = 2
     THREAD_JOIN_ATTEMPTS = 10
+    MANAGER_SHUTDOWN_TIMEOUT = THREAD_JOIN_TIMEOUT * THREAD_JOIN_ATTEMPTS + 5
 
-    def __init__(self, watch_dir: str, security_config=None):
+    def __init__(self, watch_dir: str, security_config=None, collector_config_path: Optional[str] = None):
         self.watch_dir = watch_dir
         self.security = security_config
 
-        self.config = EasyConfig(DEFAULT_CONFIG_FILE)
+        # 采集器独立配置（不依赖 IIS 的 iis.yaml）
+        self.config = load_collector_config(collector_config_path)
+        self.default_subsystem = str(
+            self.config.get('collector.default_subsystem') or 'news').strip() or 'news'
+        self.task_dirs: Dict[str, str] = resolve_task_dirs(self.config)
+        if self.task_dirs:
+            logger.info(f"Collector task dirs: {self.task_dirs}")
+            logger.info(f"Collector default subsystem: {self.default_subsystem}")
+        else:
+            logger.warning(
+                f"No 'collector.task_dirs' configured; scan flat '{self.watch_dir}' "
+                f"as subsystem '{self.default_subsystem}' (legacy layout).")
+
         self.crawler_governance = GovernanceManager(
             db_path=os.path.join(DATA_PATH, 'spider_governance.db'),
             files_path=os.path.join(DATA_PATH, 'spider_governance_files'),
@@ -94,6 +169,16 @@ class TaskManager:
         )
 
         self.plugin_manager = PluginManager(['module_init', 'start_task'])
+
+        # 任务级开关：collector.disabled_tasks 列出要停用的插件名（文件名不含 .py），
+        # 在扫描/热重载入库前拦截；已在运行的同名任务会被停掉。修改后需重启生效。
+        self.disabled_tasks = {
+            str(name).strip()
+            for name in (self.config.get('collector.disabled_tasks') or [])
+            if str(name).strip()
+        }
+        if self.disabled_tasks:
+            logger.info(f'Disabled collector tasks: {sorted(self.disabled_tasks)}')
 
         self._sig = {}  # plugin_name -> sig
 
@@ -107,6 +192,7 @@ class TaskManager:
         self._mgr_thread = threading.Thread(target=self._manager_loop, name="TaskManagerThread", daemon=True)
         self._mgr_thread.start()
 
+        self._validate_subsystems_against_ihub()
         self.scan_existing_files()
 
     # ---------------- public APIs: NON-BLOCKING ----------------
@@ -115,6 +201,12 @@ class TaskManager:
         """For created/modified/moved-in events."""
         abs_path = os.path.abspath(file_path)
         name = PluginManager.plugin_name(abs_path)
+
+        if name in self.disabled_tasks:
+            logger.info(f"[CMD] skip disabled task {name} ({abs_path})")
+            self._stop_and_join_if_running(name)
+            self.plugin_manager.remove_plugin(name)
+            return
 
         try:
             sig = _file_sig(abs_path)
@@ -134,7 +226,9 @@ class TaskManager:
     def shutdown(self, source: str = "fs"):
         """Stop all tasks & manager thread."""
         self._enqueue("shutdown", "", source)
-        self._mgr_thread.join(timeout=10)
+        self._mgr_thread.join(timeout=self.MANAGER_SHUTDOWN_TIMEOUT)
+        if self._mgr_thread.is_alive():
+            logger.warning("TaskManager thread still alive after shutdown timeout.")
 
     # ---------------- internal: queue & manager ----------------
 
@@ -203,7 +297,7 @@ class TaskManager:
         self.plugin_manager.remove_plugin(plugin_name)
 
         # load new module
-        plugin = self.plugin_manager.add_plugin(file_path)
+        plugin = self._load_plugin(file_path)
         if not plugin:
             logger.error(f"Load plugin failed: {file_path}")
             return
@@ -227,8 +321,13 @@ class TaskManager:
         logger.info(f"Removed plugin: {plugin_name}")
 
     def _handle_shutdown(self):
-        # stop all
+        # Notify every plugin first so their in-flight work winds down concurrently.
         names = list(self.tasks.keys())
+        for name in names:
+            entry = self.tasks.get(name)
+            if entry:
+                entry[2].set()
+
         for name in names:
             self._stop_and_join_if_running(name)
             self.plugin_manager.remove_plugin(name)
@@ -255,13 +354,79 @@ class TaskManager:
 
     def scan_existing_files(self):
         try:
-            os.makedirs(self.watch_dir, exist_ok=True)
-            plugins = self.plugin_manager.scan_path(self.watch_dir)
+            targets = self.task_dirs or {self.default_subsystem: self.watch_dir}
+            files = []
+            for subsystem, directory in targets.items():
+                os.makedirs(directory, exist_ok=True)
+                for path in self._list_task_files(directory):
+                    files.append(path)
+                    logger.info(f"[Scan] subsystem='{subsystem}' file={path}")
             # use submit_reload to unify behavior (serialize through manager)
-            for p in plugins:
-                self.submit_reload(p.module_path, 'scan')
+            for p in files:
+                self.submit_reload(p, 'scan')
         except Exception as e:
             logger.error(f"Scan directory {self.watch_dir} crashed: {e}", exc_info=True)
+
+    @staticmethod
+    def _list_task_files(directory: str):
+        """递归收集 task_crawl_*.py 插件，忽略配置模块和 task_example.py 等模板。"""
+        files = []
+        for root, dirs, fnames in os.walk(directory):
+            dirs[:] = [d for d in dirs if not d.startswith(('.', '_', '__pycache__'))]
+            for fname in sorted(fnames):
+                if is_task_plugin_path(fname):
+                    files.append(os.path.join(root, fname))
+        return files
+
+    def _load_plugin(self, file_path: str) -> Optional[PluginWrapper]:
+        """加载插件前把其所在目录加入 sys.path，支持同目录模块导入（如 crawler_config_*）。"""
+        dirname = os.path.dirname(os.path.abspath(file_path))
+        if dirname not in sys.path:
+            sys.path.insert(0, dirname)
+        return self.plugin_manager.add_plugin(file_path)
+
+    def _resolve_subsystem(self, module_path: str) -> str:
+        """按 '目录 -> 子系统' 映射解析任务归属；未匹配时回退 default_subsystem。"""
+        abs_path = os.path.normpath(os.path.abspath(module_path))
+        for subsystem, directory in self.task_dirs.items():
+            try:
+                base = os.path.normpath(os.path.abspath(directory))
+                if os.path.commonpath([abs_path, base]) == base:
+                    return subsystem
+            except ValueError:
+                continue
+        return self.default_subsystem
+
+    def _validate_subsystems_against_ihub(self):
+        """拉取 IIS /api/subsystems，校验本采集器声明的子系统是否与 IIS 对上。"""
+        ihub_url = str(self.config.get('collector.submit_ihub_url') or '').rstrip('/')
+        if not ihub_url:
+            return
+        try:
+            import requests
+            resp = requests.get(f'{ihub_url}/api/subsystems', timeout=3)
+            if resp.status_code != 200:
+                logger.warning(
+                    f"Subsystem validation skipped: IIS /api/subsystems returned {resp.status_code}.")
+                return
+            data = resp.json()
+            known = {str(s.get('name')) for s in data.get('subsystems', [])}
+            remote_default = data.get('default')
+        except Exception as e:
+            logger.warning(f"Subsystem validation skipped: {e}")
+            return
+
+        declared = list(self.task_dirs.keys())
+        if not declared:
+            declared = [self.default_subsystem]
+        for subsystem in declared:
+            if subsystem in known:
+                logger.info(f"Collector subsystem '{subsystem}' aligned with IIS "
+                            f"(default={remote_default}).")
+            else:
+                logger.warning(
+                    f"Collector subsystem '{subsystem}' NOT found in IIS subsystems {sorted(known)}; "
+                    f"/collect will reject its submissions.")
 
     def on_model_enter(self, plugin: PluginWrapper):
         logger.info(f">>> Plugin {plugin.plugin_name} in thread {threading.get_ident()} plugin_obj={id(plugin)} - started.")
@@ -274,12 +439,14 @@ class TaskManager:
 
         module_logger = logging.getLogger(plugin.plugin_name)
         old_logger = set_tls_logger(module_logger)
+        subsystem = self._resolve_subsystem(plugin.module_path)
 
         try:
             plugin.module_init(ServiceContext(
                 module_logger=module_logger,
                 module_config=self.config,
-                crawler_governor=self.crawler_governance
+                crawler_governor=self.crawler_governance,
+                subsystem=subsystem
             ))
 
             # 约定：start_task 应该“短阻塞/一次迭代”，并检查 stop_event
@@ -323,7 +490,8 @@ class FileHandler(FileSystemEventHandler):
         if self.__file_accept(event) and self._debounced(event.src_path):
             self._log_event("accepted", event)
             self.task_manager.submit_remove(event.src_path, 'fs')
-        if hasattr(event, "dest_path") and event.dest_path.endswith(".py") and self._debounced(event.dest_path):
+        if (hasattr(event, "dest_path") and is_task_plugin_path(event.dest_path)
+                and self._debounced(event.dest_path)):
             self._log_event("accepted", event)
             self.task_manager.submit_reload(event.dest_path, 'fs')
 
@@ -348,7 +516,7 @@ class FileHandler(FileSystemEventHandler):
     def __file_accept(event) -> bool:
         return (not event.is_directory and
                 not os.path.basename(event.src_path).startswith(('~', '.')) and
-                event.src_path.endswith('.py'))
+                is_task_plugin_path(event.src_path))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -371,6 +539,12 @@ def config_log_level():
 
 
 def main():
+    parser = argparse.ArgumentParser(description="IIS Crawler Service")
+    parser.add_argument('--config', default=None,
+                        help="Collector config json path (default: _config/collector.json "
+                             "or IIS_COLLECTOR_CONFIG env var)")
+    args = parser.parse_args()
+
     Path(LOG_PATH).mkdir(parents=True, exist_ok=True)
     Path(HISTORY_LOG_FOLDER).mkdir(parents=True, exist_ok=True)
 
@@ -393,7 +567,7 @@ def main():
 
     crawl_task_path = 'CrawlTasks'
 
-    task_manager = TaskManager(crawl_task_path)
+    task_manager = TaskManager(crawl_task_path, collector_config_path=args.config)
     # event_handler = FileHandler(task_manager)
 
     # observer = Observer()
@@ -405,11 +579,18 @@ def main():
 
     # --------------------------------------------------------------------------------
 
+    shutdown_requested = threading.Event()
+
+    def request_shutdown(_signum, _frame):
+        shutdown_requested.set()
+
+    signal.signal(signal.SIGTERM, request_shutdown)
+
     try:
-        while True:
-            time.sleep(1)
+        while not shutdown_requested.wait(1):
+            pass
     except KeyboardInterrupt:
-        pass
+        shutdown_requested.set()
         # observer.stop()
     finally:
         # observer.join()

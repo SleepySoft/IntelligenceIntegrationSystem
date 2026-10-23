@@ -1,0 +1,8 @@
+{
+  "name": "industry",
+  "display_name": "行业情报",
+  "url_prefix": "/industry",
+  "collection_prefix": "industry_intelligence_",
+  "ai_client_group": null,
+  "scoring": null
+}

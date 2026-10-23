@@ -8,9 +8,11 @@ User=sleepy
 Group=sleepy
 WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+ExecStartPre=/home/sleepy/anaconda3/envs/iis/bin/python Scripts/deployment_preflight.py --component vectordb
 ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python -m VectorDB.VectorDBBService \
     --db-path /home/sleepy/Documents/IntelligenceIntegrationSystem/_data/VectorDB \
-    --model /home/sleepy/Documents/bge-m3
+    --model /home/sleepy/Documents/bge-m3 \
+    --agg-store-dir /home/sleepy/Documents/IntelligenceIntegrationSystem/aggregation_store
 Restart=always
 RestartSec=10
 

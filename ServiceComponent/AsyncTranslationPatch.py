@@ -7,23 +7,27 @@ import time
 import queue
 import logging
 import pymongo
+
+from ServiceComponent.intelligence_contracts import (
+    APPENDIX_FIELD,
+    APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TRANSLATED_REVISION,
+    appendix_path,
+)
+# 语言判定启发式已提取到中立模块；此处 re-export 保持既有 import 兼容。
+from ServiceComponent.text_language import looks_non_zh, needs_translation
 import datetime
 import itertools
 import threading
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional, Callable, Dict, Any, Tuple, List
 
-from Tools.MongoDBAccess import MongoDBStorage
-from AIClientCenter.AIClientManager import AIClientManager
-from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TRANSLATED_REV
-from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
+from AIClientCenter.core.manager import AIClientManager
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TRANSLATED_REV = "tr_patch_20260311"
-
-_CJK_RE = re.compile(r'[\u4e00-\u9fff]')
-_ASCII_RE = re.compile(r'[A-Za-z]')
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 _JSON_OBJ_RE = re.compile(r"(\{.*\})", re.DOTALL)
@@ -35,7 +39,7 @@ TRANSLATION_SYSTEM_PROMPT = (
     "你是一个严格的翻译器。只做翻译，不要总结/扩写/改写事实。"
     "不要输出任何推理过程（例如 <think>...</think> 或 <analysis>...</analysis>）。"
     "不要输出 Markdown。"
-    "输出必须是严格 JSON，且只包含三个字段：EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT。"
+    "输出必须是严格 JSON，且只包含三个字段：title, brief, text。"
 )
 
 def strip_think_tags(text: str) -> str:
@@ -136,33 +140,6 @@ def _is_retryable_ai_error(resp: Dict[str, Any]) -> bool:
     return True
 
 
-def _ratio(pat, s: str) -> float:
-    if not s:
-        return 0.0
-    return len(pat.findall(s)) / max(1, len(s))
-
-def looks_non_zh(s: Optional[str], cjk_th=0.18, ascii_th=0.12) -> bool:
-    """
-    Heuristic, fast and local.
-    """
-    if not s:
-        return False
-    t = str(s).strip()
-    if len(t) < 12:
-        return (_ratio(_CJK_RE, t) < 0.05) and (_ratio(_ASCII_RE, t) > 0.2)
-    return (_ratio(_CJK_RE, t) < cjk_th) and (_ratio(_ASCII_RE, t) > ascii_th)
-
-def needs_translation(doc: Dict[str, Any]) -> bool:
-    """
-    Decide if any of title/brief/text looks non-zh.
-    """
-    for k in ("EVENT_TITLE", "EVENT_BRIEF", "EVENT_TEXT"):
-        v = doc.get(k)
-        if v and looks_non_zh(v):
-            return True
-    return False
-
-
 @dataclass(frozen=True)
 class TranslationTask:
     uuid: str
@@ -174,7 +151,7 @@ class AsyncTranslationPatch:
     """
     Unified pipeline for BOTH new and historical data:
       - Everything is INSERTED first (archived)
-      - Then an async patch updates 3 fields + APPENDIX.__TRANSLATED_REVISION__
+      - Then an async patch updates EVENT_TITLE/BRIEF/TEXT + APPENDIX revision
 
     Features:
       - Priority queue (new items first)
@@ -188,12 +165,13 @@ class AsyncTranslationPatch:
     translation_user_name = "AsyncTranslationPatch"
 
     def __init__(self,
-                 mongo_db_archive: MongoDBStorage,
-                 query_engine: IntelligenceQueryEngine,
+                 mongo_db_archive: Any,
+                 query_engine: Any,
                  ai_client_manager: AIClientManager,
                  shutdown_flag: threading.Event,
                  on_patched: Optional[Callable[[Dict[str, Any]], None]] = None,
                  translated_revision: str = DEFAULT_TRANSLATED_REV,
+                 translation_group_id: str = "translate_small",
                  max_queue: int = 4000,
                  backfill_enabled: bool = True,
                  backfill_scan_limit_per_round: int = 200,
@@ -204,6 +182,7 @@ class AsyncTranslationPatch:
         self.ai_client_manager = ai_client_manager
         self.shutdown_flag = shutdown_flag
         self.on_patched = on_patched
+        self.translation_group_id = translation_group_id
 
         self.rev = translated_revision
 
@@ -287,7 +266,8 @@ class AsyncTranslationPatch:
 
     def _process_task(self, task: TranslationTask):
         # 1) Pull latest doc from archive
-        doc = self.query_engine.get_intelligence(task.uuid, light_weight=False)
+        doc = self.query_engine.get_intelligence(
+            task.uuid, light_weight=False, include_appendix=True)
         if not doc:
             return
         if isinstance(doc, list):
@@ -296,8 +276,7 @@ class AsyncTranslationPatch:
             return
 
         # 2) Skip if already translated
-        app = doc.get("APPENDIX", {}) or {}
-        if app.get(APPENDIX_TRANSLATED_REV):
+        if (doc.get(APPENDIX_FIELD) or {}).get(APPENDIX_TRANSLATED_REVISION):
             return
 
         # 3) Check if needs translation
@@ -316,24 +295,22 @@ class AsyncTranslationPatch:
         update_data = {}
         if new_title: update_data["EVENT_TITLE"] = new_title
         if new_brief: update_data["EVENT_BRIEF"] = new_brief
-        if new_text:  update_data["EVENT_TEXT"]  = new_text
+        if new_text:  update_data["EVENT_TEXT"] = new_text
 
         trans_revision = f"{self.rev}@{datetime.datetime.now().strftime('%Y%m%d')}"
 
         # dot-path key is OK; MongoDBStorage.update will wrap to $set if needed
-        update_data[f"APPENDIX.{APPENDIX_TRANSLATED_REV}"] = trans_revision
-
-        # Use MongoDBStorage.update (it wraps $set, timezone-safe)
-        # Filter UUID should be lowercase to match QueryEngine behavior
-        self.mongo_db_archive.update({"UUID": task.uuid}, update_data)
+        update_data[appendix_path(APPENDIX_TRANSLATED_REVISION)] = trans_revision
+        collection = getattr(self.mongo_db_archive, "collection", self.mongo_db_archive)
+        collection.update_one({"UUID": task.uuid}, {"$set": update_data})
 
         # 6) Re-vectorize with patched content (best-effort)
         if self.on_patched:
-            patched_doc = dict(doc)
+            patched_doc = deepcopy(doc)
             if new_title: patched_doc["EVENT_TITLE"] = new_title
             if new_brief: patched_doc["EVENT_BRIEF"] = new_brief
-            if new_text:  patched_doc["EVENT_TEXT"]  = new_text
-            patched_doc.setdefault("APPENDIX", {})[APPENDIX_TRANSLATED_REV] = trans_revision
+            if new_text: patched_doc["EVENT_TEXT"] = new_text
+            patched_doc.setdefault(APPENDIX_FIELD, {})[APPENDIX_TRANSLATED_REVISION] = trans_revision
             self.on_patched(patched_doc)
 
         logger.info("AsyncTranslationPatch updated uuid=%s reason=%s", task.uuid, task.reason)
@@ -341,7 +318,7 @@ class AsyncTranslationPatch:
 
     def _translate_via_ai(self, doc: Dict[str, Any]) -> Tuple[str, str, str]:
         """
-        Translate EVENT_TITLE / EVENT_BRIEF / EVENT_TEXT into zh-CN via a targeted AI client pool.
+        Translate Event V4 message fields into zh-CN via a targeted AI client pool.
 
         Returns:
             (title_zh, brief_zh, text_zh)
@@ -350,10 +327,10 @@ class AsyncTranslationPatch:
         # ---------- Build messages ----------
         user_prompt = (
             "请将以下内容翻译为简体中文：\n"
-            f"EVENT_TITLE: {doc.get('EVENT_TITLE','')}\n"
-            f"EVENT_BRIEF: {doc.get('EVENT_BRIEF','')}\n"
-            f"EVENT_TEXT: {doc.get('EVENT_TEXT','')}\n"
-            "\n要求：输出严格 JSON，key 为 EVENT_TITLE, EVENT_BRIEF, EVENT_TEXT。"
+            f"title: {doc.get('EVENT_TITLE', '')}\n"
+            f"brief: {doc.get('EVENT_BRIEF', '')}\n"
+            f"text: {doc.get('EVENT_TEXT', '')}\n"
+            "\n要求：输出严格 JSON，key 为 title, brief, text。"
         )
         messages = [
             {"role": "system", "content": TRANSLATION_SYSTEM_PROMPT},
@@ -446,18 +423,15 @@ class AsyncTranslationPatch:
                     continue
 
                 # 4) Extract fields and sanity-check
-                title_zh = _safe_str(obj.get("EVENT_TITLE", "")).strip()
-                brief_zh = _safe_str(obj.get("EVENT_BRIEF", "")).strip()
-                text_zh  = _safe_str(obj.get("EVENT_TEXT", "")).strip()
+                title_zh = _safe_str(obj.get("title", "")).strip()
+                brief_zh = _safe_str(obj.get("brief", "")).strip()
+                text_zh  = _safe_str(obj.get("text", "")).strip()
 
                 # 必须至少有一个字段有效，否则认为失败（避免模型返回空 JSON）
                 if not (title_zh or brief_zh or text_zh):
                     last_err = {"error": "json_all_empty"}
                     time.sleep(0.6 + 0.4 * i)
                     continue
-
-                # 可选：如果模型把 key 写错（如 EVENT_TITLE_ZH），你也可以做兼容映射
-                # 这里按你要求严格 key，暂不做映射。
 
                 return title_zh, brief_zh, text_zh
 
@@ -499,14 +473,16 @@ class AsyncTranslationPatch:
         logger.info("AsyncTranslationPatch backfill loop stopped.")
 
     def _scan_and_enqueue_backfill(self, limit: int):
-        if self.mongo_db_archive is None or self.mongo_db_archive.collection is None:
+        collection = getattr(self.mongo_db_archive, "collection", self.mongo_db_archive)
+        if collection is None:
             return
 
-        # newest -> older: sort by archived time desc (your system uses APPENDIX.__TIME_ARCHIVED__)
-        cursor = self.mongo_db_archive.collection.find(
-            {f"APPENDIX.{APPENDIX_TRANSLATED_REV}": {"$exists": False}},
-            projection={"UUID": 1, "EVENT_TITLE": 1, "EVENT_BRIEF": 1, "EVENT_TEXT": 1, "APPENDIX": 1}
-        ).sort(f"APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING).limit(limit)
+        # newest -> older by the native V4 archive timestamp
+        cursor = collection.find(
+            {appendix_path(APPENDIX_TRANSLATED_REVISION): {"$in": [None, ""]}},
+            projection={"_id": 0, "UUID": 1, "EVENT_TITLE": 1,
+                        "EVENT_BRIEF": 1, "EVENT_TEXT": 1}
+        ).sort(appendix_path(APPENDIX_TIME_ARCHIVED), pymongo.DESCENDING).limit(limit)
 
         count = 0
         for doc in cursor:

@@ -1,0 +1,6 @@
+from IntelligenceCrawler.CrawlerGovernanceCore import _load_governance_data_engine
+from IntelligenceCrawler.GovernanceDataEngine import GovernanceDataEngine
+
+
+def test_governance_data_engine_uses_package_safe_import():
+    assert _load_governance_data_engine() is GovernanceDataEngine

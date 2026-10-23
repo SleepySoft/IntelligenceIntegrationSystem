@@ -1,0 +1,16 @@
+# Gemini AI Studio free-tier pool with local quota safety factor.
+clients:
+  - factory: gemini_free
+    enable: true
+    name: Gemini Flash 80%
+    group: gemini_flash_80
+    safety_ratio: 0.8
+    primary_slots: 2
+    reserve_slots: 1
+    # Set these when Google APIs are not directly reachable from the deployment host.
+    # proxies:
+    #   http: http://127.0.0.1:7897
+    #   https: http://127.0.0.1:7897
+
+group_limits:
+  gemini_flash_80: 3

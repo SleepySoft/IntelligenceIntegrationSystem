@@ -1,7 +1,7 @@
 [Unit]
 Description=Intelligence Integration System - Web Hub Service
-After=network.target iis-vectordb.service
-Wants=iis-vectordb.service
+After=network.target mongod.service
+Wants=mongod.service
 
 [Service]
 Type=simple
@@ -9,6 +9,11 @@ User=sleepy
 Group=sleepy
 WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+# 付费 AI 凭据属于部署机私密配置，不进入仓库。
+EnvironmentFile=-/home/sleepy/.config/iis/ai-clients.env
+# Codex CLI is installed per-user; system services do not inherit the login PATH.
+Environment="PATH=/home/sleepy/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStartPre=/home/sleepy/anaconda3/envs/iis/bin/python Scripts/deployment_preflight.py --component web
 ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python IntelligenceHubLauncher.py
 Restart=always
 RestartSec=10
@@ -16,12 +21,12 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# 启用 systemd watchdog：若主进程 60s 内未发送 WATCHDOG=1，则自动重启
-# NotifyAccess=main
-# WatchdogSec=60
+# IIS 每 10 秒发送一次 WATCHDOG=1；30 秒未收到通知时重启。
+NotifyAccess=main
+WatchdogSec=30
 
-# KillSignal=SIGTERM
-# TimeoutStopSec=30
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

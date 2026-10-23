@@ -1,0 +1,1994 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }} · 态势洞察</title>
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+    <link rel="stylesheet" href="/static/css/situation_article_modal.css">
+    <script src="{{ url_for('situation_views.frontend_asset', asset_name='d3.min.js') }}"></script>
+    <script src="{{ url_for('situation_views.frontend_asset', asset_name='topojson-client.min.js') }}"></script>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#f4f7fb, #0f172a);
+            --panel: light-dark(#ffffff, #172033);
+            --soft: light-dark(#eef3f9, #202c42);
+            --border: light-dark(#dbe4ef, #33435d);
+            --text: light-dark(#1f2937, #e5edf8);
+            --muted: light-dark(#64748b, #9baac0);
+            --accent: #4f7cff;
+            --danger: #db4b4b;
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+        button, input, select { font: inherit; }
+        .shell { max-width: 1500px; margin: auto; padding: 20px; }
+        header { display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 16px; }
+        h1 { margin: 0; font-size: 24px; }
+        header p { margin: 5px 0 0; color: var(--muted); }
+        .filters { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .filters [hidden] { display: none; }
+        label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+        input, select, button { min-height: 38px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); color: var(--text); padding: 7px 9px; }
+        button { cursor: pointer; font-weight: 600; }
+        button.primary { align-self: end; background: var(--accent); color: white; border-color: transparent; }
+        .tabs { display: flex; gap: 8px; margin: 16px 0 10px; }
+        .tabs button[aria-selected="true"] { background: var(--accent); color: white; border-color: transparent; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .time-axis { margin: 0 0 10px; padding: 10px 14px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .time-axis-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 5px; }
+        .time-axis-head b { font-size: 13px; }
+        .time-axis-head span { color: var(--muted); font-size: 12px; }
+        .dual-range { position: relative; height: 30px; }
+        .dual-range-track, .dual-range-fill { position: absolute; top: 14px; left: 0; right: 0; height: 4px; border-radius: 999px; background: var(--soft); }
+        .dual-range-fill { right: auto; background: var(--accent); }
+        .dual-range input[type="range"] { position: absolute; inset: 0; width: 100%; height: 30px; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; pointer-events: none; appearance: none; }
+        .dual-range input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; border: 3px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); pointer-events: auto; appearance: none; cursor: ew-resize; }
+        .dual-range input[type="range"]::-moz-range-thumb { width: 13px; height: 13px; border: 3px solid var(--panel); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--accent); pointer-events: auto; cursor: ew-resize; }
+        .dual-range input[type="range"]::-moz-range-track { background: transparent; border: 0; }
+        .time-axis-scale { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; }
+        .layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 12px; }
+        .canvas, .side { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+        .canvas { position: relative; min-height: 680px; overflow: hidden; }
+        .side { padding: 14px; min-height: 680px; overflow-wrap: anywhere; }
+        .side h2 { margin: 0 0 10px; font-size: 16px; }
+        .side h3 { margin: 18px 0 7px; font-size: 13px; }
+        .muted { color: var(--muted); }
+        .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+        .metric { padding: 8px; background: var(--soft); border-radius: 8px; }
+        .metric b { display: block; font-size: 17px; color: var(--text); }
+        .legend { display: flex; flex-wrap: wrap; gap: 7px 10px; margin-top: 12px; }
+        .legend span { display: inline-flex; gap: 5px; align-items: center; color: var(--muted); font-size: 12px; }
+        .legend .legend-heading { flex-basis: 100%; color: var(--text); font-weight: 650; margin-top: 3px; }
+        .legend .category-filter, .legend .entity-filter { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 3px 7px; border-radius: 999px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 500; }
+        .legend .category-filter:hover, .legend .entity-filter:hover { border-color: var(--accent); color: var(--text); }
+        .legend .category-filter.active, .legend .entity-filter.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--text); }
+        .dot { width: 9px; height: 9px; border-radius: 50%; }
+        .list { margin: 0; padding-left: 18px; }
+        .list li { margin: 4px 0; }
+        .intelligence-panel { position: fixed; left: 50%; bottom: 12px; z-index: 20; width: min(1100px, calc(100vw - 28px)); max-height: min(62vh, 620px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); transition: max-height .18s ease, border-color .18s ease, box-shadow .18s ease; }
+        .intelligence-panel[hidden] { display: none; }
+        .intelligence-panel.is-collapsed { max-height: 62px; }
+        .intelligence-panel.is-collapsed .intelligence-panel-body { display: none; }
+        .intelligence-panel.is-collapsed .intelligence-panel-head { border-bottom-color: transparent; }
+        .intelligence-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 7px 10px 7px 14px; border-bottom: 1px solid var(--border); }
+        .intelligence-panel-summary { min-width: 0; min-height: 0; flex: 1 1 auto; display: grid; gap: 2px; padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; text-align: left; }
+        .intelligence-panel-summary:hover, .intelligence-panel-summary:focus-visible { background: var(--soft); }
+        .intelligence-panel-title { overflow: hidden; color: var(--text); font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+        .intelligence-panel-brief { overflow: hidden; color: var(--muted); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+        .intelligence-panel-actions { display: flex; flex: 0 0 auto; gap: 7px; }
+        .intelligence-panel-actions button { min-height: 32px; padding: 5px 9px; }
+        .intelligence-panel-body { min-height: 0; padding: 0 14px 14px; overflow: auto; overscroll-behavior: contain; }
+        .intelligence-panel-body > p { margin: 10px 0 0; }
+        .intelligence-panel.is-collapsed.has-update { animation: intelligence-drawer-notice .9s ease-out; }
+        @keyframes intelligence-drawer-notice {
+            0%, 100% { border-color: var(--border); box-shadow: 0 22px 70px color-mix(in srgb, #000 42%, transparent); }
+            28%, 72% { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent), 0 22px 70px color-mix(in srgb, #000 42%, transparent); }
+        }
+        @media (prefers-reduced-motion: reduce) { .intelligence-panel { transition: none; } .intelligence-panel.is-collapsed.has-update { animation: none; border-color: var(--accent); } }
+        .intelligence-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 9px; margin-top: 12px; }
+        .intelligence-card { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--soft); }
+        .intelligence-card a { color: light-dark(#2457c5, #a9c4ff); font-weight: 650; text-decoration: none; }
+        .intelligence-card a:hover { text-decoration: underline; }
+        .intelligence-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; color: var(--muted); font-size: 12px; }
+        .predicate-tags { color: var(--muted); font-size: 12px; }
+        .evidence-controls { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+        .evidence-controls button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+        .evidence-controls button.active { color: white; background: var(--accent); border-color: transparent; }
+        .evidence-footer { display: flex; justify-content: center; margin-top: 12px; }
+        dialog.entity-editor { width: min(760px, calc(100vw - 28px)); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--panel); color: var(--text); box-shadow: 0 24px 80px #0008; }
+        dialog.entity-editor::backdrop { background: #0008; backdrop-filter: blur(2px); }
+        .entity-editor-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+        .entity-editor-head h2 { margin: 0; font-size: 18px; }
+        .entity-editor-body { display: grid; gap: 14px; padding: 16px; }
+        .entity-editor-section { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; }
+        .entity-editor-section h3 { margin: 0; font-size: 14px; }
+        .entity-ref-list, .entity-target-list { display: grid; gap: 7px; max-height: 220px; overflow: auto; }
+        .entity-ref-option, .entity-target-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+        .entity-ref-option small, .entity-target-option small { color: var(--muted); }
+        .entity-target-option.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+        .entity-editor-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .entity-editor-row input, .entity-editor-row select { flex: 1 1 180px; }
+        .entity-kind-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .entity-kind-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+        .entity-kind-option:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+        .entity-kind-option small { display: block; margin-top: 2px; color: var(--muted); }
+        .entity-scope-option { display: grid; grid-template-columns: auto 1fr; gap: 9px; align-items: start; padding: 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--soft); cursor: pointer; }
+        .entity-scope-option:has(input:checked) { border-color: var(--accent); }
+        .entity-scope-option small { display: block; margin-top: 2px; color: var(--muted); }
+        .entity-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+        .entity-editor-status { min-height: 20px; }
+        .wiki-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+        .wiki-links a { color: light-dark(#2457c5, #a9c4ff); }
+        .graph-search-open { position: absolute; left: 12px; top: 44px; z-index: 8; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
+        .graph-search-panel { position: absolute; left: 12px; top: 86px; z-index: 9; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 100px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 9px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 16px 42px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); }
+        .graph-search-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .graph-search-head h2 { margin: 0; font-size: 15px; }
+        .graph-search-head button { min-height: 30px; padding: 4px 9px; }
+        .graph-search-results { min-height: 40px; overflow: auto; display: grid; align-content: start; gap: 6px; }
+        .graph-search-result { width: 100%; min-height: 0; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; text-align: left; font-weight: 500; }
+        .graph-search-result b { display: block; color: var(--text); overflow-wrap: anywhere; }
+        .graph-search-result small { display: block; margin-top: 2px; color: var(--muted); overflow-wrap: anywhere; }
+        .graph-notice { position: fixed; left: 50%; top: 14px; z-index: 30; width: min(620px, calc(100% - 28px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 34px color-mix(in srgb, #000 28%, transparent); }
+        .graph-notice span { flex: 1; }
+        .graph-notice button { min-height: 32px; padding: 5px 9px; white-space: nowrap; }
+        .graph-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+        .graph-controls label:last-child { grid-column: 1 / -1; }
+        .graph-selection-detail { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+        .entity-title-row { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+        .entity-title-row h2 { min-width: 0; margin: 0; }
+        .entity-title-row button { min-height: 28px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
+        .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
+        .status.show { display: grid; }
+        svg { width: 100%; height: 680px; display: block; touch-action: none; }
+        .sphere { fill: light-dark(#bfe3ff, #0b3557); stroke: light-dark(#76b8e8, #3279a8); }
+        .country { fill: light-dark(#b9d99b, #3c6b4a); stroke: light-dark(#f6fff0, #83aa8d); stroke-width: .55px; }
+        .graticule { fill: none; stroke: light-dark(#78b8e5, #39749b); stroke-width: .45px; opacity: .72; }
+        .hotspot { stroke: color-mix(in srgb, var(--panel) 82%, transparent); stroke-width: 2px; cursor: pointer; }
+        .hotspot-ring { fill: none; pointer-events: none; }
+        .fine-hotspot { stroke: var(--panel); stroke-width: 1.5px; cursor: pointer; }
+        .map-label { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--panel); stroke-width: 1.5px; stroke-opacity: .75; stroke-linejoin: round; pointer-events: none; }
+        .edge { stroke: light-dark(#94a3b8, #66758b); stroke-opacity: .5; }
+        .edge-arrow { stroke: transparent; pointer-events: none; }
+        .edge-hit { fill: none; stroke: transparent; stroke-width: 16px; cursor: pointer; }
+        .edge.graph-selected { stroke-opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
+        .arrow-head { fill: light-dark(#475569, #b8c6d9); stroke: var(--panel); stroke-width: .8px; }
+        .node { stroke: var(--panel); stroke-width: 2px; cursor: pointer; }
+        .node.graph-selected { stroke: var(--accent); stroke-width: 4px; }
+        .graph-dim { opacity: .12 !important; }
+        .node-label { fill: var(--text); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--panel); stroke-width: 1.5px; stroke-opacity: .75; }
+        .edge-label { pointer-events: auto; cursor: pointer; }
+        .tooltip { position: absolute; display: none; pointer-events: none; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 12px; z-index: 10; }
+        .map-attribution { position: absolute; right: 7px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 10px; z-index: 3; }
+        .map-attribution a { color: inherit; }
+        .scope-badge { position: absolute; left: 10px; top: 10px; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--muted); font-size: 11px; z-index: 3; }
+        .warning { margin-top: 10px; padding: 9px; border-radius: 8px; background: color-mix(in srgb, #eab308 16%, var(--panel)); color: var(--text); }
+        .dashboard .shell { max-width: none; padding: 12px; }
+        .dashboard header { align-items: center; margin-bottom: 10px; }
+        .dashboard header p { margin-top: 2px; }
+        .dashboard-nav { display: flex; gap: 8px; }
+        .dashboard-nav a { min-height: 34px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--panel); text-decoration: none; font-weight: 650; }
+        .dashboard-nav a.active { color: #fff; background: var(--accent); border-color: transparent; }
+        .dashboard .layout { display: block; position: relative; }
+        .dashboard .canvas { min-height: calc(100vh - 94px); }
+        .dashboard svg { height: calc(100vh - 94px); min-height: 620px; }
+        .dashboard .side { position: absolute; top: 12px; right: 12px; z-index: 8; width: min(330px, calc(100% - 72px)); min-height: 0; max-height: calc(100vh - 140px); overflow: auto; background: color-mix(in srgb, var(--panel) 78%, transparent); opacity: .78; box-shadow: 0 14px 38px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); transition: opacity .18s ease, background-color .18s ease; }
+        .dashboard .side:hover, .dashboard .side:focus-within { background: var(--panel); opacity: 1; }
+        .dashboard .side.is-collapsed { display: none; }
+        .side-toggle { display: none; }
+        .dashboard .side-toggle { display: block; position: absolute; top: 12px; right: 12px; z-index: 9; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
+        .dashboard .side:not(.is-collapsed) + .side-toggle { right: 354px; }
+        .dashboard .graph-controls { display: none; }
+        .embedded .shell { padding: 0; }
+        .embedded header { display: none; }
+        .embedded .canvas { min-height: 100vh; border-radius: 0; }
+        .embedded svg { height: 100vh; min-height: 620px; }
+        @media (max-width: 950px) {
+            .filters { grid-template-columns: repeat(2, 1fr); }
+            .layout { grid-template-columns: 1fr; }
+            .side { min-height: auto; }
+            .dashboard .side { position: absolute; width: min(330px, calc(100% - 64px)); }
+            .dashboard .side:not(.is-collapsed) + .side-toggle { right: 12px; top: 18px; transform: translateY(100%); }
+        }
+        @media (max-width: 520px) {
+            .shell { padding: 10px; }
+            header { display: block; }
+            .filters { grid-template-columns: 1fr; }
+            .intelligence-list { grid-template-columns: 1fr; }
+            .canvas, svg { min-height: 520px; height: 520px; }
+            .intelligence-panel { bottom: 6px; width: calc(100vw - 12px); max-height: 72vh; }
+        }
+    </style>
+</head>
+<body class="dashboard{% if embedded %} embedded{% endif %}">
+<main class="shell">
+    <header>
+        <div>
+            <h1>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }}</h1>
+            <p>态势洞察 · {{ dashboard_profile.subsystem_display_name }} · 最近 {{ dashboard_profile.window_days }} 天 · 评分不低于 {{ dashboard_profile.min_score }}</p>
+        </div>
+        <nav class="dashboard-nav" aria-label="态势洞察看板">
+            <a href="map"{% if dashboard_view == 'map' %} class="active" aria-current="page"{% endif %}>地缘态势</a>
+            <a href="entities"{% if dashboard_view == 'graph' %} class="active" aria-current="page"{% endif %}>实体关系</a>
+        </nav>
+    </header>
+
+    <section class="filters" aria-label="公共筛选条件" hidden>
+        <label>子系统
+            <select id="subsystem">
+                {% for subsystem in subsystems %}
+                <option value="{{ subsystem.name }}"{% if subsystem.name == dashboard_profile.subsystem %} selected{% endif %}>{{ subsystem.display_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>开始时间<input id="start" type="datetime-local"></label>
+        <label>结束时间<input id="end" type="datetime-local"></label>
+        <label>最低评分<input id="min-score" type="number" min="0" max="10" step="0.5" value="6"></label>
+        <label id="map-filter-control">事件类别
+            <button id="category-all" type="button">全部已选</button>
+        </label>
+        <label id="graph-filter-control" hidden>实体类型
+            <button id="entity-all" type="button">全部已选</button>
+        </label>
+        <button id="apply" class="primary" type="button">应用并刷新</button>
+    </section>
+
+    <nav class="tabs" aria-label="视图" hidden>
+        <button type="button" data-view="map" aria-selected="true">地图视图</button>
+        <button type="button" data-view="graph" aria-selected="false">实体关系图</button>
+    </nav>
+
+    <section id="map-view" class="view{% if dashboard_view == 'map' %} active{% endif %}">
+        <section class="time-axis" aria-label="地图时间范围">
+            <div class="time-axis-head"><b>显示时间范围</b><span id="map-time-caption">正在读取时间范围…</span></div>
+            <div class="dual-range">
+                <div class="dual-range-track"></div><div class="dual-range-fill" id="map-time-fill"></div>
+                <input id="map-time-start" type="range" aria-label="地图开始时间">
+                <input id="map-time-end" type="range" aria-label="地图结束时间">
+            </div>
+            <div class="time-axis-scale"><span id="map-time-min"></span><span>拖动后在浏览器内即时过滤，不重新加载</span><span id="map-time-max"></span></div>
+        </section>
+        <div class="layout">
+            <div class="canvas" id="map-canvas">
+                <div class="status" id="map-status">正在加载地图与事件…</div>
+                <svg id="map-svg" role="img" aria-label="事件热点地球视图"></svg>
+                <div class="tooltip" id="map-tooltip"></div>
+                <div class="map-attribution">细化坐标 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></div>
+                {% if embedded %}
+                <div class="scope-badge">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }}</div>
+                {% endif %}
+            </div>
+            <aside class="side" id="map-detail">
+                <h2>地图概览</h2>
+                <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+                <div id="map-summary"></div>
+                <div class="legend" id="map-legend"></div>
+            </aside>
+            <button class="side-toggle" type="button" data-side="map-detail" aria-expanded="true">收起图例</button>
+        </div>
+        <section class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden>
+            <div class="intelligence-panel-head">
+                <button class="intelligence-panel-summary" type="button" data-drawer-summary="map-intelligence-panel" aria-expanded="false">
+                    <span class="intelligence-panel-title" id="map-intelligence-title">对应情报</span>
+                    <span class="intelligence-panel-brief" id="map-intelligence-summary" aria-live="polite">选择地点后显示情报数量</span>
+                </button>
+                <div class="intelligence-panel-actions">
+                    <button type="button" data-drawer-toggle="map-intelligence-panel" aria-expanded="false">展开</button>
+                    <button type="button" data-drawer-close="map-intelligence-panel" aria-label="关闭对应情报">关闭</button>
+                </div>
+            </div>
+            <div class="intelligence-panel-body">
+                <p class="muted">按内容时间从新到旧排列，点击标题打开完整情报。</p>
+                <div id="map-intelligences" class="intelligence-list"></div>
+            </div>
+        </section>
+    </section>
+
+    <section id="graph-view" class="view{% if dashboard_view == 'graph' %} active{% endif %}">
+        <section class="time-axis" aria-label="实体图时间范围">
+            <div class="time-axis-head"><b>显示时间范围</b><span id="graph-time-caption">正在读取时间范围…</span></div>
+            <div class="dual-range">
+                <div class="dual-range-track"></div><div class="dual-range-fill" id="graph-time-fill"></div>
+                <input id="graph-time-start" type="range" aria-label="实体图开始时间">
+                <input id="graph-time-end" type="range" aria-label="实体图结束时间">
+            </div>
+            <div class="time-axis-scale"><span id="graph-time-min"></span><span>拖动仅隐藏节点和边并更新关系计数</span><span id="graph-time-max"></span></div>
+        </section>
+        <div class="layout">
+            <div class="canvas" id="graph-canvas">
+                <div class="status" id="graph-status">正在聚合实体关系…</div>
+                <svg id="graph-svg" role="img" aria-label="实体施受关系图"></svg>
+                <div class="tooltip" id="graph-tooltip"></div>
+                <button class="graph-search-open" type="button" id="graph-search-open">搜索 Ctrl+F</button>
+                <section class="graph-search-panel" id="graph-search-panel" aria-label="搜索实体" hidden>
+                    <div class="graph-search-head"><h2>搜索图中实体</h2><button type="button" id="graph-search-close">关闭</button></div>
+                    <input id="graph-search-input" type="search" autocomplete="off" placeholder="名称、原文表述、类型、国家或 ID">
+                    <div class="graph-search-results" id="graph-search-results"><span class="muted">输入内容后显示全部匹配节点。</span></div>
+                </section>
+                <div class="graph-notice" id="graph-notice" hidden>
+                    <span id="graph-notice-text"></span>
+                    <button type="button" id="graph-manual-refresh">刷新关系图</button>
+                    <button type="button" id="graph-notice-close">稍后</button>
+                </div>
+                {% if embedded %}
+                <div class="scope-badge" title="同一关系至少由 {{ dashboard_profile.min_support }} 起独立事件支撑才连线">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }} · 关系需 {{ dashboard_profile.min_support }} 起印证</div>
+                {% endif %}
+            </div>
+            <aside class="side" id="graph-detail">
+                <div class="graph-selection-detail" id="graph-selection-detail" hidden></div>
+                <h2>关系图设置</h2>
+                <div class="graph-controls">
+                    <label>最少独立事件数<input id="min-support" type="number" min="1" max="50" value="2"></label>
+                    <label>最多节点数<input id="max-nodes" type="number" min="10" max="300" value="80"></label>
+                    <label><span><input id="keep-singletons" type="checkbox" checked> 保留高评分单次关系</span></label>
+                </div>
+                <div id="graph-summary"></div>
+                <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
+                    <label>网络规模 ≥ <input id="component-min-size" type="number" min="1" max="200" value="5" style="width:52px"> 个节点</label>
+                    <label>印证 ≥ <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> 起独立事件</label>
+                    <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
+                </div>
+                <div class="legend" id="graph-legend"></div>
+            </aside>
+            <button class="side-toggle" type="button" data-side="graph-detail" aria-expanded="true">收起图例</button>
+        </div>
+        <section class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden>
+            <div class="intelligence-panel-head">
+                <button class="intelligence-panel-summary" type="button" data-drawer-summary="graph-intelligence-panel" aria-expanded="false">
+                    <span class="intelligence-panel-title" id="graph-intelligence-title">对应情报</span>
+                    <span class="intelligence-panel-brief" id="graph-intelligence-summary" aria-live="polite">选择实体或关系后显示情报数量</span>
+                </button>
+                <div class="intelligence-panel-actions">
+                    <button type="button" data-drawer-toggle="graph-intelligence-panel" aria-expanded="false">展开</button>
+                    <button type="button" data-drawer-close="graph-intelligence-panel" aria-label="关闭对应情报">关闭</button>
+                </div>
+            </div>
+            <div class="intelligence-panel-body">
+                <p class="muted" id="graph-intelligence-description">点击节点或关系边查看支撑它的真实情报。</p>
+                <div class="evidence-controls" id="graph-role-filters" hidden>
+                    <button type="button" data-graph-role="all" class="active">全部</button>
+                    <button type="button" data-graph-role="subject">作为施事</button>
+                    <button type="button" data-graph-role="object">作为受事</button>
+                    <button type="button" data-graph-role="participant">无向参与</button>
+                </div>
+                <div id="graph-intelligences" class="intelligence-list"></div>
+                <div class="evidence-footer"><button type="button" id="graph-load-more" hidden>加载更多</button></div>
+            </div>
+        </section>
+    </section>
+</main>
+
+<dialog class="entity-editor" id="entity-editor">
+    <div class="entity-editor-head">
+        <h2 id="entity-editor-title">指定实体</h2>
+        <button type="button" id="entity-editor-close">关闭</button>
+    </div>
+    <div class="entity-editor-body">
+        <section class="entity-editor-section" id="entity-target-editor">
+            <h3>1. 选择目标实体</h3>
+            <p class="muted" style="margin:0">选择实体表后先搜索。没有合适结果时可以添加；即使已有结果，也始终可以添加新实体。</p>
+            <div class="entity-kind-tabs" id="entity-kind-options">
+                <label class="entity-kind-option">
+                    <input type="radio" name="entity-target-kind" id="entity-kind-global" value="global" checked>
+                    <span><b>全局实体表</b><small>稳定、可跨情报复用的实体（ent_*）。</small></span>
+                </label>
+                <label class="entity-kind-option">
+                    <input type="radio" name="entity-target-kind" id="entity-kind-contextual" value="contextual">
+                    <span><b>语境实体表</b><small>只在具体情报语境中成立的实体（ctx_*）。</small></span>
+                </label>
+            </div>
+            <div id="entity-global-editor">
+                <div class="entity-editor-row">
+                    <input id="entity-global-query" placeholder="搜索标准实体，例如：唐纳德·特朗普">
+                    <button type="button" id="entity-global-search">搜索</button>
+                </div>
+                <div class="entity-target-list" id="entity-global-results"></div>
+                <details id="entity-global-create-panel">
+                    <summary>添加新的全局实体</summary>
+                    <div class="entity-editor-row" style="margin-top:8px">
+                        <input id="entity-global-new-name" placeholder="标准名">
+                        <select id="entity-global-new-type">
+                            <option value="person">人物</option><option value="organization">组织</option>
+                            <option value="country">国家</option><option value="location">地点</option>
+                            <option value="other">其他</option>
+                        </select>
+                        <button type="button" id="entity-global-create">添加并选择</button>
+                    </div>
+                </details>
+            </div>
+            <div id="entity-contextual-editor" hidden>
+                <div class="entity-editor-row">
+                    <input id="entity-contextual-query" placeholder="搜索已有语境实体，例如：法国养老金改革示威者">
+                    <button type="button" id="entity-contextual-search">搜索</button>
+                </div>
+                <div class="entity-target-list" id="entity-contextual-results"></div>
+                <details id="entity-contextual-create-panel">
+                    <summary>添加新的语境实体</summary>
+                    <div class="entity-editor-row" style="margin-top:8px">
+                        <input id="entity-contextual-new-name" placeholder="输入一个便于识别的名称即可">
+                        <button type="button" id="entity-contextual-create">添加并选择</button>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="entity-editor-section" id="entity-resolution-refs">
+            <h3>2. 设置关联范围</h3>
+            <p style="margin:0"><b id="entity-mapping-preview">请先在上方选择一个目标实体。</b></p>
+            <label class="entity-scope-option">
+                <input type="checkbox" id="entity-limited-scope">
+                <span><b>仅针对所选情报中的实体生效</b><small id="entity-scope-help"></small></span>
+            </label>
+            <div id="entity-ref-scope" hidden>
+                <div class="entity-editor-row">
+                    <button type="button" id="entity-ref-select-all">全选</button>
+                    <button type="button" id="entity-ref-select-none">清空</button>
+                    <span class="muted" id="entity-ref-selection-count"></span>
+                </div>
+                <div class="entity-ref-list" id="entity-ref-list"><span class="muted">正在加载…</span></div>
+            </div>
+        </section>
+        <div class="entity-editor-status muted" id="entity-editor-status"></div>
+        <div class="entity-editor-actions">
+            <button type="button" id="entity-undo" hidden>撤销上次指定</button>
+            <button type="button" id="entity-unassign">清除所选人工指定</button>
+            <button type="button" class="primary" id="entity-assign">保存全局映射</button>
+        </div>
+    </div>
+</dialog>
+
+<script src="/static/js/intelligence_contracts.js"></script>
+<script src="/static/js/subsystem_render_protocol.js"></script>
+<script src="/static/js/article_detail_renderer.js"></script>
+<script src="/static/js/article_modal_manager.js"></script>
+<script src="/static/js/situation_article_modal.js"></script>
+<script>
+const CATEGORY_COLORS = {
+    war: '#dc3545', terror: '#b42358', security: '#e87924', politics: '#8b5cf6', hazard: '#16a085',
+    economy: '#2563eb', industry: '#0891b2', other: '#64748b'
+};
+const ENTITY_COLORS = {
+    person: '#7c3aed', organization: '#2563eb', geopolitical_entity: '#dc3545',
+    location: '#16a085', facility: '#e87924', other: '#64748b'
+};
+const ENTITY_LABELS = {
+    person: '人物', organization: '组织', geopolitical_entity: '政治地理实体',
+    location: '地点', facility: '设施', other: '其他实体'
+};
+const CATEGORY_LABELS = {{ categories|tojson }};
+const DASHBOARD_VIEW = {{ dashboard_view|tojson }};
+const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
+const API_PREFIX = {{ api_prefix|tojson }};
+const EDIT_API_PREFIX = {{ edit_api_prefix|tojson }};
+const ENTITY_EDIT_ENABLED = {{ entity_edit_enabled|tojson }};
+const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
+const selectedCategories = new Set(ALL_CATEGORY_KEYS);
+const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
+const selectedEntityTypes = new Set(ALL_ENTITY_TYPES);
+const SUBSYSTEMS = {{ subsystems|tojson }};
+const DETAIL_ORIGIN = {{ detail_origin|tojson }};
+const WORLD_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries-110m.json')|tojson }};
+const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries.json')|tojson }};
+let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
+let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
+let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
+let graphZoomBehavior = null, renderedGraphNodes = new Map();
+let applyMapTemporalFilter = null, applyGraphTemporalFilter = null;
+const temporalRanges = {map: null, graph: null};
+let editingGraphNode = null, editingReferences = [], selectedEditingRefKeys = new Set();
+let editingTargetKind = 'global', selectedEditingTarget = null;
+let editingGlobalLimitedScope = false;
+
+const $ = id => document.getElementById(id);
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const localInputValue = date => {
+    const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return shifted.toISOString().slice(0, 16);
+};
+const now = new Date();
+$('subsystem').value = DASHBOARD_PROFILE.subsystem;
+$('end').value = localInputValue(now);
+$('start').value = localInputValue(new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
+$('min-score').value = DASHBOARD_PROFILE.min_score;
+$('min-support').value = DASHBOARD_PROFILE.min_support;
+$('max-nodes').value = DASHBOARD_PROFILE.max_nodes;
+$('keep-singletons').checked = DASHBOARD_PROFILE.keep_high_score_singletons;
+
+function queryParams(extra = {}) {
+    const categoryValue = selectedCategories.size === ALL_CATEGORY_KEYS.length
+        ? '' : (selectedCategories.size ? [...selectedCategories].join(',') : '__none__');
+    const params = new URLSearchParams({
+        subsystem: $('subsystem').value,
+        start: new Date($('start').value).toISOString(),
+        end: new Date($('end').value).toISOString(),
+        min_score: $('min-score').value,
+        category: categoryValue,
+        primary_only: 'true',
+        ...extra
+    });
+    if (!params.get('category')) params.delete('category');
+    if (activeView !== 'map') params.delete('category');
+    return params;
+}
+
+function formatAxisTime(milliseconds) {
+    const value = new Date(milliseconds);
+    return value.toLocaleString([], {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+function setupTemporalAxis(kind, meta, eventSeconds, onChange) {
+    const lower = new Date(meta.start).getTime(), upper = new Date(meta.end).getTime();
+    const points = [...new Set([lower, upper, ...(eventSeconds || [])
+        .filter(value => Number(value) > 0).map(value => Number(value) * 1000)])]
+        .filter(Number.isFinite).sort((a, b) => a - b);
+    const startInput = $(`${kind}-time-start`), endInput = $(`${kind}-time-end`);
+    if (points.length < 2) {
+        startInput.disabled = endInput.disabled = true;
+        $(`${kind}-time-caption`).textContent = '当前窗口没有可调时间点';
+        return;
+    }
+    const previous = temporalRanges[kind];
+    const closestIndex = value => {
+        let best = 0;
+        for (let i = 1; i < points.length; i++) {
+            if (Math.abs(points[i] - value) < Math.abs(points[best] - value)) best = i;
+        }
+        return best;
+    };
+    startInput.min = endInput.min = 0;
+    startInput.max = endInput.max = points.length - 1;
+    startInput.step = endInput.step = 1;
+    startInput.value = previous ? closestIndex(previous[0]) : 0;
+    endInput.value = previous ? closestIndex(previous[1]) : points.length - 1;
+    startInput.disabled = endInput.disabled = false;
+    $(`${kind}-time-min`).textContent = formatAxisTime(lower);
+    $(`${kind}-time-max`).textContent = formatAxisTime(upper);
+
+    const apply = changed => {
+        let startIndex = Number(startInput.value), endIndex = Number(endInput.value);
+        if (startIndex > endIndex) {
+            if (changed === startInput) endIndex = startIndex;
+            else startIndex = endIndex;
+            startInput.value = startIndex;
+            endInput.value = endIndex;
+        }
+        const range = [points[startIndex], points[endIndex]];
+        temporalRanges[kind] = range;
+        const denominator = Math.max(1, points.length - 1);
+        const left = startIndex / denominator * 100;
+        const right = endIndex / denominator * 100;
+        const fill = $(`${kind}-time-fill`);
+        fill.style.left = `${left}%`;
+        fill.style.width = `${right - left}%`;
+        $(`${kind}-time-caption`).textContent = `${formatAxisTime(range[0])} — ${formatAxisTime(range[1])}`;
+        onChange(range, Boolean(changed));
+    };
+    startInput.oninput = () => apply(startInput);
+    endInput.oninput = () => apply(endInput);
+    apply(null);
+}
+
+function legendHtml() {
+    const buttons = Object.entries(CATEGORY_LABELS).map(([key, label]) =>
+        `<button type="button" class="category-filter${selectedCategories.has(key) ? ' active' : ''}" data-category="${key}" aria-pressed="${selectedCategories.has(key)}">
+            <i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}
+        </button>`).join('');
+    return buttons + `<div class="muted" style="font-size:11px;margin-top:6px">
+        点填充色 = 主导类别；多类别混合热点带次类别色外环，悬停看分布</div>`;
+}
+$('map-legend').innerHTML = legendHtml();
+$('graph-legend').innerHTML = graphLegendHtml();
+
+function graphLegendHtml() {
+    const nodes = Object.entries(ENTITY_LABELS).map(([key, label]) =>
+        `<button type="button" class="entity-filter${selectedEntityTypes.has(key) ? ' active' : ''}" data-entity-type="${key}" aria-pressed="${selectedEntityTypes.has(key)}">
+            <i class="dot" style="background:${ENTITY_COLORS[key]}"></i>${escapeHtml(label)}
+        </button>`).join('');
+    const edgeCategories = Object.entries(CATEGORY_LABELS).map(([key, label]) =>
+        `<span><i class="dot" style="background:${CATEGORY_COLORS[key]}"></i>${escapeHtml(label)}</span>`).join('');
+    return `<span class="legend-heading">节点颜色 · 实体类型</span>${nodes}
+        <span class="legend-heading">边颜色 · 事件类别</span>${edgeCategories}
+        <span class="legend-heading">虚线边 · 含否定事件（✗ 全部否定 / ◐ 部分）</span>
+        <label class="legend-heading" style="cursor:pointer;display:inline-flex;gap:6px;align-items:center">
+            <input type="checkbox" id="show-all-edge-labels" ${showAllEdgeLabels ? 'checked' : ''}> 显示全部边标签（多看用，可能很糊）
+        </label>`;
+}
+
+function syncCategoryFilters() {
+    document.querySelectorAll('.category-filter').forEach(button => {
+        const active = selectedCategories.has(button.dataset.category);
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    $('category-all').textContent = selectedCategories.size === ALL_CATEGORY_KEYS.length
+        ? '全部已选' : `全选（已选 ${selectedCategories.size}/${ALL_CATEGORY_KEYS.length}）`;
+}
+
+function syncEntityFilters() {
+    document.querySelectorAll('.entity-filter').forEach(button => {
+        const active = selectedEntityTypes.has(button.dataset.entityType);
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    $('entity-all').textContent = selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+        ? '全部已选' : `全选（已选 ${selectedEntityTypes.size}/${ALL_ENTITY_TYPES.length}）`;
+}
+
+async function loadJson(url, options = undefined) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    return data;
+}
+
+function setIntelligenceDrawerCollapsed(panel, collapsed) {
+    panel.classList.toggle('is-collapsed', collapsed);
+    panel.querySelectorAll('[data-drawer-toggle], [data-drawer-summary]').forEach(button => {
+        button.setAttribute('aria-expanded', String(!collapsed));
+        if (button.hasAttribute('data-drawer-toggle')) button.textContent = collapsed ? '展开' : '收起';
+    });
+}
+
+function openIntelligenceDrawer(panelId) {
+    const panel = $(panelId);
+    panel.hidden = false;
+}
+
+function updateIntelligenceDrawerSummary(panelId, message, notify = true) {
+    const panel = $(panelId);
+    const summary = panel.querySelector('.intelligence-panel-brief');
+    if (summary) summary.textContent = message;
+    if (!notify || !panel.classList.contains('is-collapsed')) return;
+    if (panel._intelligenceNoticeTimer) window.clearTimeout(panel._intelligenceNoticeTimer);
+    panel.classList.remove('has-update');
+    void panel.offsetWidth;
+    panel.classList.add('has-update');
+    panel._intelligenceNoticeTimer = window.setTimeout(() => {
+        panel.classList.remove('has-update');
+        panel._intelligenceNoticeTimer = null;
+    }, 1000);
+}
+
+async function refreshMap() {
+    $('map-status').classList.add('show');
+    selectedCountry = null;
+    $('map-intelligence-panel').hidden = true;
+    try {
+        const [data, resources] = await Promise.all([
+            loadJson(`${API_PREFIX}/map?${queryParams()}`),
+            worldResources || Promise.all([d3.json(WORLD_URL), d3.json(COUNTRIES_URL)])
+        ]);
+        mapData = data;
+        temporalRanges.map = null;
+        worldResources = resources;
+        renderMap();
+    } catch (error) {
+        $('map-status').textContent = `加载失败：${error.message}`;
+        return;
+    }
+    $('map-status').classList.remove('show');
+}
+
+function renderMap() {
+    const svg = d3.select('#map-svg');
+    svg.selectAll('*').remove();
+    const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
+    const [world, countries] = worldResources;
+    const features = topojson.feature(world, world.objects.countries).features;
+    const centers = new Map(countries.filter(c => c.cca2 && c.latlng?.length === 2)
+        .map(c => [c.cca2, [c.latlng[1], c.latlng[0]]]));
+    const names = new Map(countries.map(c => [c.cca2, c.translations?.zho?.common || c.name?.common || c.cca2]));
+    // 桌面端为右侧悬浮图例预留空间，使地球保持完整并略向左显示。
+    const panelReserve = width >= 760 ? Math.min(360, width * 0.34) : 0;
+    const projection = d3.geoOrthographic().fitExtent(
+        [[20, 20], [width - panelReserve - 20, height - 20]], {type:'Sphere'}).clipAngle(90);
+    const initialScale = projection.scale();
+    const path = d3.geoPath(projection);
+    const root = svg.append('g');
+    root.append('path').datum({type:'Sphere'}).attr('class','sphere');
+    root.append('path').datum(d3.geoGraticule10()).attr('class','graticule');
+    root.append('g').selectAll('path').data(features).join('path').attr('class','country');
+    const visible = mapData.hotspots.filter(d => centers.has(d.country_code));
+    const radius = d3.scaleSqrt().domain([1, d3.max(visible, d => d.event_count) || 1]).range([5, 24]);
+    // 多类别热点：主导色圆盘 + 次类别色外环（比描边显眼）
+    // 同色系（如 war/terror 都是红色系）视觉上难以区分，宁可不画环
+    const RING_COLOR_FAMILY = {war: 'red', terror: 'red', security: 'orange',
+        politics: 'purple', hazard: 'teal', economy: 'blue', industry: 'blue', other: 'gray'};
+    const ringColor = d => {
+        const cats = Object.keys(d.categories || {});
+        if (cats.length < 2) return null;
+        const fillColor = CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other;
+        const fillFamily = RING_COLOR_FAMILY[d.dominant_category] || d.dominant_category;
+        for (let i = 1; i < cats.length; i++) {
+            const color = CATEGORY_COLORS[cats[i]] || CATEGORY_COLORS.other;
+            const family = RING_COLOR_FAMILY[cats[i]] || cats[i];
+            if (color !== fillColor && family !== fillFamily) return color;
+        }
+        return null;
+    };
+    const categoryBreakdown = d => Object.entries(d.categories || {})
+        .map(([k, v]) => `${CATEGORY_LABELS[k] || k} ${v}`).join(' · ');
+    const rings = root.append('g').selectAll('circle').data(visible).join('circle')
+        .attr('class', 'hotspot-ring')
+        .attr('stroke', d => ringColor(d))
+        .attr('stroke-width', 3)
+        .attr('r', d => radius(d.event_count) + 4);
+    const marks = root.append('g').selectAll('circle').data(visible).join('circle')
+        .attr('class','hotspot').attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+        .attr('r', d => radius(d.event_count))
+        .on('mouseenter', (event, d) => {
+            const breakdown = categoryBreakdown(d);
+            showTooltip('map-tooltip', event,
+                `${names.get(d.country_code)} · ${d.event_count} 个事件${breakdown ? ` · ${breakdown}` : ''}`);
+        })
+        .on('mouseleave', () => hideTooltip('map-tooltip'))
+        .on('click', (_, d) => showMapDetail(d, names.get(d.country_code)));
+    const labels = root.append('g').selectAll('text').data(visible).join('text')
+        .attr('class','map-label').attr('text-anchor','middle')
+        .text(d => `${names.get(d.country_code)} ${d.event_count}`);
+    const fineMarkLayer = root.append('g');
+    const fineLabelLayer = root.append('g');
+
+    let zoomScale = 1, fineLocations = [], locationRequestTimer = null, locationRequestActive = false;
+    const isFront = coordinates => {
+        const center = projection.invert(projection.translate());
+        return center && d3.geoDistance(coordinates, center) < Math.PI / 2 - 0.015;
+    };
+
+    function renderFineLocations() {
+        const fineRadius = d3.scaleSqrt()
+            .domain([1, d3.max(fineLocations, d => d.event_count) || 1]).range([4, 11]);
+        const fineMarks = fineMarkLayer.selectAll('circle').data(
+            fineLocations, d => `${d.country_code}|${d.name}`
+        ).join('circle').attr('class', 'fine-hotspot')
+            .attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+            .attr('r', d => fineRadius(d.event_count))
+            .on('mouseenter', (event, d) => showTooltip(
+                'map-tooltip', event, `${d.name} · ${d.event_count} 个事件`))
+            .on('mouseleave', () => hideTooltip('map-tooltip'))
+            .on('click', (_, d) => {
+                const hotspot = visible.find(item => item.country_code === d.country_code);
+                if (hotspot) showMapDetail(hotspot, names.get(d.country_code), d.name);
+            });
+        const fineLabels = fineLabelLayer.selectAll('text').data(
+            fineLocations, d => `${d.country_code}|${d.name}`
+        ).join('text').attr('class', 'map-label').attr('text-anchor', 'middle')
+            .text(d => `${d.name} ${d.event_count}`);
+        redrawFine(fineMarks, fineLabels, fineRadius);
+    }
+
+    function redrawFine(fineMarks, fineLabels, fineRadius) {
+        fineMarks = fineMarks || fineMarkLayer.selectAll('circle');
+        fineLabels = fineLabels || fineLabelLayer.selectAll('text');
+        fineRadius = fineRadius || (value => 7);
+        const coordinates = d => [Number(d.longitude), Number(d.latitude)];
+        fineMarks.attr('display', d => d.event_count > 0 && zoomScale >= 1.7 && isFront(coordinates(d)) ? null : 'none')
+            .attr('cx', d => projection(coordinates(d))?.[0])
+            .attr('cy', d => projection(coordinates(d))?.[1]);
+        fineLabels.attr('display', d => d.event_count > 0 && zoomScale >= 2.15 && isFront(coordinates(d)) ? null : 'none')
+            .attr('x', d => projection(coordinates(d))?.[0])
+            .attr('y', d => (projection(coordinates(d))?.[1] || 0) - fineRadius(d.event_count) - 4);
+    }
+
+    function scheduleFineLocations(delay = 250) {
+        clearTimeout(locationRequestTimer);
+        if (zoomScale < 1.7) return;
+        locationRequestTimer = setTimeout(loadFineLocations, delay);
+    }
+
+    async function loadFineLocations() {
+        if (locationRequestActive || zoomScale < 1.7) return;
+        const candidates = visible.filter(d => isFront(centers.get(d.country_code)))
+            .flatMap(hotspot => hotspot.locations.map(location => ({
+                name: location.name,
+                country_code: hotspot.country_code,
+                event_count: location.count,
+                dominant_category: hotspot.dominant_category
+            }))).sort((a, b) => b.event_count - a.event_count).slice(0, 80);
+        if (!candidates.length) return;
+        locationRequestActive = true;
+        try {
+            const data = await loadJson(`${API_PREFIX}/map/locations`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({locations: candidates})
+            });
+            fineLocations = data.locations || [];
+            renderFineLocations();
+            if (data.pending_count > 0) scheduleFineLocations(1400);
+        } catch (error) {
+            console.warn('具体地点加载失败', error);
+        } finally {
+            locationRequestActive = false;
+        }
+    }
+
+    function redraw() {
+        root.select('.sphere').attr('d', path);
+        root.select('.graticule').attr('d', path);
+        root.selectAll('.country').attr('d', path);
+        marks.attr('display', d => d._timeVisible !== false && isFront(centers.get(d.country_code)) ? null : 'none')
+            .attr('cx', d => projection(centers.get(d.country_code))?.[0])
+            .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
+        rings.attr('display', d => d._timeVisible !== false && ringColor(d) && isFront(centers.get(d.country_code)) ? null : 'none')
+            .attr('cx', d => projection(centers.get(d.country_code))?.[0])
+            .attr('cy', d => projection(centers.get(d.country_code))?.[1]);
+        labels.attr('display', d => d._timeVisible !== false && zoomScale >= 1.25 && zoomScale < 2.15 && isFront(centers.get(d.country_code)) ? null : 'none')
+            .attr('x', d => projection(centers.get(d.country_code))?.[0])
+            .attr('y', d => (projection(centers.get(d.country_code))?.[1] || 0) - radius(d.event_count) - 5);
+        redrawFine();
+    }
+    svg.call(d3.drag().on('drag', event => {
+        const rotate = projection.rotate();
+        const k = 75 / projection.scale();
+        projection.rotate([rotate[0] + event.dx * k, rotate[1] - event.dy * k]);
+        redraw();
+    }).on('end', () => scheduleFineLocations()));
+    svg.call(d3.zoom().scaleExtent([1, 10]).filter(event => event.type === 'wheel')
+        .on('zoom', event => {
+            zoomScale = event.transform.k;
+            projection.scale(initialScale * zoomScale);
+            redraw();
+            scheduleFineLocations();
+        }));
+    redraw();
+
+    const m = mapData.meta;
+    // showMapDetail 会用 innerHTML 重建侧栏（map-summary/map-legend 被抹掉）；
+    // 筛选刷新（selectedCountry 已清空）时先恢复默认侧栏结构，缩放重绘时则跳过。
+    if (!$('map-summary') && !selectedCountry) {
+        $('map-detail').innerHTML = `<h2>地图概览</h2>
+            <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+            <div id="map-summary"></div>
+            <div class="legend" id="map-legend"></div>`;
+        $('map-legend').innerHTML = legendHtml();
+        syncCategoryFilters();
+    }
+    const summaryEl = $('map-summary');
+    if (summaryEl) summaryEl.innerHTML = `<div class="meta">
+        <div class="metric"><b>${m.mapped_event_count}</b>已定位事件</div>
+        <div class="metric"><b>${(m.location_coverage * 100).toFixed(1)}%</b>地点覆盖率</div>
+        <div class="metric"><b>${m.hotspot_count}</b>国家热点</div>
+        <div class="metric"><b>${m.event_count}</b>候选事件</div></div>
+        ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
+
+    applyMapTemporalFilter = (range, changed) => {
+        if (changed && selectedCountry) {
+            selectedCountry = null;
+            $('map-intelligence-panel').hidden = true;
+            $('map-detail').innerHTML = `<h2>地图概览</h2>
+                <p class="muted">拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。</p>
+                <div id="map-summary"></div><div class="legend" id="map-legend"></div>`;
+            $('map-legend').innerHTML = legendHtml();
+            syncCategoryFilters();
+        }
+        const activeEventIds = new Set(), activeArticles = new Set();
+        for (const hotspot of visible) {
+            const rows = (hotspot.timeline || []).filter(row => row[0] * 1000 >= range[0] && row[0] * 1000 <= range[1]);
+            const categories = new Map(), predicates = new Map(), locations = new Map();
+            let scoreSum = 0, scoreMax = 0, lastTime = 0;
+            for (const row of rows) {
+                activeEventIds.add(row[1]);
+                activeArticles.add(row[2]);
+                scoreSum += Number(row[3]) || 0;
+                scoreMax = Math.max(scoreMax, Number(row[3]) || 0);
+                categories.set(row[4], (categories.get(row[4]) || 0) + 1);
+                predicates.set(row[5], (predicates.get(row[5]) || 0) + 1);
+                for (const name of row[6] || []) locations.set(name, (locations.get(name) || 0) + 1);
+                lastTime = Math.max(lastTime, Number(row[0]) || 0);
+            }
+            const orderedCategories = [...categories.entries()].sort((a, b) => b[1] - a[1]);
+            hotspot.event_count = rows.length;
+            hotspot.article_count = new Set(rows.map(row => row[2])).size;
+            hotspot.average_score = rows.length ? Math.round(scoreSum / rows.length * 100) / 100 : 0;
+            hotspot.max_score = Math.round(scoreMax * 100) / 100;
+            hotspot.categories = Object.fromEntries(orderedCategories);
+            hotspot.dominant_category = orderedCategories[0]?.[0] || 'other';
+            hotspot.predicates = Object.fromEntries([...predicates.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8));
+            hotspot.locations = [...locations.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
+                .map(([name, count]) => ({name, count}));
+            hotspot.last_time = lastTime ? new Date(lastTime * 1000).toISOString() : null;
+            hotspot._timeVisible = rows.length > 0;
+        }
+        for (const location of fineLocations) {
+            const hotspot = visible.find(item => item.country_code === location.country_code);
+            const current = hotspot?.locations?.find(item => item.name === location.name);
+            location.event_count = current?.count || 0;
+            location.dominant_category = hotspot?.dominant_category || 'other';
+        }
+        marks.attr('fill', d => CATEGORY_COLORS[d.dominant_category] || CATEGORY_COLORS.other)
+            .attr('r', d => radius(Math.max(1, d.event_count)));
+        rings.attr('stroke', d => ringColor(d) || 'transparent')
+            .attr('r', d => radius(Math.max(1, d.event_count)) + 4);
+        labels.text(d => `${names.get(d.country_code)} ${d.event_count}`);
+        redraw();
+        const currentSummary = $('map-summary');
+        if (currentSummary) currentSummary.innerHTML = `<div class="meta">
+            <div class="metric"><b>${activeEventIds.size}</b>当前事件</div>
+            <div class="metric"><b>${activeArticles.size}</b>当前文章</div>
+            <div class="metric"><b>${visible.filter(item => item._timeVisible).length}</b>国家热点</div>
+            <div class="metric"><b>${m.mapped_event_count}</b>窗口内事件</div></div>
+            ${m.truncated ? '<div class="warning">文章数量达到查询上限，当前结果已截断。</div>' : ''}`;
+    };
+    setupTemporalAxis('map', mapData.meta,
+        visible.flatMap(item => (item.timeline || []).map(row => row[0])),
+        applyMapTemporalFilter);
+}
+
+function showMapDetail(d, countryName, locationName = null) {
+    selectedCountry = `${d.country_code}|${locationName || ''}`;
+    openIntelligenceDrawer('map-intelligence-panel');
+    $('map-intelligence-title').textContent = `${locationName || countryName || d.country_code} · 对应情报`;
+    updateIntelligenceDrawerSummary('map-intelligence-panel', '正在加载对应情报…', false);
+    $('map-intelligences').innerHTML = '<span class="muted">正在加载真实情报…</span>';
+    const categories = Object.entries(d.categories).map(([k,v]) => `<li>${escapeHtml(CATEGORY_LABELS[k] || k)}：${v}</li>`).join('');
+    const locations = d.locations.map(v => `<li>${escapeHtml(v.name)}：${v.count}</li>`).join('') || '<li>仅有国家级地点</li>';
+    const predicates = Object.entries(d.predicates).map(([k,v]) => `<li>${escapeHtml(k)}：${v}</li>`).join('');
+    const timelineLookup = String(locationName || countryName || '').trim();
+    const timelineButton = timelineLookup ? `<button type="button" id="open-map-entity-timeline" data-lookup="${escapeHtml(timelineLookup)}" data-country="${escapeHtml(d.country_code)}" style="width:100%;margin-top:10px">在实体时间线中查看此地域</button>` : '';
+    $('map-detail').innerHTML = `<h2>${escapeHtml(countryName || d.country_code)}</h2>
+        <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
+        <h3>类别</h3><ul class="list">${categories}</ul>
+        <h3>提取地点</h3><ul class="list">${locations}</ul>
+        <h3>谓词</h3><ul class="list">${predicates}</ul>
+        <p class="muted">国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。</p>${timelineButton}
+        <div class="legend">${legendHtml()}</div>`;
+    loadMapIntelligences(d.country_code, locationName);
+}
+
+async function loadMapIntelligences(countryCode, locationName = null) {
+    const selectionKey = `${countryCode}|${locationName || ''}`;
+    try {
+        const data = await loadJson(`${API_PREFIX}/map/intelligences?${queryParams({
+            country_code: countryCode,
+            ...(locationName ? {location_name: locationName} : {}),
+            offset: 0,
+            limit: 50
+        })}`);
+        if (selectedCountry !== selectionKey) return;
+        const target = $('map-intelligences');
+        if (!data.intelligences.length) {
+            target.innerHTML = '<span class="muted">当前筛选条件下没有对应情报。</span>';
+            updateIntelligenceDrawerSummary('map-intelligence-panel', '当前筛选条件下没有对应情报');
+            return;
+        }
+        target.innerHTML = data.intelligences.map(item => {
+            const time = item.content_time ? new Date(item.content_time).toLocaleString() : '时间未知';
+            const predicates = item.predicates.length
+                ? item.predicates.map(value => value.label).join('、') : '未分类谓词';
+            return `<article class="intelligence-card">
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.uuid)}">${escapeHtml(item.title)}</a>
+                <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个事件</span></div>
+                <div class="predicate-tags">${escapeHtml(predicates)}</div>
+            </article>`;
+        }).join('') + (data.meta.has_more ? `<div class="warning">共 ${data.meta.total} 条，仅显示最新 50 条。</div>` : '');
+        updateIntelligenceDrawerSummary(
+            'map-intelligence-panel',
+            `共 ${data.meta.total} 篇 · ${data.meta.has_more ? '展开查看最新 50 篇' : '点击展开查看'}`,
+        );
+    } catch (error) {
+        if (selectedCountry === selectionKey) {
+            $('map-intelligences').innerHTML = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
+            updateIntelligenceDrawerSummary('map-intelligence-panel', '情报加载失败 · 点击展开查看原因');
+        }
+    }
+}
+
+function intelligenceDetailUrl(uuid) {
+    const subsystem = SUBSYSTEMS.find(item => item.name === $('subsystem').value);
+    const prefix = String(subsystem?.url_prefix || '').replace(/\/$/, '');
+    return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`;
+}
+
+async function refreshGraph() {
+    clearGraphSelection();
+    $('graph-status').classList.add('show');
+    $('graph-status').textContent = '正在聚合实体关系…';
+    try {
+        graphData = await loadJson(`${API_PREFIX}/entity-graph?${queryParams({
+            min_support: $('min-support').value,
+            max_nodes: $('max-nodes').value,
+            keep_high_score_singletons: $('keep-singletons').checked,
+            entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+                ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
+        })}`);
+        temporalRanges.graph = null;
+        renderGraph();
+        $('graph-notice').hidden = true;
+    } catch (error) {
+        $('graph-status').textContent = `加载失败：${error.message}`;
+        return;
+    }
+    $('graph-status').classList.remove('show');
+}
+
+// 前端过滤层：后端按配置出全量节点/边，前端再按“印证”与“连通网规模”过滤。
+// 印证下限 = 配置值（DASHBOARD_PROFILE.min_support），默认 2 且不得低于配置值；
+// 网络规模下限 = componentMinSize（只显示规模达到该值的连通网络）。
+let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
+
+function filterGraphData() {
+    const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+    const edges = graphData.edges.filter(d => d.support >= supportMin).map(d => ({
+        ...d, _sourceId: d.source, _targetId: d.target, _eventRefs: [...(d.event_refs || [])]
+    }));
+    const nodes = graphData.nodes.map(d => ({...d, _eventRefs: [...(d.event_refs || [])]}));
+    // 并查集求连通分量
+    const parent = new Map(nodes.map(n => [n.id, n.id]));
+    const find = x => {
+        while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); }
+        return x;
+    };
+    for (const e of edges) {
+        const a = find(e.source), b = find(e.target);
+        if (a !== b) parent.set(a, b);
+    }
+    const sizes = new Map();
+    nodes.forEach(n => sizes.set(find(n.id), (sizes.get(find(n.id)) || 0) + 1));
+    // 零度点（印证过滤后无边的节点）不是网络，任何规模下限下都隐藏
+    const degree = new Map();
+    for (const e of edges) {
+        degree.set(e.source, (degree.get(e.source) || 0) + 1);
+        degree.set(e.target, (degree.get(e.target) || 0) + 1);
+    }
+    const keep = new Set(nodes
+        .filter(n => sizes.get(find(n.id)) >= componentMinSize && (degree.get(n.id) || 0) > 0)
+        .map(n => n.id));
+    const fNodes = nodes.filter(n => keep.has(n.id));
+    const fEdges = edges.filter(e => keep.has(e.source) && keep.has(e.target));
+    const noteEl = $('graph-filter-note');
+    if (noteEl) {
+        const isolated = nodes.filter(n => (degree.get(n.id) || 0) === 0).length;
+        // 有边但规模未达标的小网络（与孤立点不重复计数）
+        const smallNets = new Set(nodes
+            .filter(n => sizes.get(find(n.id)) < componentMinSize && (degree.get(n.id) || 0) > 0)
+            .map(n => find(n.id))).size;
+        const hiddenEdges = graphData.edges.length - fEdges.length;
+        const parts = [];
+        if (smallNets > 0) parts.push(`${smallNets} 个小网络`);
+        if (isolated > 0) parts.push(`${isolated} 个孤立点`);
+        if (hiddenEdges > 0) parts.push(`${hiddenEdges} 条弱边`);
+        noteEl.textContent = parts.length ? `前端过滤中：已隐藏 ${parts.join('、')}` : '';
+    }
+    return {nodes: fNodes, edges: fEdges};
+}
+
+function renderGraph() {
+    const svg = d3.select('#graph-svg');
+    svg.selectAll('*').remove();
+    const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
+    const {nodes, edges} = filterGraphData();
+    renderedGraphNodes = new Map(nodes.map(item => [item.id, item]));
+    renderGraphSearchResults();
+    if (!nodes.length) {
+        // 过滤叠加空态：印证过滤把网络切碎，全低于规模下限——给解释而非空白
+        svg.append('text').attr('class', 'map-label').attr('text-anchor', 'middle')
+            .attr('x', width / 2).attr('y', height / 2)
+            .text(`过滤后无可见网络：印证 ≥ ${Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin)} 的边过少，` +
+                  `网络全部低于规模下限 ${componentMinSize}。建议降低规模或印证。`);
+        applyGraphTemporalFilter = () => {};
+        setupTemporalAxis('graph', graphData.meta,
+            (graphData.temporal_events || []).map(row => row[0]),
+            applyGraphTemporalFilter);
+        return;
+    }
+    const defs = svg.append('defs');
+    defs.append('marker').attr('id','arrow').attr('viewBox','0 -6 12 12').attr('refX',10).attr('refY',0)
+        .attr('markerWidth',12).attr('markerHeight',12).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
+        .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
+    const root = svg.append('g');
+    graphZoomBehavior = d3.zoom().scaleExtent([.25, 4])
+        .on('zoom', event => root.attr('transform', event.transform));
+    svg.call(graphZoomBehavior);
+    svg.on('click', () => clearGraphSelection());
+    const edgeScale = d3.scaleSqrt().domain([1, d3.max(edges, d => d.support) || 1]).range([1, 6]);
+    const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
+    const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
+        .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
+        .attr('stroke-width', d => edgeScale(d.support))
+        .attr('stroke-dasharray', d => d.negated_count ? '6 4' : null)
+        .style('pointer-events', 'none');
+    const hitLines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge-hit')
+        .on('mouseenter', (event,d) => {
+            const surfaces = d.surface_labels?.slice(0, 3).map(item => item.label).join('、');
+            const negation = d.negated_count ? ` · ⚠否定 ${d.negated_count}/${d.support}` : '';
+            showTooltip('graph-tooltip', event,
+                `${d.predicate_label} (${d.predicate})${surfaces ? ` · 原文：${surfaces}` : ''} · ${d.support} 个事件${negation}`);
+        })
+        .on('mouseleave', () => hideTooltip('graph-tooltip'))
+        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
+    // 标签层一次建好（含全部边），切换只翻 display：预算内显示、超预算隐藏，
+    // 快速切换零 DOM 变动，杜绝重建卡顿造成的“失效”。
+    let edgeLabels = null;
+    const applyLabelVisibility = () => {
+        if (!edgeLabels) return;
+        let shown = 0;
+        edgeLabels.attr('display', (d, i) => {
+            if (d._timeVisible === false) return 'none';
+            if (showAllEdgeLabels) return null;
+            const candidate = i < 40 || d.support >= 2;
+            const visible = candidate && ++shown <= 150;
+            return visible ? null : 'none';
+        });
+    };
+    relabelGraphEdges = applyLabelVisibility;
+    edgeLabels = root.append('g').selectAll('text').data(edges).join('text')
+        .attr('class','node-label edge-label').attr('text-anchor','middle')
+        .text(d => `${d.negated_count === d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`)
+        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
+    applyLabelVisibility();
+    const circles = root.append('g').selectAll('circle').data(nodes).join('circle').attr('class','node')
+        .attr('r', d => radius(d.importance)).attr('fill', d => entityColor(d.type))
+        .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.name} · ${d.event_count} 个事件`))
+        .on('mouseleave', () => hideTooltip('graph-tooltip'))
+        .on('click', (event,d) => {
+            event.stopPropagation();
+            if (!event.defaultPrevented) selectGraphNode(d);
+        });
+    const labels = root.append('g').selectAll('text').data(nodes).join('text').attr('class','node-label')
+        .attr('text-anchor','middle').attr('dy', d => radius(d.importance) + 13).text(d => d.name.length > 18 ? d.name.slice(0,17) + '…' : d.name);
+    // 标签需要保持可读，因此边线仍位于标签下方；箭头头部单独放到标签上层，
+    // 避免从节点下方进入时被标签的背景描边完全遮住。
+    const arrowLines = root.append('g').selectAll('line').data(edges.filter(d => d.directed)).join('line')
+        .attr('class','edge-arrow').attr('marker-end','url(#arrow)');
+    // 停掉上一张图的仿真：旧 tick 会借共享的 edgeLabels 变量污染新标签的位置，
+    // 造成“标签失效/错乱”
+    if (graphSimulation) graphSimulation.stop();
+    const simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(edges).id(d => d.id).distance(d => 80 + Math.min(80, 160 / d.support)).strength(.35))
+        .force('charge', d3.forceManyBody().strength(-240)).force('center', d3.forceCenter(width/2, height/2))
+        .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 22));
+    graphSimulation = simulation;
+    circles.call(d3.drag().on('start', (event,d) => { if (!event.active) simulation.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
+        .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
+        .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
+    simulation.on('tick', () => {
+        const positionEdges = selection => selection.each(function(d) {
+            const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const ux = dx / distance, uy = dy / distance;
+            const sourcePadding = radius(d.source.importance) + 3;
+            const targetPadding = radius(d.target.importance) + (d.directed ? 5 : 3);
+            d3.select(this)
+                .attr('x1', d.source.x + ux * sourcePadding)
+                .attr('y1', d.source.y + uy * sourcePadding)
+                .attr('x2', d.target.x - ux * targetPadding)
+                .attr('y2', d.target.y - uy * targetPadding);
+        });
+        positionEdges(lines);
+        positionEdges(arrowLines);
+        hitLines.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
+        circles.attr('cx',d=>d.x).attr('cy',d=>d.y);
+        labels.attr('x',d=>d.x).attr('y',d=>d.y);
+    });
+    const m = graphData.meta;
+    $('graph-summary').innerHTML = `<div class="meta">
+        <div class="metric"><b>${m.node_count}</b>保留节点</div><div class="metric"><b>${m.edge_count}</b>保留关系</div>
+        <div class="metric"><b>${m.filtered_edge_count}</b>过滤关系</div><div class="metric"><b>${m.relational_event_count}</b>关系事件</div></div>
+        <div class="warning">未指定实体按名称、类型和国家临时连接；人工指定到全局或语境实体后，以指定身份优先，可拆分同名误合并节点。</div>`;
+    applyGraphTemporalFilter = (range, changed) => {
+        if (changed && selectedGraphElement) clearGraphSelection();
+        const eventTable = graphData.temporal_events || [];
+        const active = reference => {
+            const row = eventTable[reference];
+            return row && row[0] * 1000 >= range[0] && row[0] * 1000 <= range[1];
+        };
+        const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+        for (const edge of edges) {
+            const rows = edge._eventRefs.filter(active).map(reference => eventTable[reference]);
+            const scores = rows.map(row => Number(row[2]) || 0);
+            edge.support = rows.length;
+            edge.article_count = new Set(rows.map(row => row[1])).size;
+            edge.average_score = rows.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / rows.length * 100) / 100 : 0;
+            edge.score_max = scores.length ? Math.max(...scores) : 0;
+            edge.negated_count = rows.filter(row => row[3]).length;
+            edge._timeVisible = edge.support >= supportMin;
+        }
+        const parent = new Map(nodes.map(item => [item.id, item.id]));
+        const find = value => {
+            while (parent.get(value) !== value) {
+                parent.set(value, parent.get(parent.get(value)));
+                value = parent.get(value);
+            }
+            return value;
+        };
+        for (const edge of edges.filter(item => item._timeVisible)) {
+            const source = edge._sourceId, target = edge._targetId;
+            const a = find(source), b = find(target);
+            if (a !== b) parent.set(a, b);
+        }
+        const degree = new Map(), componentSizes = new Map();
+        for (const edge of edges.filter(item => item._timeVisible)) {
+            degree.set(edge._sourceId, (degree.get(edge._sourceId) || 0) + 1);
+            degree.set(edge._targetId, (degree.get(edge._targetId) || 0) + 1);
+        }
+        nodes.filter(item => (degree.get(item.id) || 0) > 0).forEach(item => {
+            const rootId = find(item.id);
+            componentSizes.set(rootId, (componentSizes.get(rootId) || 0) + 1);
+        });
+        const keep = new Set(nodes.filter(item => (degree.get(item.id) || 0) > 0
+            && (componentSizes.get(find(item.id)) || 0) >= componentMinSize).map(item => item.id));
+        const importance = new Map();
+        for (const edge of edges) {
+            edge._timeVisible = edge._timeVisible && keep.has(edge._sourceId) && keep.has(edge._targetId);
+            if (!edge._timeVisible) continue;
+            importance.set(edge._sourceId, (importance.get(edge._sourceId) || 0) + edge.support);
+            importance.set(edge._targetId, (importance.get(edge._targetId) || 0) + edge.support);
+        }
+        for (const item of nodes) {
+            const rows = item._eventRefs.filter(active).map(reference => eventTable[reference]);
+            item.event_count = rows.length;
+            item.article_count = new Set(rows.map(row => row[1])).size;
+            item.max_score = rows.length ? Math.max(...rows.map(row => Number(row[2]) || 0)) : 0;
+            item.importance = importance.get(item.id) || 0;
+            item._timeVisible = keep.has(item.id) && item.importance > 0;
+        }
+        const edgeDisplay = d => d._timeVisible ? null : 'none';
+        const nodeDisplay = d => d._timeVisible ? null : 'none';
+        lines.attr('display', edgeDisplay)
+            .attr('stroke-dasharray', d => d.negated_count ? '6 4' : null);
+        hitLines.attr('display', edgeDisplay);
+        arrowLines.attr('display', edgeDisplay);
+        edgeLabels.text(d => `${d.negated_count === d.support && d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`);
+        circles.attr('display', nodeDisplay);
+        labels.attr('display', nodeDisplay);
+        applyLabelVisibility();
+        renderedGraphNodes = new Map(nodes.filter(item => item._timeVisible).map(item => [item.id, item]));
+        renderGraphSearchResults();
+        const visibleEdges = edges.filter(item => item._timeVisible);
+        const visibleEvents = new Set(visibleEdges.flatMap(item => item._eventRefs.filter(active)));
+        $('graph-summary').innerHTML = `<div class="meta">
+            <div class="metric"><b>${renderedGraphNodes.size}</b>当前节点</div><div class="metric"><b>${visibleEdges.length}</b>当前关系</div>
+            <div class="metric"><b>${visibleEvents.size}</b>关系事件</div><div class="metric"><b>${m.node_count}</b>窗口内节点</div></div>
+            <div class="warning">时间轴只改变当前图的可见投影，不重新请求数据或重跑布局。</div>`;
+        const hiddenEdges = edges.length - visibleEdges.length;
+        $('graph-filter-note').textContent = hiddenEdges > 0 ? `当前时间和网络条件下隐藏 ${hiddenEdges} 条关系` : '';
+        if (selectedGraphElement) {
+            const stillVisible = selectedGraphElement.type === 'node'
+                ? renderedGraphNodes.has(selectedGraphElement.entity_id)
+                : visibleEdges.some(edge => graphEdgeMatches(edge, selectedGraphElement));
+            if (!stillVisible) clearGraphSelection();
+            else if (selectedGraphElement.type === 'node') showNodeDetail(renderedGraphNodes.get(selectedGraphElement.entity_id));
+            else showEdgeDetail(visibleEdges.find(edge => graphEdgeMatches(edge, selectedGraphElement)));
+        }
+    };
+    setupTemporalAxis('graph', graphData.meta,
+        (graphData.temporal_events || []).map(row => row[0]),
+        applyGraphTemporalFilter);
+    if (selectedGraphElement) updateGraphSelectionStyles();
+}
+
+function graphSearchText(node) {
+    const identityLabels = {global: '全局实体', contextual: '语境实体', surface: '按名称暂合并', unresolved: '尚未指定', legacy: '旧索引节点'};
+    const surfaces = (node.surfaces || []).map(item => item.name);
+    return [node.name, node.id, node.target_id, node.type, ENTITY_LABELS[node.type], node.country_code,
+        identityLabels[node.identity_kind], ...surfaces].filter(Boolean).join('\n').toLocaleLowerCase();
+}
+function graphSearchMatches() {
+    if (!graphData) return [];
+    const query = $('graph-search-input').value.trim().toLocaleLowerCase();
+    if (!query) return [];
+    return graphData.nodes.filter(node => graphSearchText(node).includes(query)).sort((left, right) => {
+        const leftName = left.name.toLocaleLowerCase(), rightName = right.name.toLocaleLowerCase();
+        const leftRank = leftName === query ? 0 : leftName.startsWith(query) ? 1 : 2;
+        const rightRank = rightName === query ? 0 : rightName.startsWith(query) ? 1 : 2;
+        return leftRank - rightRank || right.importance - left.importance || left.name.localeCompare(right.name);
+    });
+}
+function renderGraphSearchResults() {
+    const target = $('graph-search-results');
+    if (!target) return;
+    const query = $('graph-search-input').value.trim();
+    if (!query) {
+        target.innerHTML = '<span class="muted">输入内容后显示全部匹配节点。</span>';
+        return;
+    }
+    const matches = graphSearchMatches();
+    const visible = matches.filter(node => renderedGraphNodes.has(node.id)).length;
+    target.innerHTML = `<div class="muted">找到 ${matches.length} 个；当前过滤后可见 ${visible} 个。</div>`
+        + matches.map(node => {
+            const alternate = (node.surfaces || []).map(item => item.name)
+                .filter(name => name && name !== node.name).slice(0, 3).join('、');
+            const meta = [ENTITY_LABELS[node.type] || node.type, node.country_code,
+                `${node.article_count} 篇情报`, renderedGraphNodes.has(node.id) ? '当前可见' : '点击后放宽前端过滤']
+                .filter(Boolean).join(' · ');
+            return `<button type="button" class="graph-search-result" data-graph-search-id="${escapeHtml(node.id)}">
+                <i class="dot" style="background:${entityColor(node.type)}"></i>
+                <span><b>${escapeHtml(node.name)}</b><small>${escapeHtml(meta)}</small>${alternate ? `<small>原文：${escapeHtml(alternate)}</small>` : ''}</span>
+            </button>`;
+        }).join('');
+    if (!matches.length) target.innerHTML += '<span class="muted">没有匹配实体。</span>';
+}
+function openGraphSearch() {
+    $('graph-search-panel').hidden = false;
+    $('graph-search-input').focus();
+    $('graph-search-input').select();
+    renderGraphSearchResults();
+}
+function closeGraphSearch() { $('graph-search-panel').hidden = true; }
+function focusGraphNode(entityId, attempt = 0) {
+    let node = renderedGraphNodes.get(entityId);
+    if (!node) {
+        componentMinSize = 1;
+        graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
+        $('component-min-size').value = componentMinSize;
+        $('graph-support-min').value = graphSupportMin;
+        renderGraph();
+        node = renderedGraphNodes.get(entityId);
+    }
+    if (!node) return;
+    if ((!Number.isFinite(node.x) || !Number.isFinite(node.y)) && attempt < 20) {
+        setTimeout(() => focusGraphNode(entityId, attempt + 1), 60);
+        return;
+    }
+    const svg = d3.select('#graph-svg'), element = svg.node();
+    const width = element.clientWidth || 900, height = element.clientHeight || 680, scale = 1.8;
+    const transform = d3.zoomIdentity.translate(width / 2 - scale * node.x, height / 2 - scale * node.y).scale(scale);
+    svg.transition().duration(450).call(graphZoomBehavior.transform, transform);
+    selectGraphNode(node);
+}
+function showGraphNotice(message) {
+    $('graph-notice-text').textContent = message;
+    $('graph-notice').hidden = false;
+}
+
+function entityColor(type) {
+    return ENTITY_COLORS[type] || ENTITY_COLORS.other;
+}
+function graphNodeId(value) {
+    return typeof value === 'object' ? value.id : value;
+}
+function graphEdgeMatches(edge, selection) {
+    return graphNodeId(edge.source) === selection.source_id
+        && graphNodeId(edge.target) === selection.target_id
+        && edge.predicate === selection.predicate
+        && Boolean(edge.directed) === Boolean(selection.directed);
+}
+function selectGraphNode(d) {
+    selectedGraphRole = 'all';
+    selectedGraphElement = {type: 'node', entity_id: d.id, name: d.name};
+    graphEvidenceOffset = 0;
+    syncGraphRoleFilters();
+    $('graph-role-filters').hidden = false;
+    openIntelligenceDrawer('graph-intelligence-panel');
+    $('graph-intelligence-title').textContent = `${d.name} · 对应情报`;
+    updateIntelligenceDrawerSummary('graph-intelligence-panel', '正在加载对应情报…', false);
+    $('graph-intelligence-description').textContent = '显示该投影实体在当前筛选条件下参与关系的情报。';
+    showNodeDetail(d);
+    updateGraphSelectionStyles();
+    loadGraphIntelligences(false);
+}
+function selectGraphEdge(d) {
+    selectedGraphRole = 'all';
+    selectedGraphElement = {
+        type: 'edge', source_id: graphNodeId(d.source), target_id: graphNodeId(d.target),
+        source_name: d.source.name || graphNodeId(d.source), target_name: d.target.name || graphNodeId(d.target),
+        predicate: d.predicate, predicate_label: d.predicate_label, directed: Boolean(d.directed)
+    };
+    graphEvidenceOffset = 0;
+    $('graph-role-filters').hidden = true;
+    openIntelligenceDrawer('graph-intelligence-panel');
+    const arrow = d.directed ? '→' : '—';
+    $('graph-intelligence-title').textContent = `${selectedGraphElement.source_name} —${d.predicate_label}${arrow} ${selectedGraphElement.target_name} · 对应情报`;
+    updateIntelligenceDrawerSummary('graph-intelligence-panel', '正在加载关系证据…', false);
+    $('graph-intelligence-description').textContent = '仅显示直接支撑这条实体关系、谓词和方向的情报。';
+    showEdgeDetail(d);
+    updateGraphSelectionStyles();
+    loadGraphIntelligences(false);
+}
+function clearGraphSelection() {
+    selectedGraphElement = null;
+    selectedGraphRole = 'all';
+    graphEvidenceOffset = 0;
+    graphEvidenceRequest += 1;
+    const panel = $('graph-intelligence-panel');
+    if (panel) panel.hidden = true;
+    const detail = $('graph-selection-detail');
+    if (detail) {
+        detail.hidden = true;
+        detail.innerHTML = '';
+    }
+    d3.select('#graph-svg').selectAll('.graph-selected').classed('graph-selected', false);
+    d3.select('#graph-svg').selectAll('.graph-dim').classed('graph-dim', false);
+}
+function updateGraphSelectionStyles() {
+    if (!selectedGraphElement) return;
+    const selected = selectedGraphElement;
+    const relatedNodes = new Set();
+    if (selected.type === 'node') {
+        relatedNodes.add(selected.entity_id);
+        graphData.edges.forEach(edge => {
+            const source = graphNodeId(edge.source), target = graphNodeId(edge.target);
+            if (source === selected.entity_id) relatedNodes.add(target);
+            if (target === selected.entity_id) relatedNodes.add(source);
+        });
+    } else {
+        relatedNodes.add(selected.source_id);
+        relatedNodes.add(selected.target_id);
+    }
+    const edgeRelevant = edge => selected.type === 'node'
+        ? graphNodeId(edge.source) === selected.entity_id || graphNodeId(edge.target) === selected.entity_id
+        : graphEdgeMatches(edge, selected);
+    d3.select('#graph-svg').selectAll('.node')
+        .classed('graph-selected', d => selected.type === 'node' && d.id === selected.entity_id)
+        .classed('graph-dim', d => !relatedNodes.has(d.id));
+    d3.select('#graph-svg').selectAll('.edge')
+        .classed('graph-selected', edgeRelevant)
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-arrow')
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-hit')
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('.edge-label')
+        .classed('graph-dim', d => !edgeRelevant(d));
+    d3.select('#graph-svg').selectAll('g > .node-label:not(.edge-label)')
+        .classed('graph-dim', d => d?.id && !relatedNodes.has(d.id));
+}
+function syncGraphRoleFilters() {
+    document.querySelectorAll('[data-graph-role]').forEach(button => {
+        button.classList.toggle('active', button.dataset.graphRole === selectedGraphRole);
+    });
+}
+async function loadGraphIntelligences(append) {
+    if (!selectedGraphElement) return;
+    const selection = selectedGraphElement;
+    const requestId = ++graphEvidenceRequest;
+    const target = $('graph-intelligences');
+    if (!append) target.innerHTML = '<span class="muted">正在加载真实情报…</span>';
+    $('graph-load-more').hidden = true;
+    const selectionParams = selection.type === 'node'
+        ? {selection_type: 'node', entity_id: selection.entity_id, role: selectedGraphRole}
+        : {
+            selection_type: 'edge', source_id: selection.source_id, target_id: selection.target_id,
+            predicate: selection.predicate, directed: selection.directed
+        };
+    try {
+        const data = await loadJson(`${API_PREFIX}/entity-graph/intelligences?${queryParams({
+            ...selectionParams,
+            entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
+                ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__'),
+            offset: append ? graphEvidenceOffset : 0,
+            limit: 20
+        })}`);
+        if (requestId !== graphEvidenceRequest || selectedGraphElement !== selection) return;
+        const cards = data.intelligences.map(item => {
+            const time = item.content_time ? new Date(item.content_time).toLocaleString() : '时间未知';
+            const predicates = item.predicates.map(value => value.label).join('、') || '未分类谓词';
+            const counterparts = item.counterparts.map(value => value.name).join('、');
+            const roleNames = {subject: '施事', object: '受事', participant: '无向参与'};
+            const roles = item.roles.map(value => roleNames[value.role] || value.role).join('、');
+            const reason = [roles, counterparts ? `对方：${counterparts}` : '', predicates].filter(Boolean).join(' · ');
+            return `<article class="intelligence-card">
+                <a href="${escapeHtml(intelligenceDetailUrl(item.uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.uuid)}">${escapeHtml(item.title)}</a>
+                <div class="intelligence-meta"><span>评分 ${item.score}</span><span>${escapeHtml(time)}</span><span>${item.event_count} 个匹配事件</span></div>
+                <div class="predicate-tags">${escapeHtml(reason)}</div>
+            </article>`;
+        }).join('');
+        if (append) target.insertAdjacentHTML('beforeend', cards);
+        else target.innerHTML = cards || '<span class="muted">当前筛选条件下没有对应情报。</span>';
+        graphEvidenceOffset = data.meta.offset + data.intelligences.length;
+        $('graph-intelligence-description').textContent = `共 ${data.meta.total} 篇，按内容时间从新到旧排列。`;
+        updateIntelligenceDrawerSummary(
+            'graph-intelligence-panel',
+            `共 ${data.meta.total} 篇 · ${selection.type === 'node' ? '实体参与证据' : '关系直接证据'} · 点击展开查看`,
+            !append,
+        );
+        $('graph-load-more').hidden = !data.meta.has_more;
+    } catch (error) {
+        if (requestId === graphEvidenceRequest) {
+            const message = `<span class="warning">情报加载失败：${escapeHtml(error.message)}</span>`;
+            if (append) target.insertAdjacentHTML('beforeend', message); else target.innerHTML = message;
+            if (!append) updateIntelligenceDrawerSummary(
+                'graph-intelligence-panel', '情报加载失败 · 点击展开查看原因');
+        }
+    }
+}
+function showNodeDetail(d) {
+    const detail = $('graph-selection-detail');
+    const identityLabels = {global: '全局实体', contextual: '语境实体', surface: '按名称暂合并', unresolved: '尚未指定', legacy: '旧索引节点'};
+    // 这是按名称发起的外部搜索，不表示搜索结果已经与该图节点完成身份核验。
+    // 全局实体优先使用标准名；未归一和语境实体也可用当前显示名查询背景资料。
+    const lookupName = String(d.wiki_name || d.name || '').trim();
+    const externalLookup = lookupName ? `<div class="wiki-links" aria-label="外部搜索">
+        <a target="_blank" rel="noopener" href="https://baike.baidu.com/search/word?word=${encodeURIComponent(lookupName)}">百度百科</a>
+        <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?search=${encodeURIComponent(lookupName)}">Wikipedia</a>
+        <a target="_blank" rel="noopener" href="https://www.bing.com/search?q=${encodeURIComponent(lookupName)}">Bing</a>
+        <a target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent(lookupName)}">Google</a>
+    </div>` : '';
+    const edit = ENTITY_EDIT_ENABLED && d.editable
+        ? '<button type="button" id="edit-graph-entity" style="width:100%;margin-top:10px">指定这个实体</button>' : '';
+    detail.innerHTML = `<div class="entity-title-row"><h2>${escapeHtml(d.name)}</h2><button type="button" id="copy-graph-entity-name" title="复制实体名称">复制</button></div><p class="muted">${escapeHtml(d.type)}${d.country_code ? ` · ${d.country_code}` : ''}</p>
+        <div class="meta"><div class="metric"><b>${d.event_count}</b>事件</div><div class="metric"><b>${d.importance}</b>关系权重</div>
+        <div class="metric"><b>${d.article_count}</b>文章</div><div class="metric"><b>${d.max_score}</b>最高评分</div></div>
+        <p class="muted">身份：${escapeHtml(identityLabels[d.identity_kind] || d.identity_kind)}${d.reference_count ? ` · ${d.reference_count} 个情报实体引用` : ''}</p>
+        ${externalLookup}<button type="button" id="open-entity-timeline" style="width:100%;margin-top:10px">在实体时间线中查看</button>${edit}`;
+    detail.hidden = false;
+}
+function showEdgeDetail(d) {
+    const surfaces = d.surface_labels?.length
+        ? `<h3>原文表述</h3><ul class="list">${d.surface_labels.map(item =>
+            `<li>${escapeHtml(item.label)}：${item.count}</li>`).join('')}</ul>`
+        : '<p class="muted">原文表述与规范标签一致。</p>';
+    const detail = $('graph-selection-detail');
+    detail.innerHTML = `<h2>${escapeHtml(d.predicate_label)}</h2><p class="muted">${d.directed ? '有向施受关系' : '无向多方关系'} · ${escapeHtml(CATEGORY_LABELS[d.category] || d.category)}</p>
+        <p class="muted">谓词 ID：${escapeHtml(d.predicate)}</p>
+        <div class="meta"><div class="metric"><b>${d.support}</b>独立事件</div><div class="metric"><b>${d.article_count}</b>文章</div>
+        <div class="metric"><b>${d.average_score}</b>平均评分</div><div class="metric"><b>${d.score_max}</b>最高评分</div></div>
+        ${surfaces}`;
+    detail.hidden = false;
+}
+function showTooltip(id, event, html) {
+    const tip = $(id), box = tip.parentElement.getBoundingClientRect();
+    tip.innerHTML = escapeHtml(html); tip.style.display = 'block';
+    tip.style.left = `${event.clientX - box.left + 12}px`; tip.style.top = `${event.clientY - box.top + 12}px`;
+}
+function hideTooltip(id) { $(id).style.display = 'none'; }
+
+document.querySelectorAll('.tabs button').forEach(button => button.addEventListener('click', () => {
+    activeView = button.dataset.view;
+    $('map-filter-control').hidden = activeView !== 'map';
+    $('graph-filter-control').hidden = activeView !== 'graph';
+    document.querySelectorAll('.tabs button').forEach(v => v.setAttribute('aria-selected', String(v === button)));
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `${activeView}-view`));
+    if (activeView === 'graph' && !graphData) refreshGraph();
+}));
+$('apply').addEventListener('click', () => activeView === 'map' ? refreshMap() : refreshGraph());
+$('category-all').addEventListener('click', () => {
+    selectedCategories.clear();
+    ALL_CATEGORY_KEYS.forEach(category => selectedCategories.add(category));
+    syncCategoryFilters();
+    activeView === 'map' ? refreshMap() : refreshGraph();
+});
+$('entity-all').addEventListener('click', () => {
+    selectedEntityTypes.clear();
+    ALL_ENTITY_TYPES.forEach(type => selectedEntityTypes.add(type));
+    syncEntityFilters();
+    if (activeView === 'graph') refreshGraph();
+});
+document.addEventListener('click', event => {
+    const button = event.target.closest('.category-filter');
+    if (button) {
+        const category = button.dataset.category;
+        if (selectedCategories.has(category)) selectedCategories.delete(category);
+        else selectedCategories.add(category);
+        syncCategoryFilters();
+        if (activeView === 'map') refreshMap();
+        return;
+    }
+    const entityButton = event.target.closest('.entity-filter');
+    if (!entityButton) return;
+    const entityType = entityButton.dataset.entityType;
+    if (selectedEntityTypes.has(entityType)) selectedEntityTypes.delete(entityType);
+    else selectedEntityTypes.add(entityType);
+    syncEntityFilters();
+    if (activeView === 'graph') refreshGraph();
+});
+$('min-support').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('max-nodes').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('keep-singletons').addEventListener('change', () => activeView === 'graph' && refreshGraph());
+$('graph-role-filters').addEventListener('click', event => {
+    const button = event.target.closest('[data-graph-role]');
+    if (!button || !selectedGraphElement || selectedGraphElement.type !== 'node') return;
+    selectedGraphRole = button.dataset.graphRole;
+    graphEvidenceOffset = 0;
+    syncGraphRoleFilters();
+    loadGraphIntelligences(false);
+});
+$('graph-load-more').addEventListener('click', () => loadGraphIntelligences(true));
+document.querySelectorAll('[data-drawer-toggle]').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.drawerToggle);
+    setIntelligenceDrawerCollapsed(panel, !panel.classList.contains('is-collapsed'));
+}));
+document.querySelectorAll('[data-drawer-summary]').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.drawerSummary);
+    setIntelligenceDrawerCollapsed(panel, !panel.classList.contains('is-collapsed'));
+}));
+document.querySelectorAll('[data-drawer-close]').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.drawerClose);
+    setIntelligenceDrawerCollapsed(panel, true);
+    panel.hidden = true;
+}));
+// 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
+$('component-min-size').value = componentMinSize;
+$('component-min-size').addEventListener('change', e => {
+    componentMinSize = Math.max(1, parseInt(e.target.value) || 1);
+    renderGraph();
+});
+const _supportInput = $('graph-support-min');
+_supportInput.min = DASHBOARD_PROFILE.min_support || 1;
+_supportInput.value = graphSupportMin;
+_supportInput.addEventListener('change', e => {
+    const floor = DASHBOARD_PROFILE.min_support || 1;
+    graphSupportMin = Math.max(floor, parseInt(e.target.value) || floor);
+    e.target.value = graphSupportMin;
+    renderGraph();
+});
+// 图例由 innerHTML 构建，使用事件代理绑定其中的复选框。
+document.addEventListener('change', e => {
+    if (e.target.id !== 'show-all-edge-labels') return;
+    showAllEdgeLabels = e.target.checked;
+    if (relabelGraphEdges) relabelGraphEdges();
+});
+document.addEventListener('click', event => {
+    if (event.target.id === 'copy-graph-entity-name' && selectedGraphElement?.type === 'node') {
+        const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
+        if (node) copyEntityName(node.name, event.target);
+    }
+    if (event.target.id === 'edit-graph-entity' && selectedGraphElement?.type === 'node') {
+        const node = graphData?.nodes?.find(item => item.id === selectedGraphElement.entity_id);
+        if (node) openEntityEditor(node);
+    }
+    if (event.target.id === 'open-entity-timeline' && selectedGraphElement?.type === 'node') {
+        openTimelineEntities([selectedGraphElement.entity_id]);
+    }
+    if (event.target.id === 'open-map-entity-timeline') {
+        openMapEntityTimeline(event.target);
+    }
+    const target = event.target.closest('[data-edit-target]');
+    if (target) selectEditingTarget(target.dataset.editTarget, target.dataset.editTargetName);
+});
+
+function openTimelineEntities(entityIds) {
+    const maximum = Number(DASHBOARD_PROFILE.timeline_max_entities) || 8;
+    const entities = [...new Set((entityIds || []).filter(Boolean))].slice(0, maximum);
+    if (!entities.length) return;
+    if (window.parent && window.parent !== window) {
+        window.parent.postMessage({type: 'iis:open-timeline', entities}, location.origin);
+    } else {
+        const url = new URL('timeline', location.href);
+        entities.forEach(entityId => url.searchParams.append('entity', entityId));
+        location.href = url;
+    }
+}
+
+async function openMapEntityTimeline(button) {
+    const lookup = String(button.dataset.lookup || '').trim(), country = String(button.dataset.country || '').trim();
+    if (!lookup) return;
+    const oldText = button.textContent; button.disabled = true; button.textContent = '正在匹配地域实体…';
+    try {
+        const result = await loadJson(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(lookup)}&limit=50`);
+        const candidates = (result.entities || []).filter(item => !country || !item.country_code || item.country_code === country);
+        candidates.sort((a, b) => Number(b.name === lookup) - Number(a.name === lookup)
+            || Number(['geopolitical_entity','location'].includes(b.type)) - Number(['geopolitical_entity','location'].includes(a.type))
+            || b.event_count - a.event_count);
+        const entities = candidates.slice(0, 1).map(item => item.id);
+        if (!entities.length) throw new Error(`当前窗口内没有可用于时间线的“${lookup}”实体`);
+        openTimelineEntities(entities);
+    } catch (error) {
+        alert(`无法打开实体时间线：${error.message}`);
+    } finally {
+        button.disabled = false; button.textContent = oldText;
+    }
+}
+
+async function copyEntityName(name, button) {
+    const text = String(name || '').trim();
+    if (!text) return;
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const input = document.createElement('textarea');
+            input.value = text;
+            input.style.position = 'fixed';
+            input.style.opacity = '0';
+            document.body.appendChild(input);
+            input.select();
+            const copied = document.execCommand('copy');
+            input.remove();
+            if (!copied) throw new Error('copy command failed');
+        }
+        button.textContent = '已复制';
+        setTimeout(() => { if (button.isConnected) button.textContent = '复制'; }, 1200);
+    } catch (error) {
+        button.textContent = '复制失败';
+        setTimeout(() => { if (button.isConnected) button.textContent = '复制'; }, 1600);
+    }
+}
+
+function editorStatus(message, warning = false) {
+    const element = $('entity-editor-status');
+    element.textContent = message || '';
+    element.classList.toggle('warning', warning);
+}
+function editingRefKey(ref) {
+    return `${ref?.subsystem || ''}\u0000${ref?.intelligence_uuid || ''}\u0000${ref?.local_entity_id || ''}`;
+}
+function currentEditingRefs() {
+    return editingReferences.filter(item => selectedEditingRefKeys.has(editingRefKey(item.ref)));
+}
+function currentEditingRef() {
+    const selected = currentEditingRefs();
+    return selected.length === 1 ? selected[0] : null;
+}
+function syncEditingSelection() {
+    const selected = currentEditingRefs();
+    $('entity-ref-selection-count').textContent = `已选择 ${selected.length} / ${editingReferences.length} 个`;
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    $('entity-undo').hidden = !(limited && selected.length === 1 && selected[0].decision_id);
+    $('entity-unassign').hidden = !limited;
+}
+async function openEntityEditor(node) {
+    editingGraphNode = node;
+    editingReferences = [];
+    selectedEditingRefKeys = new Set();
+    selectedEditingTarget = null;
+    $('entity-editor-title').textContent = `指定实体 · ${node.name}`;
+    $('entity-ref-list').innerHTML = '<span class="muted">正在加载情报实体引用…</span>';
+    $('entity-global-results').innerHTML = '';
+    $('entity-contextual-results').innerHTML = '';
+    $('entity-global-query').value = '';
+    $('entity-contextual-query').value = '';
+    $('entity-global-new-name').value = '';
+    $('entity-contextual-new-name').value = '';
+    $('entity-global-create-panel').open = false;
+    $('entity-contextual-create-panel').open = false;
+    editingGlobalLimitedScope = false;
+    setEditingKind('global');
+    editorStatus('');
+    const dialog = $('entity-editor');
+    if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', '');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-graph/references?${queryParams({entity_id: node.id})}`);
+        editingReferences = data.references || [];
+        selectedEditingRefKeys = new Set(editingReferences.map(item => editingRefKey(item.ref)));
+        renderEditingReferences();
+        const first = currentEditingRefs()[0];
+        if (first) {
+            $('entity-global-query').value = first.surface;
+        }
+    } catch (error) {
+        $('entity-ref-list').innerHTML = `<span class="warning">加载失败：${escapeHtml(error.message)}</span>`;
+    }
+}
+function renderEditingReferences() {
+    $('entity-ref-list').innerHTML = editingReferences.map((item, index) => {
+        const checked = selectedEditingRefKeys.has(editingRefKey(item.ref));
+        return `<label class="entity-ref-option">
+            <input type="checkbox" name="editing-ref" value="${index}" ${checked ? 'checked' : ''}>
+            <span><b>${escapeHtml(item.surface)}</b> · ${escapeHtml(item.ref.local_entity_id)}
+            <br><small>${escapeHtml(item.title)} · ${escapeHtml(item.ref.intelligence_uuid)}${item.target_id ? ` · 当前 → ${escapeHtml(item.target_id)}` : ''}</small></span>
+        </label>`;
+    }).join('') || '<span class="muted">该节点没有可编辑的稳定 ENT 引用；请先完成历史事件索引回填。</span>';
+    syncEditingSelection();
+    document.querySelectorAll('input[name="editing-ref"]').forEach(input => input.addEventListener('change', () => {
+        const item = editingReferences[Number(input.value)];
+        const key = editingRefKey(item?.ref);
+        if (input.checked) selectedEditingRefKeys.add(key); else selectedEditingRefKeys.delete(key);
+        syncEditingSelection();
+    }));
+}
+function setEditingKind(kind) {
+    editingTargetKind = kind;
+    selectedEditingTarget = null;
+    $('entity-kind-global').checked = kind === 'global';
+    $('entity-kind-contextual').checked = kind === 'contextual';
+    $('entity-global-editor').hidden = kind !== 'global';
+    $('entity-contextual-editor').hidden = kind !== 'contextual';
+    const scope = $('entity-limited-scope');
+    scope.checked = kind === 'contextual' ? true : editingGlobalLimitedScope;
+    scope.disabled = kind === 'contextual';
+    syncEditingScope();
+    editorStatus('');
+}
+function syncEditingScope() {
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    const sourceName = editingGraphNode?.name || '当前实体';
+    const targetName = selectedEditingTarget?.name;
+    $('entity-ref-scope').hidden = !limited;
+    $('entity-assign').textContent = limited ? '保存所选情报关联' : '保存全局映射';
+    $('entity-mapping-preview').textContent = !targetName
+        ? '请先在上方选择一个目标实体。'
+        : limited
+            ? `将所选情报中的“${sourceName}”关联到“${targetName}”。`
+            : `将“${sourceName}”全局映射到“${targetName}”。`;
+    $('entity-scope-help').textContent = editingTargetKind === 'contextual'
+        ? '语境实体必须绑定具体情报，不能建立全局名称映射。'
+        : limited
+            ? '只把下方勾选的情报实体关联到所选全局实体。'
+            : `当前名称“${editingGraphNode?.name || ''}”将在所有情报中映射到所选全局实体。`;
+    syncEditingSelection();
+}
+function selectEditingTarget(id, name) {
+    selectedEditingTarget = {id, name};
+    document.querySelectorAll('.entity-target-option').forEach(item =>
+        item.classList.toggle('selected', item.dataset.editTarget === id));
+    syncEditingScope();
+    editorStatus('');
+}
+function renderTargetResults(containerId, items) {
+    $(containerId).innerHTML = items.map(item => `<button type="button" class="entity-target-option" data-edit-target="${escapeHtml(item.id)}" data-edit-target-name="${escapeHtml(item.name)}">
+        <i class="dot" style="background:${entityColor(item.type)}"></i>
+        <span><b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.type || 'other')}
+        ${item.description ? `<br><small>${escapeHtml(item.description)}</small>` : ''}</span>
+    </button>`).join('') || '<span class="muted">没有找到候选，请使用下方“添加新实体”。</span>';
+}
+async function searchGlobalEntities() {
+    const query = $('entity-global-query').value.trim();
+    if (!query) return;
+    editorStatus('正在搜索全局实体…');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/global-search?q=${encodeURIComponent(query)}`);
+        renderTargetResults('entity-global-results', data.items || []);
+        editorStatus('');
+    } catch (error) { editorStatus(`搜索失败：${error.message}`, true); }
+}
+async function searchContextualEntities() {
+    const query = $('entity-contextual-query').value.trim();
+    editorStatus('正在搜索语境实体…');
+    try {
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/contextual-search?subsystem=${encodeURIComponent($('subsystem').value)}&q=${encodeURIComponent(query)}`);
+        renderTargetResults('entity-contextual-results', data.items || []);
+        editorStatus('');
+    } catch (error) { editorStatus(`搜索失败：${error.message}`, true); }
+}
+async function createGlobalEntity() {
+    const name = $('entity-global-new-name').value.trim();
+    if (!name) return editorStatus('请填写全局实体标准名。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/global-entities`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({name, type: $('entity-global-new-type').value})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        renderTargetResults('entity-global-results', [{id:data.id, name:data.canonical, type:data.type, description:data.description}]);
+        selectEditingTarget(data.id, data.canonical);
+        $('entity-global-new-name').value = '';
+        $('entity-global-create-panel').open = false;
+    } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
+}
+async function createContextualEntity() {
+    const name = $('entity-contextual-new-name').value.trim();
+    if (!name) return editorStatus('请填写一个便于识别的语境实体名称。', true);
+    const current = currentEditingRefs()[0];
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/contextual-entities`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({subsystem:$('subsystem').value, name, type:current?.type || 'other',
+                countries:current?.country_code ? [current.country_code] : []})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        renderTargetResults('entity-contextual-results', [data]);
+        selectEditingTarget(data.id, data.name);
+        $('entity-contextual-new-name').value = '';
+        $('entity-contextual-create-panel').open = false;
+    } catch (error) { editorStatus(`新建失败：${error.message}`, true); }
+}
+async function saveEntityAssignment() {
+    if (!selectedEditingTarget) return editorStatus('请搜索或新建并选择目标实体。', true);
+    const limited = editingTargetKind === 'contextual' || $('entity-limited-scope').checked;
+    if (!limited) return saveGlobalEntityMapping();
+    const selected = currentEditingRefs();
+    if (!selected.length) return editorStatus('请至少选择一个情报实体引用。', true);
+    editorStatus(`正在保存 ${selected.length} 个指定…`);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/assign`, {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+                refs:selected.map(item => item.ref), target_kind:editingTargetKind,
+                target_id:selectedEditingTarget.id
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        $('entity-editor').close();
+        showGraphNotice('所选情报的实体关联已保存。当前图保持不变，请在合适的时候手动刷新关系图。');
+    } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
+}
+async function saveGlobalEntityMapping() {
+    const sourceName = String(editingGraphNode?.name || '').trim();
+    if (!sourceName) return editorStatus('当前实体名称为空，无法建立全局映射。', true);
+    if (sourceName.toLocaleLowerCase() === String(selectedEditingTarget.name || '').trim().toLocaleLowerCase()) {
+        $('entity-editor').close();
+        showGraphNotice('目标实体与当前名称相同，无需添加重复别名。当前图保持不变，请在合适的时候手动刷新关系图。');
+        return;
+    }
+    editorStatus(`正在保存“${sourceName}”的全局映射…`);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/fixed-aliases`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({target_id:selectedEditingTarget.id, names:[sourceName]})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        $('entity-editor').close();
+        showGraphNotice(`“${sourceName}”的全局映射已保存。当前图保持不变，请在合适的时候手动刷新关系图。`);
+    } catch (error) { editorStatus(`保存失败：${error.message}`, true); }
+}
+async function clearEntityAssignment() {
+    const selected = currentEditingRefs();
+    if (!selected.length) return editorStatus('请至少选择一个情报实体引用。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/unassign`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({refs:selected.map(item => item.ref)})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        if (data.changed) {
+            $('entity-editor').close();
+            showGraphNotice('人工指定已清除。当前图保持不变，请在合适的时候手动刷新关系图。');
+        } else {
+            editorStatus('该引用没有人工指定。');
+        }
+    } catch (error) { editorStatus(`清除失败：${error.message}`, true); }
+}
+async function undoEntityAssignment() {
+    const current = currentEditingRef();
+    if (!current?.decision_id) return editorStatus('撤销只支持单选一个有历史指定的引用。', true);
+    try {
+        const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/undo`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({subsystem:current.ref.subsystem, decision_id:current.decision_id})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        $('entity-editor').close();
+        showGraphNotice('已撤销上次指定。当前图保持不变，请在合适的时候手动刷新关系图。');
+    } catch (error) { editorStatus(`撤销失败：${error.message}`, true); }
+}
+$('entity-editor-close').addEventListener('click', () => $('entity-editor').close());
+$('entity-ref-select-all').addEventListener('click', () => {
+    selectedEditingRefKeys = new Set(editingReferences.map(item => editingRefKey(item.ref)));
+    renderEditingReferences();
+});
+$('entity-ref-select-none').addEventListener('click', () => {
+    selectedEditingRefKeys.clear();
+    renderEditingReferences();
+});
+$('entity-kind-global').addEventListener('change', () => setEditingKind('global'));
+$('entity-kind-contextual').addEventListener('change', () => setEditingKind('contextual'));
+$('entity-global-search').addEventListener('click', searchGlobalEntities);
+$('entity-contextual-search').addEventListener('click', searchContextualEntities);
+$('entity-global-create').addEventListener('click', createGlobalEntity);
+$('entity-contextual-create').addEventListener('click', createContextualEntity);
+$('entity-limited-scope').addEventListener('change', event => {
+    if (editingTargetKind === 'global') editingGlobalLimitedScope = event.target.checked;
+    syncEditingScope();
+});
+$('entity-assign').addEventListener('click', saveEntityAssignment);
+$('entity-unassign').addEventListener('click', clearEntityAssignment);
+$('entity-undo').addEventListener('click', undoEntityAssignment);
+$('graph-search-open').addEventListener('click', openGraphSearch);
+$('graph-search-close').addEventListener('click', closeGraphSearch);
+$('graph-search-input').addEventListener('input', renderGraphSearchResults);
+$('graph-search-results').addEventListener('click', event => {
+    const button = event.target.closest('[data-graph-search-id]');
+    if (button) focusGraphNode(button.dataset.graphSearchId);
+});
+$('graph-manual-refresh').addEventListener('click', refreshGraph);
+$('graph-notice-close').addEventListener('click', () => { $('graph-notice').hidden = true; });
+document.addEventListener('keydown', event => {
+    const searchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'f';
+    if (searchShortcut && activeView === 'graph' && !$('entity-editor').open) {
+        event.preventDefault();
+        openGraphSearch();
+        return;
+    }
+    if (event.key === 'Escape' && !$('graph-search-panel').hidden && !$('entity-editor').open) {
+        closeGraphSearch();
+    }
+});
+document.querySelectorAll('.side-toggle').forEach(button => button.addEventListener('click', () => {
+    const panel = $(button.dataset.side);
+    const collapsed = panel.classList.toggle('is-collapsed');
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.textContent = collapsed ? '展开图例' : '收起图例';
+}));
+window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
+SituationArticleModal.init({subsystems: SUBSYSTEMS, subsystemName: DASHBOARD_PROFILE.subsystem, detailOrigin: DETAIL_ORIGIN});
+if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
+    const dependency = typeof d3 === 'undefined' ? 'D3' : 'TopoJSON';
+    const status = DASHBOARD_VIEW === 'graph' ? $('graph-status') : $('map-status');
+    status.textContent = `可视化组件 ${dependency} 加载失败，请刷新页面重试。`;
+    status.classList.add('show');
+} else if (DASHBOARD_VIEW === 'graph') refreshGraph();
+else refreshMap();
+</script>
+</body>
+</html>

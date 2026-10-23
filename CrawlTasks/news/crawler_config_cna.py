@@ -1,0 +1,64 @@
+"""CNA Asia 抓取配置：只订阅亚洲栏目，不接 Latest、World 等混合 Feed。"""
+
+
+def _is_relevant_article(url: str) -> bool:
+    path = str(url or "").lower()
+    return "/asia/" in path and not any(value in path for value in (
+        "/commentary/", "/sport/", "/lifestyle/", "/watch/",
+    ))
+
+
+CRAWLER_CONFIG = {
+    "d_fetcher_name": "RequestsFetcher",
+    "d_fetcher_init_param": {"log_callback": print, "proxy": None, "timeout_s": 20},
+    "e_fetcher_name": "RequestsFetcher",
+    "e_fetcher_init_param": {"log_callback": print, "proxy": None, "timeout_s": 25},
+    "discoverer_name": "RSSDiscoverer",
+    "discoverer_init_param": {"verbose": False},
+    "extractor_name": "Trafilatura",
+    "extractor_init_param": {"verbose": False},
+    "entry_points": {
+        "asia": (
+            "https://www.channelnewsasia.com/api/v1/rss-outbound-feed"
+            "?_format=xml&category=6511"
+        ),
+    },
+    "period_filter": (None, None),
+    "channel_filter": None,
+    "d_fetcher_kwargs": {
+        "wait_until": "networkidle", "wait_for_selector": None,
+        "wait_for_timeout_s": 20, "scroll_pages": 0,
+    },
+    "e_fetcher_kwargs": {
+        "wait_until": "networkidle", "wait_for_selector": None,
+        "wait_for_timeout_s": 25, "scroll_pages": 0,
+    },
+    "extractor_kwargs": {},
+    "url_filter": {
+        "allowed_hosts": ["www.channelnewsasia.com"],
+        "path_includes": ["/asia/"],
+        "path_excludes": ["/commentary/", "/sport/", "/lifestyle/", "/watch/"],
+        "query_policy": "allow",
+    },
+    "url_filter_samples": [
+        {"url": "https://www.channelnewsasia.com/asia/example-123", "allowed": True},
+        {"url": "https://www.channelnewsasia.com/sport/example-123", "allowed": False},
+        {"url": "https://outside.test/asia/example-123", "allowed": False},
+    ],
+    "article_filter": _is_relevant_article,
+    "content_handler": None,
+    "exception_handler": None,
+}
+
+
+if __name__ == "__main__":
+    import traceback
+
+    try:
+        from IntelligenceCrawler.CrawlPipeline import run_pipeline, save_article_to_disk
+
+        CRAWLER_CONFIG["content_handler"] = save_article_to_disk
+        run_pipeline("default", CRAWLER_CONFIG)
+    except Exception as exc:
+        print(str(exc))
+        print(traceback.format_exc())

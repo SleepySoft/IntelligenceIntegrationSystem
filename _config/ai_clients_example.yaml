@@ -1,0 +1,59 @@
+# Copy to _config/ai_clients.yaml. Set enable: false to retain but disable an entry.
+#
+# 通用可选字段（所有工厂适用）：
+#   tags: [low_sensitivity, strong, ...]   # 能力/敏感性标签，不传给工厂，由引擎挂载；
+#                                          # IIS 内容安全被拒时会优先换 low_sensitivity 客户端兜底
+#   availability: {...}                   # 外部调度时间窗，不传给工厂且不改变 Client 健康状态
+clients:
+  # Any OpenAI-compatible endpoint can use the generic factory.
+  # - factory: openai_compatible
+  #   name: My OpenAI-compatible API
+  #   group: paid_api
+  #   api_base_url: https://example.com/v1
+  #   api_key_env: MY_API_KEY
+  #   model: model-name
+  #   priority: 50
+  #   default_available: true
+  #   request_overrides:             # Provider-specific fixed request fields
+  #     thinking: {type: disabled}
+  #     response_format: {type: json_object}
+
+  # Local harness clients are also factories.
+  - factory: codex
+    name: Codex CLI Stateless
+    group: codex_cli
+    enable: true
+    mode: stateless
+    sandbox: read-only
+    # 可选外部调度时间窗：白天留给人工使用，IIS 只在本地时间 22:00—次日 07:00 分配。
+    # timezone 可选；省略时启动/重载 warning 会确认实际采用的系统本地时区。
+    availability:
+      available: "22:00-07:00"  # 或 unavailable: "07:00-22:00"
+    # Codex app-server 的订阅窗口快照会持久化到 SQLite；达到阈值后通过
+    # AIClientManager 的预算准入接口停止分配，给人工/管理使用保留额度。
+    usage_guard:
+      primary_max_percent: 65     # 5 小时窗口最多用 65%，保留 35%
+      secondary_max_percent: 90   # 周窗口最多用 90%，保留 10%
+      namespace: default          # 同一 Codex 登录账号的 Client 必须使用同一 namespace
+      refresh_seconds: 30         # 只读查询官方额度接口，不会发起模型请求
+      reset_grace_seconds: 30     # 服务端重置时间后的时钟/传播缓冲
+
+  # - factory: kimi
+  #   name: Kimi CLI Stateless
+  #   group: kimi_cli
+  #   mode: stateless
+
+  # - factory: openclaw
+  #   name: OpenClaw Main
+  #   group: openclaw
+  #   agent_id: main
+  #   gateway_token_env: OPENCLAW_GATEWAY_TOKEN
+
+  # - factory: zhipu
+  #   name: Zhipu GLM
+  #   group: zhipu
+  #   api_key_env: ZHIPU_API_KEY
+  #   model: glm-4
+
+group_limits:
+  codex_cli: 1

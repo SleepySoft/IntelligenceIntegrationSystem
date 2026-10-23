@@ -6,7 +6,7 @@
 
 #### Intelligence
 
-+ [Intelligence List](/intelligences?offset=0&count=50&threshold=6)
++ [Intelligence List](/views)
 
 + [Aggregated Intelligence](/intelligences/clusters)
 
@@ -18,11 +18,11 @@
 
 #### Statistics
 
-+ [Dashboard](/statistics/intelligence_statistics.html)
++ [Runtime Monitor](/monitor/runtime)
 
-+ [Rate Statistics](/statistics/score_distribution.html)
++ [Statistics Overview](/statistics/overview)
 
-+ [Entity Statistics](/statistics/entity_frequency/page)
++ [Entity Statistics (Full)](/statistics/entity_frequency/page)
 
 -----------------------------------------------
 
@@ -34,9 +34,13 @@
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
-+ [System Monitor](/monitor/api/dashboard)
++ [Runtime Control](/control)
+
++ [Manual Intelligence Debug](/debug/intelligence)
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
+
++ [Alias management](/entity-alias/manage)
 
 #### Vector DB
 

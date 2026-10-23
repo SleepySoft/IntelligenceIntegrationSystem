@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>情报视图</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: light-dark(#edf2f8, #0b1220);
+            --panel: light-dark(#ffffff, #131d2d);
+            --border: light-dark(#d8e1ec, #304057);
+            --text: light-dark(#172033, #e8eef8);
+            --muted: light-dark(#65748a, #9babc2);
+            --accent: #4f7cff;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+        .shell { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+        header { display: flex; align-items: center; gap: 18px; min-height: 66px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+        .tabs { display: flex; align-self: stretch; gap: 6px; }
+        .tab { min-width: 104px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
+        .tab:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+        .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+        .open-view { margin-left: auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; white-space: nowrap; }
+        .scope-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .scope-note[hidden] { display: none; }
+        .frames { position: relative; min-height: 0; }
+        iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); display: none; }
+        iframe.active { display: block; }
+        .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); background: var(--bg); z-index: 2; }
+        .loading[hidden] { display: none; }
+        @media (max-width: 720px) {
+            header { gap: 7px; padding: 7px; flex-wrap: wrap; }
+            .tabs { min-height: 42px; flex: 1; }
+            .tab { min-width: 0; flex: 1; }
+            .open-view { display: none; }
+            .shell { grid-template-rows: auto minmax(0, 1fr); }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <header>
+        <nav class="tabs" aria-label="情报展示方式">
+            <button class="tab" type="button" data-view="list">情报列表</button>
+            <button class="tab" type="button" data-view="map">地域视图</button>
+            <button class="tab" type="button" data-view="entities">实体视图</button>
+            <button class="tab" type="button" data-view="timeline">实体时间线</button>
+        </nav>
+        <span class="scope-note" id="scope-note" hidden></span>
+        <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">单独打开</a>
+    </header>
+    <main class="frames">
+        <div class="loading" id="loading">正在加载视图…</div>
+        <iframe data-view="list" title="情报列表视图"></iframe>
+        <iframe data-view="map" title="地域态势视图"></iframe>
+        <iframe data-view="entities" title="实体关系视图"></iframe>
+        <iframe data-view="timeline" title="实体时间线视图"></iframe>
+    </main>
+</div>
+<script>
+const FRAME_URLS = {{ frame_urls|tojson }};
+const SITUATION = {{ profile.situation|tojson }};
+let activeView = {{ profile.active_view|tojson }};
+const LIST_QUERY_NAMES = ['page', 'per_page', 'threshold', 'sort_by', 'search_mode', 'reference', 'score_threshold'];
+const TIMELINE_QUERY_NAMES = ['mode', 'orientation'];
+
+function listFrameUrlFromOuter() {
+    const frameUrl = new URL(FRAME_URLS.list, window.location.origin);
+    const outerUrl = new URL(window.location.href);
+    LIST_QUERY_NAMES.forEach(name => {
+        if (outerUrl.searchParams.has(name)) {
+            frameUrl.searchParams.set(name, outerUrl.searchParams.get(name));
+        } else {
+            frameUrl.searchParams.delete(name);
+        }
+    });
+    if (!frameUrl.searchParams.has('threshold')) frameUrl.searchParams.set('threshold', '6');
+    return frameUrl.pathname + frameUrl.search;
+}
+
+function syncOuterListState(state, historyMode = 'replace') {
+    const url = new URL(window.location.href);
+    LIST_QUERY_NAMES.forEach(name => url.searchParams.delete(name));
+    for (const name of LIST_QUERY_NAMES) {
+        const value = state?.[name];
+        if (value !== undefined && value !== null && value !== '') url.searchParams.set(name, String(value));
+    }
+    url.searchParams.set('view', 'list');
+    const method = historyMode === 'push' ? 'pushState' : 'replaceState';
+    history[method](null, '', url);
+    const frameParams = new URLSearchParams(
+        LIST_QUERY_NAMES.filter(name => url.searchParams.has(name))
+            .map(name => [name, url.searchParams.get(name)]));
+    FRAME_URLS.list = `/intelligences${frameParams.size ? `?${frameParams}` : ''}`;
+    if (activeView === 'list') document.getElementById('open-view').href = FRAME_URLS.list;
+}
+
+function timelineFrameUrlFromOuter() {
+    const frameUrl = new URL(FRAME_URLS.timeline, window.location.origin);
+    const outerUrl = new URL(window.location.href);
+    frameUrl.search = '';
+    outerUrl.searchParams.getAll('entity').slice(0, SITUATION.timeline_max_entities).forEach(value => frameUrl.searchParams.append('entity', value));
+    TIMELINE_QUERY_NAMES.forEach(name => {
+        if (outerUrl.searchParams.has(name)) frameUrl.searchParams.set(name, outerUrl.searchParams.get(name));
+    });
+    return frameUrl.pathname + frameUrl.search;
+}
+
+function syncOuterTimelineState(state) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('entity');
+    (state?.entities || []).slice(0, SITUATION.timeline_max_entities).forEach(value => url.searchParams.append('entity', String(value)));
+    TIMELINE_QUERY_NAMES.forEach(name => {
+        const value = state?.[name];
+        if (value !== undefined && value !== null && value !== '') url.searchParams.set(name, String(value));
+        else url.searchParams.delete(name);
+    });
+    url.searchParams.set('view', 'timeline');
+    history.replaceState(null, '', url);
+    FRAME_URLS.timeline = timelineFrameUrlFromOuter();
+    if (activeView === 'timeline') document.getElementById('open-view').href = FRAME_URLS.timeline;
+}
+
+function openTimeline(entities) {
+    const url = new URL(window.location.href);
+    const merged = [...url.searchParams.getAll('entity'), ...(entities || [])];
+    url.searchParams.delete('entity');
+    [...new Set(merged)].slice(0, SITUATION.timeline_max_entities).forEach(value => url.searchParams.append('entity', String(value)));
+    url.searchParams.set('view', 'timeline');
+    history.pushState(null, '', url);
+    FRAME_URLS.timeline = timelineFrameUrlFromOuter();
+    const frame = document.querySelector('iframe[data-view="timeline"]');
+    frame.src = FRAME_URLS.timeline;
+    frame.dataset.loaded = 'true';
+    activate('timeline', false);
+}
+
+function activate(view, updateHistory = true) {
+    if (!FRAME_URLS[view]) view = 'list';
+    activeView = view;
+    document.querySelectorAll('.tab').forEach(button => {
+        button.setAttribute('aria-selected', String(button.dataset.view === view));
+    });
+    document.querySelectorAll('iframe').forEach(frame => {
+        const selected = frame.dataset.view === view;
+        frame.classList.toggle('active', selected);
+        if (selected && !frame.dataset.loaded) {
+            document.getElementById('loading').hidden = false;
+            frame.src = FRAME_URLS[view];
+            frame.dataset.loaded = 'true';
+        } else if (selected) {
+            document.getElementById('loading').hidden = true;
+        }
+    });
+    document.getElementById('open-view').href = FRAME_URLS[view];
+    const scopeNote = document.getElementById('scope-note');
+    if (view === 'map' || view === 'entities' || view === 'timeline') {
+        let text = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
+        if (view === 'entities' && SITUATION.min_support) {
+            text += ` · 关系需 ${SITUATION.min_support} 起印证`;
+        }
+        scopeNote.textContent = text;
+        scopeNote.hidden = false;
+    } else {
+        scopeNote.hidden = true;
+    }
+    if (updateHistory) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', view);
+        history.replaceState(null, '', url);
+    }
+}
+document.querySelectorAll('iframe').forEach(frame => {
+    frame.addEventListener('load', () => {
+        if (frame.dataset.loaded && frame.dataset.view === activeView) {
+            document.getElementById('loading').hidden = true;
+        }
+    });
+});
+window.addEventListener('message', event => {
+    const listFrame = document.querySelector('iframe[data-view="list"]');
+    const timelineFrame = document.querySelector('iframe[data-view="timeline"]');
+    const entitiesFrame = document.querySelector('iframe[data-view="entities"]');
+    const mapFrame = document.querySelector('iframe[data-view="map"]');
+    if (event.origin !== window.location.origin) return;
+    if (event.source === listFrame.contentWindow) {
+        if (event.data?.type !== 'iis:list-state') return;
+        syncOuterListState(event.data.state, event.data.history_mode);
+        return;
+    }
+    if (event.source === timelineFrame.contentWindow && event.data?.type === 'iis:timeline-state') {
+        syncOuterTimelineState(event.data.state);
+    } else if ((event.source === entitiesFrame.contentWindow || event.source === mapFrame.contentWindow)
+            && event.data?.type === 'iis:open-timeline') {
+        openTimeline(event.data.entities);
+    }
+});
+window.addEventListener('popstate', () => {
+    const requested = new URL(window.location.href).searchParams.get('view') || 'list';
+    activate(FRAME_URLS[requested] ? requested : 'list', false);
+    if ((FRAME_URLS[requested] ? requested : 'list') === 'list') {
+        const frame = document.querySelector('iframe[data-view="list"]');
+        const nextUrl = listFrameUrlFromOuter();
+        if (new URL(frame.src, window.location.origin).pathname + new URL(frame.src, window.location.origin).search !== nextUrl) {
+            document.getElementById('loading').hidden = false;
+            frame.src = nextUrl;
+        }
+    } else if (requested === 'timeline') {
+        const frame = document.querySelector('iframe[data-view="timeline"]');
+        const nextUrl = timelineFrameUrlFromOuter();
+        if (new URL(frame.src, window.location.origin).pathname + new URL(frame.src, window.location.origin).search !== nextUrl) {
+            document.getElementById('loading').hidden = false;
+            frame.src = nextUrl;
+        }
+    }
+});
+document.querySelectorAll('.tab').forEach(button => {
+    button.addEventListener('click', () => activate(button.dataset.view));
+});
+activate(activeView, false);
+</script>
+</body>
+</html>

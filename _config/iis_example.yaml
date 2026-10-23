@@ -1,0 +1,97 @@
+# IIS 主程序只写部署差异；未出现的字段由 IISConfig.py 提供默认值并校验。
+# AI Client 使用 ai_clients.yaml，采集器使用 collector.json，不在这里重复配置。
+
+server:
+  host: 0.0.0.0
+  port: 5000
+  # 经过反向代理或使用外部域名时再设置：
+  # public_origin: https://intel.example.com
+
+database:
+  host: localhost
+  port: 27017
+  # username: iis
+  # password: change-me
+
+hub:
+  workers: 1
+  subsystems:
+    default: news
+    # 键是稳定的子系统名，值是界面显示名；详细设置从 subsystems/<名称>.json 加载。
+    enabled:
+      news: 国际新闻
+      finance: 财经情报
+      industry: 行业情报
+
+access:
+  # 空列表表示拒绝对应的 Token API；部署时填入随机 Token。
+  rpc_tokens: []
+  collector_tokens: []
+
+optional_subsystems:
+  # 每个键都是一个可独立关闭、装配失败也不阻塞主链路的子系统。
+  translation:
+    enabled: true
+    # 对应 ai_clients.yaml 中客户端的 group。
+    client_group: translate_small
+  vector:
+    enabled: false
+    endpoint: http://127.0.0.1:8001
+    database: vectordb
+    model: BAAI/bge-m3
+  situation:
+    enabled: true
+    subsystem: news
+    window_days: 7
+    min_score: 6
+    # min_support: 2            # 实体图：关系最少独立事件数（调低到 1 会显示全部关系，图更密更噪）
+    # max_nodes: 80             # 实体图节点上限
+    # max_edges: 240            # 实体图边上限
+    # max_articles: 5000        # 单次分析的最大文章数
+    # primary_only: true        # 只用主事件构图
+    # keep_high_score_singletons: true  # 保留高评分（≥8）单次关系
+  intelligence_views:
+    enabled: true
+    public_access: true  # 公开 /views 及其固定范围只读数据；非 scoped 态势 API 仍需登录
+    # public_window_days: 7              # 未登录用户的地图、实体图及时间线窗口；空 = 沿用 situation.window_days
+    # public_timeline_max_entities: 4    # 未登录用户一次可选择的时间线实体数（1-8）
+  # batch_analysis:              # 批量分析子系统（Provider Batch，凌晨空闲半价回注积压）
+  #   enabled: false             # 启用需 ai_clients.yaml 中有 MiMo key
+  #   model: mimo-v2.6-flash
+  #   lookback_days: 7           # 只提交未超龄的积压
+  #   max_items: 500
+  entity_alias:
+    enabled: true
+    url_prefix: /entity-alias
+    # data_dir: EntityAlias/data   # 空 = 包内 data/（git 管理的 JSONL）
+    vector_enabled: true           # 复用 vector 子系统的 VectorDB 做语义召回
+    wikidata:                      # 本地查不到时的在线建议源
+      enabled: true
+      # user_agent: "MyTool/1.0 ([email protected])"  # 建议部署时填写
+      # proxy: ""                  # 空 = 默认代理；socks 需 PySocks
+      min_interval_sec: 0.5
+      timeout_sec: 10
+      langs: zh,en
+
+# 常用高级项只在需要覆盖默认值时添加：
+# hub:
+#   max_inflight: 2000
+#   client_wait_timeout_sec: 60
+#   submission_timeout_sec: 30
+#   replay_unarchived: true
+#   shadow_versions: [43]
+#   shadow_sample_rate: 1.0   # 影子链路采样率（0-1），调低可控制灰度 Token 成本
+#   max_live_age_hours: 24    # 超过该年龄的情报走低优先级车道，防冷启动旧情报堵主链；0=不启用
+#   max_analysis_age_hours: 168  # 超旧情报直接弃用不分析（intake 拒绝 + 回放标 X）；0=不启用
+#   replay_newest_first: true # 未处理记录回放顺序：true=新的优先消化，false=按入库顺序
+# web:
+#   posts:
+#     watch_enabled: true
+#     debounce_ms: 2000      # 连续保存停止 2s 后只编译一次，覆盖常见 1s 自动保存
+#     max_wait_ms: 30000     # 持续编辑时最多等待 30s，避免永久不刷新
+#   public_search:
+#     page_size: 20
+#     max_pages: 5
+#     window_days: 30
+#     requests_per_minute: 10
+#     vector_enabled: false

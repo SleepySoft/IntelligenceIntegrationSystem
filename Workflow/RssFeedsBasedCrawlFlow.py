@@ -35,9 +35,10 @@ def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> Cra
     config = service_context.config
     governor = service_context.crawler_governor
     submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
-    collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
-    token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
-    crawl_context = CrawlContext(name, submit_ihub_url, token, governor)
+    token = config.get('collector.default_token') or DEFAULT_COLLECTOR_TOKEN
+    # 子系统归属由 TaskManager 按"目录 -> 子系统"解析后放入 service_context.subsystem
+    subsystem = service_context.subsystem or config.get('collector.default_subsystem') or ''
+    crawl_context = CrawlContext(name, submit_ihub_url, token, governor, subsystem=subsystem)
     return crawl_context
 
 
@@ -118,13 +119,30 @@ def feeds_craw_flow(flow_name: str,
                     stop_event: threading.Event,
                     config: EasyConfig,
                     update_interval_s: int,
-
                     fetch_feed: Callable[[str], FeedData],
                     fetch_content: Callable[[str], FetchContentResult],
                     scrubbers: List[Callable[[str], str]],
+                    context: CrawlContext):
+    """Run one RSS batch, treating scheduler interruption as normal shutdown."""
+    try:
+        return _feeds_craw_flow_impl(
+            flow_name, feeds, stop_event, config, update_interval_s,
+            fetch_feed, fetch_content, scrubbers, context)
+    except InterruptedError:
+        if not stop_event.is_set():
+            raise
+        context.logger.info(f'[{flow_name}]: stop requested.')
 
-                    context: CrawlContext
-                    ):
+
+def _feeds_craw_flow_impl(flow_name: str,
+                          feeds: Dict[str, str],
+                          stop_event: threading.Event,
+                          config: EasyConfig,
+                          update_interval_s: int,
+                          fetch_feed: Callable[[str], FeedData],
+                          fetch_content: Callable[[str], FetchContentResult],
+                          scrubbers: List[Callable[[str], str]],
+                          context: CrawlContext):
     """
     A common feeds and their articles craw workflow. This workflow works in this sequence:
         fetch_feed -> for each feed: fetch_content -> apply scrubbers
@@ -156,7 +174,8 @@ def feeds_craw_flow(flow_name: str,
 
     # ------------------------------------------- The Main Process ------------------------------------------
 
-    with context.crawler_governor.schedule_pace(flow_name, DEFAULT_FEEDS_CRAWL_LOOP_DURATION, None):
+    with context.crawler_governor.schedule_pace(
+            flow_name, DEFAULT_FEEDS_CRAWL_LOOP_DURATION, stop_event):
 
         for feed_name, feed_url in { **feeds, "cached": "" }.items():
 
@@ -187,6 +206,8 @@ def feeds_craw_flow(flow_name: str,
             # ----------------------------------- Process Articles in Feed ----------------------------------
 
             for article in result.entries:
+                if stop_event.is_set():
+                    break
                 if not article.link:
                     context.logger.info(f'Got empty article link from feed: {feed_url}')
                     context.crawler_governor.reduce_round_step(group_path)
@@ -200,6 +221,8 @@ def feeds_craw_flow(flow_name: str,
                 context.logger.info(f'Processing article: {article.link}')
                 get_and_submit_article(group_path, article, context, fetch_content, scrubbers)
 
+                if stop_event.is_set():
+                    break
                 context.crawler_governor.wait_interval(1)
 
             context.crawler_governor.finish_round(group_path, 60 * 15)

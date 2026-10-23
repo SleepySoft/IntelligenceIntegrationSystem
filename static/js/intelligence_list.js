@@ -1,20 +1,36 @@
 /* static/js/intelligence_list.js */
 document.addEventListener('DOMContentLoaded', () => {
-    const API_URL = '/intelligences/query';
+    const API_URL = (window.IIS_BASE_PATH || '') + '/intelligences/query';
 
     const thresholdSelect = document.getElementById('threshold-select');
     const countSelect = document.getElementById('count-select');
+    const sortSelect = document.getElementById('sort-select');
     const refreshBtn = document.getElementById('refresh-btn');
+    const publicMode = window.IIS_PUBLIC_MODE === true;
+    const publicLimits = window.IIS_PUBLIC_LIMITS || {};
+    const publicMaxPerPage = Math.max(1, Number(publicLimits.mongo_max_per_page) || 20);
+    const defaultPerPage = publicMode ? Math.min(20, publicMaxPerPage) : 10;
+    const embeddedInViews = window.parent !== window;
 
     const DEFAULTS = {
         page: 1,
-        per_page: 10,
+        per_page: defaultPerPage,
         threshold: 0,      // 后端默认是 0
+        sort_by: 'archived_at',
         search_mode: 'mongo',
         score_threshold: 0.6
     };
 
     const renderer = new ArticleRenderer('article-list-container', 'pagination-container');
+
+    if (publicMode && countSelect) {
+        [...countSelect.options].forEach(option => {
+            if (Number(option.value) > publicMaxPerPage) option.remove();
+        });
+        if (!countSelect.querySelector(`option[value="${defaultPerPage}"]`)) {
+            countSelect.add(new Option(String(defaultPerPage), String(defaultPerPage)));
+        }
+    }
 
     if (window.ArticleModalManager) {
         ArticleModalManager.init({
@@ -24,25 +40,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getUrlState() {
         const params = new URLSearchParams(window.location.search);
-        return {
+        const state = {
             page: parseInt(params.get('page')) || DEFAULTS.page,
             per_page: parseInt(params.get('per_page')) || DEFAULTS.per_page,
             threshold: parseFloat(params.get('threshold')) || DEFAULTS.threshold,
+            sort_by: params.get('sort_by') === 'content_time' ? 'content_time' : DEFAULTS.sort_by,
 
             // 读取搜索模式和引用ID
             search_mode: params.get('search_mode') || DEFAULTS.search_mode,
             reference: params.get('reference') || '',
             score_threshold: parseFloat(params.get('score_threshold')) || DEFAULTS.score_threshold
         };
+        state.page = Math.max(1, state.page);
+        state.per_page = Math.max(1, Math.min(
+            publicMode ? publicMaxPerPage : 100, state.per_page));
+        return state;
     }
 
     // updateUrl 需要保留这些特殊参数，否则翻页时会丢失
-    function updateUrl(state) {
+    function publishListState(state, historyMode) {
+        if (!embeddedInViews) return;
+        window.parent.postMessage({
+            type: 'iis:list-state',
+            history_mode: historyMode,
+            state: {
+                page: state.page,
+                per_page: state.per_page,
+                threshold: state.threshold,
+                sort_by: state.sort_by,
+                search_mode: state.search_mode,
+                reference: state.reference,
+                score_threshold: state.score_threshold,
+            },
+        }, window.location.origin);
+    }
+
+    function updateUrl(state, historyMode = 'push') {
         const params = new URLSearchParams();
 
         if (state.page !== DEFAULTS.page) params.set('page', state.page);
         if (state.per_page !== DEFAULTS.per_page) params.set('per_page', state.per_page);
         if (state.threshold !== DEFAULTS.threshold) params.set('threshold', state.threshold);
+        if (state.sort_by !== DEFAULTS.sort_by) params.set('sort_by', state.sort_by);
 
         // 新增：如果当前是非 mongo 模式，必须保留 mode 和 reference 到 URL 中
         if (state.search_mode !== 'mongo') {
@@ -53,7 +92,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const queryString = params.toString();
         const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
-        window.history.pushState({ path: newUrl }, '', newUrl);
+        if (embeddedInViews) {
+            // 外层 /views URL 是可分享的单一事实源；iframe 自身只替换地址，
+            // 避免一次翻页在联合浏览历史中产生两个记录。
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+            publishListState(state, historyMode);
+        } else {
+            window.history[historyMode === 'replace' ? 'replaceState' : 'pushState'](
+                { path: newUrl }, '', newUrl);
+        }
     }
 
     function syncControls(state) {
@@ -62,6 +109,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (countSelect && countSelect.querySelector(`option[value="${state.per_page}"]`)) {
             countSelect.value = state.per_page;
+        }
+        if (sortSelect) {
+            sortSelect.value = state.sort_by;
+            sortSelect.disabled = state.search_mode !== 'mongo';
+            sortSelect.title = sortSelect.disabled ? '向量检索按相似度排序' : '';
         }
     }
 
@@ -76,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         requestParams.set('page', state.page);
         requestParams.set('per_page', state.per_page);
         requestParams.set('search_mode', state.search_mode); // 传给后端
+        requestParams.set('sort_by', state.sort_by);
 
         if (state.threshold > 0) requestParams.set('threshold', state.threshold);
 
@@ -108,14 +161,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 return; // 终止后续处理
             }
 
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `API Error: ${response.status}`);
+            }
 
             const data = await response.json();
+            const effectivePage = Number(data.page) || state.page;
+            const effectivePerPage = Number(data.per_page) || state.per_page;
+            if (effectivePage !== state.page || effectivePerPage !== state.per_page) {
+                state.page = effectivePage;
+                state.per_page = effectivePerPage;
+                syncControls(state);
+                updateUrl(state, 'replace');
+            }
 
+            renderer.setSortBy(state.search_mode === 'mongo' ? state.sort_by : 'relevance');
             renderer.render(data.results, {
                 total: data.total,
-                page: state.page,       // 直接用当前的 page
-                per_page: state.per_page // 直接用当前的 per_page
+                page: effectivePage,
+                per_page: effectivePerPage,
             });
         } catch (error) {
             console.error('Load Error:', error);
@@ -130,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const state = getUrlState();
         if (thresholdSelect) state.threshold = parseFloat(thresholdSelect.value);
         if (countSelect) state.per_page = parseInt(countSelect.value);
+        if (sortSelect) state.sort_by = sortSelect.value;
 
         state.page = 1; // 重置页码
 
@@ -139,6 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (thresholdSelect) thresholdSelect.addEventListener('change', handleFilterChange);
     if (countSelect) countSelect.addEventListener('change', handleFilterChange);
+    if (sortSelect) sortSelect.addEventListener('change', handleFilterChange);
     if (refreshBtn) refreshBtn.addEventListener('click', loadData);
 
     document.body.addEventListener('click', (e) => {
@@ -175,5 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loadData();
     });
 
+    publishListState(getUrlState(), 'replace');
     loadData();
 });

@@ -11,12 +11,11 @@ from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
 from IntelligenceCrawler.CrawlPipeline import format_exception_with_traceback
 from IntelligenceHub import CollectedData
 from PyLoggingBackend.LogUtility import get_tls_logger
-from IntelligenceHubWebService import post_collected_intelligence
+from Workflow.CollectorSubmission import post_collected_intelligence, normalize_collect_response
 from Tools.ProcessCotrolException import ProcessSkip, ProcessProblem, ProcessIgnore
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager, CrawlSession
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -92,12 +91,14 @@ class CrawlContext:
                  collector_token: str,
                  crawler_governor: GovernanceManager,
                  error_threshold: int = DEFAULT_CRAWL_ERROR_THRESHOLD,
+                 subsystem: Optional[str] = None,
                  logger: Logger = None
                  ):
         self.flow_name = flow_name
         self.i_hub_url = i_hub_url
         self.crawler_governor = crawler_governor
         self.collector_token = collector_token or DEFAULT_COLLECTOR_TOKEN
+        self.subsystem = subsystem
         self.error_threshold = error_threshold
         self.logger = PrefixLogger(logger or
                                    get_tls_logger(__name__) or
@@ -118,12 +119,23 @@ class CrawlContext:
             cache_on_error: bool = True
     ):
         collected_data.token = self.collector_token
+        if self.subsystem and not getattr(collected_data, 'subsystem', ''):
+            collected_data.subsystem = self.subsystem
 
         if self._submit_collected_data:
             self.logger.info(f"Submit collected data to: {self.i_hub_url}")
             result = self._submit_collected_data(self.i_hub_url, collected_data, 10)
+            status, reason = normalize_collect_response(result)
 
-            if result.get('status', 'success') == 'error':
+            if status == 'rejected':
+                # 服务端明确拒绝（重复/超龄/校验失败等）属于预期终态。
+                # 直接使用 CrawlSession 控制流，避免被治理层当成未知异常输出 traceback。
+                self.logger.info(
+                    "Submission skipped: category=hub_rejected "
+                    f"reason={reason} group={group} url={collected_data.informant}"
+                )
+                raise CrawlSession.Skip(f'Hub rejected: {reason}')
+            if status == 'error':
                 if cache_on_error:
                     # Only cache on submission error.
                     self.crawl_cache.cache_content(

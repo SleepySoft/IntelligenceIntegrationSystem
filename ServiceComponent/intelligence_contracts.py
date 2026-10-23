@@ -1,0 +1,126 @@
+"""IIS V4 跨组件共享的稳定契约值。
+
+这里只放需要被多个边界共同理解的值：持久化版本、状态码、集合后缀、派生身份
+命名空间和枚举。业务模型字段本身仍由 Pydantic/Event Engine 模型定义。
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+INTELLIGENCE_ARCHIVE_SCHEMA_VERSION = "iis-intelligence/4.0"
+LOW_VALUE_ARCHIVE_SCHEMA_VERSION = "iis-non-intelligence/4.0"
+
+# APPENDIX 是采集 cache 与归档记录共享的唯一系统元数据容器。键名及 Mongo
+# 字段路径必须集中定义在这里，业务模块不得重复字符串常量。
+APPENDIX_FIELD = "APPENDIX"
+APPENDIX_RAW_DATA = "RAW_DATA"
+APPENDIX_TIME_PUB = "__TIME_PUB__"
+APPENDIX_TIME_GOT = "__TIME_GOT__"
+APPENDIX_TIME_POST = "__TIME_POST__"
+APPENDIX_TIME_DONE = "__TIME_DONE__"
+APPENDIX_TIME_ARCHIVED = "__TIME_ARCHIVED__"
+APPENDIX_CONTENT_TIME = "__CONTENT_TIME__"
+APPENDIX_CONTENT_TIME_SOURCE = "__CONTENT_TIME_SOURCE__"
+APPENDIX_SUBSYSTEM = "__SUBSYSTEM__"
+APPENDIX_ARCHIVED_FLAG = "__ARCHIVED__"
+APPENDIX_TOTAL_SCORE = "__TOTAL_SCORE__"
+APPENDIX_MANUAL_RATING = "__MANUAL_RATING__"
+APPENDIX_PROMPT_VERSION = "__PROMPT_VERSION__"
+APPENDIX_PROMPT_OVERRIDE = "__PROMPT_OVERRIDE__"
+APPENDIX_AI_SERVICE = "__AI_SERVICE__"
+APPENDIX_AI_MODEL = "__AI_MODEL__"
+APPENDIX_TRANSLATED_REVISION = "__TRANSLATED_REVISION__"
+APPENDIX_SCHEMA_VERSION = "__SCHEMA_VERSION__"
+APPENDIX_VECTOR_SCORE = "__VECTOR_SCORE__"  # 查询时临时字段，不写回权威归档
+APPENDIX_EXTRACTION_QUALITY = "__EXTRACTION_QUALITY__"  # 抽取质量统计（仅参考，不影响归档判定）
+APPENDIX_RETRY_LEVEL = "__RETRY_LEVEL__"
+APPENDIX_RETRY_FIRST_FAILED_AT = "__RETRY_FIRST_FAILED_AT__"
+APPENDIX_RETRY_NEXT_AT = "__RETRY_NEXT_AT__"
+APPENDIX_RETRY_LAST_ERROR = "__RETRY_LAST_ERROR__"
+APPENDIX_RETRY_LEASE_UNTIL = "__RETRY_LEASE_UNTIL__"
+
+
+def appendix_path(key: str) -> str:
+    return f"{APPENDIX_FIELD}.{key}"
+
+
+class ContentTimeSource(StrEnum):
+    PUBLISHED = "published"
+    COLLECTED = "collected"
+    ARCHIVED = "archived"
+
+
+class CacheArchiveState(StrEnum):
+    DROP = "D"
+    ERROR = "E"
+    RETRY = "R"
+    ARCHIVED = "A"
+    SENSITIVE = "S"
+    DUPLICATED = "U"
+    DEPRECATED = "X"  # 运维主动弃用（积压清理），不再分析与回放
+
+
+class NonIntelligenceReason(StrEnum):
+    """低价值情报的机器可统计原因；REASON 继续保存 AI 的具体文字说明。"""
+
+    EMPTY_OR_TOO_SHORT = "empty_or_too_short"
+    ANTI_BOT_OR_ACCESS_DENIED = "anti_bot_or_access_denied"
+    NAVIGATION_OR_TEMPLATE = "navigation_or_template"
+    MEDIA_STUB = "media_stub"
+    GARBLED_OR_INCOMPLETE = "garbled_or_incomplete"
+    ADVERTISING_OR_PROMOTION = "advertising_or_promotion"
+    ENTERTAINMENT_OR_LIFESTYLE = "entertainment_or_lifestyle"
+    SPORTS = "sports"
+    HISTORICAL_OR_BACKGROUND = "historical_or_background"
+    OPINION_OR_PERSONAL_EXPRESSION = "opinion_or_personal_expression"
+    ROUTINE_OR_NO_INFORMATION_GAIN = "routine_or_no_information_gain"
+    ACADEMIC_WITHOUT_CURRENT_RELEVANCE = "academic_without_current_relevance"
+    DUPLICATE_OR_RECAP = "duplicate_or_recap"
+    OTHER_NON_INTELLIGENCE = "other_non_intelligence"
+    UNSPECIFIED = "unspecified"  # 兼容 v46 之前没有结构化原因的历史数据
+
+
+NON_INTELLIGENCE_CONTENT_DEFECT_REASONS = frozenset({
+    NonIntelligenceReason.EMPTY_OR_TOO_SHORT.value,
+    NonIntelligenceReason.ANTI_BOT_OR_ACCESS_DENIED.value,
+    NonIntelligenceReason.NAVIGATION_OR_TEMPLATE.value,
+    NonIntelligenceReason.MEDIA_STUB.value,
+    NonIntelligenceReason.GARBLED_OR_INCOMPLETE.value,
+})
+
+
+CACHE_ARCHIVED_FLAG_FIELD = appendix_path(APPENDIX_ARCHIVED_FLAG)
+CACHE_LEGACY_ARCHIVED_FLAG_FIELD = "__ARCHIVED__"
+
+
+def unarchived_cache_query() -> dict:
+    """返回 cache 恢复器使用的未处理记录查询。"""
+
+    return {"$and": [
+        {CACHE_LEGACY_ARCHIVED_FLAG_FIELD: {"$exists": False}},
+        {CACHE_ARCHIVED_FLAG_FIELD: {"$exists": False}},
+    ]}
+
+
+def retry_cache_query(now) -> dict:
+    """返回已到期且没有有效租约的持久 Retry 记录查询。"""
+
+    return {
+        CACHE_ARCHIVED_FLAG_FIELD: CacheArchiveState.RETRY.value,
+        appendix_path(APPENDIX_RETRY_NEXT_AT): {"$lte": now},
+        "$or": [
+            {appendix_path(APPENDIX_RETRY_LEASE_UNTIL): {"$exists": False}},
+            {appendix_path(APPENDIX_RETRY_LEASE_UNTIL): {"$lte": now}},
+        ],
+    }
+
+
+class EventV4CollectionSuffix(StrEnum):
+    ARCHIVED = "v4_archived"
+    LOW_VALUE = "v4_low_value"
+    EVENTS = "v4_events"
+    OUTBOX = "v4_outbox"
+    # intake 拒绝审计：被入口校验/去重拒绝的提交记录（不进 cache，只供审计）。
+    INTAKE_REJECTED = "intake_rejected"

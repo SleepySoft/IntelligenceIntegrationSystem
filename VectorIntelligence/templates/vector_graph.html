@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>情报态势演进与脉络推演</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+    <script>
+        // 向量子系统 Blueprint 页面：API 走 /vector 命名空间，文章详情仍属 Core。
+        window.IIS_VECTOR_BASE = {{ vector_base|default('/vector')|tojson }};
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; }
+        .timeline-container { border-left: 3px solid #dee2e6; margin-left: 20px; padding-left: 20px; }
+        .timeline-item { position: relative; margin-bottom: 1.5rem; }
+        .timeline-item::before {
+            content: ''; position: absolute; left: -27px; top: 0;
+            width: 12px; height: 12px; border-radius: 50%; background-color: #0d6efd; border: 2px solid #fff;
+        }
+        .timeline-item.seed-node::before { background-color: #dc3545; width: 16px; height: 16px; left: -29px; }
+        #graph-container { width: 100%; height: 600px; border: 1px solid #dee2e6; border-radius: 8px; background-color: #fff; }
+        .ai-summary-box { background: linear-gradient(135deg, #f0f7ff 0%, #e6f3ff 100%); border-left: 4px solid #0d6efd; }
+    </style>
+</head>
+<body>
+
+<div class="container py-4">
+    <h2 class="mb-4">🕸️ 情报脉络推演工作台</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-bold">种子情报 UUID (Seed)</label>
+                    <input type="text" id="seedUuid" class="form-control" placeholder="输入文章 UUID..." value="{{ seed_uuid }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">最大追溯深度</label>
+                    <input type="number" id="maxDepth" class="form-control" value="3" min="1" max="5">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">双向时间窗(天)</label>
+                    <input type="number" id="windowDays" class="form-control" value="7" min="1" max="30">
+                </div>
+                <div class="col-md-3">
+                    <button id="btnGenerate" class="btn btn-primary w-100" onclick="startGraphBuild()">
+                        🚀 开始全局推演
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="statusArea" class="alert alert-info d-none shadow-sm" role="alert">
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-3" role="status"></div>
+            <strong id="statusText">正在启动多维时空检索...</strong>
+        </div>
+    </div>
+
+    <div id="resultArea" class="d-none">
+
+        <div id="aiSummaryPanel" class="card shadow-sm mb-4 ai-summary-box d-none">
+            <div class="card-body">
+                <h5 class="card-title text-primary"><i class="bi bi-robot"></i> AI 态势评估报告</h5>
+                <p class="card-text" id="aiSummaryText"></p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted" id="aiCritiqueText"></small>
+                    <span class="badge bg-primary fs-6">逻辑连贯性得分: <span id="aiScore"></span>/10</span>
+                </div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-3" id="viewTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline" type="button" role="tab">📅 态势演进时间线</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="graph-tab" data-bs-toggle="tab" data-bs-target="#graph" type="button" role="tab">🕸️ 溯源关系审查图</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="viewTabsContent">
+            <div class="tab-pane fade show active p-3 bg-white border rounded shadow-sm" id="timeline" role="tabpanel">
+                <div class="timeline-container" id="timelineContainer">
+                    </div>
+            </div>
+
+            <div class="tab-pane fade" id="graph" role="tabpanel">
+                <div id="graph-container"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/intelligence_contracts.js"></script>
+<script src="/static/js/article_detail_renderer.js"></script>
+<script src="/static/js/article_modal_manager.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.ArticleModalManager) {
+            ArticleModalManager.init({
+                history: false,
+                titleSelector: 'a.timeline-article-link[data-uuid]'
+            });
+        }
+    });
+
+    let pollInterval = null;
+    let myChart = null; // ECharts 实例
+
+    async function startGraphBuild() {
+        const seedUuid = document.getElementById('seedUuid').value.trim();
+        const maxDepth = document.getElementById('maxDepth').value;
+        const windowDays = document.getElementById('windowDays').value;
+
+        if (!seedUuid) {
+            alert("请输入种子情报 UUID！");
+            return;
+        }
+
+        // 重置 UI
+        document.getElementById('resultArea').classList.add('d-none');
+        document.getElementById('statusArea').classList.remove('d-none');
+        document.getElementById('btnGenerate').disabled = true;
+        updateStatus("正在向 VectorDB 投递推演任务...", "info");
+
+        try {
+            const response = await fetch(`${window.IIS_VECTOR_BASE}/api/graph/build`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seed_uuid: seedUuid, max_depth: maxDepth, window_days: windowDays })
+            });
+
+            const data = await response.json();
+
+            // 专门拦截 503 初始化状态
+            if (response.status === 503) {
+                updateStatus(`⏳ ${data.message}`, "warning", false);
+                document.getElementById('btnGenerate').disabled = false;
+                return; // 直接返回，不再往下走
+            }
+
+            if (data.thread_id) {
+                startPolling(data.thread_id);
+            } else {
+                throw new Error(data.error || "未知错误");
+            }
+        } catch (error) {
+            updateStatus(`启动失败: ${error.message}`, "danger", false);
+            document.getElementById('btnGenerate').disabled = false;
+        }
+    }
+
+function startPolling(threadId) {
+        if (pollInterval) clearInterval(pollInterval);
+
+        pollInterval = setInterval(async () => {
+            try {
+                // 💡 修复点 1：在 URL 结尾加上时间戳，彻底打穿浏览器 GET 缓存！
+                const response = await fetch(`${window.IIS_VECTOR_BASE}/api/graph/status/${threadId}?_t=${new Date().getTime()}`);
+                const data = await response.json();
+
+                if (data.status === 'PROCESSING') {
+                    const nodeCount = data.nodes ? data.nodes.length : 0;
+                    updateStatus(`正在进行深度推演... 已发现 ${nodeCount} 个关键节点，图谱生长中...`, "info");
+
+                    // 💡 修复点 2：只要发现有节点，立刻调用渲染函数，并告诉它是半成品 (isProcessing = true)
+                    if (nodeCount > 0) {
+                        renderResults(data, true);
+                    }
+                } else if (data.status === 'ANALYZING') {
+                    updateStatus(`发现 ${data.nodes.length} 个节点，推演完成！正在呼叫大模型进行全盘逻辑审查与总结...`, "warning");
+                    renderResults(data, true); // 保持图谱展示
+                } else if (data.status === 'COMPLETED') {
+                    clearInterval(pollInterval);
+                    updateStatus("推演与态势总结已全部完成！", "success", false);
+                    renderResults(data, false); // 最终渲染，关闭 Loading
+                    document.getElementById('btnGenerate').disabled = false;
+                } else if (data.status === 'REJECTED' || data.status === 'FAILED') {
+                    clearInterval(pollInterval);
+                    updateStatus(`任务终止: ${data.status} (可能因为无相关情报或被AI判定逻辑不连贯)`, "danger", false);
+                    document.getElementById('btnGenerate').disabled = false;
+                }
+            } catch (error) {
+                console.error("Polling error:", error);
+            }
+        }, 2000); // 每 2 秒轮询一次
+    }
+
+    function updateStatus(text, type, showSpinner = true) {
+        const statusArea = document.getElementById('statusArea');
+        const statusText = document.getElementById('statusText');
+        const spinner = statusArea.querySelector('.spinner-border');
+
+        statusArea.className = `alert alert-${type} shadow-sm`;
+        statusText.innerText = text;
+        if (showSpinner) {
+            spinner.classList.remove('d-none');
+        } else {
+            spinner.classList.add('d-none');
+        }
+    }
+
+    function renderResults(data, isProcessing = false) {
+        document.getElementById('resultArea').classList.remove('d-none');
+
+        // 只有当全部完成时，才隐藏顶部的状态栏
+        if (!isProcessing) {
+            document.getElementById('statusArea').classList.add('d-none');
+        }
+
+        // 1. 渲染 AI 评估报告 (如果有)
+        if (data.llm_summary) {
+            document.getElementById('aiSummaryPanel').classList.remove('d-none');
+            document.getElementById('aiSummaryText').innerText = data.llm_summary;
+            document.getElementById('aiCritiqueText').innerText = "AI 审查意见: " + (data.llm_critique || "无");
+            document.getElementById('aiScore').innerText = data.llm_evaluation_score || "-";
+        } else {
+            document.getElementById('aiSummaryPanel').classList.add('d-none');
+        }
+
+        // 2. 渲染时间线
+        renderTimeline(data.nodes);
+
+        // 3. 渲染关系图谱 (延迟渲染以确保 DOM 可见，防止 ECharts 计算高度错误)
+        setTimeout(() => {
+            renderGraph(data.nodes, data.edges, data.seed_uuid);
+        }, 100);
+    }
+
+    function renderTimeline(nodes) {
+        const container = document.getElementById('timelineContainer');
+        container.innerHTML = '';
+
+        if (!nodes || nodes.length === 0) {
+            container.innerHTML = '<p class="text-muted">未能找到任何相关脉络。</p>';
+            return;
+        }
+
+        nodes.forEach((node, index) => {
+            const isSeed = node.is_seed ? 'seed-node' : '';
+            const seedBadge = node.is_seed ? `<span class="badge bg-danger ms-2">种子节点</span>` : '';
+            const dateStr = node.incident_time || "未知时间";
+
+            // 【新增】处理相关情报的折叠 UI
+            let relatedHtml = '';
+            if (node.related_docs && node.related_docs.length > 0) {
+                const collapseId = `collapse_${index}`;
+
+                // 生成子项列表
+                const subItems = node.related_docs.map(sub => `
+                    <li class="list-group-item bg-transparent border-0 py-1 ps-3 border-start border-2 border-secondary ms-2 mb-1">
+                        <small class="text-muted me-2">${sub.time.split(' ')[0]}</small>
+                        <a href="/intelligence/${sub.uuid}" class="text-decoration-none timeline-article-link small" data-uuid="${sub.uuid}">
+                            ${sub.title}
+                        </a>
+                    </li>
+                `).join('');
+
+                relatedHtml = `
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary py-0" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+                            <i class="bi bi-chevron-expand"></i> 展开 ${node.related_docs.length} 篇相关追踪
+                        </button>
+                        <div class="collapse mt-2" id="${collapseId}">
+                            <ul class="list-group list-group-flush bg-light rounded">
+                                ${subItems}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const html = `
+                <div class="timeline-item ${isSeed}">
+                    <div class="text-muted small mb-1"><i class="bi bi-clock-history"></i> ${dateStr}</div>
+                    <h6 class="fw-bold text-dark mb-1">
+                        <a href="/intelligence/${node.uuid}"
+                           class="text-decoration-none timeline-article-link"
+                           data-uuid="${node.uuid}">
+                           ${node.title}
+                        </a>
+                        ${seedBadge}
+                    </h6>
+                    <p class="text-secondary small mb-1">${node.brief}</p>
+                    <div class="mt-1">
+                        ${node.key_actors.slice(0, 3).map(a => `<span class="badge bg-light text-dark border me-1">${a}</span>`).join('')}
+                    </div>
+                    ${relatedHtml} </div>
+            `;
+            container.innerHTML += html;
+        });
+    }
+
+    function renderGraph(nodesData, edgesData, seedUuid) {
+        const chartDom = document.getElementById('graph-container');
+        if (myChart != null) { myChart = echarts.init(chartDom); } // 销毁旧实例
+        myChart = echarts.init(chartDom);
+
+        // 转换 Nodes 数据给 ECharts
+        const eNodes = nodesData.map(n => ({
+            id: n.uuid,
+            name: n.title.length > 15 ? n.title.substring(0, 15) + '...' : n.title, // 截断长标题
+            symbolSize: n.is_seed ? 50 : 30, // 种子节点更大
+            itemStyle: { color: n.is_seed ? '#dc3545' : '#0d6efd' },
+            // 将详细信息存入自定义属性供 tooltip 使用
+            metaInfo: { date: n.incident_time, brief: n.brief, actors: n.key_actors }
+        }));
+
+        // 转换 Edges 数据给 ECharts
+        const eEdges = edgesData.map(e => ({
+            source: e.source_uuid,
+            target: e.target_uuid,
+            value: e.score,
+            lineStyle: { width: Math.max(1, e.score * 3), color: '#999' }, // 分数越高线越粗
+            connection_reason: e.connection_reason
+        }));
+
+        const option = {
+            title: { text: '脉络关系图谱', textStyle: { fontSize: 14 }, top: 10, left: 10 },
+            tooltip: {
+                formatter: function (params) {
+                    if (params.dataType === 'node') {
+                        const m = params.data.metaInfo;
+                        return `<div style="max-width:300px; white-space:normal;">
+                                  <b>${params.data.name}</b><br/>
+                                  <span style="color:#888;">${m.date || '未知时间'}</span><br/>
+                                  <small>${m.brief}</small>
+                                </div>`;
+                    } else if (params.dataType === 'edge') {
+                        return `<div style="max-width:300px; white-space:normal;">
+                                  <b>关联打分: ${params.data.value.toFixed(2)}</b><br/>
+                                  <small style="color:#d63384;">[推演依据]</small><br/>
+                                  <small>${params.data.connection_reason}</small>
+                                </div>`;
+                    }
+                }
+            },
+            series: [{
+                type: 'graph',
+                layout: 'force',
+                data: eNodes,
+                links: eEdges,
+                roam: true, // 支持鼠标缩放和平移
+                label: { show: true, position: 'right', fontSize: 10 },
+                force: {
+                    repulsion: 300, // 节点排斥力，越大越散
+                    edgeLength: [50, 150]
+                }
+            }]
+        };
+
+        myChart.setOption(option);
+
+        myChart.off('click');
+
+        myChart.on('click', function (params) {
+            if (params.dataType !== 'node') return;
+
+            const uuid = params.data?.id;
+            if (!uuid) return;
+
+            if (window.ArticleModalManager) {
+                ArticleModalManager.openByUuid(uuid);
+            }
+        });
+
+        // 监听 Tab 切换事件，解决 ECharts 在隐藏 Tab 下渲染宽度为 0 的 Bug
+        document.getElementById('graph-tab').addEventListener('shown.bs.tab', function () {
+            myChart.resize();
+        });
+    }
+</script>
+
+</body>
+</html>

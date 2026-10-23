@@ -9,13 +9,14 @@ import threading
 from uuid import uuid4
 from typing import Optional
 from functools import partial
+from pydantic import ValidationError
 
 from CrawlerServiceEngine import ServiceContext
 from IntelligenceCrawler.CrawlerGovernanceCore import CrawlSession
 from MyPythonUtility.easy_config import EasyConfig
 from Workflow.CommonFlowUtility import CrawlContext
 from IntelligenceCrawler.Extractor import ExtractionResult
-from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
+from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
 from Workflow.RssFeedsBasedCrawlFlow import build_crawl_ctx_by_service_ctx
 from IntelligenceCrawler.CrawlPipeline import CrawlPipeline, build_pipeline, drive_pipeline_batch
 
@@ -63,9 +64,20 @@ def intelligence_crawler_result_handler(
     except CrawlSession.Flow:
         # Crawl session context will handle it.
         raise
-    except Exception as e:
-        print(f"Build collected data fail: {e}")
-        # Handle exception outside.
+    except ValidationError as e:
+        details = sorted({
+            f"{'.'.join(str(part) for part in error.get('loc', ()))}:"
+            f"{error.get('type', 'validation_error')}"
+            for error in e.errors()
+        })
+        detail_text = ','.join(details) or 'unknown:validation_error'
+        context.logger.warning(
+            "Article skipped: category=invalid_collected_data "
+            f"fields={detail_text} url={url}"
+        )
+        raise CrawlSession.Skip(f'invalid_collected_data fields={detail_text}')
+    except Exception:
+        # 未分类异常继续交给 CrawlSession 输出完整 traceback。
         raise
 
 
@@ -85,6 +97,12 @@ class CommonIntelligenceCrawlFlow:
 
         self.pipeline: Optional[CrawlPipeline] = None
 
+    def shutdown(self):
+        """Terminally close fetchers when the owning plugin is stopping."""
+        pipeline, self.pipeline = self.pipeline, None
+        if pipeline:
+            pipeline.shutdown()
+
     def run_common_flow(self, local_crawler_config: dict, stop_event: threading.Event, global_site: bool = True):
 
         # Override generated config by user config file.
@@ -93,7 +111,14 @@ class CommonIntelligenceCrawlFlow:
         local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
         local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
-        local_crawler_config['article_filter'] = partial(intelligence_crawler_filter, context=self.crawl_context)
+        # article_filter：配置自带的过滤（如排除视频页）与本地去重过滤组合生效。
+        base_filter = partial(intelligence_crawler_filter, context=self.crawl_context)
+        user_filter = local_crawler_config.get('article_filter')
+        if callable(user_filter):
+            local_crawler_config['article_filter'] = (
+                lambda url: base_filter(url) and user_filter(url))
+        else:
+            local_crawler_config['article_filter'] = base_filter
         local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=self.crawl_context)
 
         # Check and submit cached data.
@@ -107,6 +132,14 @@ class CommonIntelligenceCrawlFlow:
                                            crawler_governor=self.crawl_context.crawler_governor)
 
         # TODO: Split and shorted the scope of scheduler.
-        with self.crawl_context.crawler_governor.schedule_pace(
-                f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, None):
-            drive_pipeline_batch(self.pipeline , local_crawler_config)
+        try:
+            with self.crawl_context.crawler_governor.schedule_pace(
+                    f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, stop_event):
+                drive_pipeline_batch(
+                    self.pipeline, local_crawler_config, stop_event=stop_event)
+        except InterruptedError:
+            if not stop_event.is_set():
+                raise
+        finally:
+            if stop_event.is_set():
+                self.shutdown()

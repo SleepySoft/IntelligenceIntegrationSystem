@@ -1,6 +1,7 @@
 ##############################
 ### Core Libraries & Frameworks
 ##############################
+-e ./event_engine              # Event V4 engine (local editable install)
 fastapi==0.115.12            # Async web framework (for building APIs)
 uvicorn==0.34.2              # ASGI server (for running FastAPI apps)
 Flask==3.1.1                 # Web framework (lightweight WSGI apps)
@@ -9,6 +10,7 @@ Jinja2==3.1.6                # Template engine (dependency for Flask)
 pymongo==4.13.0              # Official MongoDB driver
 tortoise-orm==0.25.0         # Async ORM (supports PostgreSQL/MySQL, etc.)
 pydantic==2.11.5             # Data validation library (core dependency of FastAPI)
+PyYAML>=6.0                  # YAML configuration for IIS and AIClientCenter
 markdown
 bcrypt
 psutil
@@ -21,7 +23,10 @@ httpx
 json_repair
 backoff
 
-playwright-stealth          # playwright more like brower
+# Crawl4AI installs tf-playwright-stealth, which owns the same
+# ``playwright_stealth`` module.  Installing the unrelated 2.x package on top
+# breaks Crawl4AI 0.6.3 (StealthConfig disappears).
+tf-playwright-stealth==1.2.0
 ultimate-sitemap-parser     # Sitemap
 
 ##############################
