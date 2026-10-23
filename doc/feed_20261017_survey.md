@@ -85,3 +85,16 @@ VOA 主英语栏目 RSS 仍冻结在 2025-03，但官方 RSS 目录中的 Dari�
 Mandarin、Pashto、Persian、Russian、Ukrainian 英文译稿流持续更新，最新文章日期为
 2026-10-15/16，正文页面也仍兼容现有提取器。`task_crawl_voanews.py` 已切换到这些
 活跃流，并增加 14 天新鲜度检查；部署配置重新启用该任务。
+
+### 2026-10-23 以色列本地媒体补充
+
+为补足中东事件中的以色列本地视角，实测并接入两个英文媒体源：
+
+| 源 | 发现方式 | 实测 | 结论 |
+|---|---|---|---|
+| Jerusalem Post | 官方 Israel / Politics / Middle East RSS | 每个 Feed 约 30 条；抽样正文约 3.6k–7.6k 字符 | 接入；URL 白名单排除 opinion 等非目标栏目 |
+| i24NEWS English | Israel / Elections / Middle East 列表页 | 每页约 24 条；抽样正文约 2.6k–9.9k 字符 | 接入；用精确文章选择器与同站白名单 |
+| Haaretz English | 官方 headlines RSS | Feed 约 100 条，但抽样正文仅约 330 字符 | 暂缓；付费墙摘要不足以进入 AI 主链 |
+
+本轮只接新闻媒体，不接 IDF、外交部等官方声明。官方声明需要先补充来源类型、主张者、
+独立来源计数和前端标识，避免把单方声明直接显示为已证实事实。
