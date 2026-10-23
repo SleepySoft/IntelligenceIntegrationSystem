@@ -53,25 +53,40 @@ v2版本的最终数据会在我续费度盘后上传（蹲打折）。
 既然媒体们自己不体面，那么我来让新闻体面。
 
 
-## 已接入的媒体（TODO：待更新）
+## 已接入的媒体
 
-```js
-{ domain: "aa.com.tr", nameCN: "阿纳多卢通讯社", country: "Turkey", flag: "🇹🇷", accessibleInChina: true },
-{ domain: "abc.net.au", nameCN: "澳大利亚广播公司", country: "Australia", flag: "🇦🇺", accessibleInChina: false },
-{ domain: "aljazeera.com", nameCN: "半岛电视台", country: "Qatar", flag: "🇶🇦", accessibleInChina: true },
-{ domain: "bbc.com", nameCN: "英国广播公司", country: "UK", flag: "🇬🇧", accessibleInChina: false },
-{ domain: "cbc.ca", nameCN: "加拿大广播公司", country: "Canada", flag: "🇨🇦", accessibleInChina: false },
-{ domain: "chinanews.com", nameCN: "中国新闻网", country: "China", flag: "🇨🇳", accessibleInChina: true },
-{ domain: "dw.com", nameCN: "德国之声", country: "Germany", flag: "🇩🇪", accessibleInChina: false },
-{ domain: "elpais.com", nameCN: "国家报", country: "Spain", flag: "🇪🇸", accessibleInChina: false },
-{ domain: "investing.com", nameCN: "英为财情", country: "International", flag: "🌍", accessibleInChina: true },
-{ domain: "news.cn", nameCN: "新华网", country: "China", flag: "🇨🇳", accessibleInChina: true },
-{ domain: "nhk.or.jp", nameCN: "日本广播协会", country: "Japan", flag: "🇯🇵", accessibleInChina: true },
-{ domain: "ntv.com.tr", nameCN: "土耳其主流媒体 NTV", country: "Turkey", flag: "🇹🇷", accessibleInChina: true },
-{ domain: "rfi.fr", nameCN: "法国国际广播电台", country: "France", flag: "🇫🇷", accessibleInChina: false },
-{ domain: "tass.com", nameCN: "塔斯社", country: "Russia", flag: "🇷🇺", accessibleInChina: true },
-{ domain: "voanews.com", nameCN: "美国之音", country: "USA", flag: "🇺🇸", accessibleInChina: false },
-```
+所属大区按媒体总部或主要编辑来源划分，而不是按其报道覆盖范围划分。中国大陆直连状态沿用已有记录；新接入且尚未持续验证的媒体标记为“未核验”。
+
+| 所属大区 | 国家/地区 | 媒体 | 域名 | 标识 | 中国大陆直连 |
+|---|---|---|---|:---:|:---:|
+| 全球 | 国际 | 英为财情（Investing.com） | `investing.com` | 🌍 | 是 |
+| 东亚 | 中国 | 中国新闻网 | `chinanews.com.cn` | 🇨🇳 | 是 |
+| 东亚 | 中国 | 新华网 | `news.cn` | 🇨🇳 | 是 |
+| 东亚 | 日本 | 日本广播协会（NHK） | `nhk.or.jp` | 🇯🇵 | 是 |
+| 东亚 | 韩国 | 韩联社（Yonhap） | `yna.co.kr` | 🇰🇷 | 未核验 |
+| 东南亚 | 新加坡 | 亚洲新闻台（CNA） | `channelnewsasia.com` | 🇸🇬 | 未核验 |
+| 东南亚 | 印度尼西亚 | 雅加达邮报（The Jakarta Post） | `thejakartapost.com` | 🇮🇩 | 未核验 |
+| 南亚 | 印度 | 印度时报（The Times of India） | `timesofindia.indiatimes.com` | 🇮🇳 | 未核验 |
+| 西亚/中东 | 土耳其 | 阿纳多卢通讯社 | `aa.com.tr` | 🇹🇷 | 是 |
+| 西亚/中东 | 土耳其 | NTV | `ntv.com.tr` | 🇹🇷 | 是 |
+| 西亚/中东 | 卡塔尔 | 半岛电视台 | `aljazeera.com` | 🇶🇦 | 是 |
+| 西亚/中东 | 以色列 | i24NEWS | `i24news.tv` | 🇮🇱 | 未核验 |
+| 西亚/中东 | 以色列 | 耶路撒冷邮报（The Jerusalem Post） | `jpost.com` | 🇮🇱 | 未核验 |
+| 欧洲 | 英国 | 英国广播公司（BBC） | `bbc.com` | 🇬🇧 | 否 |
+| 欧洲 | 英国 | 卫报（The Guardian） | `theguardian.com` | 🇬🇧 | 未核验 |
+| 欧洲 | 德国 | 德国之声 | `dw.com` | 🇩🇪 | 否 |
+| 欧洲 | 西班牙 | 国家报（El País） | `elpais.com` | 🇪🇸 | 否 |
+| 欧洲 | 法国 | 法兰西24（France 24） | `france24.com` | 🇫🇷 | 未核验 |
+| 欧洲 | 法国 | 法国国际广播电台（RFI） | `rfi.fr` | 🇫🇷 | 否 |
+| 欧洲 | 俄罗斯 | 莫斯科时报（The Moscow Times） | `themoscowtimes.com` | 🇷🇺 | 未核验 |
+| 欧洲 | 俄罗斯 | 塔斯社 | `tass.com` | 🇷🇺 | 是 |
+| 欧洲 | 泛欧洲 | 欧洲新闻台（Euronews） | `euronews.com` | 🇪🇺 | 未核验 |
+| 非洲 | 泛非洲 | 非洲新闻台（Africanews） | `africanews.com` | 🌍 | 未核验 |
+| 北美洲 | 加拿大 | 加拿大广播公司（CBC） | `cbc.ca` | 🇨🇦 | 否 |
+| 北美洲 | 美国 | 美国之音（VOA） | `voanews.com` | 🇺🇸 | 否 |
+| 南美洲 | 巴西 | 巴西通讯社（Agência Brasil） | `agenciabrasil.ebc.com.br` | 🇧🇷 | 未核验 |
+| 南美洲 | 乌拉圭 | MercoPress | `en.mercopress.com` | 🇺🇾 | 未核验 |
+| 大洋洲 | 澳大利亚 | 澳大利亚广播公司（ABC） | `abc.net.au` | 🇦🇺 | 否 |
 
 ## 环境配置及部署运行
 
