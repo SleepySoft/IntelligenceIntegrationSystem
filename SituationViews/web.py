@@ -21,6 +21,13 @@ from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, Vi
 
 logger = logging.getLogger(__name__)
 
+# 与 IISConfig.SituationSettings 的正式容量边界保持一致。这里同时供 API 校验、
+# dashboard profile 和模板输入约束使用，避免 UI/API 各自遗留更小的历史上限。
+GRAPH_MIN_NODES = 10
+GRAPH_MAX_NODES = 5000
+GRAPH_MIN_EDGES = 10
+GRAPH_MAX_EDGES = 20000
+
 # 浏览器不直接连接公共 CDN：移动网络、DNS 或代理策略经常只让这些请求失败，
 # 随后的内联代码就会表现为 ``d3 is not defined``。IIS 只代理固定版本、固定摘要
 # 的只读前端资源，并在进程内缓存；客户端仍可使用普通 HTTP 缓存。
@@ -216,8 +223,10 @@ class SituationViewsService:
                     keep_singletons = self.dashboard["keep_high_score_singletons"]
                 else:
                     min_support = self._bounded_int("min_support", 2, 1, 50)
-                    max_nodes = self._bounded_int("max_nodes", 80, 10, 300)
-                    max_edges = self._bounded_int("max_edges", 240, 10, 1000)
+                    max_nodes = self._bounded_int(
+                        "max_nodes", 80, GRAPH_MIN_NODES, GRAPH_MAX_NODES)
+                    max_edges = self._bounded_int(
+                        "max_edges", 240, GRAPH_MIN_EDGES, GRAPH_MAX_EDGES)
                     keep_singletons = self._bool_arg("keep_high_score_singletons", True)
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
                 return jsonify(engine.entity_graph(
@@ -513,6 +522,7 @@ class SituationViewsService:
             entity_edit_enabled=bool(
                 self.entity_resolution_service is not None
                 and session.get("logged_in", False)),
+            graph_max_nodes=GRAPH_MAX_NODES,
         )
 
     def _render_timeline(self, *, profile=None, embedded=False, scoped=None):
@@ -554,8 +564,10 @@ class SituationViewsService:
                 values.get("public_timeline_max_entities"), 8, 1, 8, int),
             "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
             "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
-            "max_nodes": self._coerce_number(values.get("max_nodes"), 80, 10, 5000, int),
-            "max_edges": self._coerce_number(values.get("max_edges"), 240, 10, 20000, int),
+            "max_nodes": self._coerce_number(
+                values.get("max_nodes"), 80, GRAPH_MIN_NODES, GRAPH_MAX_NODES, int),
+            "max_edges": self._coerce_number(
+                values.get("max_edges"), 240, GRAPH_MIN_EDGES, GRAPH_MAX_EDGES, int),
             "max_articles": self._coerce_number(
                 values.get("max_articles"), 5000, 100, 20000, int),
             "primary_only": self._coerce_bool(values.get("primary_only"), True),

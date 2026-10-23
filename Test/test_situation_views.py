@@ -632,6 +632,14 @@ def test_web_service_serves_both_views_with_injected_collections():
     })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
+    large_graph_payload = client.get(
+        "/situation/api/entity-graph",
+        query_string={**params, "max_nodes": "5000", "max_edges": "20000"},
+    )
+    excessive_graph_payload = client.get(
+        "/situation/api/entity-graph",
+        query_string={**params, "max_nodes": "5001"},
+    )
     timeline_payload = client.get(
         "/situation/api/entity-timeline",
         query_string=[*params.items(), ("entity", "organization|RU|行动方")],
@@ -702,6 +710,7 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
+    assert 'id="max-nodes" type="number" min="10" max="5000"' in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden' in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden' in embedded_html
     assert 'data-drawer-summary="map-intelligence-panel" aria-expanded="false"' in embedded_html
@@ -789,6 +798,11 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
     assert graph_payload.get_json()["edges"][0]["event_refs"] == [0]
     assert graph_payload.get_json()["temporal_events"][0][1] == "a"
+    assert large_graph_payload.status_code == 200
+    assert large_graph_payload.get_json()["meta"]["node_count"] == 2
+    assert large_graph_payload.get_json()["meta"]["edge_count"] == 1
+    assert excessive_graph_payload.status_code == 400
+    assert "10 到 5000" in excessive_graph_payload.get_json()["error"]
     assert timeline_payload.status_code == 200
     assert timeline_payload.get_json()["events"][0]["id"] == "e1"
     assert timeline_over_limit.status_code == 400

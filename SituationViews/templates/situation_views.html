@@ -322,7 +322,7 @@
                 <h2>关系图设置</h2>
                 <div class="graph-controls">
                     <label>最少独立事件数<input id="min-support" type="number" min="1" max="50" value="2"></label>
-                    <label>最多节点数<input id="max-nodes" type="number" min="10" max="300" value="80"></label>
+                    <label>最多节点数<input id="max-nodes" type="number" min="10" max="{{ graph_max_nodes }}" value="80"></label>
                     <label><span><input id="keep-singletons" type="checkbox" checked> 保留高评分单次关系</span></label>
                 </div>
                 <div id="graph-summary"></div>
