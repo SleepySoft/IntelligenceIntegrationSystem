@@ -849,6 +849,7 @@ class SituationViewEngine:
                     "id": event_uuid,
                     "article_uuid": article_uuid,
                     "title": str(event.get("_view_title") or "未命名情报"),
+                    "summary": str(event.get("_view_summary") or ""),
                     "score": round(float(event.get("_view_score") or 0), 2),
                     "category": category,
                     "predicate": {
@@ -922,9 +923,6 @@ class SituationViewEngine:
                 "source_count": len(values["sources"]),
                 "level": "cross_source" if len(values["sources"]) >= 2 else "cross_article",
             })
-        for item in ordered_events:
-            item.pop("source_domain", None)
-
         entity_values = []
         for entity_id in selected_ids:
             item = entity_data.get(entity_id)
@@ -1116,6 +1114,8 @@ class SituationViewEngine:
             appendix_path(APPENDIX_CONTENT_TIME): 1,
             appendix_path(APPENDIX_TOTAL_SCORE): 1,
         }
+        if event_projection is TIMELINE_EVENT_PROJECTION:
+            projection["EVENT_BRIEF"] = 1
         cursor = self.intelligence_collection.find(archive_filter, projection).limit(query.max_articles + 1)
         archives = list(cursor)
         truncated = len(archives) > query.max_articles
@@ -1129,6 +1129,8 @@ class SituationViewEngine:
                 "content_time": appendix.get(APPENDIX_CONTENT_TIME),
                 "score": appendix.get(APPENDIX_TOTAL_SCORE),
                 "title": item.get("EVENT_TITLE"),
+                "summary": re.sub(
+                    r"\s+", " ", str(item.get("EVENT_BRIEF") or "")).strip()[:600],
                 "source_domain": urlparse(str(item.get("INFORMANT") or "")).hostname or "",
             }
         identifiers = list(article_meta)
@@ -1142,6 +1144,7 @@ class SituationViewEngine:
             event["_view_content_time"] = data.get("content_time")
             event["_view_score"] = data.get("score")
             event["_view_title"] = data.get("title")
+            event["_view_summary"] = data.get("summary")
             event["_view_source_domain"] = data.get("source_domain")
         return events, {
             "start": self._json_time(query.start),

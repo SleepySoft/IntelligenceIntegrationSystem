@@ -40,6 +40,8 @@ def _archive(uuid, when, score):
     return {
         "UUID": uuid,
         "EVENT_TITLE": f"event-{uuid}",
+        "EVENT_BRIEF": f"summary-{uuid}",
+        "INFORMANT": f"https://source.example/{uuid}",
         "APPENDIX": {
             APPENDIX_CONTENT_TIME: when,
             APPENDIX_TOTAL_SCORE: score,
@@ -93,8 +95,8 @@ def test_situation_uses_separate_fixed_event_projections():
         "approximate": False, "surface": "10月20日",
     }}
     events = FakeCollection([event])
-    engine = SituationViewEngine(
-        FakeCollection([_archive("a", now, 8)]), events, DEFAULT_EVENT_REGISTRY)
+    archives = FakeCollection([_archive("a", now, 8)])
+    engine = SituationViewEngine(archives, events, DEFAULT_EVENT_REGISTRY)
     query = ViewQuery(now - timedelta(days=1), now + timedelta(days=1))
 
     engine.map_view(query)
@@ -108,6 +110,9 @@ def test_situation_uses_separate_fixed_event_projections():
     ]
     assert "time" not in GRAPH_EVENT_PROJECTION
     assert TIMELINE_EVENT_PROJECTION["time"] == 1
+    assert "EVENT_BRIEF" not in archives.projections[0]
+    assert "EVENT_BRIEF" not in archives.projections[1]
+    assert archives.projections[2]["EVENT_BRIEF"] == 1
 
 
 def test_map_view_accepts_multiple_event_categories():
@@ -534,7 +539,8 @@ def test_entity_timeline_targets_multiple_entities_without_graph_size_clipping()
     }
     assert result["events"][1]["time"]["source"] == "content_time"
     assert result["events"][1]["relations"][0]["internal"] is True
-    assert "source_domain" not in result["events"][0]
+    assert result["events"][0]["summary"] == "summary-a"
+    assert result["events"][0]["source_domain"] == "source.example"
     assert suggestions["entities"][0]["name"] == "白宫"
 
 
@@ -683,6 +689,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'src="/static/js/article_modal_manager.js"' in timeline_html
     assert 'src="/static/js/situation_article_modal.js"' in timeline_html
     assert 'class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}"' in timeline_html
+    assert '<h3>情报摘要</h3>' in timeline_html
+    assert '<h3>事件关系</h3>' in timeline_html
+    assert "item.source_domain" in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
     assert 'const API_PREFIX = "../api/scoped"' in embedded_html

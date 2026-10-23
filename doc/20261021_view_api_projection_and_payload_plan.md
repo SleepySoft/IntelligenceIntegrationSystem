@@ -259,8 +259,10 @@ time,
 is_primary
 ```
 
-实体搜索、聚合时间线和分轨时间线共用这一投影。来源域名来自已经很小的归档头投影，不读取
-正文或 `EVENT_EXTRACTION`。时间线按指定实体定向生成，不受实体图 `max_nodes/max_edges` 裁剪。
+实体搜索、聚合时间线和分轨时间线共用这一投影。时间线预览另外从归档头读取
+`EVENT_TITLE`、`EVENT_BRIEF`、`INFORMANT`、内容时间和总评分；响应中的摘要压缩空白并限制为
+600 字符，`INFORMANT` 只投影为来源域名。它仍不读取正文、原始数据或完整
+`EVENT_EXTRACTION`。时间线按指定实体定向生成，不受实体图 `max_nodes/max_edges` 裁剪。
 
 ### 5.4 窗口数据复用
 
