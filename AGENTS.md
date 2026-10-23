@@ -68,6 +68,7 @@
   - `CrawlerCodeGenerator.py` / `CrawlerCodePrototype.py`：代码生成
   - `CrawlerGovernanceBackend.py` / `CrawlerGovernanceCore.py`：爬虫治理与调度
   - `CrawlPipeline.py` / `Discoverer.py` / `Extractor.py` / `Fetcher.py`：流水线组件
+  - `skill/SKILL.md`：新增/修改媒体爬虫配置的项目级 Skill；包含配置契约、RSS/列表页/自定义过滤示例及离线验证脚本
 
 - **`ServiceComponent/`** — 业务组件层
   - `prompt_protocols.py`：Prompt 协议族机制（协议 = 前处理/后处理/校验链，目录 = 版本注册与抽样声明）
