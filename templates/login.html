@@ -108,6 +108,7 @@
     <div class="login-container">
         <div class="login-header">System Login</div>
         <form action="/login" method="POST">
+            <input type="hidden" name="next" value="{{ next_url }}">
             <div class="input-group">
                 <label for="username">User Name</label>
                 <input

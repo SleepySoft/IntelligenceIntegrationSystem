@@ -320,6 +320,15 @@ class IntelligenceHubWebService:
             or 'unknown'
         )
 
+    @staticmethod
+    def _safe_local_redirect_target(value: Any) -> Optional[str]:
+        """只允许本站绝对路径，避免登录 ``next`` 参数形成开放重定向。"""
+        target = str(value or "").strip()
+        if (not target.startswith("/") or target.startswith("//")
+                or "\\" in target or any(ord(char) < 32 for char in target)):
+            return None
+        return target
+
     def _get_combined_params(self) -> Dict[str, Any]:
         """统一参数解析与清洗器。优先级：URL Query (GET) > JSON Body > Form Data。"""
         combined = {}
@@ -782,6 +791,9 @@ class IntelligenceHubWebService:
 
         @app.route('/login', methods=['GET', 'POST'])
         def login():
+            next_url = self._safe_local_redirect_target(
+                request.form.get('next') if request.method == 'POST'
+                else request.args.get('next'))
             if request.method == 'POST':
                 client_ip = (request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or
                              request.headers.get('X-Real-IP', '').strip() or
@@ -798,11 +810,11 @@ class IntelligenceHubWebService:
                     session['username'] = username
                     session['login_ip'] = client_ip
                     session.permanent = True
-                    return redirect(url_for('show_post', article='index'))
+                    return redirect(next_url or url_for('show_post', article='index'))
                 else:
                     logger.info(f"Login fail - IP: {client_ip}, Username: {username}")
                     return "Invalid credentials", 401
-            return render_template('login.html')
+            return render_template('login.html', next_url=next_url or '')
 
         @app.route('/logout')
         @WebServiceAccessManager.login_required

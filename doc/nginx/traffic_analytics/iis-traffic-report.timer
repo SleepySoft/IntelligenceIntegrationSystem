@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the IIS traffic analytics report every five minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+RandomizedDelaySec=15s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

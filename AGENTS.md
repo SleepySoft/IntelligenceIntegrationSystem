@@ -336,7 +336,9 @@ pytest Test/
    - 生产环境建议设置 `deny_on_empty_config: true`，禁止空配置时放行
 
 2. **用户认证**
-   - 后台页面使用 Flask Session（`SECRET_KEY` 每次启动随机生成，持久会话 7 天）
+   - 后台页面使用 Flask Session；生产部署从私密环境变量 `IIS_SESSION_SECRET` 读取稳定签名
+     密钥，持久会话 7 天。未配置时仅为开发兼容而随机生成，重启会使既有会话失效；公网
+     HTTPS 部署设置 `IIS_SESSION_COOKIE_SECURE=true`
    - 密码使用 `bcrypt` 哈希存储在 `_config/Authentication.db`
    - 可通过 `Scripts/UserManagerConsole.py` 管理用户
 

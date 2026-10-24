@@ -39,10 +39,16 @@ from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, 
 from Tools.PerformanceLogger import setup_performance_logging, PERF_LOGGER_NAME
 
 wsgi_app = Flask(__name__)
-wsgi_app.secret_key = str(uuid.uuid4())
+# 生产部署应通过仅部署机可读的环境文件固定该值；否则每次重启都会让既有
+# Flask 签名会话失效。保留随机回退，保证开发环境未配置时仍能安全启动，
+# 但随机回退不适用于多 worker/多实例部署。
+wsgi_app.secret_key = os.environ.get("IIS_SESSION_SECRET") or str(uuid.uuid4())
 wsgi_app.permanent_session_lifetime = datetime.timedelta(days=7)
 wsgi_app.config.update(
-    # SESSION_COOKIE_SECURE=True,  # 仅通过HTTPS发送（生产环境必须）
+    SESSION_COOKIE_SECURE=(
+        os.environ.get("IIS_SESSION_COOKIE_SECURE", "false").strip().lower()
+        in {"1", "true", "yes", "on"}
+    ),
     SESSION_COOKIE_HTTPONLY=True,  # 防止JavaScript访问（安全）
     SESSION_COOKIE_SAMESITE='Lax'  # 防止CSRF攻击
 )

@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+output_dir=/var/www/traffic-analytics
+temporary_report="$output_dir/.raw.tmp.html"
+
+# 日志轮转保留 90 天。按文件名读取当前及历史专用日志；数据量很小，从头生成
+# 可避免轮转瞬间遗漏，又无需维护易损的增量状态。
+find /var/log/iis-traffic -maxdepth 1 -type f -name 'pageviews.log*' -print0 \
+    | sort -z \
+    | xargs -0r zcat -f \
+    | /usr/local/bin/goaccess - \
+        --no-global-config \
+        --log-format='%h [%d:%t %^] "%r" %s %b "%R" "%u" %T %v %^' \
+        --date-format='%d/%b/%Y' \
+        --time-format='%T' \
+        --tz=Asia/Shanghai \
+        --no-query-string \
+        --anonymize-ip \
+        --anonymize-level=2 \
+        --ignore-statics=panel \
+        --html-report-title='IIS 网站访问统计' \
+        --output="$temporary_report"
+
+chmod 0640 "$temporary_report"
+mv -f "$temporary_report" "$output_dir/raw.html"
+/usr/local/lib/iis-traffic/build_summary.py

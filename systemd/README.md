@@ -13,6 +13,11 @@
 | `iis.target` | 拉起当前启用的 Web 与爬虫服务（VectorDB 默认关闭） |
 | `iis-dashboard.service` | 开机创建 IIS 日志与系统监控 tmux 仪表盘 |
 
+Web 会话签名密钥写入部署机本地的 `/home/sleepy/.config/iis/web.env`（权限 `0600`），
+使用 `IIS_SESSION_SECRET=<随机长密钥>`；公网 HTTPS 部署同时设置
+`IIS_SESSION_COOKIE_SECURE=true`。未配置时程序仍以一次性随机密钥启动，但每次重启会使
+已有登录会话失效，也不能安全地运行多个 Web worker。
+
 付费 AI API Key 不写入 `iis.env` 或 YAML。Web 服务会额外读取部署机本地的
 `/home/sleepy/.config/iis/ai-clients.env`（权限应为 `0600`）；声明式 Client 配置仅通过
 `api_key_env` 引用变量名。该文件不属于仓库，也不会被提交。

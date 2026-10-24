@@ -9,6 +9,8 @@ User=sleepy
 Group=sleepy
 WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+# Web 会话签名等仅部署机持有的密钥，不进入仓库。
+EnvironmentFile=-/home/sleepy/.config/iis/web.env
 # 付费 AI 凭据属于部署机私密配置，不进入仓库。
 EnvironmentFile=-/home/sleepy/.config/iis/ai-clients.env
 # Codex CLI is installed per-user; system services do not inherit the login PATH.
