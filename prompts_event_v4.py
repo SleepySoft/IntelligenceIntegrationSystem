@@ -26,7 +26,8 @@ from ServiceComponent.prompt_protocols import PromptCatalog, PromptProtocol
 from prompts_event_v49 import EVENT_ANALYSIS_PROMPT_V49, build_event_v49_prompt
 from prompts_event_v50 import EVENT_ANALYSIS_PROMPT_V50, build_event_v50_prompt
 from prompts_event_v51 import build_event_v51_extraction_section, build_event_v51_prompt
-from prompts_event_v52 import build_event_v52_prompt
+from prompts_event_v52 import build_event_v52_extraction_section, build_event_v52_prompt
+from prompts_event_v53 import build_event_v53_prompt
 
 EXTRACTION_MODE_FULL = "full"
 EXTRACTION_MODE_CORE_SUBSET = "core_subset"
@@ -325,12 +326,22 @@ assert EVENT_ANALYSIS_PROMPT_V51 != EVENT_ANALYSIS_PROMPT_V48
 
 # V52：保留 v51 的紧凑目录和角色白名单，恢复完整角色落点规则，并把正文中可可靠
 # 规范化的事件时间明确为条件必填；核心参与者不能为了满足白名单被省略。
+EVENT_EXTRACTION_SECTION_V52 = build_event_v52_extraction_section(DEFAULT_EVENT_REGISTRY)
 EVENT_ANALYSIS_PROMPT_V52 = build_event_v52_prompt(
     EVENT_ANALYSIS_PROMPT_V51,
     EVENT_EXTRACTION_SECTION_V51,
     DEFAULT_EVENT_REGISTRY,
 )
 assert EVENT_ANALYSIS_PROMPT_V52 != EVENT_ANALYSIS_PROMPT_V51
+
+# V53：保留 v52 时间门和紧凑目录，只收紧核心参与者完整度；角色无法合法安置时
+# 必须使用开放谓词，不得通过省略实体满足白名单。
+EVENT_ANALYSIS_PROMPT_V53 = build_event_v53_prompt(
+    EVENT_ANALYSIS_PROMPT_V52,
+    EVENT_EXTRACTION_SECTION_V52,
+    DEFAULT_EVENT_REGISTRY,
+)
+assert EVENT_ANALYSIS_PROMPT_V53 != EVENT_ANALYSIS_PROMPT_V52
 
 
 # 生产抽样：v43（核心子集 + RATE 等级词映射）于 2026-10-12 成为生产版本。
@@ -340,7 +351,9 @@ assert EVENT_ANALYSIS_PROMPT_V52 != EVENT_ANALYSIS_PROMPT_V51
 # 角色纪律有效，但完整度随整体精简下降，现退出生产抽样并保留为显式对照。
 # v51 仅把 v50 的角色纪律和紧凑谓词目录反哺 v48；首轮发现时间/实体完整度下降，
 # 现退出抽样并保留为显式对照；
-# v52 保留 v51 的压缩收益，恢复角色落点并增加时间完整度检查；v48/v52 等概率抽样，
+# v52 保留 v51 的压缩收益，恢复角色落点并增加时间完整度检查；生产灰度发现实体和
+# 角色绑定完整度下降，现退出抽样并保留显式对照；
+# v53 保留 v52 时间门和紧凑目录，禁止以省略核心参与者满足白名单；v48/v53 等概率抽样，
 # 用归档 __PROMPT_VERSION__ 分组评估；
 # v47 保留为旧时间契约的回滚/缓存对照版本；
 # v46 保留为同业务契约、旧消息布局的回滚/缓存对照版本；
@@ -418,9 +431,14 @@ def build_event_v4_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
         EVENT_CORE_EXTRACTION_SECTION_MINIMAL_TIME,
         registry,
     )
+    v52_extraction = build_event_v52_extraction_section(registry)
+    v52_prompt = build_event_v52_prompt(v51_prompt, v51_extraction, registry)
     catalog.register_prompt(
-        52, build_event_v52_prompt(v51_prompt, v51_extraction, registry),
+        53, build_event_v53_prompt(v52_prompt, v52_extraction, registry),
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=True)
+    catalog.register_prompt(
+        52, v52_prompt,
+        protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)
     catalog.register_prompt(
         51, v51_prompt,
         protocol=EXTRACTION_MODE_CORE_SUBSET_LEVELS_REASON, sampling=False)

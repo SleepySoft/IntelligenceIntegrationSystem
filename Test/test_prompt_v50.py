@@ -9,9 +9,9 @@ from event_engine.domains import registry_for
 from test_prompt_v49 import _output_example, _rich_output
 
 
-def test_v50_remains_selectable_during_v52_gray_sampling():
+def test_v50_remains_selectable_during_v53_gray_sampling():
     catalog = catalog_module.EVENT_V4_PROMPT_CATALOG
-    assert catalog.sampling_versions() == [48, 52]
+    assert catalog.sampling_versions() == [48, 53]
     assert catalog.protocol_for(50) is catalog.protocol_for(48)
     assert catalog.text_for(50) == v50.EVENT_ANALYSIS_PROMPT_V50
     assert 50 not in catalog_module.EVENT_ANALYSIS_PROMPT_TABLE

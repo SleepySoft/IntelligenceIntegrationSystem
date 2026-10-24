@@ -893,10 +893,10 @@ def test_v4_debug_prompt_catalog_exposes_all_versions_and_gray_sampling_pair():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52}
+    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53}
     assert "核心子集" in table[42]
-    # v48 作对照、v52 作紧凑目录完整度修复灰度，两者共用输出协议。
-    assert list(ports._prompt_table) == [48, 52]
+    # v48 作对照、v53 作核心参与者完整度修复灰度，两者共用输出协议。
+    assert list(ports._prompt_table) == [48, 53]
 
 
 class FakeShadowRecorder:

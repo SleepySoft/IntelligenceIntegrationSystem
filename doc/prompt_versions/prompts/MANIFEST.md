@@ -16,4 +16,5 @@
 | [v49](v49.txt) | `core_subset_levels_reason` | 否 | 14004 | 23538 | 280 | `5a792a497307345816dc48f4aea8c0e422659a8044182939e076d1fc4d764504` |
 | [v50](v50.txt) | `core_subset_levels_reason` | 否 | 14767 | 24845 | 289 | `145e92b1ab1f4689eecb010ab698be0675382cebeb438658ff4519c363957586` |
 | [v51](v51.txt) | `core_subset_levels_reason` | 否 | 15333 | 26093 | 305 | `41f0467de2f25b8a288160b6c311162cb0fae61be533f6233bd96dc95daecfaf` |
-| [v52](v52.txt) | `core_subset_levels_reason` | 是 | 15936 | 27394 | 311 | `f23bd1f1d888457ce5d27464b7f2a2851e59a98e7f2c7c1a7685330b29c4f61f` |
+| [v52](v52.txt) | `core_subset_levels_reason` | 否 | 15936 | 27394 | 311 | `f23bd1f1d888457ce5d27464b7f2a2851e59a98e7f2c7c1a7685330b29c4f61f` |
+| [v53](v53.txt) | `core_subset_levels_reason` | 是 | 16362 | 28574 | 318 | `7907a26c245f7925a61e8d5fabe07dbe227379c7a885e53aa6203b46897e3d90` |

@@ -286,9 +286,12 @@ python VectorDB/VectorDBBService.py \
   规则对照、长度与验证见 `doc/prompt_versions/reports/20261020_prompt_v49_compaction.md`。
 - v51 首轮灰度确认紧凑目录能降低 Token 并消除未登记角色，但时间/实体完整度下降，
   已退出抽样并保留显式对照。v52 恢复完整角色落点、增加逐事件时间检查并保护核心
-  参与者，生产代码按 v48/v52 等概率灰度；首次 Prompt 分配写入 cache，持久化重试和
-  重启恢复复用同一版本。设计与停止条件见
-  `doc/prompt_versions/reports/20261021_prompt_v52_gray_design.md`。
+  参与者，首次 Prompt 分配写入 cache，持久化重试和重启恢复复用同一版本。
+  v52 灰度发现实体与角色绑定完整度下降后退出抽样；v53 保留其时间门和紧凑目录，
+  改为先确定核心参与者再选谓词，角色无法合法安置时必须使用开放谓词，生产代码按
+  v48/v53 等概率灰度。设计与停止条件见
+  `doc/prompt_versions/reports/20261021_prompt_v52_gray_design.md`、
+  `doc/prompt_versions/reports/20261024_prompt_v53_converged_design.md`。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）

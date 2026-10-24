@@ -5,7 +5,7 @@
 
 ## 目录
 
-- [`prompts/`](prompts/)：`PromptCatalog` 完成全部章节拼装后的 v41—v52 静态文本；
+- [`prompts/`](prompts/)：`PromptCatalog` 完成全部章节拼装后的 v41—v53 静态文本；
   [`MANIFEST.md`](prompts/MANIFEST.md) 记录协议、抽样状态、长度和 SHA-256。
 - [`reports/`](reports/)：各轮设计、灰度和生产评估报告，按日期及版本命名。
 
@@ -35,3 +35,4 @@ pytest -q Test/test_prompt_exports.py Test/test_prompt_protocols.py
 - [v51 单变量压缩灰度](reports/20261021_prompt_v51_role_compaction_gray.md)
 - [v52 灰度设计](reports/20261021_prompt_v52_gray_design.md)
 - [v48 / v52 完整生产灰度分析](reports/20261024_prompt_v48_v52_gray_analysis.md)
+- [v53 完整度优先的收敛设计](reports/20261024_prompt_v53_converged_design.md)

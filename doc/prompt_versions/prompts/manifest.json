@@ -117,11 +117,21 @@
       "version": 52,
       "file": "v52.txt",
       "protocol": "core_subset_levels_reason",
-      "sampling": true,
+      "sampling": false,
       "characters": 15936,
       "utf8_bytes": 27394,
       "lines": 311,
       "sha256": "f23bd1f1d888457ce5d27464b7f2a2851e59a98e7f2c7c1a7685330b29c4f61f"
+    },
+    {
+      "version": 53,
+      "file": "v53.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": true,
+      "characters": 16362,
+      "utf8_bytes": 28574,
+      "lines": 318,
+      "sha256": "7907a26c245f7925a61e8d5fabe07dbe227379c7a885e53aa6203b46897e3d90"
     }
   ]
 }
