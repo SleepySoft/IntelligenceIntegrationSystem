@@ -512,6 +512,10 @@ class SituationViewsService:
         return render_template(
             "situation_views.html",
             categories=CATEGORY_LABELS,
+            predicate_labels={
+                str(predicate_id): str(spec.label or predicate_id)
+                for predicate_id, spec in self.registry.items()
+            },
             subsystems=self.subsystem_registry.describe(),
             detail_origin=self.detail_origin,
             dashboard_view=view,

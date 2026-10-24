@@ -748,6 +748,15 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'entity-register-fixed-alias' not in embedded_html
     assert 'id="graph-search-panel"' in embedded_html
     assert 'id="graph-search-results"' in embedded_html
+    assert 'id="map-search-panel"' in embedded_html
+    assert 'id="map-search-results"' in embedded_html
+    assert 'placeholder="国家、地点、大区、事件类别或谓词"' in embedded_html
+    assert 'const PREDICATE_LABELS =' in embedded_html
+    assert r'"attack": "\u653b\u51fb"' in embedded_html
+    assert 'function normalizeMapSearchText(value)' in embedded_html
+    assert 'async function focusMapSearchResult(entryId)' in embedded_html
+    assert "if (activeView === 'map') openMapSearch()" in embedded_html
+    assert "loadJson(`${API_PREFIX}/map/locations`" in embedded_html
     assert '搜索 Ctrl+F' in embedded_html
     assert 'id="map-time-start" type="range"' in embedded_html
     assert 'id="map-time-end" type="range"' in embedded_html

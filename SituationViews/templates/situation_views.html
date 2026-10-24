@@ -125,6 +125,7 @@
         .wiki-links a { color: light-dark(#2457c5, #a9c4ff); }
         .graph-search-open { position: absolute; left: 12px; top: 44px; z-index: 8; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
         .graph-search-panel { position: absolute; left: 12px; top: 86px; z-index: 9; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 100px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 9px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: 0 16px 42px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); }
+        #map-search-panel { grid-template-rows: auto auto auto minmax(0, 1fr); }
         .graph-search-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .graph-search-head h2 { margin: 0; font-size: 15px; }
         .graph-search-head button { min-height: 30px; padding: 4px 9px; }
@@ -132,6 +133,7 @@
         .graph-search-result { width: 100%; min-height: 0; display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; text-align: left; font-weight: 500; }
         .graph-search-result b { display: block; color: var(--text); overflow-wrap: anywhere; }
         .graph-search-result small { display: block; margin-top: 2px; color: var(--muted); overflow-wrap: anywhere; }
+        .map-search-help { margin: 0; color: var(--muted); font-size: 11px; }
         .graph-notice { position: fixed; left: 50%; top: 14px; z-index: 30; width: min(620px, calc(100% - 28px)); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 34px color-mix(in srgb, #000 28%, transparent); }
         .graph-notice span { flex: 1; }
         .graph-notice button { min-height: 32px; padding: 5px 9px; white-space: nowrap; }
@@ -256,6 +258,13 @@
                 <div class="status" id="map-status">正在加载地图与事件…</div>
                 <svg id="map-svg" role="img" aria-label="事件热点地球视图"></svg>
                 <div class="tooltip" id="map-tooltip"></div>
+                <button class="graph-search-open" type="button" id="map-search-open">搜索 Ctrl+F</button>
+                <section class="graph-search-panel" id="map-search-panel" aria-label="搜索地域与事件" hidden>
+                    <div class="graph-search-head"><h2>搜索当前地图</h2><button type="button" id="map-search-close">关闭</button></div>
+                    <input id="map-search-input" type="search" autocomplete="off" placeholder="国家、地点、大区、事件类别或谓词">
+                    <p class="map-search-help">匹配当前时间与类别过滤后的热点；点击结果定位并打开情报。</p>
+                    <div class="graph-search-results" id="map-search-results"><span class="muted">可搜索中英文地名、ISO 代码和当前地图的事件语义。</span></div>
+                </section>
                 <div class="map-attribution">细化坐标 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></div>
                 {% if embedded %}
                 <div class="scope-badge">最近 {{ dashboard_profile.window_days }} 天 · 评分 ≥ {{ dashboard_profile.min_score }}</div>
@@ -458,6 +467,7 @@ const ENTITY_LABELS = {
     location: '地点', facility: '设施', other: '其他实体'
 };
 const CATEGORY_LABELS = {{ categories|tojson }};
+const PREDICATE_LABELS = {{ predicate_labels|tojson }};
 const DASHBOARD_VIEW = {{ dashboard_view|tojson }};
 const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
 const API_PREFIX = {{ api_prefix|tojson }};
@@ -475,6 +485,7 @@ let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResource
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
 let graphZoomBehavior = null, renderedGraphNodes = new Map();
+let mapSearchContext = null;
 let applyMapTemporalFilter = null, applyGraphTemporalFilter = null;
 const temporalRanges = {map: null, graph: null};
 let editingGraphNode = null, editingReferences = [], selectedEditingRefKeys = new Set();
@@ -651,8 +662,92 @@ function updateIntelligenceDrawerSummary(panelId, message, notify = true) {
     }, 1000);
 }
 
+// 地域搜索只建立浏览器内的检索投影，不改变地点身份或服务端数据。国家名称来自
+// 固定版本的 world-countries 元数据；大区中文名仅作为查询入口，不参与地理归一化。
+const MAP_REGION_ALIASES = {
+    Africa: ['非洲'], Americas: ['美洲'], Asia: ['亚洲'], Europe: ['欧洲'], Oceania: ['大洋洲'],
+    'Northern Africa': ['北非'], 'Sub-Saharan Africa': ['撒哈拉以南非洲'],
+    'Northern America': ['北美', '北美洲'], Caribbean: ['加勒比', '加勒比地区'],
+    'Central America': ['中美', '中美洲'], 'South America': ['南美', '南美洲'],
+    'Central Asia': ['中亚'], 'Eastern Asia': ['东亚'], 'South-Eastern Asia': ['东南亚'],
+    'Southern Asia': ['南亚'], 'Western Asia': ['西亚'],
+    'Eastern Europe': ['东欧'], 'Northern Europe': ['北欧'], 'Southern Europe': ['南欧'],
+    'Western Europe': ['西欧'], 'Australia and New Zealand': ['澳大利亚和新西兰'],
+    Melanesia: ['美拉尼西亚'], Micronesia: ['密克罗尼西亚'], Polynesia: ['波利尼西亚']
+};
+const MAP_CUSTOM_REGIONS = {
+    '中东': new Set(['BH', 'CY', 'EG', 'IR', 'IQ', 'IL', 'JO', 'KW', 'LB', 'OM', 'PS', 'QA', 'SA', 'SY', 'TR', 'AE', 'YE'])
+};
+const MAP_ADMIN_SUFFIXES = /(?:特别行政区|维吾尔自治区|壮族自治区|回族自治区|自治区|自治州|自治县|地区|省|市|区|县|州|郡)$/u;
+
+function normalizeMapSearchText(value) {
+    return String(value ?? '').normalize('NFKD').replace(/\p{M}+/gu, '')
+        .toLocaleLowerCase().trim().replace(/[\p{P}\p{S}\s]+/gu, '');
+}
+function mapSearchVariants(value) {
+    const normalized = normalizeMapSearchText(value);
+    if (!normalized) return [];
+    const withoutSuffix = normalized.replace(MAP_ADMIN_SUFFIXES, '');
+    return [...new Set([normalized, withoutSuffix].filter(Boolean))];
+}
+function mapSearchFieldRank(values, query) {
+    const queryVariants = mapSearchVariants(query);
+    let rank = Infinity;
+    for (const value of values || []) for (const candidate of mapSearchVariants(value)) {
+        for (const needle of queryVariants) {
+            if (candidate === needle) rank = Math.min(rank, 0);
+            else if (candidate.startsWith(needle)) rank = Math.min(rank, 1);
+            else if (candidate.includes(needle)) rank = Math.min(rank, 2);
+        }
+    }
+    return rank;
+}
+function mapSearchMatches() {
+    if (!mapSearchContext) return [];
+    const query = $('map-search-input').value.trim();
+    if (!query) return [];
+    return mapSearchContext.entries().map(entry => {
+        let best = {rank: Infinity, label: ''};
+        for (const field of entry.fields) {
+            const rank = mapSearchFieldRank(field.values, query);
+            if (rank < best.rank) best = {rank, label: field.label};
+        }
+        return {...entry, matchRank: best.rank, matchLabel: best.label};
+    }).filter(entry => Number.isFinite(entry.matchRank)).sort((left, right) =>
+        left.matchRank - right.matchRank || right.eventCount - left.eventCount
+        || left.name.localeCompare(right.name));
+}
+function renderMapSearchResults() {
+    const target = $('map-search-results');
+    if (!target) return;
+    const query = $('map-search-input').value.trim();
+    if (!query) {
+        target.innerHTML = '<span class="muted">可搜索中英文地名、ISO 代码和当前地图的事件语义。</span>';
+        return;
+    }
+    const matches = mapSearchMatches();
+    target.innerHTML = `<div class="muted">找到 ${matches.length} 个当前可见结果。</div>`
+        + matches.map(entry => `<button type="button" class="graph-search-result" data-map-search-id="${escapeHtml(entry.id)}">
+            <i class="dot" style="background:${CATEGORY_COLORS[entry.category] || CATEGORY_COLORS.other}"></i>
+            <span><b>${escapeHtml(entry.name)}</b><small>${escapeHtml(entry.kind)} · ${escapeHtml(entry.countryName || entry.countryCode)} · ${entry.eventCount} 个事件</small><small>${escapeHtml(entry.matchLabel)}匹配</small></span>
+        </button>`).join('');
+    if (!matches.length) target.innerHTML += '<span class="muted">当前时间和类别范围内没有匹配结果。</span>';
+}
+function openMapSearch() {
+    $('map-search-panel').hidden = false;
+    $('map-search-input').focus();
+    $('map-search-input').select();
+    renderMapSearchResults();
+}
+function closeMapSearch() { $('map-search-panel').hidden = true; }
+async function focusMapSearchResult(entryId) {
+    const entry = mapSearchMatches().find(item => item.id === entryId);
+    if (entry && mapSearchContext) await mapSearchContext.focus(entry);
+}
+
 async function refreshMap() {
     $('map-status').classList.add('show');
+    mapSearchContext = null;
     selectedCountry = null;
     $('map-intelligence-panel').hidden = true;
     try {
@@ -680,6 +775,7 @@ function renderMap() {
     const centers = new Map(countries.filter(c => c.cca2 && c.latlng?.length === 2)
         .map(c => [c.cca2, [c.latlng[1], c.latlng[0]]]));
     const names = new Map(countries.map(c => [c.cca2, c.translations?.zho?.common || c.name?.common || c.cca2]));
+    const countryMetadata = new Map(countries.filter(c => c.cca2).map(c => [c.cca2, c]));
     // 桌面端为右侧悬浮图例预留空间，使地球保持完整并略向左显示。
     const panelReserve = width >= 760 ? Math.min(360, width * 0.34) : 0;
     const projection = d3.geoOrthographic().fitExtent(
@@ -820,6 +916,81 @@ function renderMap() {
             .attr('y', d => (projection(centers.get(d.country_code))?.[1] || 0) - radius(d.event_count) - 5);
         redrawFine();
     }
+
+    const countryNames = country => {
+        const translated = Object.values(country?.translations || {}).flatMap(value =>
+            [value?.common, value?.official]);
+        const native = Object.values(country?.name?.nativeName || {}).flatMap(value =>
+            [value?.common, value?.official]);
+        return [country?.name?.common, country?.name?.official, country?.cca2, country?.cca3,
+            country?.cioc, ...(country?.altSpellings || []), ...(country?.capital || []),
+            ...translated, ...native].filter(Boolean);
+    };
+    const regionNames = country => [country?.region, country?.subregion,
+        ...(MAP_REGION_ALIASES[country?.region] || []),
+        ...(MAP_REGION_ALIASES[country?.subregion] || []),
+        ...Object.entries(MAP_CUSTOM_REGIONS).filter(([, codes]) => codes.has(country?.cca2)).map(([name]) => name)
+    ].filter(Boolean);
+    const buildMapSearchEntries = () => visible.filter(hotspot => hotspot._timeVisible !== false)
+        .flatMap(hotspot => {
+            const country = countryMetadata.get(hotspot.country_code) || {};
+            const countryName = names.get(hotspot.country_code) || hotspot.country_code;
+            const categoryNames = Object.keys(hotspot.categories || {}).flatMap(key =>
+                [key, CATEGORY_LABELS[key]]).filter(Boolean);
+            const predicateNames = (hotspot._searchPredicates || Object.keys(hotspot.predicates || {})).flatMap(key =>
+                [key, PREDICATE_LABELS[key]]).filter(Boolean);
+            const countryEntry = {
+                id: `country:${hotspot.country_code}`, kind: '国家热点', name: countryName,
+                countryName, countryCode: hotspot.country_code, eventCount: hotspot.event_count,
+                category: hotspot.dominant_category, hotspot, coordinates: centers.get(hotspot.country_code),
+                fields: [
+                    {label: '地名', values: countryNames(country)},
+                    {label: '大区', values: regionNames(country)},
+                    {label: '事件类别', values: categoryNames},
+                    {label: '事件谓词', values: predicateNames}
+                ]
+            };
+            const locations = (hotspot._searchLocations || hotspot.locations || []).map(location => ({
+                id: `location:${hotspot.country_code}:${location.name}`, kind: '提取地点',
+                name: location.name, countryName, countryCode: hotspot.country_code,
+                eventCount: location.count, category: hotspot.dominant_category,
+                hotspot, locationName: location.name, coordinates: null,
+                fields: [{label: '地名', values: [location.name]}]
+            }));
+            return [countryEntry, ...locations];
+        });
+    const rotateTo = coordinates => {
+        if (!coordinates || coordinates.length !== 2) return;
+        const start = projection.rotate(), target = [-Number(coordinates[0]), -Number(coordinates[1]), start[2] || 0];
+        const interpolate = d3.interpolateArray(start, target);
+        d3.transition().duration(420).tween('map-search-focus', () => value => {
+            projection.rotate(interpolate(value));
+            redraw();
+        }).on('end', () => scheduleFineLocations(0));
+    };
+    mapSearchContext = {
+        entries: buildMapSearchEntries,
+        focus: async entry => {
+            let coordinates = entry.coordinates;
+            if (entry.locationName) {
+                try {
+                    const result = await loadJson(`${API_PREFIX}/map/locations`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({locations: [{name: entry.locationName,
+                            country_code: entry.countryCode, event_count: entry.eventCount,
+                            dominant_category: entry.category}]})
+                    });
+                    const resolved = (result.locations || [])[0];
+                    if (resolved) coordinates = [Number(resolved.longitude), Number(resolved.latitude)];
+                } catch (error) {
+                    console.warn('搜索地点坐标加载失败', error);
+                }
+                coordinates ||= centers.get(entry.countryCode);
+            }
+            rotateTo(coordinates);
+            showMapDetail(entry.hotspot, entry.countryName, entry.locationName || null);
+        }
+    };
     svg.call(d3.drag().on('drag', event => {
         const rotate = projection.rotate();
         const k = 75 / projection.scale();
@@ -887,6 +1058,9 @@ function renderMap() {
             hotspot.categories = Object.fromEntries(orderedCategories);
             hotspot.dominant_category = orderedCategories[0]?.[0] || 'other';
             hotspot.predicates = Object.fromEntries([...predicates.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8));
+            hotspot._searchPredicates = [...predicates.keys()];
+            hotspot._searchLocations = [...locations.entries()].sort((a, b) => b[1] - a[1])
+                .map(([name, count]) => ({name, count}));
             hotspot.locations = [...locations.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
                 .map(([name, count]) => ({name, count}));
             hotspot.last_time = lastTime ? new Date(lastTime * 1000).toISOString() : null;
@@ -904,6 +1078,7 @@ function renderMap() {
             .attr('r', d => radius(Math.max(1, d.event_count)) + 4);
         labels.text(d => `${names.get(d.country_code)} ${d.event_count}`);
         redraw();
+        renderMapSearchResults();
         const currentSummary = $('map-summary');
         if (currentSummary) currentSummary.innerHTML = `<div class="meta">
             <div class="metric"><b>${activeEventIds.size}</b>当前事件</div>
@@ -1954,6 +2129,13 @@ $('entity-limited-scope').addEventListener('change', event => {
 $('entity-assign').addEventListener('click', saveEntityAssignment);
 $('entity-unassign').addEventListener('click', clearEntityAssignment);
 $('entity-undo').addEventListener('click', undoEntityAssignment);
+$('map-search-open').addEventListener('click', openMapSearch);
+$('map-search-close').addEventListener('click', closeMapSearch);
+$('map-search-input').addEventListener('input', renderMapSearchResults);
+$('map-search-results').addEventListener('click', event => {
+    const button = event.target.closest('[data-map-search-id]');
+    if (button) focusMapSearchResult(button.dataset.mapSearchId);
+});
 $('graph-search-open').addEventListener('click', openGraphSearch);
 $('graph-search-close').addEventListener('click', closeGraphSearch);
 $('graph-search-input').addEventListener('input', renderGraphSearchResults);
@@ -1965,10 +2147,14 @@ $('graph-manual-refresh').addEventListener('click', refreshGraph);
 $('graph-notice-close').addEventListener('click', () => { $('graph-notice').hidden = true; });
 document.addEventListener('keydown', event => {
     const searchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 'f';
-    if (searchShortcut && activeView === 'graph' && !$('entity-editor').open) {
+    if (searchShortcut && !$('entity-editor').open) {
         event.preventDefault();
-        openGraphSearch();
+        if (activeView === 'map') openMapSearch();
+        else openGraphSearch();
         return;
+    }
+    if (event.key === 'Escape' && !$('map-search-panel').hidden && !$('entity-editor').open) {
+        closeMapSearch();
     }
     if (event.key === 'Escape' && !$('graph-search-panel').hidden && !$('entity-editor').open) {
         closeGraphSearch();
