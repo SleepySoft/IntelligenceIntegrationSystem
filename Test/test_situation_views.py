@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from ServiceComponent.intelligence_contracts import (
-    APPENDIX_CONTENT_TIME, APPENDIX_TOTAL_SCORE,
+    APPENDIX_CONTENT_TIME, APPENDIX_CONTENT_TIME_SOURCE,
+    APPENDIX_TIME_ARCHIVED, APPENDIX_TIME_GOT, APPENDIX_TIME_PUB,
+    APPENDIX_TOTAL_SCORE,
 )
 from SituationViews.engine import (
     GRAPH_EVENT_PROJECTION,
@@ -44,6 +46,10 @@ def _archive(uuid, when, score):
         "INFORMANT": f"https://source.example/{uuid}",
         "APPENDIX": {
             APPENDIX_CONTENT_TIME: when,
+            APPENDIX_CONTENT_TIME_SOURCE: "published",
+            APPENDIX_TIME_PUB: when - timedelta(hours=2),
+            APPENDIX_TIME_GOT: when - timedelta(hours=1),
+            APPENDIX_TIME_ARCHIVED: when,
             APPENDIX_TOTAL_SCORE: score,
         },
     }
@@ -541,6 +547,12 @@ def test_entity_timeline_targets_multiple_entities_without_graph_size_clipping()
     assert result["events"][1]["relations"][0]["internal"] is True
     assert result["events"][0]["summary"] == "summary-a"
     assert result["events"][0]["source_domain"] == "source.example"
+    assert result["events"][0]["content_time_source"] == "published"
+    assert result["events"][0]["published_at"] == (
+        now - timedelta(hours=2)).isoformat()
+    assert result["events"][0]["collected_at"] == (
+        now - timedelta(hours=1)).isoformat()
+    assert result["events"][0]["archived_at"] == now.isoformat()
     assert suggestions["entities"][0]["name"] == "白宫"
 
 

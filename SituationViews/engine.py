@@ -14,7 +14,11 @@ from urllib.parse import urlparse
 
 from ServiceComponent.intelligence_contracts import (
     APPENDIX_CONTENT_TIME,
+    APPENDIX_CONTENT_TIME_SOURCE,
     APPENDIX_FIELD,
+    APPENDIX_TIME_ARCHIVED,
+    APPENDIX_TIME_GOT,
+    APPENDIX_TIME_PUB,
     APPENDIX_TOTAL_SCORE,
     appendix_path,
 )
@@ -859,6 +863,11 @@ class SituationViewEngine:
                     "negated": self._is_negated(event),
                     "time": self._timeline_time(event),
                     "content_time": self._json_time(event.get("_view_content_time")),
+                    "content_time_source": str(
+                        event.get("_view_content_time_source") or ""),
+                    "published_at": self._json_time(event.get("_view_published_at")),
+                    "collected_at": self._json_time(event.get("_view_collected_at")),
+                    "archived_at": self._json_time(event.get("_view_archived_at")),
                     "source_domain": str(event.get("_view_source_domain") or ""),
                     "selected_entity_ids": set(),
                     "relations": [],
@@ -1116,6 +1125,14 @@ class SituationViewEngine:
         }
         if event_projection is TIMELINE_EVENT_PROJECTION:
             projection["EVENT_BRIEF"] = 1
+            # 时间线卡片与情报列表使用同一组三时间口径；其它态势接口仍只读取
+            # 内容主时间，避免为地图和关系图扩大 Mongo 投影。
+            projection.update({
+                appendix_path(APPENDIX_CONTENT_TIME_SOURCE): 1,
+                appendix_path(APPENDIX_TIME_PUB): 1,
+                appendix_path(APPENDIX_TIME_GOT): 1,
+                appendix_path(APPENDIX_TIME_ARCHIVED): 1,
+            })
         cursor = self.intelligence_collection.find(archive_filter, projection).limit(query.max_articles + 1)
         archives = list(cursor)
         truncated = len(archives) > query.max_articles
@@ -1127,6 +1144,10 @@ class SituationViewEngine:
             appendix = item.get(APPENDIX_FIELD) or {}
             article_meta[str(item.get("UUID"))] = {
                 "content_time": appendix.get(APPENDIX_CONTENT_TIME),
+                "content_time_source": appendix.get(APPENDIX_CONTENT_TIME_SOURCE),
+                "published_at": appendix.get(APPENDIX_TIME_PUB),
+                "collected_at": appendix.get(APPENDIX_TIME_GOT),
+                "archived_at": appendix.get(APPENDIX_TIME_ARCHIVED),
                 "score": appendix.get(APPENDIX_TOTAL_SCORE),
                 "title": item.get("EVENT_TITLE"),
                 "summary": re.sub(
@@ -1142,6 +1163,10 @@ class SituationViewEngine:
         for event in events:
             data = article_meta.get(str(event.get("intelligence_uuid"))) or {}
             event["_view_content_time"] = data.get("content_time")
+            event["_view_content_time_source"] = data.get("content_time_source")
+            event["_view_published_at"] = data.get("published_at")
+            event["_view_collected_at"] = data.get("collected_at")
+            event["_view_archived_at"] = data.get("archived_at")
             event["_view_score"] = data.get("score")
             event["_view_title"] = data.get("title")
             event["_view_summary"] = data.get("summary")
