@@ -12,6 +12,10 @@
 完整 Prompt 仍保留 `{{CURRENT_DATE}}`、`{{CONTENT}}`、`{{SIMILAR_MESSAGES}}` 等占位符；
 这些值只在单次请求前注入，因此不属于可提交的版本静态文本。
 
+当前生产目录仍抽样 v48/v53。2026-10-24 首检查点显示 v53 的事实接地率改善，但实体、
+角色完整度、首过率和全链路 Token 已触发预设停止线；“建议暂停新增抽样”与“生产目录
+已经退出”是两个状态，后者截至该检查点尚未执行。详见下方 v48/v53 首检查点报告。
+
 ## 更新规则
 
 Prompt 的单一事实源仍是 `prompts_event_v4.py` 及各版本构造器。修改、增加或调整抽样版本后
@@ -36,3 +40,4 @@ pytest -q Test/test_prompt_exports.py Test/test_prompt_protocols.py
 - [v52 灰度设计](reports/20261021_prompt_v52_gray_design.md)
 - [v48 / v52 完整生产灰度分析](reports/20261024_prompt_v48_v52_gray_analysis.md)
 - [v53 完整度优先的收敛设计](reports/20261024_prompt_v53_converged_design.md)
+- [v48 / v53 生产灰度首检查点](reports/20261024_prompt_v48_v53_first_checkpoint.md)

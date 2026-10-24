@@ -22,6 +22,10 @@
 
 + [Statistics Overview](/statistics/overview)
 
++ [Website Traffic](/ops/traffic/)
+
++ [Website Traffic (Raw GoAccess)](/ops/traffic/raw/)
+
 + [Entity Statistics (Full)](/statistics/entity_frequency/page)
 
 -----------------------------------------------
