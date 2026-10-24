@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "source": "prompts_event_v4.EVENT_V4_PROMPT_CATALOG",
+  "content": "fully assembled static prompt before per-request placeholder injection",
+  "versions": [
+    {
+      "version": 41,
+      "file": "v41.txt",
+      "protocol": "full",
+      "sampling": false,
+      "characters": 18949,
+      "utf8_bytes": 25825,
+      "lines": 233,
+      "sha256": "5d7ea0d061f03eec638fcf528b85f5a617bc51a9b41572a1a0a8b954ee66bc64"
+    },
+    {
+      "version": 42,
+      "file": "v42.txt",
+      "protocol": "core_subset",
+      "sampling": false,
+      "characters": 19469,
+      "utf8_bytes": 27305,
+      "lines": 241,
+      "sha256": "97d907512987132edae76bed5090488fc3807e77ec6e11ceb3bb428a79a8dc06"
+    },
+    {
+      "version": 43,
+      "file": "v43.txt",
+      "protocol": "core_subset_levels",
+      "sampling": false,
+      "characters": 20564,
+      "utf8_bytes": 29506,
+      "lines": 247,
+      "sha256": "e2aade860a793dd2230ecfe8fff4e53dbf8fc5d22ad7d6914acded76998bdfd2"
+    },
+    {
+      "version": 44,
+      "file": "v44.txt",
+      "protocol": "core_subset_levels",
+      "sampling": false,
+      "characters": 21151,
+      "utf8_bytes": 30923,
+      "lines": 254,
+      "sha256": "9391f22337433ad4021247b09431e1fae6c4c629f83a4053b159ffc9269398d7"
+    },
+    {
+      "version": 45,
+      "file": "v45.txt",
+      "protocol": "core_subset_levels",
+      "sampling": false,
+      "characters": 21449,
+      "utf8_bytes": 31541,
+      "lines": 260,
+      "sha256": "b1829cefde722f03a223a28c723ea467a540ffeb7d19efb0f9134f31828cdb74"
+    },
+    {
+      "version": 46,
+      "file": "v46.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": false,
+      "characters": 22064,
+      "utf8_bytes": 32616,
+      "lines": 278,
+      "sha256": "0306120d2c9ac19654d0db5883cef1faad354a4a35062ab19388c0633b319df6"
+    },
+    {
+      "version": 47,
+      "file": "v47.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": false,
+      "characters": 21985,
+      "utf8_bytes": 32495,
+      "lines": 269,
+      "sha256": "7e3605d66701aef4a4e69b5d33ab07494b12727b7468a5913482b13a56290fa9"
+    },
+    {
+      "version": 48,
+      "file": "v48.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": true,
+      "characters": 21822,
+      "utf8_bytes": 32250,
+      "lines": 268,
+      "sha256": "d5290b43e97aa29792a5f3cef8142a49a564eb326a1ab8e8c0ea17865484ca40"
+    },
+    {
+      "version": 49,
+      "file": "v49.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": false,
+      "characters": 14004,
+      "utf8_bytes": 23538,
+      "lines": 280,
+      "sha256": "5a792a497307345816dc48f4aea8c0e422659a8044182939e076d1fc4d764504"
+    },
+    {
+      "version": 50,
+      "file": "v50.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": false,
+      "characters": 14767,
+      "utf8_bytes": 24845,
+      "lines": 289,
+      "sha256": "145e92b1ab1f4689eecb010ab698be0675382cebeb438658ff4519c363957586"
+    },
+    {
+      "version": 51,
+      "file": "v51.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": false,
+      "characters": 15333,
+      "utf8_bytes": 26093,
+      "lines": 305,
+      "sha256": "41f0467de2f25b8a288160b6c311162cb0fae61be533f6233bd96dc95daecfaf"
+    },
+    {
+      "version": 52,
+      "file": "v52.txt",
+      "protocol": "core_subset_levels_reason",
+      "sampling": true,
+      "characters": 15936,
+      "utf8_bytes": 27394,
+      "lines": 311,
+      "sha256": "f23bd1f1d888457ce5d27464b7f2a2851e59a98e7f2c7c1a7685330b29c4f61f"
+    }
+  ]
+}

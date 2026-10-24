@@ -283,11 +283,12 @@ python VectorDB/VectorDBBService.py \
   标为后续方向的能力不得视为现有运行能力。
 - v49 将公共可选角色与完整 Frame 分组展示，完整保留谓词定义、评级词表和输出协议；
   独立构建、不从历史 Prompt 派生，注册为 `sampling=False` 供人工调试/对照。
-  规则对照、长度与验证见 `doc/20261020_prompt_v49_compaction.md`。
+  规则对照、长度与验证见 `doc/prompt_versions/reports/20261020_prompt_v49_compaction.md`。
 - v51 首轮灰度确认紧凑目录能降低 Token 并消除未登记角色，但时间/实体完整度下降，
   已退出抽样并保留显式对照。v52 恢复完整角色落点、增加逐事件时间检查并保护核心
   参与者，生产代码按 v48/v52 等概率灰度；首次 Prompt 分配写入 cache，持久化重试和
-  重启恢复复用同一版本。设计与停止条件见 `doc/20261021_prompt_v52_gray_design.md`。
+  重启恢复复用同一版本。设计与停止条件见
+  `doc/prompt_versions/reports/20261021_prompt_v52_gray_design.md`。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）
@@ -385,7 +386,7 @@ pytest Test/
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
-| `doc/20261021_prompt_v52_gray_design.md` | v51 灰度退化归因、v52 时间/实体完整度修复边界、Prompt 黏性分配及 v48/v52 灰度计划 |
+| `doc/prompt_versions/README.md` | v41—v52 完整 Prompt 归档、生成校验方式及各轮灰度/对比报告索引 |
 | `doc/subsystems_overview.md` | 各可选子系统的装配模式、耦合边界、配置键与挂载时序；含 SubSystem/ 收拢重构计划 |
 | `doc/feed_20261017_survey.md` | 数据源普查：死源清单、新源列表页实测（Guardian/Euronews/Moscow Times/TOI/Africanews 等）与接入建议 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |

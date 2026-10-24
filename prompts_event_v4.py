@@ -211,7 +211,7 @@ EVENT_ANALYSIS_PROMPT_V43 = EVENT_ANALYSIS_PROMPT_V42.replace(
 
 
 # V44：在 v43 基础上为 RATE 聚集档位补充准入/排除提示（生产评估见
-# doc/20261014_prompt_v43_production_eval.md：可行动性 94% 落在 monitorable 等）。
+# doc/prompt_versions/reports/20261014_prompt_v43_production_eval.md：可行动性 94% 落在 monitorable 等）。
 IIS_ANALYSIS_REQUIREMENTS_V44 = IIS_ANALYSIS_REQUIREMENTS_V43.replace(
     _build_rate_level_catalog(), _build_rate_level_catalog(with_notes=True))
 assert IIS_ANALYSIS_REQUIREMENTS_V44 != IIS_ANALYSIS_REQUIREMENTS_V43
@@ -346,7 +346,7 @@ assert EVENT_ANALYSIS_PROMPT_V52 != EVENT_ANALYSIS_PROMPT_V51
 # v46 保留为同业务契约、旧消息布局的回滚/缓存对照版本；
 # v45（议题槽与角色名指引）为灰度评估版本，可经 shadow_analysis 对比后切换。
 # v42（核心子集、数字 RATE）与 v41（完整契约直出）保留为回滚/对照通道。
-# 依据 doc/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
+# 依据 doc/prompt_versions/reports/20261012_prompt_v41_v42_comparison.md 的对比结果与 RATE 词表化设计
 # （doc/20261013_event_v4_extraction_subset_design.md §7.1）。
 
 

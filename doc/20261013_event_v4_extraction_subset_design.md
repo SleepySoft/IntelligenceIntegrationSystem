@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-13
 **前置文档：** `doc/20261012_event_v4_extraction_quality_investigation.md`（质量调查报告）
-**状态：** v42 已于 2026-10-12 切换为生产版本（依据 `doc/20261012_prompt_v41_v42_comparison.md`：v42 零校验失败、NAZA 案例达预期结构）；v41 保留在回滚通道
+**状态：** v42 已于 2026-10-12 切换为生产版本（依据 `doc/prompt_versions/reports/20261012_prompt_v41_v42_comparison.md`：v42 零校验失败、NAZA 案例达预期结构）；v41 保留在回滚通道
 **关联代码：** `event_engine/event_engine/extraction/subset.py`、`subset_prompt.py`、`prompts_event_v4.py`、`ServiceComponent/adapters/event_v4_pipeline.py`
 
 ## 1. 问题与目标
@@ -237,7 +237,7 @@ RATE 从“维度: 1-10 整数”迁移为“维度: 等级词”：AI 只做受
 实现：协议 `core_subset_levels`（子集桥接 + `map_rate_levels`），prompt 复用核心
 子集抽取章节，仅 IIS 要求段的 RATE 部分改为等级词表。v43（初版词表）→ v44
 （为聚集档位补准入/排除提示，并新增“未证实/否认/阶段状态必须保留为限定词”指引）；
-v42/v41 保留为回滚通道。生产评估见 `doc/20261014_prompt_v43_production_eval.md`。
+v42/v41 保留为回滚通道。生产评估见 `doc/prompt_versions/reports/20261014_prompt_v43_production_eval.md`。
 
 ### 后续候选
 

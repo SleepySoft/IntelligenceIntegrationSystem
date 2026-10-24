@@ -47,10 +47,11 @@ v52 保留紧凑目录和角色白名单，恢复完整角色
 落点规则、增加逐事件时间检查，并禁止为满足白名单省略核心参与者。生产分析首次分配
 Prompt 后会把版本写入 cache，持久化重试和重启恢复不再重新随机抽样。当前生产代码的
 灰度组合为 v48/v52；服务进程需重启后才会加载该组合。
-详见 [v49 精简记录](20261020_prompt_v49_compaction.md) 与
-[v50 夜间灰度记录](20261020_prompt_v50_role_guard_gray.md)及
-[v51 角色目录单变量压缩灰度](20261021_prompt_v51_role_compaction_gray.md)、
-[v52 灰度设计](20261021_prompt_v52_gray_design.md)。
+详见 [Prompt 版本归档](prompt_versions/README.md)、
+[v49 精简记录](prompt_versions/reports/20261020_prompt_v49_compaction.md)、
+[v50 夜间灰度记录](prompt_versions/reports/20261020_prompt_v50_role_guard_gray.md)、
+[v51 角色目录单变量压缩灰度](prompt_versions/reports/20261021_prompt_v51_role_compaction_gray.md)及
+[v52 灰度设计](prompt_versions/reports/20261021_prompt_v52_gray_design.md)。
 
 ## 归档文档
 
