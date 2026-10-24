@@ -13,7 +13,6 @@ from Scraper.PlaywrightRenderedScraper import fetch_content as article_fetcher
 
 
 feed_list = {
-    "即时新闻": "https://www.chinanews.com.cn/rss/scroll-news.xml",
     "要闻导读": "https://www.chinanews.com.cn/rss/importnews.xml",
     "时政新闻": "https://www.chinanews.com.cn/rss/china.xml",
     "国际新闻": "https://www.chinanews.com.cn/rss/world.xml",
