@@ -184,10 +184,16 @@
         .dashboard .side-toggle { display: block; position: absolute; top: 12px; right: 12px; z-index: 9; min-height: 34px; padding: 6px 10px; background: color-mix(in srgb, var(--panel) 90%, transparent); box-shadow: 0 8px 22px color-mix(in srgb, #000 22%, transparent); }
         .dashboard .side:not(.is-collapsed) + .side-toggle { right: 354px; }
         .dashboard .graph-controls { display: none; }
-        .embedded .shell { padding: 0; }
+        /* 嵌入多视图 iframe 时，时间轴与画布必须共同占用一个视口。
+           旧实现给画布单独设置 100vh，叠加时间轴后产生约 100px 的内层滚动；
+           iframe 保留滚动位置时，时间轴会看似随机地消失在视口上方。 */
+        .embedded { overflow: hidden; }
+        .embedded .shell { height: 100vh; padding: 0; overflow: hidden; }
+        .embedded .view.active { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+        .embedded .layout { min-height: 0; }
         .embedded header { display: none; }
-        .embedded .canvas { min-height: 100vh; border-radius: 0; }
-        .embedded svg { height: 100vh; min-height: 620px; }
+        .embedded .canvas { height: 100%; min-height: 0; border-radius: 0; }
+        .embedded svg { height: 100%; min-height: 0; }
         @media (max-width: 950px) {
             .filters { grid-template-columns: repeat(2, 1fr); }
             .layout { grid-template-columns: 1fr; }

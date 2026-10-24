@@ -762,6 +762,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="map-time-end" type="range"' in embedded_html
     assert 'id="graph-time-start" type="range"' in embedded_html
     assert 'id="graph-time-end" type="range"' in embedded_html
+    assert '.embedded .view.active { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }' in embedded_html
+    assert '.embedded .canvas { height: 100%; min-height: 0; border-radius: 0; }' in embedded_html
+    assert '.embedded .canvas { min-height: 100vh' not in embedded_html
     assert "function setupTemporalAxis(kind, meta, eventSeconds, onChange)" in embedded_html
     assert "startInput.oninput = () => apply(startInput)" in embedded_html
     assert "loadJson(`${API_PREFIX}/map?" not in embedded_html.split(
