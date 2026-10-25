@@ -16,6 +16,11 @@
 角色完整度、首过率和全链路 Token 已触发预设停止线；“建议暂停新增抽样”与“生产目录
 已经退出”是两个状态，后者截至该检查点尚未执行。详见下方 v48/v53 首检查点报告。
 
+2026-10-25 的 31 篇 DeepSeek 离线实验进一步比较了 v48 单阶段与“事实召回→规范编码”
+两阶段。两阶段在配对成功样本中表现出更高的实体、角色和时间保留趋势，但最终成功率
+93.5%→64.5%、首过率 58.1%→25.8%、全链路 Token 增加 45.0%，不能直接生产化。下一轮
+应先引入人工核心标注、参与者守恒校验和困难样本条件触发；该实验未改变生产目录。
+
 ## 更新规则
 
 Prompt 的单一事实源仍是 `prompts_event_v4.py` 及各版本构造器。修改、增加或调整抽样版本后
@@ -41,3 +46,4 @@ pytest -q Test/test_prompt_exports.py Test/test_prompt_protocols.py
 - [v48 / v52 完整生产灰度分析](reports/20261024_prompt_v48_v52_gray_analysis.md)
 - [v53 完整度优先的收敛设计](reports/20261024_prompt_v53_converged_design.md)
 - [v48 / v53 生产灰度首检查点](reports/20261024_prompt_v48_v53_first_checkpoint.md)
+- [DeepSeek 单阶段与召回—编码两阶段离线实验](reports/20261025_deepseek_recall_two_stage_experiment.md)
