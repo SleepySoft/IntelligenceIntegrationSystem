@@ -23,8 +23,10 @@ COMPONENT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = COMPONENT_DIR.parent
 PANELS_DIR = COMPONENT_DIR / "panels"
 DEFAULT_CONFIG = COMPONENT_DIR / "dashboard.yaml"
-USER_CONFIG = PROJECT_DIR / "_config" / "dashboard.yaml"
-DEFAULT_STATE = PROJECT_DIR / "_data" / "dashboard-layouts.json"
+USER_CONFIG = Path(os.environ.get(
+    "IIS_CONFIG_DIR", PROJECT_DIR / "_config")).expanduser().resolve() / "dashboard.yaml"
+DEFAULT_STATE = Path(os.environ.get(
+    "IIS_DATA_DIR", PROJECT_DIR / "_data")).expanduser().resolve() / "dashboard-layouts.json"
 ENTRYPOINT = PROJECT_DIR / "Scripts" / "iis_dashboard.sh"
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")

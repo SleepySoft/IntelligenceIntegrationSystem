@@ -259,6 +259,13 @@ python CrawlerServiceEngine.py
 >
 > AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
 > 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。
+>
+> 不想手改 YAML 时，可运行 `Scripts/iis_configure.sh` 打开仅监听本机的 IIS 配置页；
+> 主服务已运行时也可登录后访问 `/admin/config/`。AI Client 的配置页由
+> AIClientCenter 自己提供，位于 `/monitor/ai-client-dashboard/config/`。两套页面都支持
+> 引导编辑、真实 schema 校验、密钥遮蔽、原子保存和历史恢复；AI Client 还可直接热重载，
+> IIS 主配置则在保存后重启服务生效。设计边界与独立运行方式见
+> [IIS 配置中心说明](IISConfiguration/README.md)。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。
@@ -331,6 +338,15 @@ Linux 生产部署可直接使用 [systemd](systemd/README.md) 中的独立单�
 运行 `IntelligenceHubLauncher.py`，`iis-crawler.service` 运行 `CrawlerServiceEngine.py`，
 `iis.target` 默认统一拉起前两者；VectorDB 单元按配置单独启用。旧的单一 `iis.service` 和
 根目录进程组启动脚本已移除。
+
+Linux 单命令安装正在按审计路线分阶段实现。当前可先运行无副作用的部署诊断：
+
+```bash
+deploy/iisctl doctor
+```
+
+诊断工具、当前落地阻塞项和各阶段验收标准见
+[Linux 部署目录](deploy/README.md)与[审计及路线图](deploy/AUDIT_AND_ROADMAP.md)。
 
 #### 使用
 

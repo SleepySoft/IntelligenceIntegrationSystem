@@ -15,12 +15,13 @@ import platform
 import subprocess
 from abc import ABC, abstractmethod
 
-from GlobalConfig import DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
+from GlobalConfig import resolve_iis_config_files
 from IISConfig import load_iis_config
 
 
+_launcher_config_file, _launcher_fallback_file = resolve_iis_config_files()
 LAUNCHER_CONFIG = load_iis_config(
-    DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
+    _launcher_config_file, fallback_file=_launcher_fallback_file)
 from IntelligenceHubStartup import wsgi_app
 
 # ==================== CONFIGURATION SECTION ====================

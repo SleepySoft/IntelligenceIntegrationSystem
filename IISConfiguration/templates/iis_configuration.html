@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="{{ ui_locale|default('zh-CN') }}">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ _('IIS configuration') }}</title>
+  <style>
+    :root{font:15px/1.5 system-ui,sans-serif;color:#18212f;background:#f4f6f8}main{max-width:1150px;margin:auto;padding:24px}
+    .bar,.section{background:white;border:1px solid #d9e0e8;border-radius:12px;padding:18px;margin-bottom:16px}h1,h2,h3{margin:.1em 0 .6em}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{min-width:0}.field label{font-weight:650;display:block}
+    input,textarea{box-sizing:border-box;width:100%;margin-top:5px;padding:9px;border:1px solid #b8c2cf;border-radius:7px;background:white;color:#18212f}
+    input[type=checkbox]{width:auto}.object{border-left:3px solid #d9e0e8;padding-left:14px;margin:14px 0}.wide{grid-column:1/-1}textarea{font:13px/1.45 ui-monospace,monospace;min-height:100px}.yaml{min-height:560px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}button{border:0;border-radius:7px;padding:9px 14px;cursor:pointer;background:#315efb;color:white}.secondary{background:#e8edf5;color:#18212f}
+    .status{white-space:pre-wrap;padding:10px;border-radius:7px;background:#dcfae6;color:#087443}.bad{background:#fee4e2;color:#912018}.muted{color:#667085}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body><main>
+  <section class="bar"><h1>{{ _('IIS configuration') }}</h1><p class="muted">{{ _('Change IIS settings with a guided form. Validation uses the same schema as service startup.') }}</p><div class="actions"><button id="guidedTab">{{ _('Guided editor') }}</button><button id="yamlTab" class="secondary">{{ _('Advanced YAML') }}</button><button id="historyButton" class="secondary">{{ _('History') }}</button></div></section>
+  <section id="guided" class="section"><div id="form"></div></section>
+  <section id="advanced" class="section" hidden><textarea id="yaml" class="yaml" aria-label="{{ _('YAML configuration') }}" translate="no"></textarea></section>
+  <section id="history" class="section" hidden><h2>{{ _('Saved versions') }}</h2><div id="versions"></div></section>
+  <section class="bar"><div class="actions"><button id="validate">{{ _('Validate') }}</button><button id="save">{{ _('Save') }}</button><button id="reload" class="secondary">{{ _('Discard unsaved changes') }}</button></div><p class="muted">{{ _('Saving does not restart IIS. The new IIS configuration takes effect after the service restarts. Sensitive values stay masked unless replaced.') }}</p><div id="status" class="status" hidden></div></section>
+</main>
+<script>
+const csrf={{ csrf_token|tojson }};
+const messages={valid:{{ _('Configuration is valid.')|tojson }},saved:{{ _('Configuration was saved. Restart IIS to apply it.')|tojson }},restored:{{ _('The selected version was restored. Restart IIS to apply it.')|tojson }},json:{{ _('This field must contain valid JSON.')|tojson }},restore:{{ _('Restore')|tojson }},bytes:{{ _('bytes')|tojson }}};
+let payload={},mode='guided';const $=id=>document.getElementById(id);
+function show(text,ok=true){$('status').hidden=false;$('status').className='status '+(ok?'':'bad');$('status').textContent=text}
+async function api(path,options={}){options.headers={...(options.headers||{}),'Content-Type':'application/json','X-Config-CSRF':csrf};let r=await fetch(path,options),j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j}
+function deref(s){if(s&&s.$ref){let p=s.$ref.split('/').pop();return payload.schema.$defs[p]||s}if(s&&s.anyOf){return s.anyOf.find(x=>x.type!=='null')||s}return s||{}}
+function title(name,s){return s.title||name.replaceAll('_',' ')}
+function renderValue(parent,name,s,value,path){s=deref(s);let wrap=document.createElement('div');let type=s.type||(s.properties?'object':typeof value);if(type==='object'&&s.properties){wrap.className='object wide';let h=document.createElement(path.length<2?'h2':'h3');h.textContent=title(name,s);wrap.appendChild(h);let grid=document.createElement('div');grid.className='grid';for(let [k,child] of Object.entries(s.properties))renderValue(grid,k,child,(value||{})[k],[...path,k]);wrap.appendChild(grid)}else{wrap.className='field '+((type==='object'||type==='array')?'wide':'');let label=document.createElement('label');label.textContent=title(name,s);let input;if(type==='boolean'){input=document.createElement('input');input.type='checkbox';input.checked=Boolean(value)}else if(type==='object'||type==='array'){input=document.createElement('textarea');input.value=JSON.stringify(value??(type==='array'?[]:{}),null,2);input.dataset.json='1'}else{input=document.createElement('input');input.type=(type==='integer'||type==='number')?'number':'text';if(type==='number')input.step='any';input.value=value??''}input.dataset.path=JSON.stringify(path);label.appendChild(input);wrap.appendChild(label);if(s.description){let p=document.createElement('div');p.className='muted';p.textContent=s.description;wrap.appendChild(p)}}parent.appendChild(wrap)}
+function render(){let root=$('form');root.innerHTML='';for(let [k,s] of Object.entries(payload.schema.properties||{}))renderValue(root,k,s,payload.data[k],[k]);$('yaml').value=payload.yaml||''}
+function setPath(obj,path,value){let at=obj;path.slice(0,-1).forEach(k=>at=at[k]??=(Number.isInteger(k)?[]:{}));at[path.at(-1)]=value}
+function collect(){let out=structuredClone(payload.data);for(let input of document.querySelectorAll('[data-path]')){let path=JSON.parse(input.dataset.path),s=input.type==='checkbox'?input.checked:input.value;if(input.dataset.json)try{s=JSON.parse(s)}catch(e){throw new Error(messages.json)}else if(input.type==='number')s=input.step==='any'?Number.parseFloat(s):Number.parseInt(s,10);setPath(out,path,s)}return out}
+function body(){return mode==='yaml'?{yaml:$('yaml').value}:{data:collect()}}
+async function load(){try{payload=await api('api/config');render()}catch(e){show(e.message,false)}}
+$('guidedTab').onclick=()=>{mode='guided';$('guided').hidden=false;$('advanced').hidden=true;$('history').hidden=true};$('yamlTab').onclick=()=>{mode='yaml';$('guided').hidden=true;$('advanced').hidden=false;$('history').hidden=true};
+$('historyButton').onclick=async()=>{try{let j=await api('api/history');$('guided').hidden=true;$('advanced').hidden=true;$('history').hidden=false;$('versions').innerHTML='';j.items.forEach(v=>{let p=document.createElement('p');p.textContent=`${v.name} (${v.size} ${messages.bytes}) `;let b=document.createElement('button');b.textContent=messages.restore;b.onclick=async()=>{try{await api('api/restore',{method:'POST',body:JSON.stringify({name:v.name})});show(messages.restored);await load()}catch(e){show(e.message,false)}};p.appendChild(b);$('versions').appendChild(p)})}catch(e){show(e.message,false)}};
+$('validate').onclick=async()=>{try{await api('api/validate',{method:'POST',body:JSON.stringify(body())});show(messages.valid)}catch(e){show(e.message,false)}};$('save').onclick=async()=>{try{await api('api/save',{method:'POST',body:JSON.stringify(body())});show(messages.saved);await load()}catch(e){show(e.message,false)}};$('reload').onclick=load;load();
+</script></body></html>

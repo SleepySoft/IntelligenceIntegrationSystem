@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import os
 
+from GlobalConfig import CONFIG_PATH
+
 from .config import BatchAnalysisConfig
 from .service import BatchAnalysisService
 from .web import create_blueprint
@@ -16,8 +18,10 @@ from .web import create_blueprint
 logger = logging.getLogger(__name__)
 
 
-def find_mimo_api_key(config_path: str = "_config/ai_clients.yaml") -> str:
+def find_mimo_api_key(config_path: str | None = None) -> str:
     """从 ai_clients.yaml 找 MiMo（batch 服务方）的按量 key。"""
+    config_path = config_path or os.environ.get(
+        "AI_CLIENT_CONFIG", os.path.join(CONFIG_PATH, "ai_clients.yaml"))
     try:
         import yaml
         cfg = yaml.safe_load(open(config_path, encoding="utf-8"))

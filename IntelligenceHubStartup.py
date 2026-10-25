@@ -615,8 +615,8 @@ def run():
 
     # --------------------------------- Config --------------------------------
 
-    config = load_iis_config(
-        DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
+    config_file, fallback_file = resolve_iis_config_files()
+    config = load_iis_config(config_file, fallback_file=fallback_file)
 
     logger.info('Apply config: ')
     logger.info(config.dump_text())
@@ -647,6 +647,20 @@ def run():
         app=wsgi_app,
         wrapper=ihub_service.access_manager.login_required,
         url_prefix='/monitor/ai-client-dashboard')
+
+    # IIS 主配置编辑器只依赖配置 schema，不接触 MongoDB 或业务运行时。独立模式可在
+    # 主服务无法启动（例如首次配置有误）时使用；嵌入模式复用后台登录保护。
+    try:
+        from IISConfiguration import IISConfigurationService, IISConfigurationWeb
+        IISConfigurationWeb(IISConfigurationService(
+            config_file, fallback_path=fallback_file,
+        )).mount_to_app(
+            wsgi_app,
+            wrapper=ihub_service.access_manager.login_required,
+            url_prefix='/admin/config',
+        )
+    except Exception:
+        logger.exception("IIS 配置页面挂载失败，主服务继续运行。")
 
     # Monitor in the same process and the same service
     def _resolve_thread_name(tid: int):

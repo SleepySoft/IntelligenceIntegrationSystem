@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-CONFIG_DIR = PROJECT_DIR / "_config"
+CONFIG_DIR = Path(os.getenv("IIS_CONFIG_DIR", PROJECT_DIR / "_config")).expanduser().resolve()
+DATA_DIR = Path(os.getenv("IIS_DATA_DIR", PROJECT_DIR / "_data")).expanduser().resolve()
+MODEL_DIR = Path(os.getenv("IIS_MODEL_DIR", PROJECT_DIR / "_models")).expanduser().resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
@@ -103,8 +105,8 @@ def validate_cross_config() -> None:
 
 
 def validate_vectordb() -> None:
-    model = Path(os.getenv("VECTOR_MODEL", "/home/sleepy/Documents/bge-m3"))
-    db_path = Path(os.getenv("VECTOR_DB_PATH", PROJECT_DIR / "_data" / "VectorDB"))
+    model = Path(os.getenv("VECTOR_MODEL", MODEL_DIR / "bge-m3"))
+    db_path = Path(os.getenv("VECTOR_DB_PATH", DATA_DIR / "VectorDB"))
     agg_path = Path(os.getenv(
         "VECTOR_AGG_STORE_DIR", PROJECT_DIR / "aggregation_store"))
     if not model.is_dir():

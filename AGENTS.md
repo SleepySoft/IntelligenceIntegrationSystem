@@ -158,6 +158,11 @@
   - `README.md`：布局语法、快捷键、扩展面板与开机启动说明
   - 外部稳定入口为 `Scripts/iis_dashboard.sh`，供 systemd 和桌面启动项使用
 
+- **`deploy/`** — Linux 单命令部署工程（与业务代码隔离）
+  - `iisctl` / `iis_deploy.py`：统一部署控制入口；当前 M0 提供零第三方依赖的只读 `doctor`
+  - `AUDIT_AND_ROADMAP.md`：落地阻塞项、部署身份模式、阶段计划和逐阶段验收标准
+  - 首版目标为 Ubuntu 22.04/24.04、Debian 12 x86_64 的 `core` profile；VectorDB 后置
+
 - **`Test/`** — 演示/测试脚本
   - 以 `Test` 开头，但多为手动运行的演示代码，非自动化单元测试
 

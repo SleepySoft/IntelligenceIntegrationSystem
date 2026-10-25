@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-25 15:52+0800\n"
+"POT-Creation-Date: 2026-10-25 22:41+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -13,6 +13,175 @@ msgstr ""
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
+
+#: AIClientCenter/templates/ai_client_config.html:6
+#: AIClientCenter/templates/ai_client_config.html:20
+msgid "AI client configuration"
+msgstr "AI 客户端配置"
+
+#: AIClientCenter/templates/ai_client_config.html:21
+msgid ""
+"Edit clients here, validate them with their real factories, then save and"
+" apply without restarting IIS."
+msgstr "在此编辑客户端，使用真实工厂完成校验，然后保存并应用，无需重启 IIS。"
+
+#: AIClientCenter/templates/ai_client_config.html:22
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid "Guided editor"
+msgstr "引导编辑"
+
+#: AIClientCenter/templates/ai_client_config.html:22
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid "Advanced YAML"
+msgstr "高级 YAML"
+
+#: AIClientCenter/templates/ai_client_config.html:22
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid "History"
+msgstr "历史版本"
+
+#: AIClientCenter/templates/ai_client_config.html:25
+msgid "Clients"
+msgstr "客户端"
+
+#: AIClientCenter/templates/ai_client_config.html:26
+msgid "Add client"
+msgstr "添加客户端"
+
+#: AIClientCenter/templates/ai_client_config.html:27
+#: AIClientCenter/templates/ai_client_config.html:28
+msgid "Group concurrency limits"
+msgstr "分组并发限制"
+
+#: AIClientCenter/templates/ai_client_config.html:31
+#: IISConfiguration/templates/iis_configuration.html:19
+msgid "YAML configuration"
+msgstr "YAML 配置"
+
+#: AIClientCenter/templates/ai_client_config.html:33
+#: IISConfiguration/templates/iis_configuration.html:20
+msgid "Saved versions"
+msgstr "已保存版本"
+
+#: AIClientCenter/templates/ai_client_config.html:35
+#: IISConfiguration/templates/iis_configuration.html:21
+msgid "Validate"
+msgstr "校验"
+
+#: AIClientCenter/templates/ai_client_config.html:35
+#: IISConfiguration/templates/iis_configuration.html:21
+msgid "Save"
+msgstr "保存"
+
+#: AIClientCenter/templates/ai_client_config.html:35
+msgid "Apply to running service"
+msgstr "应用到运行中服务"
+
+#: AIClientCenter/templates/ai_client_config.html:35
+#: IISConfiguration/templates/iis_configuration.html:21
+msgid "Discard unsaved changes"
+msgstr "放弃未保存修改"
+
+#: AIClientCenter/templates/ai_client_config.html:36
+msgid ""
+"Sensitive values are masked. Leave the mask unchanged to preserve the "
+"stored value. Every save creates a restorable backup."
+msgstr "敏感值已遮蔽。保留遮蔽标记即可沿用已有值。每次保存都会创建可恢复的备份。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+#: SituationViews/templates/situation_views.html:460
+#: templates/_article_i18n.html:33 templates/_article_i18n.html:39
+#: templates/intelligence_detail.html:42
+msgid "Loading…"
+msgstr "正在加载…"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "Configuration is valid."
+msgstr "配置有效。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Configuration was saved."
+msgstr "配置已保存。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Configuration was applied to the running service."
+msgstr "配置已应用到运行中的服务。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Factory parameters and group limits must be valid JSON."
+msgstr "工厂参数和分组并发限制必须是有效 JSON。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Factory"
+msgstr "工厂"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Name"
+msgstr "名称"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Group"
+msgstr "分组"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Tags"
+msgstr "标签"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Enabled"
+msgstr "启用"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Factory parameters (JSON)"
+msgstr "工厂参数（JSON）"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "Remove client"
+msgstr "移除客户端"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "Restore"
+msgstr "恢复"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+msgid "The selected version was restored."
+msgstr "已恢复所选版本。"
+
+#: AIClientCenter/templates/ai_client_config.html:42
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "bytes"
+msgstr "字节"
+
+#: IISConfiguration/templates/iis_configuration.html:5
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid "IIS configuration"
+msgstr "IIS 配置"
+
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid ""
+"Change IIS settings with a guided form. Validation uses the same schema "
+"as service startup."
+msgstr "使用引导表单修改 IIS 设置。校验使用与服务启动相同的配置模型。"
+
+#: IISConfiguration/templates/iis_configuration.html:21
+msgid ""
+"Saving does not restart IIS. The new IIS configuration takes effect after"
+" the service restarts. Sensitive values stay masked unless replaced."
+msgstr "保存不会重启 IIS。新配置会在服务重启后生效。敏感值会保持遮蔽，除非主动替换。"
+
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "Configuration was saved. Restart IIS to apply it."
+msgstr "配置已保存。重启 IIS 后生效。"
+
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "The selected version was restored. Restart IIS to apply it."
+msgstr "已恢复所选版本。重启 IIS 后生效。"
+
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "This field must contain valid JSON."
+msgstr "此字段必须包含有效 JSON。"
 
 #: IntelligenceViews/templates/intelligence_views.html:6
 msgid "Intelligence views"
@@ -230,8 +399,8 @@ msgstr "实体关系时间线"
 #: SituationViews/templates/entity_timeline.html:131
 #: SituationViews/templates/entity_timeline.html:147
 msgid ""
-"Search and select one or more entities. Use the wheel to zoom and drag empty"
-" space to pan."
+"Search and select one or more entities. Use the wheel to zoom and drag "
+"empty space to pan."
 msgstr "搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。"
 
 #: SituationViews/templates/entity_timeline.html:132
@@ -256,8 +425,8 @@ msgstr "箭头保持事件中的施事 → 受事方向"
 
 #: SituationViews/templates/entity_timeline.html:133
 msgid ""
-"Search and select one or more entities to examine their relationships over "
-"time."
+"Search and select one or more entities to examine their relationships "
+"over time."
 msgstr "搜索并选择一个或多个实体，开始按时间观察其关系。"
 
 #: SituationViews/templates/entity_timeline.html:141
@@ -395,16 +564,16 @@ msgstr "{count} 条关系"
 #: SituationViews/templates/entity_timeline.html:172
 #, python-brace-format
 msgid ""
-"{type} · {count} relationships; select to view one supporting intelligence "
-"item"
+"{type} · {count} relationships; select to view one supporting "
+"intelligence item"
 msgstr "{type} · {count} 条关系；点击查看其中一条情报"
 
 #: SituationViews/templates/entity_timeline.html:173
 #, python-brace-format
 msgid ""
 "Ordered by {basis} · {events} events · {entities} related entities · "
-"{cooccurrence} events contain multiple selected entities. Use the wheel to "
-"zoom and drag to pan."
+"{cooccurrence} events contain multiple selected entities. Use the wheel "
+"to zoom and drag to pan."
 msgstr ""
 "按{basis}排列 · {events} 个事件 · {entities} 个关联实体 · {cooccurrence} "
 "个事件含多个所选实体。滚轮缩放，拖动画布平移。"
@@ -567,15 +736,15 @@ msgstr "国家、地点、大区、事件类别或谓词"
 
 #: SituationViews/templates/situation_views.html:286
 msgid ""
-"Matches hotspots visible under the current time and category filters; select"
-" a result to locate it and open its intelligence."
+"Matches hotspots visible under the current time and category filters; "
+"select a result to locate it and open its intelligence."
 msgstr "匹配当前时间与类别过滤后的热点；点击结果定位并打开情报。"
 
 #: SituationViews/templates/situation_views.html:287
 #: SituationViews/templates/situation_views.html:485
 msgid ""
-"Search place names in Chinese or English, ISO codes, and event semantics on "
-"the current map."
+"Search place names in Chinese or English, ISO codes, and event semantics "
+"on the current map."
 msgstr "可搜索中英文地名、ISO 代码和当前地图的事件语义。"
 
 #: SituationViews/templates/situation_views.html:289
@@ -621,8 +790,8 @@ msgstr "关闭对应情报"
 
 #: SituationViews/templates/situation_views.html:314
 msgid ""
-"Ordered by content time from newest to oldest. Select a title to open the "
-"full intelligence."
+"Ordered by content time from newest to oldest. Select a title to open the"
+" full intelligence."
 msgstr "按内容时间从新到旧排列，点击标题打开完整情报。"
 
 #: SituationViews/templates/situation_views.html:321
@@ -726,7 +895,9 @@ msgid "Select an entity or relationship to show its intelligence count"
 msgstr "选择实体或关系后显示情报数量"
 
 #: SituationViews/templates/situation_views.html:380
-msgid "Select a node or relationship edge to view the intelligence that supports it."
+msgid ""
+"Select a node or relationship edge to view the intelligence that supports"
+" it."
 msgstr "点击节点或关系边查看支撑它的真实情报。"
 
 #: SituationViews/templates/situation_views.html:382
@@ -759,8 +930,8 @@ msgstr "1. 选择目标实体"
 
 #: SituationViews/templates/situation_views.html:402
 msgid ""
-"Select an entity table and search it first. You may add a new entity when no"
-" suitable result exists, or even when results already exist."
+"Select an entity table and search it first. You may add a new entity when"
+" no suitable result exists, or even when results already exist."
 msgstr "选择实体表后先搜索。没有合适结果时可以添加；即使已有结果，也始终可以添加新实体。"
 
 #: SituationViews/templates/situation_views.html:406
@@ -848,12 +1019,6 @@ msgstr "全选"
 msgid "Clear"
 msgstr "清空"
 
-#: SituationViews/templates/situation_views.html:460
-#: templates/_article_i18n.html:33 templates/_article_i18n.html:39
-#: templates/intelligence_detail.html:42
-msgid "Loading…"
-msgstr "正在加载…"
-
 #: SituationViews/templates/situation_views.html:465
 msgid "Undo the last assignment"
 msgstr "撤销上次指定"
@@ -863,7 +1028,7 @@ msgid "Clear selected manual assignments"
 msgstr "清除所选人工指定"
 
 #: SituationViews/templates/situation_views.html:467
-#: SituationViews/templates/situation_views.html:2140
+#: SituationViews/templates/situation_views.html:2142
 msgid "Save global mapping"
 msgstr "保存全局映射"
 
@@ -873,8 +1038,8 @@ msgstr "当前窗口没有可调时间点"
 
 #: SituationViews/templates/situation_views.html:476
 msgid ""
-"Fill color = dominant category; mixed-category hotspots have an outer ring "
-"in the secondary category color. Hover to see the distribution."
+"Fill color = dominant category; mixed-category hotspots have an outer "
+"ring in the secondary category color. Hover to see the distribution."
 msgstr "点填充色 = 主导类别；多类别混合热点带次类别色外环，悬停查看分布。"
 
 #: SituationViews/templates/situation_views.html:477
@@ -949,8 +1114,8 @@ msgstr "事件谓词"
 
 #: SituationViews/templates/situation_views.html:498
 msgid ""
-"Drag to rotate the globe, use the mouse wheel to zoom, and select a hotspot "
-"to inspect places and predicates."
+"Drag to rotate the globe, use the mouse wheel to zoom, and select a "
+"hotspot to inspect places and predicates."
 msgstr "拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。"
 
 #: SituationViews/templates/situation_views.html:499
@@ -1028,8 +1193,8 @@ msgstr "谓词"
 
 #: SituationViews/templates/situation_views.html:517
 msgid ""
-"Country hotspots are placed at country centers; zoom in to resolve and show "
-"actual detailed locations on demand."
+"Country hotspots are placed at country centers; zoom in to resolve and "
+"show actual detailed locations on demand."
 msgstr "国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。"
 
 #: SituationViews/templates/situation_views.html:518
@@ -1143,8 +1308,8 @@ msgstr "窗口内节点"
 
 #: SituationViews/templates/situation_views.html:543
 msgid ""
-"The time axis only changes the visible client-side projection; it does not "
-"request data again or rerun the layout."
+"The time axis only changes the visible client-side projection; it does "
+"not request data again or rerun the layout."
 msgstr "时间轴只改变当前图的可见投影，不重新请求数据或重跑布局。"
 
 #: SituationViews/templates/situation_views.html:544
@@ -1381,8 +1546,8 @@ msgstr "将“{source}”全局映射到“{target}”。"
 
 #: SituationViews/templates/situation_views.html:598
 msgid ""
-"Contextual entities must be tied to specific intelligence and cannot create "
-"a global name mapping."
+"Contextual entities must be tied to specific intelligence and cannot "
+"create a global name mapping."
 msgstr "语境实体必须绑定具体情报，不能建立全局名称映射。"
 
 #: SituationViews/templates/situation_views.html:599
@@ -1436,8 +1601,8 @@ msgstr "正在保存 {count} 个指定…"
 
 #: SituationViews/templates/situation_views.html:611
 msgid ""
-"The selected intelligence entity links were saved. The graph is unchanged; "
-"refresh it manually when convenient."
+"The selected intelligence entity links were saved. The graph is "
+"unchanged; refresh it manually when convenient."
 msgstr "所选情报的实体关联已保存。当前图保持不变，请在合适的时候手动刷新关系图。"
 
 #: SituationViews/templates/situation_views.html:612
@@ -1451,8 +1616,8 @@ msgstr "当前实体名称为空，无法建立全局映射。"
 
 #: SituationViews/templates/situation_views.html:614
 msgid ""
-"The target entity has the same name; no duplicate alias is needed. The graph"
-" is unchanged; refresh it manually when convenient."
+"The target entity has the same name; no duplicate alias is needed. The "
+"graph is unchanged; refresh it manually when convenient."
 msgstr "目标实体与当前名称相同，无需添加重复别名。当前图保持不变，请在合适的时候手动刷新关系图。"
 
 #: SituationViews/templates/situation_views.html:615
@@ -1463,8 +1628,8 @@ msgstr "正在保存“{name}”的全局映射…"
 #: SituationViews/templates/situation_views.html:616
 #, python-brace-format
 msgid ""
-"The global mapping for “{name}” was saved. The graph is unchanged; refresh "
-"it manually when convenient."
+"The global mapping for “{name}” was saved. The graph is unchanged; "
+"refresh it manually when convenient."
 msgstr "“{name}”的全局映射已保存。当前图保持不变，请在合适的时候手动刷新关系图。"
 
 #: SituationViews/templates/situation_views.html:617
@@ -1488,8 +1653,8 @@ msgstr "撤销只支持单选一个有历史指定的引用。"
 
 #: SituationViews/templates/situation_views.html:621
 msgid ""
-"The last assignment was undone. The graph is unchanged; refresh it manually "
-"when convenient."
+"The last assignment was undone. The graph is unchanged; refresh it "
+"manually when convenient."
 msgstr "已撤销上次指定。当前图保持不变，请在合适的时候手动刷新关系图。"
 
 #: SituationViews/templates/situation_views.html:622
@@ -1504,8 +1669,8 @@ msgstr "展开图例"
 #: SituationViews/templates/situation_views.html:625
 #, python-brace-format
 msgid ""
-"Visualization component {dependency} failed to load. Refresh the page to try"
-" again."
+"Visualization component {dependency} failed to load. Refresh the page to "
+"try again."
 msgstr "可视化组件 {dependency} 加载失败，请刷新页面重试。"
 
 #: SituationViews/templates/situation_views.html:645
@@ -1676,7 +1841,8 @@ msgstr "聚合情报 · IIS"
 msgid "Maximum clusters:"
 msgstr "最大聚合数："
 
-#: templates/intelligence_cluster_list.html:27 templates/intelligence_list.html:52
+#: templates/intelligence_cluster_list.html:27
+#: templates/intelligence_list.html:52
 msgid "Refresh"
 msgstr "刷新"
 

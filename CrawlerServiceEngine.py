@@ -31,7 +31,8 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 
 
 COLLECTOR_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector.json')
-COLLECTOR_ALTER_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector_example.json')
+COLLECTOR_ALTER_CONFIG_FILE = os.path.join(
+    SOURCE_PATH, '_config', 'collector_example.json')
 
 
 def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
