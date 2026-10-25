@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib import request as urlrequest
 
 from flask import Blueprint, Response, abort, jsonify, render_template, request, session
+from flask_babel import lazy_gettext
 
 from EntityResolution.model import EntityRef, ResolutionError
 from EntityResolution.service import EntityResolutionService
@@ -21,6 +22,17 @@ from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, Vi
 
 
 logger = logging.getLogger(__name__)
+
+_CATEGORY_UI_LABELS = {
+    "war": lazy_gettext("Armed conflict"),
+    "terror": lazy_gettext("Terrorism"),
+    "security": lazy_gettext("Security and regulation"),
+    "politics": lazy_gettext("Politics and society"),
+    "hazard": lazy_gettext("Disasters and health"),
+    "economy": lazy_gettext("Economy and finance"),
+    "industry": lazy_gettext("Industry and technology"),
+    "other": lazy_gettext("Other"),
+}
 
 # 与 IISConfig.SituationSettings 的正式容量边界保持一致。这里同时供 API 校验、
 # dashboard profile 和模板输入约束使用，避免 UI/API 各自遗留更小的历史上限。
@@ -514,7 +526,7 @@ class SituationViewsService:
         viewer_logged_in = bool(session.get("logged_in", False))
         return render_template(
             "situation_views.html",
-            categories=CATEGORY_LABELS,
+            categories={key: str(label) for key, label in _CATEGORY_UI_LABELS.items()},
             predicate_labels={
                 str(predicate_id): str(spec.label or predicate_id)
                 for predicate_id, spec in self.registry.items()
@@ -541,7 +553,7 @@ class SituationViewsService:
         viewer_logged_in = bool(session.get("logged_in", False))
         return render_template(
             "entity_timeline.html",
-            categories=CATEGORY_LABELS,
+            categories={key: str(label) for key, label in _CATEGORY_UI_LABELS.items()},
             subsystems=self.subsystem_registry.describe(),
             detail_origin=self.detail_origin,
             dashboard_profile=profile or self.dashboard,

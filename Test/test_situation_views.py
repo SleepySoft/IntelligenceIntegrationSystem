@@ -709,8 +709,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'src="/static/js/article_modal_manager.js"' in timeline_html
     assert 'src="/static/js/situation_article_modal.js"' in timeline_html
     assert 'class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}"' in timeline_html
-    assert '<h3>情报摘要</h3>' in timeline_html
-    assert '<h3>事件关系</h3>' in timeline_html
+    assert "timeline_summary:" in timeline_html
+    assert "tr('timeline_summary')" in timeline_html
+    assert "timeline_relationships:" in timeline_html
+    assert "tr('timeline_relationships')" in timeline_html
     assert "item.source_domain" in timeline_html
     embedded_html = embedded_map.get_data(as_text=True)
     assert '<body class="dashboard embedded">' in embedded_html
@@ -904,6 +906,16 @@ def test_entity_editor_is_enabled_only_for_logged_in_user():
     assert '<html lang="en">' in english
     assert "Signed in · alice" in english
     assert "Sign out" in english
+
+    english_timeline = client.get(
+        "/situation/embed/timeline?lang=en").get_data(as_text=True)
+    assert '<html lang="en">' in english_timeline
+    assert "Entity timeline · Situation insight" in english_timeline
+    assert 'placeholder="Search entities in the current range"' in english_timeline
+    assert 'timeline_summary: "Intelligence summary"' in english_timeline
+    assert '"war": "Armed conflict"' in english_timeline
+    assert "搜索当前范围内的实体" not in english_timeline
+    assert "正在加载定向时间线" not in english_timeline
 
 
 def test_entity_resolution_routes_batch_refs_and_keep_fixed_alias_global():

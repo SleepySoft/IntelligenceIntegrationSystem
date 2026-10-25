@@ -1,263 +1,690 @@
+
 msgid ""
 msgstr ""
-"Project-Id-Version: IIS\n"
+"Project-Id-Version:  IIS\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-10-25 15:44+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
+"Language-Team: zh_Hans <LL@li.org>\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
 
+#: IntelligenceViews/templates/intelligence_views.html:6
 msgid "Intelligence views"
 msgstr "情报视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:47
 msgid "Intelligence display mode"
 msgstr "情报展示方式"
 
+#: IntelligenceViews/templates/intelligence_views.html:48
+#: templates/intelligence_list.html:57
 msgid "Intelligence list"
 msgstr "情报列表"
 
+#: IntelligenceViews/templates/intelligence_views.html:49
 msgid "Map view"
 msgstr "地域视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:50
 msgid "Entity view"
 msgstr "实体视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:51
+#: SituationViews/templates/entity_timeline.html:90
 msgid "Entity timeline"
 msgstr "实体时间线"
 
-msgid "Open separately"
-msgstr "单独打开"
-
+#: IntelligenceViews/templates/intelligence_views.html:55
 msgid "Language"
 msgstr "语言"
 
+#: IntelligenceViews/templates/intelligence_views.html:56
 msgid "Interface language"
 msgstr "界面语言"
 
+#: IntelligenceViews/templates/intelligence_views.html:62
+msgid "Open separately"
+msgstr "单独打开"
+
+#: IntelligenceViews/templates/intelligence_views.html:65
 msgid "Loading view…"
 msgstr "正在加载视图…"
 
+#: IntelligenceViews/templates/intelligence_views.html:66
 msgid "Intelligence list view"
 msgstr "情报列表视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:67
 msgid "Geographic situation view"
 msgstr "地域态势视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:68
 msgid "Entity relationship view"
 msgstr "实体关系视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:69
 msgid "Entity timeline view"
 msgstr "实体时间线视图"
 
+#: IntelligenceViews/templates/intelligence_views.html:75
+#, python-brace-format
 msgid "Last {days} days · score ≥ {score}"
 msgstr "最近 {days} 天 · 评分 ≥ {score}"
 
+#: IntelligenceViews/templates/intelligence_views.html:76
+#, python-brace-format
 msgid " · relationships require {count} corroborating reports"
 msgstr " · 关系需 {count} 起印证"
 
-msgid "Intelligence list · IIS"
-msgstr "情报列表 · IIS"
-
-msgid "Minimum score:"
-msgstr "最低评分："
-
-msgid "All (0+)"
-msgstr "全部（0+）"
-
-msgid "Watch (> 4)"
-msgstr "待观察（> 4）"
-
-msgid "Good (> 6)"
-msgstr "良好（> 6）"
-
-msgid "High value (> 8)"
-msgstr "高价值（> 8）"
-
-msgid "Items per page:"
-msgstr "每页数量："
-
-msgid "Sort by:"
-msgstr "排序："
-
-msgid "Archive time"
-msgstr "归档时间"
-
-msgid "Content time"
-msgstr "内容时间"
-
-msgid "Refresh"
-msgstr "刷新"
-
-msgid "Published"
-msgstr "发布"
-
-msgid "Collected"
-msgstr "采集"
-
-msgid "Archived"
-msgstr "归档"
-
-msgid "Content-time sort basis"
-msgstr "内容时间排序依据"
-
-msgid "Archive-time sort basis"
-msgstr "归档时间排序依据"
-
-msgid "Loading intelligence…"
-msgstr "正在加载情报…"
-
-msgid "Loading failed: {message}"
-msgstr "加载失败：{message}"
-
-msgid "No time information"
-msgstr "无时间信息"
-
-msgid "Unknown UUID"
-msgstr "未知 UUID"
-
-msgid "Unknown source"
-msgstr "未知来源"
-
-msgid "Uncategorized"
-msgstr "未分类"
-
-msgid "Total score:"
-msgstr "总分："
-
-msgid "Service:"
-msgstr "服务："
-
-msgid "Model:"
-msgstr "模型："
-
-msgid "View Prompt v{version}"
-msgstr "查看 Prompt v{version}"
-
-msgid "Untitled"
-msgstr "无标题"
-
-msgid "Source:"
-msgstr "来源："
-
-msgid "No summary available"
-msgstr "暂无摘要"
-
-msgid "No intelligence found"
-msgstr "暂无情报"
-
-msgid "First"
-msgstr "首页"
-
-msgid "Previous"
-msgstr "上一页"
-
-msgid "Next"
-msgstr "下一页"
-
-msgid "{page} / {pages} ({total} total)"
-msgstr "{page} / {pages}（共 {total} 条）"
-
-msgid "Prompt viewer"
-msgstr "Prompt 查看器"
-
-msgid "Copy"
-msgstr "复制"
-
-msgid "Close"
-msgstr "关闭"
-
-msgid "Loading…"
-msgstr "正在加载…"
-
-msgid "Copied"
-msgstr "已复制"
-
-msgid "Loading Prompt v{version}…"
-msgstr "正在加载 Prompt v{version}…"
-
-msgid "Tip: select “Copy” to copy the complete Prompt."
-msgstr "提示：点击“复制”可复制完整 Prompt。"
-
-msgid "Prompt v{version} failed to load: {message}"
-msgstr "Prompt v{version} 加载失败：{message}"
-
-msgid "Vector results are sorted by similarity"
-msgstr "向量检索按相似度排序"
-
-msgid "Copy link"
-msgstr "复制链接"
-
-msgid "Open in a new tab"
-msgstr "在新标签打开"
-
-msgid "You are not authorized to view this intelligence"
-msgstr "无权访问该情报"
-
-msgid "Link copied"
-msgstr "链接已复制"
-
-msgid "Copy failed"
-msgstr "复制失败"
-
-msgid "Intelligence details"
-msgstr "情报详情"
-
-msgid "Loading failed"
-msgstr "加载失败"
-
-msgid "Back to intelligence list"
-msgstr "返回情报列表"
-
-msgid "Shadow comparison"
-msgstr "影子对比"
-
-msgid "Intelligence Integration System"
-msgstr "情报整合系统"
-
-msgid "All rights reserved"
-msgstr "保留所有权利"
-
-msgid "Turn data into insight"
-msgstr "让数据成为洞察"
-
-msgid "Aggregated intelligence · IIS"
-msgstr "聚合情报 · IIS"
-
-msgid "Maximum clusters:"
-msgstr "最大聚合数："
-
-msgid "Aggregated intelligence"
-msgstr "聚合情报"
-
-msgid "Intelligence grouped by similarity (offline aggregation)."
-msgstr "按相似性分组显示情报（离线聚合）。"
-
-msgid "No aggregated events found"
-msgstr "暂无聚合事件"
-
-msgid "Expand ({count} related reports)"
-msgstr "展开（{count} 条相关情报）"
-
-msgid "Cluster ID:"
-msgstr "聚合 ID："
-
-msgid "{count} reports"
-msgstr "共 {count} 条"
-
-msgid "Collapse"
-msgstr "收起"
-
-msgid "Loading member reports…"
-msgstr "正在加载成员情报…"
-
-msgid "This cluster has no other reports."
-msgstr "该聚合中没有其他情报。"
-
-msgid "Failed to load member reports: {message}"
-msgstr "成员情报加载失败：{message}"
-
+#: SituationViews/templates/entity_timeline.html:6
+msgid "Entity timeline · Situation insight"
+msgstr "实体时间线 · 态势洞察"
+
+#: SituationViews/templates/entity_timeline.html:91
+#, python-brace-format
+msgid ""
+"Intelligence from the last {days} days · Score ≥ {score} · Up to {count} "
+"entities"
+msgstr "最近 {days} 天收录情报 · 评分 ≥ {score} · 最多 {count} 个实体"
+
+#: SituationViews/templates/entity_timeline.html:93
+msgid "Search entities in the current range"
+msgstr "搜索当前范围内的实体"
+
+#: SituationViews/templates/entity_timeline.html:94
+msgid "Search"
+msgstr "搜索"
+
+#: SituationViews/templates/entity_timeline.html:99
+#: SituationViews/templates/situation_views.html:235
 msgid "Signed in"
 msgstr "已登录"
 
+#: SituationViews/templates/entity_timeline.html:100
+#: SituationViews/templates/situation_views.html:236
 msgid "Sign out"
 msgstr "退出登录"
+
+#: SituationViews/templates/entity_timeline.html:105
+#: SituationViews/templates/entity_timeline.html:140
+msgid "No entities selected"
+msgstr "尚未指定实体"
+
+#: SituationViews/templates/entity_timeline.html:106
+msgid "Grouping"
+msgstr "组织方式"
+
+#: SituationViews/templates/entity_timeline.html:107
+msgid "Union"
+msgstr "聚合"
+
+#: SituationViews/templates/entity_timeline.html:107
+msgid "Separate lanes"
+msgstr "分轨对照"
+
+#: SituationViews/templates/entity_timeline.html:109
+msgid "Timeline direction"
+msgstr "时间方向"
+
+#: SituationViews/templates/entity_timeline.html:110
+msgid "Horizontal"
+msgstr "横向"
+
+#: SituationViews/templates/entity_timeline.html:110
+msgid "Vertical"
+msgstr "纵向"
+
+#: SituationViews/templates/entity_timeline.html:112
+msgid "Place on axis by"
+msgstr "轴上按"
+
+#: SituationViews/templates/entity_timeline.html:113
+msgid "Timeline ordering basis"
+msgstr "时间线排列依据"
+
+#: SituationViews/templates/entity_timeline.html:114
+#: SituationViews/templates/entity_timeline.html:181
+msgid "Event time"
+msgstr "事件时间"
+
+#: SituationViews/templates/entity_timeline.html:115
+#: SituationViews/templates/entity_timeline.html:182
+#: templates/intelligence_list.html:48
+msgid "Content time"
+msgstr "内容时间"
+
+#: SituationViews/templates/entity_timeline.html:116
+#: SituationViews/templates/entity_timeline.html:183
+#: templates/intelligence_list.html:47
+msgid "Archive time"
+msgstr "归档时间"
+
+#: SituationViews/templates/entity_timeline.html:119
+msgid "Canvas zoom"
+msgstr "画布缩放"
+
+#: SituationViews/templates/entity_timeline.html:120
+msgid "Zoom out"
+msgstr "缩小"
+
+#: SituationViews/templates/entity_timeline.html:120
+msgid "Zoom in"
+msgstr "放大"
+
+#: SituationViews/templates/entity_timeline.html:121
+msgid "Fit graph"
+msgstr "适配全图"
+
+#: SituationViews/templates/entity_timeline.html:121
+msgid "Reset"
+msgstr "复位"
+
+#: SituationViews/templates/entity_timeline.html:125
+msgid "Entity relationship timeline"
+msgstr "实体关系时间线"
+
+#: SituationViews/templates/entity_timeline.html:131
+#: SituationViews/templates/entity_timeline.html:147
+msgid ""
+"Search and select one or more entities. Use the wheel to zoom and drag "
+"empty space to pan."
+msgstr "搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。"
+
+#: SituationViews/templates/entity_timeline.html:132
+msgid "Thick line"
+msgstr "粗线"
+
+#: SituationViews/templates/entity_timeline.html:132
+msgid "selected entity"
+msgstr "所选实体"
+
+#: SituationViews/templates/entity_timeline.html:132
+msgid "Dot"
+msgstr "圆点"
+
+#: SituationViews/templates/entity_timeline.html:132
+msgid "related entity"
+msgstr "关联实体"
+
+#: SituationViews/templates/entity_timeline.html:132
+msgid "Arrows preserve the actor → object direction"
+msgstr "箭头保持事件中的施事 → 受事方向"
+
+#: SituationViews/templates/entity_timeline.html:133
+msgid ""
+"Search and select one or more entities to examine their relationships "
+"over time."
+msgstr "搜索并选择一个或多个实体，开始按时间观察其关系。"
+
+#: SituationViews/templates/entity_timeline.html:141
+msgid "Remove"
+msgstr "移除"
+
+#: SituationViews/templates/entity_timeline.html:142
+msgid "Searching…"
+msgstr "搜索中…"
+
+#: SituationViews/templates/entity_timeline.html:143
+msgid "No matching entities in the current range"
+msgstr "当前范围内没有匹配实体"
+
+#: SituationViews/templates/entity_timeline.html:144
+#, python-brace-format
+msgid "{count} events"
+msgstr "{count} 个事件"
+
+#: SituationViews/templates/entity_timeline.html:145
+#, python-brace-format
+msgid "Search failed: {message}"
+msgstr "搜索失败：{message}"
+
+#: SituationViews/templates/entity_timeline.html:146
+#, python-brace-format
+msgid "You may select up to {count} entities"
+msgstr "一次最多选择 {count} 个实体"
+
+#: SituationViews/templates/entity_timeline.html:148
+msgid "Loading the focused timeline…"
+msgstr "正在加载定向时间线…"
+
+#: SituationViews/templates/entity_timeline.html:149
+#, python-brace-format
+msgid "Timeline failed to load: {message}"
+msgstr "时间线加载失败：{message}"
+
+#: SituationViews/templates/entity_timeline.html:150
+msgid "Event time is missing"
+msgstr "事件时间缺失"
+
+#: SituationViews/templates/entity_timeline.html:151
+#, python-brace-format
+msgid "Event time {time} ({precision} precision)"
+msgstr "事件时间 {time}（{precision}级精度）"
+
+#: SituationViews/templates/entity_timeline.html:152
+#, python-brace-format
+msgid "Event time {time}{approx}"
+msgstr "事件时间 {time}{approx}"
+
+#: SituationViews/templates/entity_timeline.html:153
+msgid " (approx.)"
+msgstr "（约）"
+
+#: SituationViews/templates/entity_timeline.html:154
+msgid "Selected entity"
+msgstr "所选实体"
+
+#: SituationViews/templates/entity_timeline.html:155
+msgid ""
+"No summary is available. Select the title to view the full intelligence, "
+"event extraction, and score."
+msgstr "暂无摘要。点击标题可查看完整情报、事件抽取与评分详情。"
+
+#: SituationViews/templates/entity_timeline.html:156
+msgid "View full intelligence"
+msgstr "点击查看完整情报"
+
+#: SituationViews/templates/entity_timeline.html:157
+#, python-brace-format
+msgid "Score {score}"
+msgstr "评分 {score}"
+
+#: SituationViews/templates/entity_timeline.html:158
+msgid "Other"
+msgstr "其他"
+
+#: SituationViews/templates/entity_timeline.html:159
+#, python-brace-format
+msgid "Source {source}"
+msgstr "来源 {source}"
+
+#: SituationViews/templates/entity_timeline.html:160
+msgid "Multiple selected entities co-occur"
+msgstr "多个所选实体共同出现"
+
+#: SituationViews/templates/entity_timeline.html:161
+msgid "Intelligence summary"
+msgstr "情报摘要"
+
+#: SituationViews/templates/entity_timeline.html:162
+msgid "Event relationships"
+msgstr "事件关系"
+
+#: SituationViews/templates/entity_timeline.html:163
+msgid "No counterpart entities to display"
+msgstr "没有可展示的对端实体"
+
+#: SituationViews/templates/entity_timeline.html:164
+#, python-brace-format
+msgid "{basis} position {time}"
+msgstr "{basis}定位 {time}"
+
+#: SituationViews/templates/entity_timeline.html:165
+msgid "Negated event"
+msgstr "否定事件"
+
+#: SituationViews/templates/entity_timeline.html:166
+msgid "Selected entity group"
+msgstr "所选实体组"
+
+#: SituationViews/templates/entity_timeline.html:167
+msgid "Unnamed entity"
+msgstr "未命名实体"
+
+#: SituationViews/templates/entity_timeline.html:168
+msgid "No events are available in the current configured range."
+msgstr "当前配置范围内没有事件。"
+
+#: SituationViews/templates/entity_timeline.html:169
+#, python-brace-format
+msgid "Original event time {time}"
+msgstr "原事件时间 {time}"
+
+#: SituationViews/templates/entity_timeline.html:170
+msgid "Relationship between selected entities"
+msgstr "所选实体间关系"
+
+#: SituationViews/templates/entity_timeline.html:171
+#, python-brace-format
+msgid "{count} relationships"
+msgstr "{count} 条关系"
+
+#: SituationViews/templates/entity_timeline.html:172
+#, python-brace-format
+msgid ""
+"{type} · {count} relationships; select to view one supporting "
+"intelligence item"
+msgstr "{type} · {count} 条关系；点击查看其中一条情报"
+
+#: SituationViews/templates/entity_timeline.html:173
+#, python-brace-format
+msgid ""
+"Ordered by {basis} · {events} events · {entities} related entities · "
+"{cooccurrence} events contain multiple selected entities. Use the wheel "
+"to zoom and drag to pan."
+msgstr "按{basis}排列 · {events} 个事件 · {entities} 个关联实体 · {cooccurrence} 个事件含多个所选实体。滚轮缩放，拖动画布平移。"
+
+#: SituationViews/templates/entity_timeline.html:174
+msgid "year"
+msgstr "年"
+
+#: SituationViews/templates/entity_timeline.html:175
+msgid "month"
+msgstr "月"
+
+#: SituationViews/templates/entity_timeline.html:176
+msgid "day"
+msgstr "日"
+
+#: SituationViews/templates/entity_timeline.html:177
+msgid "hour"
+msgstr "小时"
+
+#: SituationViews/templates/entity_timeline.html:178
+msgid "minute"
+msgstr "分钟"
+
+#: SituationViews/templates/entity_timeline.html:179
+msgid "second"
+msgstr "秒"
+
+#: SituationViews/templates/entity_timeline.html:180
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Armed conflict"
+msgstr "武装冲突"
+
+msgid "Terrorism"
+msgstr "恐怖主义"
+
+msgid "Security and regulation"
+msgstr "安全与管制"
+
+msgid "Politics and society"
+msgstr "政治与社会"
+
+msgid "Disasters and health"
+msgstr "灾害与卫生"
+
+msgid "Economy and finance"
+msgstr "经济与金融"
+
+msgid "Industry and technology"
+msgstr "产业与科技"
+
+#: templates/_article_i18n.html:7
+msgid "Published"
+msgstr "发布"
+
+#: templates/_article_i18n.html:8
+msgid "Collected"
+msgstr "采集"
+
+#: templates/_article_i18n.html:9
+msgid "Archived"
+msgstr "归档"
+
+#: templates/_article_i18n.html:10
+msgid "Content-time sort basis"
+msgstr "内容时间排序依据"
+
+#: templates/_article_i18n.html:11
+msgid "Archive-time sort basis"
+msgstr "归档时间排序依据"
+
+#: templates/_article_i18n.html:12
+msgid "Loading intelligence…"
+msgstr "正在加载情报…"
+
+#: templates/_article_i18n.html:13
+#, python-brace-format
+msgid "Loading failed: {message}"
+msgstr "加载失败：{message}"
+
+#: templates/_article_i18n.html:14
+msgid "No time information"
+msgstr "无时间信息"
+
+#: templates/_article_i18n.html:15
+msgid "Unknown UUID"
+msgstr "未知 UUID"
+
+#: templates/_article_i18n.html:16
+msgid "Unknown source"
+msgstr "未知来源"
+
+#: templates/_article_i18n.html:17
+msgid "Uncategorized"
+msgstr "未分类"
+
+#: templates/_article_i18n.html:18
+msgid "Total score:"
+msgstr "总分："
+
+#: templates/_article_i18n.html:19
+msgid "Service:"
+msgstr "服务："
+
+#: templates/_article_i18n.html:20
+msgid "Model:"
+msgstr "模型："
+
+#: templates/_article_i18n.html:21
+#, python-brace-format
+msgid "View Prompt v{version}"
+msgstr "查看 Prompt v{version}"
+
+#: templates/_article_i18n.html:22
+msgid "Untitled"
+msgstr "无标题"
+
+#: templates/_article_i18n.html:23
+msgid "Source:"
+msgstr "来源："
+
+#: templates/_article_i18n.html:24
+msgid "No summary available"
+msgstr "暂无摘要"
+
+#: templates/_article_i18n.html:25
+msgid "No intelligence found"
+msgstr "暂无情报"
+
+#: templates/_article_i18n.html:26
+msgid "First"
+msgstr "首页"
+
+#: templates/_article_i18n.html:27
+msgid "Previous"
+msgstr "上一页"
+
+#: templates/_article_i18n.html:28
+msgid "Next"
+msgstr "下一页"
+
+#: templates/_article_i18n.html:29
+#, python-brace-format
+msgid "{page} / {pages} ({total} total)"
+msgstr "{page} / {pages}（共 {total} 条）"
+
+#: templates/_article_i18n.html:30
+msgid "Prompt viewer"
+msgstr "Prompt 查看器"
+
+#: templates/_article_i18n.html:31
+msgid "Copy"
+msgstr "复制"
+
+#: templates/_article_i18n.html:32
+msgid "Close"
+msgstr "关闭"
+
+#: templates/_article_i18n.html:33 templates/_article_i18n.html:39
+#: templates/intelligence_detail.html:42
+msgid "Loading…"
+msgstr "正在加载…"
+
+#: templates/_article_i18n.html:34
+msgid "Copied"
+msgstr "已复制"
+
+#: templates/_article_i18n.html:35
+#, python-brace-format
+msgid "Loading Prompt v{version}…"
+msgstr "正在加载 Prompt v{version}…"
+
+#: templates/_article_i18n.html:36
+msgid "Tip: select “Copy” to copy the complete Prompt."
+msgstr "提示：点击“复制”可复制完整 Prompt。"
+
+#: templates/_article_i18n.html:37
+#, python-brace-format
+msgid "Prompt v{version} failed to load: {message}"
+msgstr "Prompt v{version} 加载失败：{message}"
+
+#: templates/_article_i18n.html:38
+msgid "Vector results are sorted by similarity"
+msgstr "向量检索按相似度排序"
+
+#: templates/_article_i18n.html:40
+msgid "Copy link"
+msgstr "复制链接"
+
+#: templates/_article_i18n.html:41
+msgid "Open in a new tab"
+msgstr "在新标签打开"
+
+#: templates/_article_i18n.html:42
+msgid "You are not authorized to view this intelligence"
+msgstr "无权访问该情报"
+
+#: templates/_article_i18n.html:43
+msgid "Link copied"
+msgstr "链接已复制"
+
+#: templates/_article_i18n.html:44
+msgid "Copy failed"
+msgstr "复制失败"
+
+#: templates/_article_i18n.html:45 templates/intelligence_detail.html:14
+msgid "Intelligence details"
+msgstr "情报详情"
+
+#: templates/_article_i18n.html:46
+msgid "Loading failed"
+msgstr "加载失败"
+
+#: templates/intelligence_cluster_list.html:11
+msgid "Aggregated intelligence · IIS"
+msgstr "聚合情报 · IIS"
+
+#: templates/intelligence_cluster_list.html:20
+msgid "Maximum clusters:"
+msgstr "最大聚合数："
+
+#: templates/intelligence_cluster_list.html:27
+#: templates/intelligence_list.html:52
+msgid "Refresh"
+msgstr "刷新"
+
+#: templates/intelligence_cluster_list.html:32
+msgid "Aggregated intelligence"
+msgstr "聚合情报"
+
+#: templates/intelligence_cluster_list.html:34
+msgid "Intelligence grouped by similarity (offline aggregation)."
+msgstr "按相似性分组显示情报（离线聚合）。"
+
+#: templates/intelligence_cluster_list.html:43
+msgid "No aggregated events found"
+msgstr "暂无聚合事件"
+
+#: templates/intelligence_cluster_list.html:44
+#, python-brace-format
+msgid "Expand ({count} related reports)"
+msgstr "展开（{count} 条相关情报）"
+
+#: templates/intelligence_cluster_list.html:45
+msgid "Cluster ID:"
+msgstr "聚合 ID："
+
+#: templates/intelligence_cluster_list.html:46
+#, python-brace-format
+msgid "{count} reports"
+msgstr "共 {count} 条"
+
+#: templates/intelligence_cluster_list.html:47
+msgid "Collapse"
+msgstr "收起"
+
+#: templates/intelligence_cluster_list.html:48
+msgid "Loading member reports…"
+msgstr "正在加载成员情报…"
+
+#: templates/intelligence_cluster_list.html:49
+msgid "This cluster has no other reports."
+msgstr "该聚合中没有其他情报。"
+
+#: templates/intelligence_cluster_list.html:50
+#, python-brace-format
+msgid "Failed to load member reports: {message}"
+msgstr "成员情报加载失败：{message}"
+
+#: templates/intelligence_detail.html:36
+msgid "Back to intelligence list"
+msgstr "返回情报列表"
+
+#: templates/intelligence_detail.html:38
+msgid "Shadow comparison"
+msgstr "影子对比"
+
+#: templates/intelligence_detail.html:50
+msgid "Intelligence Integration System"
+msgstr "情报整合系统"
+
+#: templates/intelligence_detail.html:51
+msgid "All rights reserved"
+msgstr "保留所有权利"
+
+#: templates/intelligence_detail.html:55
+msgid "Turn data into insight"
+msgstr "让数据成为洞察"
+
+#: templates/intelligence_list.html:16
+msgid "Intelligence list · IIS"
+msgstr "情报列表 · IIS"
+
+#: templates/intelligence_list.html:25
+msgid "Minimum score:"
+msgstr "最低评分："
+
+#: templates/intelligence_list.html:27
+msgid "All (0+)"
+msgstr "全部（0+）"
+
+#: templates/intelligence_list.html:28
+msgid "Watch (> 4)"
+msgstr "待观察（> 4）"
+
+#: templates/intelligence_list.html:29
+msgid "Good (> 6)"
+msgstr "良好（> 6）"
+
+#: templates/intelligence_list.html:30
+msgid "High value (> 8)"
+msgstr "高价值（> 8）"
+
+#: templates/intelligence_list.html:35
+msgid "Items per page:"
+msgstr "每页数量："
+
+#: templates/intelligence_list.html:45
+msgid "Sort by:"
+msgstr "排序："

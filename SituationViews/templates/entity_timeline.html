@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>实体时间线 · 态势洞察</title>
+    <title>{{ _('Entity timeline · Situation insight') }}</title>
     <link rel="stylesheet" href="/static/css/intelligence_table.css">
     <link rel="stylesheet" href="/static/css/situation_article_modal.css">
     <style>
@@ -87,11 +87,11 @@
 <body>
 <div class="shell">
     <header>
-        <h1>实体时间线</h1>
-        <span class="scope">最近 {{ dashboard_profile.window_days }} 天收录情报 · 评分 ≥ {{ dashboard_profile.min_score }} · 最多 {{ dashboard_profile.timeline_max_entities }} 个实体</span>
+        <h1>{{ _('Entity timeline') }}</h1>
+        <span class="scope">{{ _('Intelligence from the last {days} days · Score ≥ {score} · Up to {count} entities').format(days=dashboard_profile.window_days, score=dashboard_profile.min_score, count=dashboard_profile.timeline_max_entities) }}</span>
         <div class="search">
-            <input id="entity-search" type="search" placeholder="搜索当前范围内的实体" autocomplete="off">
-            <button id="search-button" type="button">搜索</button>
+            <input id="entity-search" type="search" placeholder="{{ _('Search entities in the current range') }}" autocomplete="off">
+            <button id="search-button" type="button">{{ _('Search') }}</button>
             <div class="search-results" id="search-results" hidden></div>
         </div>
         {% if viewer_logged_in %}
@@ -102,39 +102,87 @@
         {% endif %}
     </header>
     <section class="controls">
-        <div class="chips" id="chips"><span class="muted">尚未指定实体</span></div>
-        <div class="segmented" aria-label="组织方式">
-            <button type="button" data-mode="union">聚合</button><button type="button" data-mode="lanes">分轨对照</button>
+        <div class="chips" id="chips"><span class="muted">{{ _('No entities selected') }}</span></div>
+        <div class="segmented" aria-label="{{ _('Grouping') }}">
+            <button type="button" data-mode="union">{{ _('Union') }}</button><button type="button" data-mode="lanes">{{ _('Separate lanes') }}</button>
         </div>
-        <div class="segmented" aria-label="时间方向">
-            <button type="button" data-orientation="horizontal">横向</button><button type="button" data-orientation="vertical">纵向</button>
+        <div class="segmented" aria-label="{{ _('Timeline direction') }}">
+            <button type="button" data-orientation="horizontal">{{ _('Horizontal') }}</button><button type="button" data-orientation="vertical">{{ _('Vertical') }}</button>
         </div>
-        <label class="time-basis">轴上按
-            <select id="time-basis" aria-label="时间线排列依据">
-                <option value="event_time">事件时间</option>
-                <option value="content_time">内容时间</option>
-                <option value="archived_at">归档时间</option>
+        <label class="time-basis">{{ _('Place on axis by') }}
+            <select id="time-basis" aria-label="{{ _('Timeline ordering basis') }}">
+                <option value="event_time">{{ _('Event time') }}</option>
+                <option value="content_time">{{ _('Content time') }}</option>
+                <option value="archived_at">{{ _('Archive time') }}</option>
             </select>
         </label>
-        <div class="zoom-controls" aria-label="画布缩放">
-            <button id="zoom-out" type="button" title="缩小">−</button><button id="zoom-in" type="button" title="放大">＋</button>
-            <button id="zoom-fit" class="wide" type="button">适配全图</button><button id="zoom-reset" class="wide" type="button">复位</button>
+        <div class="zoom-controls" aria-label="{{ _('Canvas zoom') }}">
+            <button id="zoom-out" type="button" title="{{ _('Zoom out') }}">−</button><button id="zoom-in" type="button" title="{{ _('Zoom in') }}">＋</button>
+            <button id="zoom-fit" class="wide" type="button">{{ _('Fit graph') }}</button><button id="zoom-reset" class="wide" type="button">{{ _('Reset') }}</button>
         </div>
     </section>
     <main class="canvas-wrap" id="canvas">
-        <svg id="timeline-svg" role="img" aria-label="实体关系时间线" lang="zh-CN">
+        <svg id="timeline-svg" role="img" aria-label="{{ _('Entity relationship timeline') }}" lang="{{ ui_locale|default('zh-CN') }}">
             <defs>
                 <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path></marker>
             </defs>
             <g id="timeline-root"></g>
         </svg>
-        <div class="status" id="status">搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。</div>
-        <div class="legend"><b>粗线</b> 所选实体 · <b>圆点</b> 关联实体 · 箭头保持事件中的施事→受事方向</div>
-        <div class="empty" id="empty">搜索并选择一个或多个实体，开始按时间观察其关系。</div>
+        <div class="status" id="status">{{ _('Search and select one or more entities. Use the wheel to zoom and drag empty space to pan.') }}</div>
+        <div class="legend"><b>{{ _('Thick line') }}</b> {{ _('selected entity') }} · <b>{{ _('Dot') }}</b> {{ _('related entity') }} · {{ _('Arrows preserve the actor → object direction') }}</div>
+        <div class="empty" id="empty">{{ _('Search and select one or more entities to examine their relationships over time.') }}</div>
         <aside class="detail" id="detail" hidden></aside>
     </main>
 </div>
 <div class="tooltip" id="tooltip" hidden></div>
+<script>
+window.IIS_I18N_MESSAGES = Object.assign(window.IIS_I18N_MESSAGES || {}, {
+    timeline_no_entities: {{ _('No entities selected')|tojson }},
+    timeline_remove: {{ _('Remove')|tojson }},
+    timeline_searching: {{ _('Searching…')|tojson }},
+    timeline_no_matches: {{ _('No matching entities in the current range')|tojson }},
+    timeline_event_count: {{ _('{count} events')|tojson }},
+    timeline_search_failed: {{ _('Search failed: {message}')|tojson }},
+    timeline_entity_limit: {{ _('You may select up to {count} entities')|tojson }},
+    timeline_instruction: {{ _('Search and select one or more entities. Use the wheel to zoom and drag empty space to pan.')|tojson }},
+    timeline_loading: {{ _('Loading the focused timeline…')|tojson }},
+    timeline_load_failed: {{ _('Timeline failed to load: {message}')|tojson }},
+    timeline_event_time_missing: {{ _('Event time is missing')|tojson }},
+    timeline_event_time_precision: {{ _('Event time {time} ({precision} precision)')|tojson }},
+    timeline_event_time: {{ _('Event time {time}{approx}')|tojson }},
+    timeline_approximately: {{ _(' (approx.)')|tojson }},
+    timeline_selected_entity: {{ _('Selected entity')|tojson }},
+    timeline_no_summary: {{ _('No summary is available. Select the title to view the full intelligence, event extraction, and score.')|tojson }},
+    timeline_view_details: {{ _('View full intelligence')|tojson }},
+    timeline_score: {{ _('Score {score}')|tojson }},
+    timeline_other: {{ _('Other')|tojson }},
+    timeline_source: {{ _('Source {source}')|tojson }},
+    timeline_corroboration: {{ _('Multiple selected entities co-occur')|tojson }},
+    timeline_summary: {{ _('Intelligence summary')|tojson }},
+    timeline_relationships: {{ _('Event relationships')|tojson }},
+    timeline_no_counterparts: {{ _('No counterpart entities to display')|tojson }},
+    timeline_position: {{ _('{basis} position {time}')|tojson }},
+    timeline_negated: {{ _('Negated event')|tojson }},
+    timeline_selected_group: {{ _('Selected entity group')|tojson }},
+    timeline_unnamed_entity: {{ _('Unnamed entity')|tojson }},
+    timeline_no_events: {{ _('No events are available in the current configured range.')|tojson }},
+    timeline_original_event_time: {{ _('Original event time {time}')|tojson }},
+    timeline_internal_relation: {{ _('Relationship between selected entities')|tojson }},
+    timeline_relation_count: {{ _('{count} relationships')|tojson }},
+    timeline_node_tip: {{ _('{type} · {count} relationships; select to view one supporting intelligence item')|tojson }},
+    timeline_status: {{ _('Ordered by {basis} · {events} events · {entities} related entities · {cooccurrence} events contain multiple selected entities. Use the wheel to zoom and drag to pan.')|tojson }},
+    precision_year: {{ _('year')|tojson }},
+    precision_month: {{ _('month')|tojson }},
+    precision_day: {{ _('day')|tojson }},
+    precision_hour: {{ _('hour')|tojson }},
+    precision_minute: {{ _('minute')|tojson }},
+    precision_second: {{ _('second')|tojson }},
+    unknown: {{ _('Unknown')|tojson }},
+    event_time: {{ _('Event time')|tojson }},
+    content_time: {{ _('Content time')|tojson }},
+    archive_time: {{ _('Archive time')|tojson }}
+});
+</script>
 {% include '_article_i18n.html' %}
 <script src="/static/js/iis_i18n.js"></script>
 <script src="/static/js/intelligence_contracts.js"></script>
@@ -145,6 +193,7 @@
 <script src="../assets/d3.min.js"></script>
 <script>
 const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, SUBSYSTEMS={{ subsystems|tojson }}, CATEGORIES={{ categories|tojson }};
+const tr=(key,params={})=>window.IIS_I18N.t(key,params);
 const $=id=>document.getElementById(id); let data=null, selected=[], mode='union', orientation='horizontal', timeBasis='event_time', searchTimer=0, fitted=false, currentLayout=null;
 const initial=new URL(location.href), MAX_ENTITIES=Number(PROFILE.timeline_max_entities)||8; mode=initial.searchParams.get('mode')==='lanes'?'lanes':'union'; orientation=initial.searchParams.get('orientation')==='vertical'?'vertical':'horizontal'; timeBasis=['event_time','content_time','archived_at'].includes(initial.searchParams.get('sort_by'))?initial.searchParams.get('sort_by'):'event_time'; selected=[...new Set(initial.searchParams.getAll('entity').filter(Boolean))].slice(0,MAX_ENTITIES);
 const svg=d3.select('#timeline-svg'), root=d3.select('#timeline-root');
@@ -153,34 +202,34 @@ const TYPE_COLORS={person:'#f06f78',organization:'#4f7cff',country:'#2baa82',loc
 const CATEGORY_COLORS={war:'#d84949',terror:'#8d50c9',security:'#df7b31',politics:'#4f7cff',hazard:'#27a98b',economy:'#bea329',industry:'#6e8d45',other:'#7d8898'};
 function escapeHtml(value){const el=document.createElement('span');el.textContent=String(value??'');return el.innerHTML}
 function detailUrl(uuid){const subsystem=SUBSYSTEMS.find(item=>item.name===PROFILE.subsystem);const prefix=String(subsystem?.url_prefix||'').replace(/\/$/,'');return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`}
-function dateLabel(seconds,compact=false){return new Date(seconds*1000).toLocaleString('zh-CN',compact?{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}:{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function dateLabel(seconds,compact=false){return new Date(seconds*1000).toLocaleString(window.IIS_I18N.locale,compact?{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}:{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function isCoarseTime(item){return ['year','month'].includes(String(item?.time?.precision||'').toLowerCase())}
 function contentTimestamp(item){const value=Date.parse(item?.content_time||'')/1000;return Number.isFinite(value)?value:Number(item?.time?.timestamp||0)}
 function archivedTimestamp(item){const value=Date.parse(item?.archived_at||'')/1000;return Number.isFinite(value)?value:contentTimestamp(item)}
 function eventTimestamp(item){return isCoarseTime(item)?contentTimestamp(item):Number(item?.time?.timestamp||contentTimestamp(item))}
 function timelineTimestamp(item){return timeBasis==='archived_at'?archivedTimestamp(item):timeBasis==='content_time'?contentTimestamp(item):eventTimestamp(item)}
-function precisionLabel(precision){return ({year:'年',month:'月',day:'日',hour:'小时',minute:'分钟',second:'秒'})[String(precision||'').toLowerCase()]||String(precision||'未知')}
+function precisionLabel(precision){return ({year:tr('precision_year'),month:tr('precision_month'),day:tr('precision_day'),hour:tr('precision_hour'),minute:tr('precision_minute'),second:tr('precision_second')})[String(precision||'').toLowerCase()]||String(precision||tr('unknown'))}
 function timelineTimeLabel(item,compact=false){return dateLabel(timelineTimestamp(item),compact)}
-function storedTimeLabel(value){const timestamp=Date.parse(value||'');return Number.isFinite(timestamp)?new Date(timestamp).toLocaleString('zh-CN'):'—'}
-function timeBasisLabel(){return ({event_time:'事件时间',content_time:'内容时间',archived_at:'归档时间'})[timeBasis]}
+function storedTimeLabel(value){const timestamp=Date.parse(value||'');return Number.isFinite(timestamp)?new Date(timestamp).toLocaleString(window.IIS_I18N.locale):'—'}
+function timeBasisLabel(){return ({event_time:tr('event_time'),content_time:tr('content_time'),archived_at:tr('archive_time')})[timeBasis]}
 function syncUrl(push=false){const url=new URL(location.href);url.searchParams.delete('entity');url.searchParams.delete('from');url.searchParams.delete('to');selected.forEach(id=>url.searchParams.append('entity',id));url.searchParams.set('mode',mode);url.searchParams.set('orientation',orientation);url.searchParams.set('sort_by',timeBasis);history[push?'pushState':'replaceState'](null,'',url);window.parent?.postMessage({type:'iis:timeline-state',state:{entities:selected,mode,orientation,sort_by:timeBasis}},location.origin)}
 function updateButtons(){document.querySelectorAll('[data-mode]').forEach(el=>el.classList.toggle('active',el.dataset.mode===mode));document.querySelectorAll('[data-orientation]').forEach(el=>el.classList.toggle('active',el.dataset.orientation===orientation));$('time-basis').value=timeBasis}
-function renderChips(){const box=$('chips');box.innerHTML='';if(!selected.length){box.innerHTML='<span class="muted">尚未指定实体</span>';return}selected.forEach(id=>{const entity=data?.entities?.find(item=>item.id===id);const chip=document.createElement('span');chip.className='chip';chip.title=id;chip.append(document.createTextNode(entity?.name||id));const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除';remove.onclick=()=>{selected=selected.filter(value=>value!==id);syncUrl(true);loadTimeline()};chip.append(remove);box.append(chip)})}
+function renderChips(){const box=$('chips');box.innerHTML='';if(!selected.length){box.innerHTML=`<span class="muted">${escapeHtml(tr('timeline_no_entities'))}</span>`;return}selected.forEach(id=>{const entity=data?.entities?.find(item=>item.id===id);const chip=document.createElement('span');chip.className='chip';chip.title=id;chip.append(document.createTextNode(entity?.name||id));const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title=tr('timeline_remove');remove.onclick=()=>{selected=selected.filter(value=>value!==id);syncUrl(true);loadTimeline()};chip.append(remove);box.append(chip)})}
 async function json(url){const response=await fetch(url,{credentials:'same-origin'});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);return payload}
-async function searchEntities(){const q=$('entity-search').value.trim(),box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent='搜索中…';try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent='当前范围内没有匹配实体';return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=`${entity.event_count} 事件`;button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=`搜索失败：${error.message}`}}
-function addEntity(id){if(selected.includes(id)){$('search-results').hidden=true;return}if(selected.length>=MAX_ENTITIES){alert(`一次最多选择 ${MAX_ENTITIES} 个实体`);return}selected.push(id);$('entity-search').value='';$('search-results').hidden=true;syncUrl(true);loadTimeline()}
-async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;root.selectAll('*').remove();$('empty').hidden=false;$('status').textContent='搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。';return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('empty').hidden=false;$('empty').textContent='正在加载定向时间线…';try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();render()}catch(error){root.selectAll('*').remove();$('empty').hidden=false;$('empty').innerHTML=`<span class="warning">时间线加载失败：${escapeHtml(error.message)}</span>`}}
+async function searchEntities(){const q=$('entity-search').value.trim(),box=$('search-results');if(!q){box.hidden=true;return}box.hidden=false;box.textContent=tr('timeline_searching');try{const payload=await json(`${API_PREFIX}/entity-timeline/entities?q=${encodeURIComponent(q)}&limit=30`);box.innerHTML='';if(!payload.entities.length){box.textContent=tr('timeline_no_matches');return}payload.entities.forEach(entity=>{const button=document.createElement('button');button.type='button';button.className='search-result';const label=document.createElement('span');label.textContent=`${entity.name} · ${entity.type}`;const count=document.createElement('span');count.className='muted';count.textContent=tr('timeline_event_count',{count:entity.event_count});button.append(label,count);button.onclick=()=>addEntity(entity.id);box.append(button)})}catch(error){box.textContent=tr('timeline_search_failed',{message:error.message})}}
+function addEntity(id){if(selected.includes(id)){$('search-results').hidden=true;return}if(selected.length>=MAX_ENTITIES){alert(tr('timeline_entity_limit',{count:MAX_ENTITIES}));return}selected.push(id);$('entity-search').value='';$('search-results').hidden=true;syncUrl(true);loadTimeline()}
+async function loadTimeline(){renderChips();$('detail').hidden=true;if(!selected.length){data=null;root.selectAll('*').remove();$('empty').hidden=false;$('status').textContent=tr('timeline_instruction');return}const params=new URLSearchParams();selected.forEach(id=>params.append('entity',id));$('empty').hidden=false;$('empty').textContent=tr('timeline_loading');try{data=await json(`${API_PREFIX}/entity-timeline?${params}`);renderChips();render()}catch(error){root.selectAll('*').remove();$('empty').hidden=false;$('empty').innerHTML=`<span class="warning">${escapeHtml(tr('timeline_load_failed',{message:error.message}))}</span>`}}
 function showDetail(item){
     const coarse=isCoarseTime(item),focusNames=new Map((data?.entities||[]).map(value=>[value.id,value.name]));
-    const timeNote=item.time.source==='content_time'?'事件时间缺失':coarse?`事件时间 ${item.time.normalized||item.time.surface||'未知'}（${precisionLabel(item.time.precision)}级精度）`:`事件时间 ${dateLabel(eventTimestamp(item))}${item.time.approximate?'（约）':''}`;
-    const relations=[...new Map(item.relations.map(value=>{const focus=focusNames.get(value.focus_entity_id)||'所选实体',text=!value.directed?`${focus} ↔ ${value.counterpart_name}`:value.role==='object'?`${value.counterpart_name} → ${focus}`:`${focus} → ${value.counterpart_name}`;return [`${value.focus_entity_id}|${value.counterpart_id}|${value.role}`,text]})).values()];
-    const summary=String(item.summary||'').trim()||'暂无摘要。点击标题可查看完整情报、事件抽取与评分详情。';
+    const timeNote=item.time.source==='content_time'?tr('timeline_event_time_missing'):coarse?tr('timeline_event_time_precision',{time:item.time.normalized||item.time.surface||tr('unknown'),precision:precisionLabel(item.time.precision)}):tr('timeline_event_time',{time:dateLabel(eventTimestamp(item)),approx:item.time.approximate?tr('timeline_approximately'):''});
+    const relations=[...new Map(item.relations.map(value=>{const focus=focusNames.get(value.focus_entity_id)||tr('timeline_selected_entity'),text=!value.directed?`${focus} ↔ ${value.counterpart_name}`:value.role==='object'?`${value.counterpart_name} → ${focus}`:`${focus} → ${value.counterpart_name}`;return [`${value.focus_entity_id}|${value.counterpart_id}|${value.role}`,text]})).values()];
+    const summary=String(item.summary||'').trim()||tr('timeline_no_summary');
     const activeTime=timeBasis==='content_time'?(item.content_time_source||'archived'):timeBasis==='archived_at'?'archived':'';
-    const timeChips=[['published','发布',item.published_at],['collected','采集',item.collected_at],['archived','归档',item.archived_at]].map(([key,label,value])=>`<span class="time-chip${key===activeTime?' active':''}">${label}：${escapeHtml(storedTimeLabel(value))}</span>`).join('');
-    $('detail').innerHTML=`<div class="detail-head"><h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}" title="点击查看完整情报">${escapeHtml(item.title)}</a></h2><button type="button" id="detail-close">关闭</button></div>
-        <div class="tags"><span class="tag">${escapeHtml(item.predicate.label)}</span><span class="tag">评分 ${item.score}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||'其他')}</span>${item.source_domain?`<span class="tag">来源 ${escapeHtml(item.source_domain)}</span>`:''}${item.selected_entity_ids.length>1?'<span class="tag corroboration">多个所选实体共同出现</span>':''}</div>
+    const timeChips=[['published',tr('published'),item.published_at],['collected',tr('collected'),item.collected_at],['archived',tr('archived'),item.archived_at]].map(([key,label,value])=>`<span class="time-chip${key===activeTime?' active':''}">${escapeHtml(label)}: ${escapeHtml(storedTimeLabel(value))}</span>`).join('');
+    $('detail').innerHTML=`<div class="detail-head"><h2><a href="${escapeHtml(detailUrl(item.article_uuid))}" class="situation-article-title" data-uuid="${escapeHtml(item.article_uuid)}" title="${escapeHtml(tr('timeline_view_details'))}">${escapeHtml(item.title)}</a></h2><button type="button" id="detail-close">${escapeHtml(tr('close'))}</button></div>
+        <div class="tags"><span class="tag">${escapeHtml(item.predicate.label)}</span><span class="tag">${escapeHtml(tr('timeline_score',{score:item.score}))}</span><span class="tag">${escapeHtml(CATEGORIES[item.category]||tr('timeline_other'))}</span>${item.source_domain?`<span class="tag">${escapeHtml(tr('timeline_source',{source:item.source_domain}))}</span>`:''}${item.selected_entity_ids.length>1?`<span class="tag corroboration">${escapeHtml(tr('timeline_corroboration'))}</span>`:''}</div>
         <div class="time-row">${timeChips}</div>
-        <div class="preview-grid"><section class="preview-section"><h3>情报摘要</h3><p class="preview-summary">${escapeHtml(summary)}</p></section><section class="preview-section"><h3>事件关系</h3><div class="preview-relations">${relations.length?relations.map(value=>`<span class="preview-relation">${escapeHtml(value)}</span>`).join(''):'<span class="muted">没有可展示的对端实体</span>'}</div><div class="tags"><span class="tag">${escapeHtml(timeBasisLabel())}定位 ${escapeHtml(timelineTimeLabel(item))}</span><span class="tag${coarse||item.time.source==='content_time'||item.time.approximate?' warning':''}">${escapeHtml(timeNote)}</span>${item.negated?'<span class="tag warning">否定事件</span>':''}</div></section></div>`;
+        <div class="preview-grid"><section class="preview-section"><h3>${escapeHtml(tr('timeline_summary'))}</h3><p class="preview-summary">${escapeHtml(summary)}</p></section><section class="preview-section"><h3>${escapeHtml(tr('timeline_relationships'))}</h3><div class="preview-relations">${relations.length?relations.map(value=>`<span class="preview-relation">${escapeHtml(value)}</span>`).join(''):`<span class="muted">${escapeHtml(tr('timeline_no_counterparts'))}</span>`}</div><div class="tags"><span class="tag">${escapeHtml(tr('timeline_position',{basis:timeBasisLabel(),time:timelineTimeLabel(item)}))}</span><span class="tag${coarse||item.time.source==='content_time'||item.time.approximate?' warning':''}">${escapeHtml(timeNote)}</span>${item.negated?`<span class="tag warning">${escapeHtml(tr('timeline_negated'))}</span>`:''}</div></section></div>`;
     $('detail').hidden=false;$('detail-close').onclick=()=>{$('detail').hidden=true};
 }
 function showTooltip(event,html){$('tooltip').innerHTML=html;$('tooltip').hidden=false;moveTooltip(event)}
@@ -193,7 +242,7 @@ function nodeBoundary(node,anchor){const radius=31;if(orientation==='horizontal'
 function truncate(value,length=18){const text=String(value||'');return text.length>length?`${text.slice(0,length-1)}…`:text}
 function buildLayout(){
     const events=[...(data?.events||[])].sort((a,b)=>timelineTimestamp(a)-timelineTimestamp(b)||String(a.id).localeCompare(String(b.id))),positions=primaryPositions(events);
-    const laneDefs=mode==='union'?[{id:'__union__',name:selected.length>1?'所选实体组':data.entities[0]?.name||'所选实体'}]:data.entities;
+    const laneDefs=mode==='union'?[{id:'__union__',name:selected.length>1?tr('timeline_selected_group'):data.entities[0]?.name||tr('timeline_selected_entity')}]:data.entities;
     const laneGap=orientation==='horizontal'?460:500,outer=240;
     const lanes=laneDefs.map((lane,index)=>({...lane,cross:outer+index*laneGap}));
     const anchors=[],nodes=[],edges=[],internalEdges=[],selectedSet=new Set(selected),eventById=new Map(events.map(item=>[item.id,item]));
@@ -216,7 +265,7 @@ function buildLayout(){
                 }
                 const key=rel.counterpart_id||`${rel.counterpart_name}|${rel.counterpart_type}`;
                 let node=nodeMap.get(key);
-                if(!node){node={key,name:rel.counterpart_name||'未命名实体',type:rel.counterpart_type||'other',relations:[],lane};nodeMap.set(key,node)}
+                if(!node){node={key,name:rel.counterpart_name||tr('timeline_unnamed_entity'),type:rel.counterpart_type||'other',relations:[],lane};nodeMap.set(key,node)}
                 node.relations.push({rel,item,anchor});
             });
         });
@@ -242,7 +291,7 @@ function buildLayout(){
 function bindTip(selection,html){selection.on('mouseenter',(event,value)=>showTooltip(event,html(value))).on('mousemove',moveTooltip).on('mouseleave',hideTooltip)}
 function render(){
     updateButtons();root.selectAll('*').remove();if(!data)return;const layout=buildLayout();currentLayout=layout;
-    if(!layout.events.length){$('empty').hidden=false;$('empty').textContent='当前配置范围内没有事件。';return}$('empty').hidden=true;
+    if(!layout.events.length){$('empty').hidden=false;$('empty').textContent=tr('timeline_no_events');return}$('empty').hidden=true;
     const axisGroup=root.append('g').attr('class','axes');
     layout.lanes.forEach(lane=>{
         const start=point(110,lane.cross),end=point(Math.max(820,layout.primaryEnd),lane.cross);
@@ -261,15 +310,15 @@ function render(){
     const tickGroup=root.append('g');
     tickGroup.selectAll('line').data(layout.anchors).join('line').attr('class','event-tick').attr('x1',value=>value.x-(orientation==='vertical'?9:0)).attr('x2',value=>value.x+(orientation==='vertical'?9:0)).attr('y1',value=>value.y-(orientation==='horizontal'?9:0)).attr('y2',value=>value.y+(orientation==='horizontal'?9:0));
     const anchorSelection=tickGroup.selectAll('circle').data(layout.anchors).join('circle').attr('class',value=>`event-anchor${value.item.negated?' negated':''}${value.internal?' internal':''}`).attr('cx',value=>value.x).attr('cy',value=>value.y).attr('r',7).attr('fill',value=>CATEGORY_COLORS[value.item.category]||CATEGORY_COLORS.other).on('click',(event,value)=>{event.stopPropagation();showDetail(value.item)});
-    bindTip(anchorSelection,value=>`<b>${escapeHtml(value.item.predicate.label)}</b> · ${escapeHtml(value.item.title)}<br><span class="muted">${escapeHtml(timeBasisLabel())} ${escapeHtml(timelineTimeLabel(value.item))}${isCoarseTime(value.item)?` · 原事件时间 ${escapeHtml(value.item.time.normalized||value.item.time.surface)}`:''}${value.internal?' · 所选实体间关系':''}</span>`);
+    bindTip(anchorSelection,value=>`<b>${escapeHtml(value.item.predicate.label)}</b> · ${escapeHtml(value.item.title)}<br><span class="muted">${escapeHtml(timeBasisLabel())} ${escapeHtml(timelineTimeLabel(value.item))}${isCoarseTime(value.item)?` · ${escapeHtml(tr('timeline_original_event_time',{time:value.item.time.normalized||value.item.time.surface}))}`:''}${value.internal?` · ${escapeHtml(tr('timeline_internal_relation'))}`:''}</span>`);
     const labelEvery=Math.max(1,Math.ceil(layout.anchors.length/24));
     tickGroup.selectAll('text').data(layout.anchors.filter((_,index)=>index%labelEvery===0)).join('text').attr('class','time-label').attr('x',value=>value.x+(orientation==='vertical'?13:0)).attr('y',value=>value.y+(orientation==='horizontal'?22:4)).attr('text-anchor',orientation==='horizontal'?'middle':'start').text(value=>timelineTimeLabel(value.item,true));
     const nodeSelection=root.append('g').selectAll('g').data(layout.nodes).join('g').attr('class','entity-node').attr('transform',value=>`translate(${value.x},${value.y})`).on('click',(event,value)=>{event.stopPropagation();showDetail(value.relations[0].item)});
     nodeSelection.append('circle').attr('r',28).attr('fill',value=>TYPE_COLORS[value.type]||TYPE_COLORS.other);
     nodeSelection.append('text').attr('class','node-name').attr('y',value=>value.side==='above'?-40:42).text(value=>truncate(value.name));
-    nodeSelection.append('text').attr('class','node-meta').attr('y',value=>value.side==='above'?-54:56).text(value=>`${value.relations.length} 条关系`);
-    bindTip(nodeSelection,value=>`<b>${escapeHtml(value.name)}</b><br><span class="muted">${escapeHtml(value.type)} · ${value.relations.length} 条关系；点击查看其中一条情报</span>`);
-    $('status').textContent=`按${timeBasisLabel()}排列 · ${layout.events.length} 个事件 · ${layout.nodes.length} 个关联实体 · ${data.meta.cooccurrence_event_count} 个事件含多个所选实体。滚轮缩放，拖动画布平移。`;
+    nodeSelection.append('text').attr('class','node-meta').attr('y',value=>value.side==='above'?-54:56).text(value=>tr('timeline_relation_count',{count:value.relations.length}));
+    bindTip(nodeSelection,value=>`<b>${escapeHtml(value.name)}</b><br><span class="muted">${escapeHtml(tr('timeline_node_tip',{type:value.type,count:value.relations.length}))}</span>`);
+    $('status').textContent=tr('timeline_status',{basis:timeBasisLabel(),events:layout.events.length,entities:layout.nodes.length,cooccurrence:data.meta.cooccurrence_event_count});
     fitted=false;requestAnimationFrame(focusGraph);
 }
 function focusGraph(){const box=$('canvas').getBoundingClientRect(),lane=currentLayout?.lanes?.[0];if(!lane||!box.width||!box.height)return;const scale=.72,tx=orientation==='horizontal'?35-scale*80:box.width/2-scale*lane.cross,ty=orientation==='horizontal'?box.height/2-scale*lane.cross:35-scale*80;svg.call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));fitted=false}
