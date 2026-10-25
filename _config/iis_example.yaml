@@ -85,6 +85,12 @@ optional_subsystems:
 #   max_analysis_age_hours: 168  # 超旧情报直接弃用不分析（intake 拒绝 + 回放标 X）；0=不启用
 #   replay_newest_first: true # 未处理记录回放顺序：true=新的优先消化，false=按入库顺序
 # web:
+#   i18n:
+#     enabled: true
+#     default_locale: zh-CN
+#     supported_locales:       # 对外 BCP 47 标签: gettext catalog 目录名
+#       zh-CN: zh_Hans
+#       en: en
 #   posts:
 #     watch_enabled: true
 #     debounce_ms: 2000      # 连续保存停止 2s 后只编译一次，覆盖常见 1s 自动保存

@@ -29,6 +29,11 @@ def test_example_is_valid_and_projects_component_settings():
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.situation.public_window_days"
     ) is None
+    assert config.get("intelligence_hub_web_service.i18n") == {
+        "enabled": True,
+        "default_locale": "zh-CN",
+        "supported_locales": {"zh-CN": "zh_Hans", "en": "en"},
+    }
 
 
 def test_minimal_yaml_uses_code_defaults(tmp_path):
@@ -55,6 +60,21 @@ def test_unknown_fields_fail_fast(tmp_path):
     path.write_text("hub:\n  workerz: 3\n", encoding="utf-8")
 
     with pytest.raises(ValidationError, match="workerz"):
+        load_iis_config(path)
+
+
+def test_i18n_default_locale_must_be_supported(tmp_path):
+    path = tmp_path / "iis.yaml"
+    path.write_text(
+        "web:\n"
+        "  i18n:\n"
+        "    default_locale: fr\n"
+        "    supported_locales:\n"
+        "      zh-CN: zh_Hans\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="default_locale"):
         load_iis_config(path)
 
 

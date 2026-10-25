@@ -22,6 +22,7 @@ from ServiceComponent.runtime.status import HubStatusLogGate, format_hub_status
 from Tools.SystemMonitorService import MonitorAPI
 from Tools.SystemdWatchdog import is_watchdog_enabled, notify_ready, notify_alive, notify_stopping
 from IISConfig import IISConfig, load_iis_config
+from WebI18n import install_web_i18n
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
@@ -619,6 +620,10 @@ def run():
 
     logger.info('Apply config: ')
     logger.info(config.dump_text())
+
+    # 必须先于各业务 Blueprint/路由装配。翻译扩展只处理界面文案，不接触情报内容。
+    install_web_i18n(
+        wsgi_app, config.get("intelligence_hub_web_service.i18n", {}))
 
     # -------------------------------- Service ---------------------------------
 

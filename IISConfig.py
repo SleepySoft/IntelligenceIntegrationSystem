@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -241,7 +242,53 @@ class PostSettings(_StrictModel):
         return self
 
 
+class I18nSettings(_StrictModel):
+    """Web 界面翻译配置；键使用对外 BCP 47 标签，值使用 gettext 目录名。"""
+
+    enabled: bool = True
+    default_locale: str = "zh-CN"
+    supported_locales: dict[str, str] = Field(default_factory=lambda: {
+        "zh-CN": "zh_Hans",
+        "en": "en",
+    })
+
+    @field_validator("default_locale")
+    @classmethod
+    def _valid_default_locale(cls, value: str) -> str:
+        value = value.strip()
+        if not re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", value):
+            raise ValueError("default_locale 必须是 BCP 47 风格的语言标签")
+        return value
+
+    @field_validator("supported_locales")
+    @classmethod
+    def _valid_supported_locales(cls, value: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for external_tag, catalog_locale in value.items():
+            external_tag = str(external_tag).strip()
+            catalog_locale = str(catalog_locale).strip()
+            if not re.fullmatch(
+                    r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", external_tag):
+                raise ValueError(f"无效的界面语言标签: {external_tag!r}")
+            if not re.fullmatch(r"[A-Za-z]{2,8}(?:_[A-Za-z0-9]{1,8})*", catalog_locale):
+                raise ValueError(f"无效的 gettext 语言目录名: {catalog_locale!r}")
+            if external_tag.casefold() in {tag.casefold() for tag in normalized}:
+                raise ValueError(f"界面语言标签重复: {external_tag!r}")
+            normalized[external_tag] = catalog_locale
+        if not normalized:
+            raise ValueError("supported_locales 至少需要一种语言")
+        return normalized
+
+    @model_validator(mode="after")
+    def _default_must_be_supported(self):
+        if self.default_locale.casefold() not in {
+                tag.casefold() for tag in self.supported_locales}:
+            raise ValueError("default_locale 必须出现在 supported_locales 中")
+        return self
+
+
 class WebSettings(_StrictModel):
+    i18n: I18nSettings = Field(default_factory=I18nSettings)
     public_search: PublicSearchSettings = Field(default_factory=PublicSearchSettings)
     posts: PostSettings = Field(default_factory=PostSettings)
 
@@ -359,6 +406,7 @@ class IISConfig:
                 "rss": {"host_prefix": origin},
                 "rpc_api": {"tokens": settings.access.rpc_tokens},
                 "collector": {"tokens": settings.access.collector_tokens},
+                "i18n": settings.web.i18n.model_dump(mode="json"),
                 "situation_views": {
                     "enabled": situation.enabled,
                     "geocoding": {"enabled": situation.geocoding},

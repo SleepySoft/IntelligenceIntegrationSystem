@@ -5,6 +5,7 @@
 fastapi==0.115.12            # Async web framework (for building APIs)
 uvicorn==0.34.2              # ASGI server (for running FastAPI apps)
 Flask==3.1.1                 # Web framework (lightweight WSGI apps)
+Flask-Babel==4.0.0           # gettext-based web interface internationalization
 Werkzeug==3.1.3              # WSGI utility library (dependency for Flask)
 Jinja2==3.1.6                # Template engine (dependency for Flask)
 pymongo==4.13.0              # Official MongoDB driver
