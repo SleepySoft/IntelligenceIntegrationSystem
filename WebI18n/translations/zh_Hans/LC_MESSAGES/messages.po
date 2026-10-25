@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-25 15:44+0800\n"
+"POT-Creation-Date: 2026-10-25 15:47+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -28,6 +28,7 @@ msgid "Intelligence list"
 msgstr "情报列表"
 
 #: IntelligenceViews/templates/intelligence_views.html:49
+#: SituationViews/templates/situation_views.html:263
 msgid "Map view"
 msgstr "地域视图"
 
@@ -82,6 +83,39 @@ msgstr "最近 {days} 天 · 评分 ≥ {score}"
 msgid " · relationships require {count} corroborating reports"
 msgstr " · 关系需 {count} 起印证"
 
+#: SituationViews/web.py:27
+msgid "Armed conflict"
+msgstr "武装冲突"
+
+#: SituationViews/web.py:28
+msgid "Terrorism"
+msgstr "恐怖主义"
+
+#: SituationViews/web.py:29
+msgid "Security and regulation"
+msgstr "安全与管制"
+
+#: SituationViews/web.py:30
+msgid "Politics and society"
+msgstr "政治与社会"
+
+#: SituationViews/web.py:31
+msgid "Disasters and health"
+msgstr "灾害与卫生"
+
+#: SituationViews/web.py:32
+msgid "Economy and finance"
+msgstr "经济与金融"
+
+#: SituationViews/web.py:33
+msgid "Industry and technology"
+msgstr "产业与科技"
+
+#: SituationViews/templates/entity_timeline.html:158
+#: SituationViews/templates/situation_views.html:426 SituationViews/web.py:34
+msgid "Other"
+msgstr "其他"
+
 #: SituationViews/templates/entity_timeline.html:6
 msgid "Entity timeline · Situation insight"
 msgstr "实体时间线 · 态势洞察"
@@ -98,6 +132,10 @@ msgid "Search entities in the current range"
 msgstr "搜索当前范围内的实体"
 
 #: SituationViews/templates/entity_timeline.html:94
+#: SituationViews/templates/situation_views.html:282
+#: SituationViews/templates/situation_views.html:335
+#: SituationViews/templates/situation_views.html:416
+#: SituationViews/templates/situation_views.html:435
 msgid "Search"
 msgstr "搜索"
 
@@ -295,10 +333,6 @@ msgstr "点击查看完整情报"
 msgid "Score {score}"
 msgstr "评分 {score}"
 
-#: SituationViews/templates/entity_timeline.html:158
-msgid "Other"
-msgstr "其他"
-
 #: SituationViews/templates/entity_timeline.html:159
 #, python-brace-format
 msgid "Source {source}"
@@ -368,7 +402,9 @@ msgid ""
 "Ordered by {basis} · {events} events · {entities} related entities · "
 "{cooccurrence} events contain multiple selected entities. Use the wheel "
 "to zoom and drag to pan."
-msgstr "按{basis}排列 · {events} 个事件 · {entities} 个关联实体 · {cooccurrence} 个事件含多个所选实体。滚轮缩放，拖动画布平移。"
+msgstr ""
+"按{basis}排列 · {events} 个事件 · {entities} 个关联实体 · {cooccurrence} "
+"个事件含多个所选实体。滚轮缩放，拖动画布平移。"
 
 #: SituationViews/templates/entity_timeline.html:174
 msgid "year"
@@ -398,26 +434,425 @@ msgstr "秒"
 msgid "Unknown"
 msgstr "未知"
 
-msgid "Armed conflict"
-msgstr "武装冲突"
+#: SituationViews/templates/situation_views.html:6
+#: SituationViews/templates/situation_views.html:225
+#: SituationViews/templates/situation_views.html:230
+msgid "Geopolitical situation"
+msgstr "地缘态势"
 
-msgid "Terrorism"
-msgstr "恐怖主义"
+#: SituationViews/templates/situation_views.html:6
+#: SituationViews/templates/situation_views.html:225
+#: SituationViews/templates/situation_views.html:231
+msgid "Entity relationships"
+msgstr "实体关系"
 
-msgid "Security and regulation"
-msgstr "安全与管制"
+#: SituationViews/templates/situation_views.html:6
+#: SituationViews/templates/situation_views.html:226
+msgid "Situation insight"
+msgstr "态势洞察"
 
-msgid "Politics and society"
-msgstr "政治与社会"
+#: SituationViews/templates/situation_views.html:226
+#: SituationViews/templates/situation_views.html:291
+#, python-brace-format
+msgid "Last {days} days · Score ≥ {score}"
+msgstr "最近 {days} 天 · 评分 ≥ {score}"
 
-msgid "Disasters and health"
-msgstr "灾害与卫生"
+#: SituationViews/templates/situation_views.html:229
+msgid "Situation insight dashboard"
+msgstr "态势洞察看板"
 
-msgid "Economy and finance"
-msgstr "经济与金融"
+#: SituationViews/templates/situation_views.html:242
+msgid "Shared filters"
+msgstr "公共筛选条件"
 
-msgid "Industry and technology"
-msgstr "产业与科技"
+#: SituationViews/templates/situation_views.html:243
+msgid "Subsystem"
+msgstr "子系统"
+
+#: SituationViews/templates/situation_views.html:250
+msgid "Start time"
+msgstr "开始时间"
+
+#: SituationViews/templates/situation_views.html:251
+msgid "End time"
+msgstr "结束时间"
+
+#: SituationViews/templates/situation_views.html:252
+msgid "Minimum score"
+msgstr "最低评分"
+
+#: SituationViews/templates/situation_views.html:253
+msgid "Event categories"
+msgstr "事件类别"
+
+#: SituationViews/templates/situation_views.html:254
+#: SituationViews/templates/situation_views.html:257
+msgid "All selected"
+msgstr "全部已选"
+
+#: SituationViews/templates/situation_views.html:256
+msgid "Entity types"
+msgstr "实体类型"
+
+#: SituationViews/templates/situation_views.html:259
+msgid "Apply and refresh"
+msgstr "应用并刷新"
+
+#: SituationViews/templates/situation_views.html:262
+msgid "Views"
+msgstr "视图"
+
+#: SituationViews/templates/situation_views.html:264
+msgid "Entity relationship graph"
+msgstr "实体关系图"
+
+#: SituationViews/templates/situation_views.html:268
+msgid "Map time range"
+msgstr "地图时间范围"
+
+#: SituationViews/templates/situation_views.html:269
+#: SituationViews/templates/situation_views.html:322
+msgid "Displayed time range"
+msgstr "显示时间范围"
+
+#: SituationViews/templates/situation_views.html:269
+#: SituationViews/templates/situation_views.html:322
+msgid "Reading the time range…"
+msgstr "正在读取时间范围…"
+
+#: SituationViews/templates/situation_views.html:272
+msgid "Map start time"
+msgstr "地图开始时间"
+
+#: SituationViews/templates/situation_views.html:273
+msgid "Map end time"
+msgstr "地图结束时间"
+
+#: SituationViews/templates/situation_views.html:275
+msgid "Drag to filter instantly in the browser without reloading"
+msgstr "拖动后在浏览器内即时过滤，不重新加载"
+
+#: SituationViews/templates/situation_views.html:279
+msgid "Loading the map and events…"
+msgstr "正在加载地图与事件…"
+
+#: SituationViews/templates/situation_views.html:280
+msgid "Event hotspot globe"
+msgstr "事件热点地球视图"
+
+#: SituationViews/templates/situation_views.html:283
+msgid "Search regions and events"
+msgstr "搜索地域与事件"
+
+#: SituationViews/templates/situation_views.html:284
+msgid "Search the current map"
+msgstr "搜索当前地图"
+
+#: SituationViews/templates/situation_views.html:284
+#: SituationViews/templates/situation_views.html:310
+#: SituationViews/templates/situation_views.html:337
+#: SituationViews/templates/situation_views.html:376
+#: SituationViews/templates/situation_views.html:397
+#: templates/_article_i18n.html:32
+msgid "Close"
+msgstr "关闭"
+
+#: SituationViews/templates/situation_views.html:285
+msgid "Country, location, region, event category, or predicate"
+msgstr "国家、地点、大区、事件类别或谓词"
+
+#: SituationViews/templates/situation_views.html:286
+msgid ""
+"Matches hotspots visible under the current time and category filters; "
+"select a result to locate it and open its intelligence."
+msgstr "匹配当前时间与类别过滤后的热点；点击结果定位并打开情报。"
+
+#: SituationViews/templates/situation_views.html:287
+msgid ""
+"Search place names in Chinese or English, ISO codes, and event semantics "
+"on the current map."
+msgstr "可搜索中英文地名、ISO 代码和当前地图的事件语义。"
+
+#: SituationViews/templates/situation_views.html:289
+msgid "Detailed coordinates"
+msgstr "细化坐标"
+
+#: SituationViews/templates/situation_views.html:295
+msgid "Map overview"
+msgstr "地图概览"
+
+#: SituationViews/templates/situation_views.html:296
+msgid ""
+"Drag to rotate the globe, use the wheel to zoom, and select a hotspot to "
+"view locations and predicates."
+msgstr "拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。"
+
+#: SituationViews/templates/situation_views.html:300
+#: SituationViews/templates/situation_views.html:366
+msgid "Collapse legend"
+msgstr "收起图例"
+
+#: SituationViews/templates/situation_views.html:305
+#: SituationViews/templates/situation_views.html:371
+msgid "Related intelligence"
+msgstr "对应情报"
+
+#: SituationViews/templates/situation_views.html:306
+msgid "Select a location to show its intelligence count"
+msgstr "选择地点后显示情报数量"
+
+#: SituationViews/templates/situation_views.html:309
+#: SituationViews/templates/situation_views.html:375
+msgid "Expand"
+msgstr "展开"
+
+#: SituationViews/templates/situation_views.html:310
+#: SituationViews/templates/situation_views.html:376
+msgid "Close related intelligence"
+msgstr "关闭对应情报"
+
+#: SituationViews/templates/situation_views.html:314
+msgid ""
+"Ordered by content time from newest to oldest. Select a title to open the"
+" full intelligence."
+msgstr "按内容时间从新到旧排列，点击标题打开完整情报。"
+
+#: SituationViews/templates/situation_views.html:321
+msgid "Entity graph time range"
+msgstr "实体图时间范围"
+
+#: SituationViews/templates/situation_views.html:325
+msgid "Entity graph start time"
+msgstr "实体图开始时间"
+
+#: SituationViews/templates/situation_views.html:326
+msgid "Entity graph end time"
+msgstr "实体图结束时间"
+
+#: SituationViews/templates/situation_views.html:328
+msgid "Dragging only hides nodes and edges and updates relationship counts"
+msgstr "拖动仅隐藏节点和边并更新关系计数"
+
+#: SituationViews/templates/situation_views.html:332
+msgid "Aggregating entity relationships…"
+msgstr "正在聚合实体关系…"
+
+#: SituationViews/templates/situation_views.html:333
+msgid "Entity actor-object relationship graph"
+msgstr "实体施受关系图"
+
+#: SituationViews/templates/situation_views.html:336
+msgid "Search entities"
+msgstr "搜索实体"
+
+#: SituationViews/templates/situation_views.html:337
+msgid "Search entities in the graph"
+msgstr "搜索图中实体"
+
+#: SituationViews/templates/situation_views.html:338
+msgid "Name, source expression, type, country, or ID"
+msgstr "名称、原文表述、类型、国家或 ID"
+
+#: SituationViews/templates/situation_views.html:339
+msgid "Enter text to show all matching nodes."
+msgstr "输入内容后显示全部匹配节点。"
+
+#: SituationViews/templates/situation_views.html:343
+msgid "Refresh relationship graph"
+msgstr "刷新关系图"
+
+#: SituationViews/templates/situation_views.html:344
+msgid "Later"
+msgstr "稍后"
+
+#: SituationViews/templates/situation_views.html:347
+#, python-brace-format
+msgid ""
+"A relationship is connected only when supported by at least {count} "
+"independent events"
+msgstr "同一关系至少由 {count} 起独立事件支撑才连线"
+
+#: SituationViews/templates/situation_views.html:347
+#, python-brace-format
+msgid ""
+"Last {days} days · Score ≥ {score} · Relationships require {count} "
+"corroborating events"
+msgstr "最近 {days} 天 · 评分 ≥ {score} · 关系需 {count} 起印证"
+
+#: SituationViews/templates/situation_views.html:352
+msgid "Relationship graph settings"
+msgstr "关系图设置"
+
+#: SituationViews/templates/situation_views.html:354
+msgid "Minimum independent events"
+msgstr "最少独立事件数"
+
+#: SituationViews/templates/situation_views.html:355
+msgid "Maximum nodes"
+msgstr "最多节点数"
+
+#: SituationViews/templates/situation_views.html:356
+msgid "Keep high-score single relationships"
+msgstr "保留高评分单次关系"
+
+#: SituationViews/templates/situation_views.html:360
+msgid "Network size ≥"
+msgstr "网络规模 ≥"
+
+#: SituationViews/templates/situation_views.html:360
+msgid "nodes"
+msgstr "个节点"
+
+#: SituationViews/templates/situation_views.html:361
+msgid "Corroboration ≥"
+msgstr "印证 ≥"
+
+#: SituationViews/templates/situation_views.html:361
+msgid "independent events"
+msgstr "起独立事件"
+
+#: SituationViews/templates/situation_views.html:372
+msgid "Select an entity or relationship to show its intelligence count"
+msgstr "选择实体或关系后显示情报数量"
+
+#: SituationViews/templates/situation_views.html:380
+msgid ""
+"Select a node or relationship edge to view the intelligence that supports"
+" it."
+msgstr "点击节点或关系边查看支撑它的真实情报。"
+
+#: SituationViews/templates/situation_views.html:382
+msgid "All"
+msgstr "全部"
+
+#: SituationViews/templates/situation_views.html:383
+msgid "As actor"
+msgstr "作为施事"
+
+#: SituationViews/templates/situation_views.html:384
+msgid "As object"
+msgstr "作为受事"
+
+#: SituationViews/templates/situation_views.html:385
+msgid "Undirected participation"
+msgstr "无向参与"
+
+#: SituationViews/templates/situation_views.html:388
+msgid "Load more"
+msgstr "加载更多"
+
+#: SituationViews/templates/situation_views.html:396
+msgid "Assign entity"
+msgstr "指定实体"
+
+#: SituationViews/templates/situation_views.html:401
+msgid "1. Select a target entity"
+msgstr "1. 选择目标实体"
+
+#: SituationViews/templates/situation_views.html:402
+msgid ""
+"Select an entity table and search it first. You may add a new entity when"
+" no suitable result exists, or even when results already exist."
+msgstr "选择实体表后先搜索。没有合适结果时可以添加；即使已有结果，也始终可以添加新实体。"
+
+#: SituationViews/templates/situation_views.html:406
+msgid "Global entity table"
+msgstr "全局实体表"
+
+#: SituationViews/templates/situation_views.html:406
+msgid "Stable entities reusable across intelligence items (ent_*)."
+msgstr "稳定、可跨情报复用的实体（ent_*）。"
+
+#: SituationViews/templates/situation_views.html:410
+msgid "Contextual entity table"
+msgstr "语境实体表"
+
+#: SituationViews/templates/situation_views.html:410
+msgid "Entities valid only within specific intelligence contexts (ctx_*)."
+msgstr "只在具体情报语境中成立的实体（ctx_*）。"
+
+#: SituationViews/templates/situation_views.html:415
+msgid "Search canonical entities, for example: Donald Trump"
+msgstr "搜索标准实体，例如：唐纳德·特朗普"
+
+#: SituationViews/templates/situation_views.html:420
+msgid "Add a new global entity"
+msgstr "添加新的全局实体"
+
+#: SituationViews/templates/situation_views.html:422
+msgid "Canonical name"
+msgstr "标准名"
+
+#: SituationViews/templates/situation_views.html:424
+msgid "Person"
+msgstr "人物"
+
+#: SituationViews/templates/situation_views.html:424
+msgid "Organization"
+msgstr "组织"
+
+#: SituationViews/templates/situation_views.html:425
+msgid "Country"
+msgstr "国家"
+
+#: SituationViews/templates/situation_views.html:425
+msgid "Location"
+msgstr "地点"
+
+#: SituationViews/templates/situation_views.html:428
+#: SituationViews/templates/situation_views.html:442
+msgid "Add and select"
+msgstr "添加并选择"
+
+#: SituationViews/templates/situation_views.html:434
+msgid "Search contextual entities, for example: French pension reform protesters"
+msgstr "搜索已有语境实体，例如：法国养老金改革示威者"
+
+#: SituationViews/templates/situation_views.html:439
+msgid "Add a new contextual entity"
+msgstr "添加新的语境实体"
+
+#: SituationViews/templates/situation_views.html:441
+msgid "Enter a recognizable name"
+msgstr "输入一个便于识别的名称即可"
+
+#: SituationViews/templates/situation_views.html:448
+msgid "2. Set the association scope"
+msgstr "2. 设置关联范围"
+
+#: SituationViews/templates/situation_views.html:449
+msgid "Select a target entity above first."
+msgstr "请先在上方选择一个目标实体。"
+
+#: SituationViews/templates/situation_views.html:452
+msgid "Apply only to entities in the selected intelligence items"
+msgstr "仅针对所选情报中的实体生效"
+
+#: SituationViews/templates/situation_views.html:456
+msgid "Select all"
+msgstr "全选"
+
+#: SituationViews/templates/situation_views.html:457
+msgid "Clear"
+msgstr "清空"
+
+#: SituationViews/templates/situation_views.html:460
+#: templates/_article_i18n.html:33 templates/_article_i18n.html:39
+#: templates/intelligence_detail.html:42
+msgid "Loading…"
+msgstr "正在加载…"
+
+#: SituationViews/templates/situation_views.html:465
+msgid "Undo the last assignment"
+msgstr "撤销上次指定"
+
+#: SituationViews/templates/situation_views.html:466
+msgid "Clear selected manual assignments"
+msgstr "清除所选人工指定"
+
+#: SituationViews/templates/situation_views.html:467
+msgid "Save global mapping"
+msgstr "保存全局映射"
 
 #: templates/_article_i18n.html:7
 msgid "Published"
@@ -521,15 +956,6 @@ msgstr "Prompt 查看器"
 #: templates/_article_i18n.html:31
 msgid "Copy"
 msgstr "复制"
-
-#: templates/_article_i18n.html:32
-msgid "Close"
-msgstr "关闭"
-
-#: templates/_article_i18n.html:33 templates/_article_i18n.html:39
-#: templates/intelligence_detail.html:42
-msgid "Loading…"
-msgstr "正在加载…"
 
 #: templates/_article_i18n.html:34
 msgid "Copied"
