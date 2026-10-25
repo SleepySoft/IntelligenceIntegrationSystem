@@ -28,6 +28,12 @@ msgstr "实体时间线"
 msgid "Open separately"
 msgstr "单独打开"
 
+msgid "Language"
+msgstr "语言"
+
+msgid "Interface language"
+msgstr "界面语言"
+
 msgid "Loading view…"
 msgstr "正在加载视图…"
 

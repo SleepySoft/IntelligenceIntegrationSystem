@@ -52,6 +52,8 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     })
 
     assert response.status_code == 200
+    assert '<select id="language-select"' in response.get_data(as_text=True)
+    assert '<option value="zh-CN" selected>' in response.get_data(as_text=True)
     html = response.get_data(as_text=True)
     assert "情报列表" in html
     assert "地域视图" in html
