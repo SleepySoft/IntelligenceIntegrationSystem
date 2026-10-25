@@ -11,10 +11,12 @@ from typing import Any, Mapping
 
 from flask import Flask, g, request, session
 from flask_babel import Babel
+from jinja2 import ChoiceLoader, FileSystemLoader
 
 
 _SESSION_KEY = "ui_locale"
 _TRANSLATIONS_DIR = Path(__file__).with_name("translations")
+_SHARED_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 
 def _canonical_supported_tag(
@@ -48,6 +50,11 @@ def install_web_i18n(app: Flask, settings: Mapping[str, Any] | None = None) -> B
 
     app.config["BABEL_TRANSLATION_DIRECTORIES"] = str(_TRANSLATIONS_DIR)
     app.config["BABEL_DEFAULT_LOCALE"] = supported_locales[default_locale]
+    # 子系统 Blueprint 可被独立 Flask app 挂载；同时提供 IIS 公共模板片段。
+    app.jinja_loader = ChoiceLoader([
+        app.jinja_loader,
+        FileSystemLoader(str(_SHARED_TEMPLATES_DIR)),
+    ])
 
     def select_locale() -> str:
         selected_tag: str | None = None

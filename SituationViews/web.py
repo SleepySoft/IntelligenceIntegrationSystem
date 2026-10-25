@@ -16,6 +16,7 @@ from EntityResolution.model import EntityRef, ResolutionError
 from EntityResolution.service import EntityResolutionService
 from EntityAlias.model import AliasError
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
+from WebI18n import ensure_web_i18n
 from .engine import CATEGORY_LABELS, ENTITY_TYPE_GROUPS, SituationViewEngine, ViewQuery
 
 
@@ -91,6 +92,7 @@ class SituationViewsService:
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation",
                      public_scoped=False):
+        ensure_web_i18n(app)
         template_folder = str(Path(__file__).with_name("templates"))
         bp = Blueprint("situation_views", __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)

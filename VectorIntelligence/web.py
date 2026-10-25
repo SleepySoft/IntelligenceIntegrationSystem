@@ -15,6 +15,7 @@ import dateutil.parser
 from flask import Blueprint, jsonify, render_template, request, session
 
 from ServiceComponent.intelligence_projections import IntelligenceProjectionProfile
+from WebI18n import ensure_web_i18n
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class VectorWebService:
     # ------------------------------------------------------------------ 装配
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix='/vector'):
+        ensure_web_i18n(app)
         protect = wrapper or (lambda func: func)
         package_dir = Path(__file__).parent
         bp = Blueprint(

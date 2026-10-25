@@ -1,0 +1,48 @@
+{% macro iis_msg(source, fallback) -%}
+{{ ((_ (source)) if _ is defined else fallback)|tojson }}
+{%- endmacro %}
+<script>
+window.IIS_UI_LOCALE = {{ ui_locale|default('zh-CN')|tojson }};
+window.IIS_I18N_MESSAGES = Object.assign(window.IIS_I18N_MESSAGES || {}, {
+    published: {{ iis_msg('Published', '发布') }},
+    collected: {{ iis_msg('Collected', '采集') }},
+    archived: {{ iis_msg('Archived', '归档') }},
+    content_time_basis: {{ iis_msg('Content-time sort basis', '内容时间排序依据') }},
+    archived_time_basis: {{ iis_msg('Archive-time sort basis', '归档时间排序依据') }},
+    loading_intelligence: {{ iis_msg('Loading intelligence…', '正在加载情报…') }},
+    loading_failed: {{ iis_msg('Loading failed: {message}', '加载失败：{message}') }},
+    no_time_information: {{ iis_msg('No time information', '无时间信息') }},
+    unknown_uuid: {{ iis_msg('Unknown UUID', '未知 UUID') }},
+    unknown_source: {{ iis_msg('Unknown source', '未知来源') }},
+    uncategorized: {{ iis_msg('Uncategorized', '未分类') }},
+    total_score: {{ iis_msg('Total score:', '总分：') }},
+    service: {{ iis_msg('Service:', '服务：') }},
+    model: {{ iis_msg('Model:', '模型：') }},
+    view_prompt: {{ iis_msg('View Prompt v{version}', '查看 Prompt v{version}') }},
+    untitled: {{ iis_msg('Untitled', '无标题') }},
+    source: {{ iis_msg('Source:', '来源：') }},
+    no_summary: {{ iis_msg('No summary available', '暂无摘要') }},
+    no_intelligence: {{ iis_msg('No intelligence found', '暂无情报') }},
+    first_page: {{ iis_msg('First', '首页') }},
+    previous_page: {{ iis_msg('Previous', '上一页') }},
+    next_page: {{ iis_msg('Next', '下一页') }},
+    pagination_summary: {{ iis_msg('{page} / {pages} ({total} total)', '{page} / {pages}（共 {total} 条）') }},
+    prompt_viewer: {{ iis_msg('Prompt viewer', 'Prompt 查看器') }},
+    copy: {{ iis_msg('Copy', '复制') }},
+    close: {{ iis_msg('Close', '关闭') }},
+    loading: {{ iis_msg('Loading…', '正在加载…') }},
+    copied: {{ iis_msg('Copied', '已复制') }},
+    loading_prompt: {{ iis_msg('Loading Prompt v{version}…', '正在加载 Prompt v{version}…') }},
+    copy_prompt_hint: {{ iis_msg('Tip: select “Copy” to copy the complete Prompt.', '提示：点击“复制”可复制完整 Prompt。') }},
+    prompt_load_failed: {{ iis_msg('Prompt v{version} failed to load: {message}', 'Prompt v{version} 加载失败：{message}') }},
+    vector_sort_title: {{ iis_msg('Vector results are sorted by similarity', '向量检索按相似度排序') }},
+    article_loading: {{ iis_msg('Loading…', '正在加载…') }},
+    copy_link: {{ iis_msg('Copy link', '复制链接') }},
+    open_new_tab: {{ iis_msg('Open in a new tab', '在新标签打开') }},
+    unauthorized_article: {{ iis_msg('You are not authorized to view this intelligence', '无权访问该情报') }},
+    link_copied: {{ iis_msg('Link copied', '链接已复制') }},
+    copy_failed: {{ iis_msg('Copy failed', '复制失败') }},
+    intelligence_details: {{ iis_msg('Intelligence details', '情报详情') }},
+    load_failed: {{ iis_msg('Loading failed', '加载失败') }}
+});
+</script>

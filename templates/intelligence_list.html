@@ -11,50 +11,8 @@
         window.IIS_PLUGIN_ASSET_PREFIX = {{ plugin_asset_prefix|default('')|tojson }};
         window.IIS_PUBLIC_MODE = {{ public_mode|default(false)|tojson }};
         window.IIS_PUBLIC_LIMITS = {{ public_limits|default({})|tojson }};
-        window.IIS_UI_LOCALE = {{ ui_locale|default('zh-CN')|tojson }};
-        window.IIS_I18N_MESSAGES = {
-            published: {{ _('Published')|tojson }},
-            collected: {{ _('Collected')|tojson }},
-            archived: {{ _('Archived')|tojson }},
-            content_time_basis: {{ _('Content-time sort basis')|tojson }},
-            archived_time_basis: {{ _('Archive-time sort basis')|tojson }},
-            loading_intelligence: {{ _('Loading intelligence…')|tojson }},
-            loading_failed: {{ _('Loading failed: {message}')|tojson }},
-            no_time_information: {{ _('No time information')|tojson }},
-            unknown_uuid: {{ _('Unknown UUID')|tojson }},
-            unknown_source: {{ _('Unknown source')|tojson }},
-            uncategorized: {{ _('Uncategorized')|tojson }},
-            total_score: {{ _('Total score:')|tojson }},
-            service: {{ _('Service:')|tojson }},
-            model: {{ _('Model:')|tojson }},
-            view_prompt: {{ _('View Prompt v{version}')|tojson }},
-            untitled: {{ _('Untitled')|tojson }},
-            source: {{ _('Source:')|tojson }},
-            no_summary: {{ _('No summary available')|tojson }},
-            no_intelligence: {{ _('No intelligence found')|tojson }},
-            first_page: {{ _('First')|tojson }},
-            previous_page: {{ _('Previous')|tojson }},
-            next_page: {{ _('Next')|tojson }},
-            pagination_summary: {{ _('{page} / {pages} ({total} total)')|tojson }},
-            prompt_viewer: {{ _('Prompt viewer')|tojson }},
-            copy: {{ _('Copy')|tojson }},
-            close: {{ _('Close')|tojson }},
-            loading: {{ _('Loading…')|tojson }},
-            copied: {{ _('Copied')|tojson }},
-            loading_prompt: {{ _('Loading Prompt v{version}…')|tojson }},
-            copy_prompt_hint: {{ _('Tip: select “Copy” to copy the complete Prompt.')|tojson }},
-            prompt_load_failed: {{ _('Prompt v{version} failed to load: {message}')|tojson }},
-            vector_sort_title: {{ _('Vector results are sorted by similarity')|tojson }},
-            article_loading: {{ _('Loading…')|tojson }},
-            copy_link: {{ _('Copy link')|tojson }},
-            open_new_tab: {{ _('Open in a new tab')|tojson }},
-            unauthorized_article: {{ _('You are not authorized to view this intelligence')|tojson }},
-            link_copied: {{ _('Link copied')|tojson }},
-            copy_failed: {{ _('Copy failed')|tojson }},
-            intelligence_details: {{ _('Intelligence details')|tojson }},
-            load_failed: {{ _('Loading failed')|tojson }}
-        };
     </script>
+    {% include '_article_i18n.html' %}
     <title>{{ _('Intelligence list · IIS') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/intelligence_table.css">
