@@ -2,6 +2,10 @@
 
 情报整合系统：抓取主流新闻网站的公开新闻，使用AI进行分析、评分以及对事件事件进行结构化抽取的情报系统。
 
+发布地址：[https://sleepysoft.org](https://sleepysoft.org)
+
+![kurumi.png](doc/kurumi.png)
+
 项目地址：[https://github.com/SleepySoft/IntelligenceIntegrationSystem](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/SubSystem)
 
 
