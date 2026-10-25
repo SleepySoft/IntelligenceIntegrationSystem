@@ -82,6 +82,38 @@ web:
 
 每一步独立提交、可独立回滚；迁移期间未标记页面继续显示现有中文，不影响功能。
 
+### 7.1 实施状态
+
+截至 2026-10-25，已完成：
+
+- locale 配置、请求协商、session 保持、响应头和独立子系统安全安装；
+- `/views` 公共外壳、语言选择器、情报列表、通用卡片和分页；
+- 情报详情页外壳、跨页面情报弹窗、Prompt 弹窗；
+- 聚合情报页；
+- 卡片/弹窗词条公共片段，查询、关系图、地域图、时间线和 Vector 页面已接入，
+  尚未迁移的页面继续使用中文回退，不会因词典缺失中断。
+
+仍待按独立提交迁移：详情正文协议标签、查询页、关系图、地域图、实体图、实体时间线、
+Vector 页面，以及登录后的管理页面。情报标题、摘要和事件原文不属于这些迁移项。
+
+### 7.2 Catalog 维护命令
+
+```bash
+# 提取模板与 Python 消息；iis_msg:1 用于公共 JS 消息模板宏的第一个参数。
+pybabel extract -F babel.cfg \
+  -k _ -k gettext -k ngettext:1,2 -k lazy_gettext -k iis_msg:1 \
+  -o /tmp/iis_messages.pot .
+
+# 用提取结果更新中文目录；新增语言首次使用 pybabel init。
+pybabel update -i /tmp/iis_messages.pot \
+  -d WebI18n/translations -l zh_Hans
+pybabel compile -d WebI18n/translations
+```
+
+`.po` 与编译后的 `.mo` 均提交；`.pot` 是临时提取产物，不提交。更新后必须检查
+placeholder（如 `{message}`、`{count}`）未在译文中丢失，并运行 Web i18n 回归测试。
+提取配置只扫描模板和 Web 路由模块，避免把业务代码里作为普通变量使用的 `_` 误收为文案。
+
 ## 8. 测试要求
 
 - locale 优先级、非法值、地区回退、session 持久化；
