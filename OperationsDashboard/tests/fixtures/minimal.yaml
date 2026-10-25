@@ -1,0 +1,8 @@
+session: iis-dashboard-test
+windows:
+  test-wall:
+    horizontal:
+      - overview
+      - vertical:
+          - web-log
+          - crawler-log

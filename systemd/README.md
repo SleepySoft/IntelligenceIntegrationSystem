@@ -97,16 +97,18 @@ systemd 现在通过 `iis.target` 统一拉起 Web 与爬虫，并直接管理�
 
 ## 运维仪表盘
 
+仪表盘实现、面板脚本、默认配置和完整使用说明统一位于
+[`OperationsDashboard/`](../OperationsDashboard/README.md)。`Scripts/iis_dashboard.sh` 仅作为
+systemd、桌面启动项和人工调用的稳定入口。
+
 一键安装并启用后台仪表盘及 GNOME 登录自启动：
 
 ```bash
 Scripts/install_iis_dashboard.sh
 ```
 
-仪表盘默认打开一屏四区域的监控墙，同时显示总览、Web 日志、Crawler 日志和 VectorDB
-日志；此外保留各区域的独立大窗口和 `btop`。总览显示服务状态、API 健康、
-CPU/GPU/NVMe 温度、负载、内存、磁盘、网络地址和高占用进程。VectorDB 未安装时，
-其日志窗口会显示等待提示，不会回放残留的历史日志，也不会导致仪表盘退出。
+默认配置提供监控墙、各服务日志、总览和系统监控窗口。窗口内容全部来自
+`OperationsDashboard/panels/` 中的独立脚本；窗口与拆分关系由声明式 YAML 配置。
 
 ```bash
 # 图形终端中一键打开
@@ -119,9 +121,7 @@ Scripts/iis_dashboard.sh attach
 Scripts/iis_dashboard.sh status
 ```
 
-`F1` 返回监控墙；`F2` 到 `F6` 分别打开总览、Web、Crawler、VectorDB 和 `btop` 的
-独立大窗口。也可以使用 `Alt+1` 到 `Alt+6` 或鼠标点击底部标签。监控墙中可直接用
-鼠标拖动蓝色边框调整区域；`F7` 恢复四宫格，`F8` 切换主区域在左，`F9` 切换主区域
-在上，`Alt+z` 临时放大/恢复当前区域。tmux 原生的 `Ctrl-b Space` 也可循环布局，
-`Ctrl-b z` 可放大区域，`Ctrl-b d` 退出视图但保持后台运行。GNOME 登录后会自动打开
-仪表盘，应用菜单中也可搜索 “IIS Operations Dashboard”。
+`F1`—`F9` 或 `Alt+1`—`Alt+9` 按配置顺序切换窗口，`Alt+z` 临时放大/恢复当前区域，
+`F10` 保存当前窗口经鼠标拖动后的真实尺寸。命令行执行
+`Scripts/iis_dashboard.sh save-layout` 可保存全部窗口。GNOME 登录后会自动打开仪表盘，
+应用菜单中也可搜索 “IIS Operations Dashboard”。

@@ -1,0 +1,18 @@
+# 若 _config/dashboard.yaml 存在，入口会优先读取用户配置；否则使用本文件。
+session: iis-monitor
+
+windows:
+  wall:
+    horizontal:
+      - vertical:
+          - overview
+          - crawler-log
+      - vertical:
+          - web-log
+          - vector-log
+
+  overview: overview
+  web-log: web-log
+  crawler-log: crawler-log
+  vector-log: vector-log
+  system: system-monitor

@@ -152,6 +152,13 @@
   - `RssFeedsBasedCrawlFlow.py`：基于 RSS 的简易抓取流程
   - `IntelligenceCrawlFlow.py`：适配 IIS 的抓取流程
 
+- **`OperationsDashboard/`** — Linux tmux 运维仪表盘（独立组件）
+  - `dashboard.py`：读取极简 YAML，递归创建窗口与面板，并保存/恢复实际 tmux 布局
+  - `dashboard.yaml`：默认窗口配置；部署差异可写入 `_config/dashboard.yaml`
+  - `panels/`：每项显示内容均为独立前台脚本，包括总览、服务日志和系统监控
+  - `README.md`：布局语法、快捷键、扩展面板与开机启动说明
+  - 外部稳定入口为 `Scripts/iis_dashboard.sh`，供 systemd 和桌面启动项使用
+
 - **`Test/`** — 演示/测试脚本
   - 以 `Test` 开头，但多为手动运行的演示代码，非自动化单元测试
 
