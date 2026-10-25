@@ -93,3 +93,14 @@ def install_web_i18n(app: Flask, settings: Mapping[str, Any] | None = None) -> B
         return response
 
     return babel
+
+
+def ensure_web_i18n(app: Flask) -> Babel | None:
+    """让可独立挂载的 UI 子系统在没有 IIS 组合根时仍能安全渲染。
+
+    正常 IIS 启动由组合根带配置安装；独立测试或复用只获得默认语言配置。
+    """
+
+    if "babel" in app.extensions:
+        return None
+    return install_web_i18n(app)

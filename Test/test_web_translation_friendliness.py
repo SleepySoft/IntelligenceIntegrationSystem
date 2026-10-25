@@ -19,8 +19,16 @@ def test_public_reading_pages_declare_chinese_source_language():
         "SituationViews/templates/entity_timeline.html",
     )
 
+    dynamic_pages = {
+        "templates/intelligence_list.html",
+        "IntelligenceViews/templates/intelligence_views.html",
+    }
     for page in pages:
-        assert '<html lang="zh-CN">' in _read(page), page
+        source = _read(page)
+        if page in dynamic_pages:
+            assert 'lang="{{ ui_locale|default(\'zh-CN\') }}"' in source, page
+        else:
+            assert '<html lang="zh-CN">' in source, page
 
 
 def test_dynamic_cards_protect_machine_identifiers_from_page_translation():

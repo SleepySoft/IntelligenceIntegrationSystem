@@ -14,7 +14,7 @@ def _make_app():
 
     @app.get("/probe")
     def probe():
-        return render_template_string("{{ ui_locale }}")
+        return render_template_string("{{ ui_locale }}|{{ _('Intelligence list') }}")
 
     return app
 
@@ -25,9 +25,9 @@ def test_default_and_browser_locale_selection():
     default_response = client.get("/probe")
     english_response = client.get("/probe", headers={"Accept-Language": "en-US,en;q=0.9"})
 
-    assert default_response.text == "zh-CN"
+    assert default_response.text == "zh-CN|情报列表"
     assert default_response.headers["Content-Language"] == "zh-CN"
-    assert english_response.text == "en"
+    assert english_response.text == "en|Intelligence list"
     assert "Accept-Language" in english_response.vary
 
 
@@ -37,8 +37,8 @@ def test_valid_query_locale_persists_in_session():
     selected = client.get("/probe?lang=en")
     persisted = client.get("/probe")
 
-    assert selected.text == "en"
-    assert persisted.text == "en"
+    assert selected.text == "en|Intelligence list"
+    assert persisted.text == "en|Intelligence list"
     assert "Cookie" in persisted.vary
 
 
@@ -50,4 +50,4 @@ def test_invalid_query_locale_does_not_override_browser_choice():
         headers={"Accept-Language": "en"},
     )
 
-    assert response.text == "en"
+    assert response.text == "en|Intelligence list"

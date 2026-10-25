@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>情报视图</title>
+    <title>{{ _('Intelligence views') }}</title>
     <style>
         :root {
             color-scheme: light dark;
@@ -42,23 +42,31 @@
 <body>
 <div class="shell">
     <header>
-        <nav class="tabs" aria-label="情报展示方式">
-            <button class="tab" type="button" data-view="list">情报列表</button>
-            <button class="tab" type="button" data-view="map">地域视图</button>
-            <button class="tab" type="button" data-view="entities">实体视图</button>
-            <button class="tab" type="button" data-view="timeline">实体时间线</button>
+        <nav class="tabs" aria-label="{{ _('Intelligence display mode') }}">
+            <button class="tab" type="button" data-view="list">{{ _('Intelligence list') }}</button>
+            <button class="tab" type="button" data-view="map">{{ _('Map view') }}</button>
+            <button class="tab" type="button" data-view="entities">{{ _('Entity view') }}</button>
+            <button class="tab" type="button" data-view="timeline">{{ _('Entity timeline') }}</button>
         </nav>
         <span class="scope-note" id="scope-note" hidden></span>
-        <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">单独打开</a>
+        <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">{{ _('Open separately') }}</a>
     </header>
     <main class="frames">
-        <div class="loading" id="loading">正在加载视图…</div>
-        <iframe data-view="list" title="情报列表视图" lang="zh-CN"></iframe>
-        <iframe data-view="map" title="地域态势视图" lang="zh-CN"></iframe>
-        <iframe data-view="entities" title="实体关系视图" lang="zh-CN"></iframe>
-        <iframe data-view="timeline" title="实体时间线视图" lang="zh-CN"></iframe>
+        <div class="loading" id="loading">{{ _('Loading view…') }}</div>
+        <iframe data-view="list" title="{{ _('Intelligence list view') }}" lang="{{ ui_locale|default('zh-CN') }}"></iframe>
+        <iframe data-view="map" title="{{ _('Geographic situation view') }}" lang="{{ ui_locale|default('zh-CN') }}"></iframe>
+        <iframe data-view="entities" title="{{ _('Entity relationship view') }}" lang="{{ ui_locale|default('zh-CN') }}"></iframe>
+        <iframe data-view="timeline" title="{{ _('Entity timeline view') }}" lang="{{ ui_locale|default('zh-CN') }}"></iframe>
     </main>
 </div>
+<script>
+window.IIS_UI_LOCALE = {{ ui_locale|default('zh-CN')|tojson }};
+window.IIS_I18N_MESSAGES = {
+    recent_scope: {{ _('Last {days} days · score ≥ {score}')|tojson }},
+    corroboration_scope: {{ _(' · relationships require {count} corroborating reports')|tojson }}
+};
+</script>
+<script src="/static/js/iis_i18n.js"></script>
 <script>
 const FRAME_URLS = {{ frame_urls|tojson }};
 const SITUATION = {{ profile.situation|tojson }};
@@ -157,9 +165,12 @@ function activate(view, updateHistory = true) {
     document.getElementById('open-view').href = FRAME_URLS[view];
     const scopeNote = document.getElementById('scope-note');
     if (view === 'map' || view === 'entities' || view === 'timeline') {
-        let text = `最近 ${SITUATION.window_days} 天 · 评分 ≥ ${SITUATION.min_score}`;
+        let text = IIS_I18N.t('recent_scope', {
+            days: SITUATION.window_days,
+            score: SITUATION.min_score,
+        });
         if (view === 'entities' && SITUATION.min_support) {
-            text += ` · 关系需 ${SITUATION.min_support} 起印证`;
+            text += IIS_I18N.t('corroboration_scope', {count: SITUATION.min_support});
         }
         scopeNote.textContent = text;
         scopeNote.hidden = false;

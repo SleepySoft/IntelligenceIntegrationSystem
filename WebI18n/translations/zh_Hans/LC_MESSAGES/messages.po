@@ -1,0 +1,179 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: IIS\n"
+"Language: zh_Hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Intelligence views"
+msgstr "情报视图"
+
+msgid "Intelligence display mode"
+msgstr "情报展示方式"
+
+msgid "Intelligence list"
+msgstr "情报列表"
+
+msgid "Map view"
+msgstr "地域视图"
+
+msgid "Entity view"
+msgstr "实体视图"
+
+msgid "Entity timeline"
+msgstr "实体时间线"
+
+msgid "Open separately"
+msgstr "单独打开"
+
+msgid "Loading view…"
+msgstr "正在加载视图…"
+
+msgid "Intelligence list view"
+msgstr "情报列表视图"
+
+msgid "Geographic situation view"
+msgstr "地域态势视图"
+
+msgid "Entity relationship view"
+msgstr "实体关系视图"
+
+msgid "Entity timeline view"
+msgstr "实体时间线视图"
+
+msgid "Last {days} days · score ≥ {score}"
+msgstr "最近 {days} 天 · 评分 ≥ {score}"
+
+msgid " · relationships require {count} corroborating reports"
+msgstr " · 关系需 {count} 起印证"
+
+msgid "Intelligence list · IIS"
+msgstr "情报列表 · IIS"
+
+msgid "Minimum score:"
+msgstr "最低评分："
+
+msgid "All (0+)"
+msgstr "全部（0+）"
+
+msgid "Watch (> 4)"
+msgstr "待观察（> 4）"
+
+msgid "Good (> 6)"
+msgstr "良好（> 6）"
+
+msgid "High value (> 8)"
+msgstr "高价值（> 8）"
+
+msgid "Items per page:"
+msgstr "每页数量："
+
+msgid "Sort by:"
+msgstr "排序："
+
+msgid "Archive time"
+msgstr "归档时间"
+
+msgid "Content time"
+msgstr "内容时间"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Published"
+msgstr "发布"
+
+msgid "Collected"
+msgstr "采集"
+
+msgid "Archived"
+msgstr "归档"
+
+msgid "Content-time sort basis"
+msgstr "内容时间排序依据"
+
+msgid "Archive-time sort basis"
+msgstr "归档时间排序依据"
+
+msgid "Loading intelligence…"
+msgstr "正在加载情报…"
+
+msgid "Loading failed: {message}"
+msgstr "加载失败：{message}"
+
+msgid "No time information"
+msgstr "无时间信息"
+
+msgid "Unknown UUID"
+msgstr "未知 UUID"
+
+msgid "Unknown source"
+msgstr "未知来源"
+
+msgid "Uncategorized"
+msgstr "未分类"
+
+msgid "Total score:"
+msgstr "总分："
+
+msgid "Service:"
+msgstr "服务："
+
+msgid "Model:"
+msgstr "模型："
+
+msgid "View Prompt v{version}"
+msgstr "查看 Prompt v{version}"
+
+msgid "Untitled"
+msgstr "无标题"
+
+msgid "Source:"
+msgstr "来源："
+
+msgid "No summary available"
+msgstr "暂无摘要"
+
+msgid "No intelligence found"
+msgstr "暂无情报"
+
+msgid "First"
+msgstr "首页"
+
+msgid "Previous"
+msgstr "上一页"
+
+msgid "Next"
+msgstr "下一页"
+
+msgid "{page} / {pages} ({total} total)"
+msgstr "{page} / {pages}（共 {total} 条）"
+
+msgid "Prompt viewer"
+msgstr "Prompt 查看器"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Close"
+msgstr "关闭"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Copied"
+msgstr "已复制"
+
+msgid "Loading Prompt v{version}…"
+msgstr "正在加载 Prompt v{version}…"
+
+msgid "Tip: select “Copy” to copy the complete Prompt."
+msgstr "提示：点击“复制”可复制完整 Prompt。"
+
+msgid "Prompt v{version} failed to load: {message}"
+msgstr "Prompt v{version} 加载失败：{message}"
+
+msgid "Vector results are sorted by similarity"
+msgstr "向量检索按相似度排序"

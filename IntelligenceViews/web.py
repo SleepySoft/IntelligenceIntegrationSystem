@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 
 from flask import Blueprint, render_template, request, session
 
+from WebI18n import ensure_web_i18n
+
 
 VIEW_NAMES = frozenset({"list", "map", "entities", "timeline"})
 LIST_QUERY_NAMES = (
@@ -29,6 +31,7 @@ class IntelligenceViewsService:
         self.situation = self._situation_profile(self.settings.get("situation"))
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/views"):
+        ensure_web_i18n(app)
         template_folder = str(Path(__file__).with_name("templates"))
         bp = Blueprint("intelligence_views", __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)

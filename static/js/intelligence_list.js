@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sortSelect) {
             sortSelect.value = state.sort_by;
             sortSelect.disabled = state.search_mode !== 'mongo';
-            sortSelect.title = sortSelect.disabled ? '向量检索按相似度排序' : '';
+            sortSelect.title = sortSelect.disabled ? IIS_I18N.t('vector_sort_title') : '';
         }
     }
 
