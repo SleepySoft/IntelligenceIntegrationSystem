@@ -27,8 +27,10 @@ def main(argv=None) -> int:
         parser.error("port 必须在 1..65535")
     app = Flask(__name__)
     app.secret_key = secrets.token_bytes(32)
-    IISConfigurationWeb(IISConfigurationService(
-        args.config, fallback_path=args.fallback)).mount_to_app(app, url_prefix="")
+    IISConfigurationWeb(
+        IISConfigurationService(args.config, fallback_path=args.fallback),
+        setup_ai_url="http://127.0.0.1:8000/config/",
+    ).mount_to_app(app, url_prefix="")
     print(f"IIS 配置页面: http://{args.host}:{args.port}/")
     app.run(host=args.host, port=args.port)
     return 0

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-25 22:41+0800\n"
+"POT-Creation-Date: 2026-10-25 22:56+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -16,12 +16,9 @@ msgstr ""
 
 #: AIClientCenter/templates/ai_client_config.html:6
 #: AIClientCenter/templates/ai_client_config.html:20
+#: templates/control_panel.html:65
 msgid "AI client configuration"
 msgstr "AI 客户端配置"
-
-#: templates/control_panel.html:61 templates/runtime_monitor.html:79
-msgid "Configuration"
-msgstr "配置"
 
 #: AIClientCenter/templates/ai_client_config.html:21
 msgid ""
@@ -160,6 +157,7 @@ msgstr "字节"
 
 #: IISConfiguration/templates/iis_configuration.html:5
 #: IISConfiguration/templates/iis_configuration.html:17
+#: templates/control_panel.html:52 templates/control_panel.html:63
 msgid "IIS configuration"
 msgstr "IIS 配置"
 
@@ -168,6 +166,10 @@ msgid ""
 "Change IIS settings with a guided form. Validation uses the same schema "
 "as service startup."
 msgstr "使用引导表单修改 IIS 设置。校验使用与服务启动相同的配置模型。"
+
+#: IISConfiguration/templates/iis_configuration.html:17
+msgid "Setup wizard"
+msgstr "配置向导"
 
 #: IISConfiguration/templates/iis_configuration.html:21
 msgid ""
@@ -186,6 +188,196 @@ msgstr "已恢复所选版本。重启 IIS 后生效。"
 #: IISConfiguration/templates/iis_configuration.html:25
 msgid "This field must contain valid JSON."
 msgstr "此字段必须包含有效 JSON。"
+
+#: IISConfiguration/templates/iis_setup.html:5
+#: IISConfiguration/templates/iis_setup.html:15
+msgid "IIS setup"
+msgstr "IIS 初始化配置"
+
+#: IISConfiguration/templates/iis_setup.html:16
+msgid ""
+"Create the minimum configuration required to start IIS. Advanced settings"
+" remain available after setup."
+msgstr "创建启动 IIS 所需的最小配置。完成后仍可修改高级设置。"
+
+#: IISConfiguration/templates/iis_setup.html:16
+msgid ""
+"Run the guided setup again. Existing values are loaded and remain "
+"unchanged unless you edit them."
+msgstr "重新运行配置向导。除非主动修改，否则会保留当前值。"
+
+#: IISConfiguration/templates/iis_setup.html:17
+msgid "Welcome"
+msgstr "开始"
+
+#: IISConfiguration/templates/iis_setup.html:17
+msgid "Service"
+msgstr "服务"
+
+#: IISConfiguration/templates/iis_setup.html:17
+msgid "Access"
+msgstr "访问控制"
+
+#: IISConfiguration/templates/iis_setup.html:17
+msgid "Features"
+msgstr "功能"
+
+#: IISConfiguration/templates/iis_setup.html:17
+msgid "Review"
+msgstr "确认"
+
+#: IISConfiguration/templates/iis_setup.html:21
+msgid "Before you begin"
+msgstr "开始之前"
+
+#: IISConfiguration/templates/iis_setup.html:22
+msgid ""
+"This wizard configures IIS itself. MongoDB and AI providers remain "
+"external services and are not installed here."
+msgstr "此向导只配置 IIS 本身。MongoDB 和 AI 提供方仍是外部服务，不会在这里安装。"
+
+#: IISConfiguration/templates/iis_setup.html:23
+msgid ""
+"The final step validates the complete configuration with the same model "
+"used at service startup. Nothing is written before you confirm Save."
+msgstr "最后一步会使用服务启动时的同一模型校验完整配置。确认保存之前不会写入任何内容。"
+
+#: IISConfiguration/templates/iis_setup.html:28
+msgid "Web service and MongoDB"
+msgstr "Web 服务与 MongoDB"
+
+#: IISConfiguration/templates/iis_setup.html:30
+msgid "Listen address"
+msgstr "监听地址"
+
+#: IISConfiguration/templates/iis_setup.html:31
+msgid "Web port"
+msgstr "Web 端口"
+
+#: IISConfiguration/templates/iis_setup.html:32
+msgid "Public address (optional)"
+msgstr "公开访问地址（可选）"
+
+#: IISConfiguration/templates/iis_setup.html:34
+msgid "MongoDB host"
+msgstr "MongoDB 主机"
+
+#: IISConfiguration/templates/iis_setup.html:35
+msgid "MongoDB port"
+msgstr "MongoDB 端口"
+
+#: IISConfiguration/templates/iis_setup.html:36
+msgid "MongoDB username (optional)"
+msgstr "MongoDB 用户名（可选）"
+
+#: IISConfiguration/templates/iis_setup.html:37
+msgid "MongoDB password (optional)"
+msgstr "MongoDB 密码（可选）"
+
+#: IISConfiguration/templates/iis_setup.html:42
+msgid "API access tokens"
+msgstr "API 访问令牌"
+
+#: IISConfiguration/templates/iis_setup.html:43
+msgid ""
+"Use separate random tokens for crawler submissions and RPC access. One "
+"token per line."
+msgstr "采集提交和 RPC 访问应使用不同的随机令牌，每行填写一个。"
+
+#: IISConfiguration/templates/iis_setup.html:44
+msgid "Collector tokens"
+msgstr "采集器令牌"
+
+#: IISConfiguration/templates/iis_setup.html:45
+#: IISConfiguration/templates/iis_setup.html:47
+msgid "Generate token"
+msgstr "生成令牌"
+
+#: IISConfiguration/templates/iis_setup.html:46
+msgid "RPC tokens"
+msgstr "RPC 令牌"
+
+#: IISConfiguration/templates/iis_setup.html:51
+msgid "Optional features"
+msgstr "可选功能"
+
+#: IISConfiguration/templates/iis_setup.html:52
+msgid "Translate non-Chinese intelligence"
+msgstr "翻译非中文情报"
+
+#: IISConfiguration/templates/iis_setup.html:53
+msgid "Vector search and aggregation"
+msgstr "向量搜索与聚合"
+
+#: IISConfiguration/templates/iis_setup.html:54
+msgid "Situation views"
+msgstr "态势视图"
+
+#: IISConfiguration/templates/iis_setup.html:55
+msgid "Entity alias management"
+msgstr "实体别名管理"
+
+#: IISConfiguration/templates/iis_setup.html:56
+msgid "AI client group used for translation"
+msgstr "翻译使用的 AI 客户端分组"
+
+#: IISConfiguration/templates/iis_setup.html:57
+msgid ""
+"Vector features also require the external VectorDB service and embedding "
+"model."
+msgstr "向量功能还需要外部 VectorDB 服务和嵌入模型。"
+
+#: IISConfiguration/templates/iis_setup.html:61
+msgid "Review and save"
+msgstr "确认并保存"
+
+#: IISConfiguration/templates/iis_setup.html:64
+msgid ""
+"After saving, configure AI clients and create an administrator before "
+"exposing IIS to other machines."
+msgstr "保存后请先配置 AI 客户端并创建管理员，再将 IIS 开放给其他机器访问。"
+
+#: IISConfiguration/templates/iis_setup.html:69
+msgid "Back"
+msgstr "上一步"
+
+#: IISConfiguration/templates/iis_setup.html:69
+msgid "Advanced configuration"
+msgstr "高级配置"
+
+#: IISConfiguration/templates/iis_setup.html:69 templates/_article_i18n.html:28
+msgid "Next"
+msgstr "下一页"
+
+#: IISConfiguration/templates/iis_setup.html:69
+msgid "Validate and save"
+msgstr "校验并保存"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid "Validating…"
+msgstr "正在校验…"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid ""
+"IIS configuration is ready. Restart IIS if it is already running, then "
+"configure AI clients."
+msgstr "IIS 配置已准备好。如果 IIS 正在运行，请重启服务，然后配置 AI 客户端。"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid "Configure AI clients"
+msgstr "配置 AI 客户端"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid "Open full configuration"
+msgstr "打开完整配置"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid "Configuration target"
+msgstr "配置写入位置"
+
+#: IISConfiguration/templates/iis_setup.html:74
+msgid "Loaded defaults from"
+msgstr "默认值来源"
 
 #: IntelligenceViews/templates/intelligence_views.html:6
 msgid "Intelligence views"
@@ -1770,10 +1962,6 @@ msgstr "首页"
 msgid "Previous"
 msgstr "上一页"
 
-#: templates/_article_i18n.html:28
-msgid "Next"
-msgstr "下一页"
-
 #: templates/_article_i18n.html:29
 #, python-brace-format
 msgid "{page} / {pages} ({total} total)"
@@ -1836,6 +2024,10 @@ msgstr "情报详情"
 #: templates/_article_i18n.html:46
 msgid "Loading failed"
 msgstr "加载失败"
+
+#: templates/control_panel.html:61 templates/runtime_monitor.html:74
+msgid "Configuration"
+msgstr "配置"
 
 #: templates/intelligence_cluster_list.html:11
 msgid "Aggregated intelligence · IIS"

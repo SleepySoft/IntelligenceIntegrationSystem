@@ -260,7 +260,8 @@ python CrawlerServiceEngine.py
 > AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
 > 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。
 >
-> 不想手改 YAML 时，可运行 `Scripts/iis_configure.sh` 打开仅监听本机的 IIS 配置页；
+> 不想手改 YAML 时，可运行 `deploy/iisctl configure`（或 `Scripts/iis_configure.sh`）打开
+> 仅监听本机的首次配置向导；正式配置不存在时会自动进入五步初始化流程。
 > 主服务已运行时也可登录后访问 `/admin/config/`。AI Client 的配置页由
 > AIClientCenter 自己提供，位于 `/monitor/ai-client-dashboard/config/`。两套页面都支持
 > 引导编辑、真实 schema 校验、密钥遮蔽、原子保存和历史恢复；AI Client 还可直接热重载，

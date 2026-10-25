@@ -1,5 +1,6 @@
 import json
 import stat
+from types import SimpleNamespace
 
 from deploy import iis_deploy
 
@@ -48,3 +49,20 @@ def test_json_output_never_reads_config_contents(tmp_path, monkeypatch, capsys):
     output = capsys.readouterr().out
     assert secret not in output
     assert json.loads(output)["schema"] == "iis-deployment-doctor/1"
+
+
+def test_configure_launches_local_configuration_module(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(iis_deploy, "PROJECT_DIR", tmp_path)
+    monkeypatch.setattr(
+        iis_deploy.subprocess, "run",
+        lambda command, **kwargs: calls.append((command, kwargs)) or SimpleNamespace(returncode=0),
+    )
+
+    assert iis_deploy.main([
+        "configure", "--config", "/tmp/iis.yaml", "--port", "5099",
+    ]) == 0
+    command, kwargs = calls[0]
+    assert command[:3] == [iis_deploy.sys.executable, "-m", "IISConfiguration"]
+    assert command[-4:] == ["--port", "5099", "--config", "/tmp/iis.yaml"]
+    assert kwargs["cwd"] == tmp_path

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""IIS Linux 部署控制器；M0 仅提供只读 doctor。"""
+"""IIS Linux 部署控制器；提供只读诊断与本机配置向导。"""
 
 from __future__ import annotations
 
@@ -250,7 +250,28 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     doctor = subparsers.add_parser("doctor", help="只读检查主机与当前仓库的部署准备度")
     doctor.add_argument("--json", action="store_true", help="输出机器可读 JSON")
+    configure = subparsers.add_parser(
+        "configure", help="启动仅监听本机的 IIS 引导配置页面")
+    configure.add_argument("--config", type=Path)
+    configure.add_argument("--fallback", type=Path)
+    configure.add_argument("--host", default="127.0.0.1")
+    configure.add_argument("--port", type=int, default=5070)
     return parser
+
+
+def run_configure(args) -> int:
+    command = [
+        sys.executable, "-m", "IISConfiguration",
+        "--host", args.host, "--port", str(args.port),
+    ]
+    if args.config is not None:
+        command.extend(("--config", str(args.config)))
+    if args.fallback is not None:
+        command.extend(("--fallback", str(args.fallback)))
+    try:
+        return subprocess.run(command, cwd=PROJECT_DIR, check=False).returncode
+    except KeyboardInterrupt:
+        return 130
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print_human(results)
         return 1 if any(result.status == "fail" for result in results) else 0
+    if args.command == "configure":
+        return run_configure(args)
     return 2
 
 

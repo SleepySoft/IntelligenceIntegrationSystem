@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="{{ ui_locale|default('zh-CN') }}">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ _('IIS setup') }}</title>
+  <style>
+    :root{font:16px/1.55 system-ui,sans-serif;color:#172033;background:#f3f6fb}*{box-sizing:border-box}main{max-width:900px;margin:auto;padding:28px 20px}
+    .head,.panel{background:#fff;border:1px solid #d8e0ea;border-radius:14px;padding:22px;margin-bottom:18px}.steps{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.step{padding:6px 11px;border-radius:999px;background:#e8edf5;color:#526071}.step.active{background:#315efb;color:#fff}.step.done{background:#dcfae6;color:#087443}
+    h1,h2{margin:.1em 0 .5em}.muted{color:#667085}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}label{display:block;font-weight:650}input,textarea{width:100%;padding:10px;margin-top:5px;border:1px solid #b8c2cf;border-radius:8px;background:white;color:#172033}input[type=checkbox]{width:auto;margin-right:7px}textarea{min-height:85px;font:13px/1.45 ui-monospace,monospace}
+    .actions{display:flex;justify-content:space-between;gap:10px;margin-top:20px}.right{display:flex;gap:8px}button,.button{border:0;border-radius:8px;padding:10px 16px;background:#315efb;color:white;text-decoration:none;cursor:pointer}.secondary{background:#e8edf5;color:#172033}.good{padding:12px;background:#dcfae6;color:#087443;border-radius:8px}.bad{padding:12px;background:#fee4e2;color:#912018;border-radius:8px}.review{white-space:pre-wrap;font:13px/1.5 ui-monospace,monospace;background:#f7f9fc;padding:14px;border-radius:8px;max-height:360px;overflow:auto}.hidden{display:none}@media(max-width:680px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body><main>
+  <section class="head">
+    <h1>{{ _('IIS setup') }}</h1>
+    <p class="muted">{% if first_run %}{{ _('Create the minimum configuration required to start IIS. Advanced settings remain available after setup.') }}{% else %}{{ _('Run the guided setup again. Existing values are loaded and remain unchanged unless you edit them.') }}{% endif %}</p>
+    <div class="steps"><span class="step active">1 · {{ _('Welcome') }}</span><span class="step">2 · {{ _('Service') }}</span><span class="step">3 · {{ _('Access') }}</span><span class="step">4 · {{ _('Features') }}</span><span class="step">5 · {{ _('Review') }}</span></div>
+  </section>
+
+  <section class="panel page" data-page="0">
+    <h2>{{ _('Before you begin') }}</h2>
+    <p>{{ _('This wizard configures IIS itself. MongoDB and AI providers remain external services and are not installed here.') }}</p>
+    <p class="muted">{{ _('The final step validates the complete configuration with the same model used at service startup. Nothing is written before you confirm Save.') }}</p>
+    <div id="location" class="review" translate="no"></div>
+  </section>
+
+  <section class="panel page hidden" data-page="1">
+    <h2>{{ _('Web service and MongoDB') }}</h2>
+    <div class="grid">
+      <label>{{ _('Listen address') }}<input id="serverHost" translate="no"></label>
+      <label>{{ _('Web port') }}<input id="serverPort" type="number" min="1" max="65535"></label>
+      <label>{{ _('Public address (optional)') }}<input id="publicOrigin" placeholder="https://intel.example.com" translate="no"></label>
+      <span></span>
+      <label>{{ _('MongoDB host') }}<input id="dbHost" translate="no"></label>
+      <label>{{ _('MongoDB port') }}<input id="dbPort" type="number" min="1" max="65535"></label>
+      <label>{{ _('MongoDB username (optional)') }}<input id="dbUser" translate="no"></label>
+      <label>{{ _('MongoDB password (optional)') }}<input id="dbPassword" type="password" autocomplete="new-password" translate="no"></label>
+    </div>
+  </section>
+
+  <section class="panel page hidden" data-page="2">
+    <h2>{{ _('API access tokens') }}</h2>
+    <p class="muted">{{ _('Use separate random tokens for crawler submissions and RPC access. One token per line.') }}</p>
+    <label>{{ _('Collector tokens') }}<textarea id="collectorTokens" translate="no"></textarea></label>
+    <button type="button" class="secondary" data-generate="collectorTokens">{{ _('Generate token') }}</button>
+    <label>{{ _('RPC tokens') }}<textarea id="rpcTokens" translate="no"></textarea></label>
+    <button type="button" class="secondary" data-generate="rpcTokens">{{ _('Generate token') }}</button>
+  </section>
+
+  <section class="panel page hidden" data-page="3">
+    <h2>{{ _('Optional features') }}</h2>
+    <p><label><input id="translation" type="checkbox">{{ _('Translate non-Chinese intelligence') }}</label></p>
+    <p><label><input id="vector" type="checkbox">{{ _('Vector search and aggregation') }}</label></p>
+    <p><label><input id="situation" type="checkbox">{{ _('Situation views') }}</label></p>
+    <p><label><input id="entityAlias" type="checkbox">{{ _('Entity alias management') }}</label></p>
+    <label>{{ _('AI client group used for translation') }}<input id="translationGroup" translate="no"></label>
+    <p class="muted">{{ _('Vector features also require the external VectorDB service and embedding model.') }}</p>
+  </section>
+
+  <section class="panel page hidden" data-page="4">
+    <h2>{{ _('Review and save') }}</h2>
+    <div id="review" class="review" translate="no"></div>
+    <div id="result" class="hidden"></div>
+    <p class="muted">{{ _('After saving, configure AI clients and create an administrator before exposing IIS to other machines.') }}</p>
+    <code translate="no">python Scripts/UserManagerConsole.py</code>
+  </section>
+
+  <section class="panel">
+    <div class="actions"><button id="back" class="secondary" disabled>{{ _('Back') }}</button><div class="right"><a class="button secondary" href="{{ configuration_url }}">{{ _('Advanced configuration') }}</a><button id="next">{{ _('Next') }}</button><button id="save" class="hidden">{{ _('Validate and save') }}</button></div></div>
+  </section>
+</main>
+<script>
+const csrf={{ csrf_token|tojson }}, urls={config:{{ config_api_url|tojson }},validate:{{ validate_api_url|tojson }},save:{{ save_api_url|tojson }},full:{{ configuration_url|tojson }},ai:{{ ai_configuration_url|tojson }}};
+const text={validating:{{ _('Validating…')|tojson }},saved:{{ _('IIS configuration is ready. Restart IIS if it is already running, then configure AI clients.')|tojson }},openAI:{{ _('Configure AI clients')|tojson }},full:{{ _('Open full configuration')|tojson }},path:{{ _('Configuration target')|tojson }},source:{{ _('Loaded defaults from')|tojson }}};
+let payload=null,current=0;const $=id=>document.getElementById(id),pages=[...document.querySelectorAll('.page')],steps=[...document.querySelectorAll('.step')];
+async function api(url,options={}){options.headers={...(options.headers||{}),'Content-Type':'application/json','X-Config-CSRF':csrf};let r=await fetch(url,options),j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j}
+function lines(values){return (values||[]).join('\n')}function values(id){return $(id).value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
+function setPage(index){current=Math.max(0,Math.min(4,index));pages.forEach((p,i)=>p.classList.toggle('hidden',i!==current));steps.forEach((s,i)=>{s.classList.toggle('active',i===current);s.classList.toggle('done',i<current)});$('back').disabled=current===0;$('next').classList.toggle('hidden',current===4);$('save').classList.toggle('hidden',current!==4);if(current===4){collect();$('review').textContent=JSON.stringify(summary(),null,2)}}
+function loadForm(){let d=payload.data;$('serverHost').value=d.server.host;$('serverPort').value=d.server.port;$('publicOrigin').value=d.server.public_origin||'';$('dbHost').value=d.database.host;$('dbPort').value=d.database.port;$('dbUser').value=d.database.username||'';$('dbPassword').value=d.database.password||'';$('collectorTokens').value=lines(d.access.collector_tokens);$('rpcTokens').value=lines(d.access.rpc_tokens);$('translation').checked=d.optional_subsystems.translation.enabled;$('vector').checked=d.optional_subsystems.vector.enabled;$('situation').checked=d.optional_subsystems.situation.enabled;$('entityAlias').checked=d.optional_subsystems.entity_alias.enabled;$('translationGroup').value=d.optional_subsystems.translation.client_group;$('location').textContent=`${text.path}: ${payload.path}\n${text.source}: ${payload.source_path}`}
+function collect(){let d=payload.data;d.server.host=$('serverHost').value.trim();d.server.port=Number($('serverPort').value);d.server.public_origin=$('publicOrigin').value.trim()||null;d.database.host=$('dbHost').value.trim();d.database.port=Number($('dbPort').value);d.database.username=$('dbUser').value.trim();d.database.password=$('dbPassword').value;d.access.collector_tokens=values('collectorTokens');d.access.rpc_tokens=values('rpcTokens');d.optional_subsystems.translation.enabled=$('translation').checked;d.optional_subsystems.translation.client_group=$('translationGroup').value.trim();d.optional_subsystems.vector.enabled=$('vector').checked;d.optional_subsystems.situation.enabled=$('situation').checked;d.optional_subsystems.entity_alias.enabled=$('entityAlias').checked}
+function summary(){let d=payload.data;return {server:d.server,database:{...d.database,password:d.database.password?'********':''},access:{collector_tokens:d.access.collector_tokens.map(()=>"********"),rpc_tokens:d.access.rpc_tokens.map(()=>"********")},optional_subsystems:{translation:d.optional_subsystems.translation,vector:{enabled:d.optional_subsystems.vector.enabled},situation:{enabled:d.optional_subsystems.situation.enabled},entity_alias:{enabled:d.optional_subsystems.entity_alias.enabled}}}}
+function randomToken(){let bytes=new Uint8Array(32);crypto.getRandomValues(bytes);return [...bytes].map(x=>x.toString(16).padStart(2,'0')).join('')}
+document.querySelectorAll('[data-generate]').forEach(b=>b.onclick=()=>{let el=$(b.dataset.generate),items=values(b.dataset.generate);items.push(randomToken());el.value=items.join('\n')});$('back').onclick=()=>setPage(current-1);$('next').onclick=()=>setPage(current+1);
+$('save').onclick=async()=>{let result=$('result');try{collect();result.className='good';result.textContent=text.validating;await api(urls.validate,{method:'POST',body:JSON.stringify({data:payload.data})});await api(urls.save,{method:'POST',body:JSON.stringify({data:payload.data})});result.innerHTML='';let p=document.createElement('p');p.textContent=text.saved;result.appendChild(p);if(urls.ai){let a=document.createElement('a');a.className='button';a.href=urls.ai;a.textContent=text.openAI;result.appendChild(a);result.append(' ')}let full=document.createElement('a');full.className='button secondary';full.href=urls.full;full.textContent=text.full;result.appendChild(full)}catch(e){result.className='bad';result.textContent=e.message}};
+api(urls.config).then(j=>{payload=j;loadForm()}).catch(e=>{let r=$('result');r.className='bad';r.textContent=e.message;setPage(4)});
+</script></body></html>

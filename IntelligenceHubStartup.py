@@ -652,9 +652,10 @@ def run():
     # 主服务无法启动（例如首次配置有误）时使用；嵌入模式复用后台登录保护。
     try:
         from IISConfiguration import IISConfigurationService, IISConfigurationWeb
-        IISConfigurationWeb(IISConfigurationService(
-            config_file, fallback_path=fallback_file,
-        )).mount_to_app(
+        IISConfigurationWeb(
+            IISConfigurationService(config_file, fallback_path=fallback_file),
+            setup_ai_url='/monitor/ai-client-dashboard/config/',
+        ).mount_to_app(
             wsgi_app,
             wrapper=ihub_service.access_manager.login_required,
             url_prefix='/admin/config',

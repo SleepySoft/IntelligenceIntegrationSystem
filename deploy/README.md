@@ -26,6 +26,7 @@ IIS_CONFIG          # 显式主配置文件；设置后不存在则直接失败�
 ```bash
 deploy/iisctl doctor
 deploy/iisctl doctor --json
+deploy/iisctl configure
 ```
 
 `doctor` 只读取主机、仓库、配置文件权限和现有 systemd 模板，不安装软件、不修改配置、
@@ -34,6 +35,14 @@ deploy/iisctl doctor --json
 - `0`：没有硬阻塞；仍可能有需要处理的 warning。
 - `1`：存在当前主机或仓库级硬阻塞。
 - `2`：命令参数或诊断程序自身错误。
+
+`configure` 启动只监听 `127.0.0.1:5070` 的配置向导，不启动 MongoDB、AI Client 或 IIS
+业务服务。正式 `_config/iis.yaml` 不存在时，引导页会从示例加载默认值，依次配置 Web、
+MongoDB、访问令牌和可选功能；保存后再前往 AIClientCenter 自己的配置页面。也可指定路径：
+
+```bash
+deploy/iisctl configure --config /etc/iis/iis.yaml --port 5070
+```
 
 ## 目标命令（后续里程碑）
 

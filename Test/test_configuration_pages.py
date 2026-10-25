@@ -93,6 +93,42 @@ def test_iis_configuration_blueprint_supports_page_and_csrf_api(tmp_path):
     assert accepted.status_code == 200
 
 
+def test_iis_first_run_redirects_to_setup_and_can_save(tmp_path):
+    target = tmp_path / "iis.yaml"
+    fallback = tmp_path / "example.yaml"
+    fallback.write_text("{}\n", encoding="utf-8")
+    app = Flask(__name__)
+    app.secret_key = "test"
+    IISConfigurationWeb(IISConfigurationService(
+        target, fallback_path=fallback),
+        setup_ai_url="/ai-config/",
+    ).mount_to_app(app, url_prefix="/settings")
+    client = app.test_client()
+
+    redirect = client.get("/settings/")
+    assert redirect.status_code == 302
+    assert redirect.headers["Location"].endswith("/settings/setup/")
+    page = client.get("/settings/setup/?lang=en")
+    assert page.status_code == 200
+    html = page.get_data(as_text=True)
+    assert "Create the minimum configuration" in html
+    token = _csrf(html)
+    chinese = client.get("/settings/setup/?lang=zh-CN")
+    assert chinese.headers["Content-Language"] == "zh-CN"
+    assert "创建启动 IIS 所需的最小配置" in chinese.get_data(as_text=True)
+    token = _csrf(chinese.get_data(as_text=True))
+    config = client.get("/settings/api/config").get_json()
+    config["data"]["server"]["port"] = 5055
+    saved = client.post(
+        "/settings/api/save", json={"data": config["data"]},
+        headers={"X-Config-CSRF": token})
+
+    assert saved.status_code == 200
+    assert target.is_file()
+    assert yaml.safe_load(target.read_text(encoding="utf-8"))["server"]["port"] == 5055
+    assert client.get("/settings/").status_code == 200
+
+
 def test_ai_configuration_blueprint_renders_standalone(tmp_path):
     path = tmp_path / "clients.yaml"
     path.write_text("clients: []\ngroup_limits: {}\n", encoding="utf-8")

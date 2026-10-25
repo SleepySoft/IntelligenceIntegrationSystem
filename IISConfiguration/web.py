@@ -5,7 +5,10 @@ from __future__ import annotations
 import secrets
 from typing import Callable, Optional
 
-from flask import Blueprint, Flask, jsonify, render_template, request, session
+from flask import (
+    Blueprint, Flask, jsonify, redirect, render_template, request, session,
+    url_for,
+)
 
 from WebI18n import ensure_web_i18n
 
@@ -13,8 +16,10 @@ from .service import IISConfigurationService
 
 
 class IISConfigurationWeb:
-    def __init__(self, service: IISConfigurationService):
+    def __init__(self, service: IISConfigurationService, *,
+                 setup_ai_url: str | None = None):
         self.service = service
+        self.setup_ai_url = setup_ai_url
         self._registered_apps: set[int] = set()
 
     def create_blueprint(self, wrapper: Optional[Callable] = None) -> Blueprint:
@@ -33,9 +38,28 @@ class IISConfigurationWeb:
         @bp.get("/")
         @protected
         def page():
+            if (not self.service.config_path.is_file()
+                    and request.args.get("advanced") != "1"):
+                return redirect(url_for("iis_configuration.setup_page"))
             token = secrets.token_urlsafe(32)
             session["iis_config_csrf"] = token
             return render_template("iis_configuration.html", csrf_token=token)
+
+        @bp.get("/setup/")
+        @protected
+        def setup_page():
+            token = secrets.token_urlsafe(32)
+            session["iis_config_csrf"] = token
+            return render_template(
+                "iis_setup.html",
+                csrf_token=token,
+                configuration_url=url_for("iis_configuration.page", advanced=1),
+                ai_configuration_url=self.setup_ai_url,
+                first_run=not self.service.config_path.is_file(),
+                config_api_url=url_for("iis_configuration.get_config"),
+                validate_api_url=url_for("iis_configuration.validate"),
+                save_api_url=url_for("iis_configuration.save"),
+            )
 
         @bp.get("/api/config")
         @protected

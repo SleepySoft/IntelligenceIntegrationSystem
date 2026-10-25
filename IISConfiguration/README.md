@@ -9,6 +9,8 @@ AI Client、爬虫或其他业务设施。AI Client 配置仍由 `AIClientCenter
 
 ```bash
 python -m IISConfiguration
+# 或使用统一部署入口
+deploy/iisctl configure
 ```
 
 默认仅监听 `127.0.0.1:5070`。如需指定文件：
@@ -22,6 +24,10 @@ python -m IISConfiguration \
 IIS 正常运行后，配置页自动以 Blueprint 挂载到 `/admin/config/`，复用 IIS 后台
 登录保护。独立模式故意禁止监听非本机地址；需要远程配置时应使用带认证的嵌入页或
 SSH 端口转发。
+
+正式配置不存在时，根页面会自动进入五步向导：环境说明、Web/MongoDB、访问令牌、可选
+功能、确认保存。向导只收集常用落地参数，最后仍通过完整 `IISSettings` 校验；完成后会
+引导到 AIClientCenter 自己的配置页。配置已经存在时也可从完整配置页重新打开向导。
 
 ## 保存语义
 

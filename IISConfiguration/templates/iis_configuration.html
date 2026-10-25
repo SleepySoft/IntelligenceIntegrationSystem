@@ -9,12 +9,12 @@
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{min-width:0}.field label{font-weight:650;display:block}
     input,textarea{box-sizing:border-box;width:100%;margin-top:5px;padding:9px;border:1px solid #b8c2cf;border-radius:7px;background:white;color:#18212f}
     input[type=checkbox]{width:auto}.object{border-left:3px solid #d9e0e8;padding-left:14px;margin:14px 0}.wide{grid-column:1/-1}textarea{font:13px/1.45 ui-monospace,monospace;min-height:100px}.yaml{min-height:560px}
-    .actions{display:flex;gap:8px;flex-wrap:wrap}button{border:0;border-radius:7px;padding:9px 14px;cursor:pointer;background:#315efb;color:white}.secondary{background:#e8edf5;color:#18212f}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}button,a.button{border:0;border-radius:7px;padding:9px 14px;cursor:pointer;background:#315efb;color:white;text-decoration:none}.secondary{background:#e8edf5;color:#18212f}
     .status{white-space:pre-wrap;padding:10px;border-radius:7px;background:#dcfae6;color:#087443}.bad{background:#fee4e2;color:#912018}.muted{color:#667085}@media(max-width:760px){.grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body><main>
-  <section class="bar"><h1>{{ _('IIS configuration') }}</h1><p class="muted">{{ _('Change IIS settings with a guided form. Validation uses the same schema as service startup.') }}</p><div class="actions"><button id="guidedTab">{{ _('Guided editor') }}</button><button id="yamlTab" class="secondary">{{ _('Advanced YAML') }}</button><button id="historyButton" class="secondary">{{ _('History') }}</button></div></section>
+  <section class="bar"><h1>{{ _('IIS configuration') }}</h1><p class="muted">{{ _('Change IIS settings with a guided form. Validation uses the same schema as service startup.') }}</p><div class="actions"><a class="button" href="setup/">{{ _('Setup wizard') }}</a><button id="guidedTab">{{ _('Guided editor') }}</button><button id="yamlTab" class="secondary">{{ _('Advanced YAML') }}</button><button id="historyButton" class="secondary">{{ _('History') }}</button></div></section>
   <section id="guided" class="section"><div id="form"></div></section>
   <section id="advanced" class="section" hidden><textarea id="yaml" class="yaml" aria-label="{{ _('YAML configuration') }}" translate="no"></textarea></section>
   <section id="history" class="section" hidden><h2>{{ _('Saved versions') }}</h2><div id="versions"></div></section>
