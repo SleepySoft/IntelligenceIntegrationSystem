@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -49,11 +49,21 @@
         <div>
             <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
             <a class="link" href="/monitor/runtime">运行监控 →</a>
+            &nbsp;&nbsp;<a class="link" href="/admin/config/">{{ _('IIS configuration') }} →</a>
         </div>
     </header>
 
     <div class="maintenance-banner" id="maintenance-banner">
         ⚠ 维护模式已开启：采集、分析与影子链路均已暂停，只读页面不受影响。
+    </div>
+
+    <div class="section">
+        <h2>{{ _('Configuration') }}</h2>
+        <div class="subtitle">
+            <a class="link" href="/admin/config/">{{ _('IIS configuration') }}</a>
+            &nbsp;&nbsp;·&nbsp;&nbsp;
+            <a class="link" href="/monitor/ai-client-dashboard/config/">{{ _('AI client configuration') }}</a>
+        </div>
     </div>
 
     <div class="section">

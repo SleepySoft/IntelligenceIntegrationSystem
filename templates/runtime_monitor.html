@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -70,7 +70,8 @@
             <a class="link" href="/post/index">← 返回首页</a>&nbsp;&nbsp;
             <a class="link" href="/control">运行控制 →</a>&nbsp;&nbsp;
             <a class="link" href="/statistics/overview">统计分析 →</a>&nbsp;&nbsp;
-            <a class="link" href="/monitor/ai-client-dashboard">AI 客户端详情 →</a>
+            <a class="link" href="/monitor/ai-client-dashboard">AI 客户端详情 →</a>&nbsp;&nbsp;
+            <a class="link" href="/admin/config/">{{ _('Configuration') }} →</a>
         </div>
     </header>
 

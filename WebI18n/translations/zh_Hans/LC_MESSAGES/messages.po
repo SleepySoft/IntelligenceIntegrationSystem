@@ -19,6 +19,10 @@ msgstr ""
 msgid "AI client configuration"
 msgstr "AI 客户端配置"
 
+#: templates/control_panel.html:61 templates/runtime_monitor.html:79
+msgid "Configuration"
+msgstr "配置"
+
 #: AIClientCenter/templates/ai_client_config.html:21
 msgid ""
 "Edit clients here, validate them with their real factories, then save and"

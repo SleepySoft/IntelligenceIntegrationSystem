@@ -38,6 +38,10 @@
 
 + [Client Manager](/monitor/ai-client-dashboard)
 
++ [IIS Configuration](/admin/config/)
+
++ [AI Client Configuration](/monitor/ai-client-dashboard/config/)
+
 + [Runtime Control](/control)
 
 + [Manual Intelligence Debug](/debug/intelligence)
