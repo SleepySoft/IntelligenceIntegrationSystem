@@ -177,3 +177,39 @@ msgstr "Prompt v{version} 加载失败：{message}"
 
 msgid "Vector results are sorted by similarity"
 msgstr "向量检索按相似度排序"
+
+msgid "Copy link"
+msgstr "复制链接"
+
+msgid "Open in a new tab"
+msgstr "在新标签打开"
+
+msgid "You are not authorized to view this intelligence"
+msgstr "无权访问该情报"
+
+msgid "Link copied"
+msgstr "链接已复制"
+
+msgid "Copy failed"
+msgstr "复制失败"
+
+msgid "Intelligence details"
+msgstr "情报详情"
+
+msgid "Loading failed"
+msgstr "加载失败"
+
+msgid "Back to intelligence list"
+msgstr "返回情报列表"
+
+msgid "Shadow comparison"
+msgstr "影子对比"
+
+msgid "Intelligence Integration System"
+msgstr "情报整合系统"
+
+msgid "All rights reserved"
+msgstr "保留所有权利"
+
+msgid "Turn data into insight"
+msgstr "让数据成为洞察"

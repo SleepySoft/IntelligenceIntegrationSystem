@@ -3,6 +3,13 @@
 (function () {
     if (window.ArticleModalManager) return;
 
+    const tr = (key, fallback, params = {}) => {
+        if (window.IIS_I18N) return window.IIS_I18N.t(key, params);
+        return fallback.replace(/\{([A-Za-z0-9_]+)\}/g, (match, name) => (
+            Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
+        ));
+    };
+
     const DEFAULT_OPTIONS = {
         apiBase: (window.IIS_BASE_PATH || '') + '/api/intelligence',
         pageBase: (window.IIS_BASE_PATH || '') + '/intelligence',
@@ -56,16 +63,16 @@
             <div class="article-modal-header">
               <div class="header-left">
                 <div class="uuid" id="article-modal-uuid"></div>
-                <h2 id="article-modal-title" class="article-modal-title">正在加载…</h2>
+                <h2 id="article-modal-title" class="article-modal-title">${tr('article_loading', '正在加载…')}</h2>
               </div>
               <div class="article-modal-actions">
-                <button type="button" id="article-copy-link-btn" class="article-modal-btn" title="复制链接">
+                <button type="button" id="article-copy-link-btn" class="article-modal-btn" title="${tr('copy_link', '复制链接')}" aria-label="${tr('copy_link', '复制链接')}">
                   <i class="bi bi-link-45deg"></i>
                 </button>
-                <button type="button" id="article-open-newtab-btn" class="article-modal-btn" title="在新标签打开">
+                <button type="button" id="article-open-newtab-btn" class="article-modal-btn" title="${tr('open_new_tab', '在新标签打开')}" aria-label="${tr('open_new_tab', '在新标签打开')}">
                   <i class="bi bi-box-arrow-up-right"></i>
                 </button>
-                <button type="button" id="article-close-btn" class="article-modal-btn" title="关闭">
+                <button type="button" id="article-close-btn" class="article-modal-btn" title="${tr('close', '关闭')}" aria-label="${tr('close', '关闭')}">
                   <i class="bi bi-x-lg"></i>
                 </button>
               </div>
@@ -73,7 +80,7 @@
 
             <div class="article-modal-body" id="article-modal-body">
               <div class="article-modal-loading">
-                <i class="bi bi-arrow-repeat article-spinner"></i> 正在加载…
+                <i class="bi bi-arrow-repeat article-spinner"></i> ${tr('article_loading', '正在加载…')}
               </div>
             </div>
 
@@ -101,13 +108,13 @@
         state.overlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('body-scroll-locked');
 
-        state.titleEl.textContent = '正在加载…';
+        state.titleEl.textContent = tr('article_loading', '正在加载…');
         state.uuidEl.textContent = uuid ? `UUID: ${uuid}` : '';
         state.uuidEl.classList.add('notranslate');
         state.uuidEl.setAttribute('translate', 'no');
         state.bodyEl.innerHTML = `
             <div class="article-modal-loading">
-                <i class="bi bi-arrow-repeat article-spinner"></i> 正在加载…
+                <i class="bi bi-arrow-repeat article-spinner"></i> ${tr('article_loading', '正在加载…')}
             </div>`;
     }
 
@@ -116,7 +123,7 @@
         const resp = await fetch(url);
 
         if (resp.status === 401) {
-            throw new Error('无权访问该情报');
+            throw new Error(tr('unauthorized_article', '无权访问该情报'));
         }
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status}`);
@@ -155,7 +162,7 @@
                 if (window.ArticleDetailRenderer?.showToast) {
                     window.ArticleDetailRenderer.showToast(
                         state.options.toastContainerId,
-                        '链接已复制',
+                        tr('link_copied', '链接已复制'),
                         'success'
                     );
                 }
@@ -163,7 +170,7 @@
                 if (window.ArticleDetailRenderer?.showToast) {
                     window.ArticleDetailRenderer.showToast(
                         state.options.toastContainerId,
-                        '复制失败',
+                        tr('copy_failed', '复制失败'),
                         'danger'
                     );
                 }
@@ -213,22 +220,22 @@
         try {
             const article = await fetchArticle(uuid);
 
-            state.titleEl.textContent = article?.EVENT_TITLE || titleFallback || '情报详情';
+            state.titleEl.textContent = article?.EVENT_TITLE || titleFallback || tr('intelligence_details', '情报详情');
             state.bodyEl.innerHTML = window.ArticleDetailRenderer.generateHTML(article);
             window.ArticleDetailRenderer.bindEvents(state.bodyEl, uuid, state.options.toastContainerId);
 
             bindCopyButton(state.currentPageUrl);
             bindModalInnerArticleLinks();
         } catch (err) {
-            state.titleEl.textContent = '加载失败';
-            state.bodyEl.innerHTML = `<div style="color:#c00;">加载失败：${String(err.message || err)}</div>`;
+            state.titleEl.textContent = tr('load_failed', '加载失败');
+            state.bodyEl.innerHTML = `<div style="color:#c00;">${tr('loading_failed', '加载失败：{message}', {message: String(err.message || err)})}</div>`;
         }
     }
 
     async function openByUuid(uuid, opts = {}) {
         if (!uuid) return;
         const pageUrl = `${state.options.pageBase}/${encodeURIComponent(uuid)}`;
-        await open(pageUrl, uuid, '情报详情', opts);
+        await open(pageUrl, uuid, tr('intelligence_details', '情报详情'), opts);
     }
 
     function close({ fromHistory = false } = {}) {
@@ -286,7 +293,7 @@
                 plugin.onCardClick({ UUID: uuid }, helpers, {
                     openModal: (doc, url) => {
                         const documentId = doc?.UUID || uuid;
-                        return open(url || `${state.options.pageBase}/${encodeURIComponent(documentId)}`, documentId, '情报详情', { updateHistory: state.options.history });
+                        return open(url || `${state.options.pageBase}/${encodeURIComponent(documentId)}`, documentId, tr('intelligence_details', '情报详情'), { updateHistory: state.options.history });
                     },
                     navigate: (url, opts) => { if (opts && opts.newTab) window.open(url, '_blank', 'noopener'); else window.open(url, '_self'); },
                 });
@@ -294,7 +301,7 @@
             }
         }
 
-        open(`${state.options.pageBase}/${encodeURIComponent(uuid)}`, uuid, a.textContent?.trim() || '情报详情', {
+        open(`${state.options.pageBase}/${encodeURIComponent(uuid)}`, uuid, a.textContent?.trim() || tr('intelligence_details', '情报详情'), {
             updateHistory: state.options.history
         });
     }
