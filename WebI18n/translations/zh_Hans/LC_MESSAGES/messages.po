@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-25 15:47+0800\n"
+"POT-Creation-Date: 2026-10-25 15:52+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -12,7 +12,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 
 #: IntelligenceViews/templates/intelligence_views.html:6
 msgid "Intelligence views"
@@ -230,8 +230,8 @@ msgstr "实体关系时间线"
 #: SituationViews/templates/entity_timeline.html:131
 #: SituationViews/templates/entity_timeline.html:147
 msgid ""
-"Search and select one or more entities. Use the wheel to zoom and drag "
-"empty space to pan."
+"Search and select one or more entities. Use the wheel to zoom and drag empty"
+" space to pan."
 msgstr "搜索并选择一个或多个实体。滚轮缩放，拖动空白处平移。"
 
 #: SituationViews/templates/entity_timeline.html:132
@@ -256,8 +256,8 @@ msgstr "箭头保持事件中的施事 → 受事方向"
 
 #: SituationViews/templates/entity_timeline.html:133
 msgid ""
-"Search and select one or more entities to examine their relationships "
-"over time."
+"Search and select one or more entities to examine their relationships over "
+"time."
 msgstr "搜索并选择一个或多个实体，开始按时间观察其关系。"
 
 #: SituationViews/templates/entity_timeline.html:141
@@ -273,11 +273,13 @@ msgid "No matching entities in the current range"
 msgstr "当前范围内没有匹配实体"
 
 #: SituationViews/templates/entity_timeline.html:144
+#: SituationViews/templates/situation_views.html:487
 #, python-brace-format
 msgid "{count} events"
 msgstr "{count} 个事件"
 
 #: SituationViews/templates/entity_timeline.html:145
+#: SituationViews/templates/situation_views.html:604
 #, python-brace-format
 msgid "Search failed: {message}"
 msgstr "搜索失败：{message}"
@@ -329,6 +331,7 @@ msgid "View full intelligence"
 msgstr "点击查看完整情报"
 
 #: SituationViews/templates/entity_timeline.html:157
+#: SituationViews/templates/situation_views.html:521
 #, python-brace-format
 msgid "Score {score}"
 msgstr "评分 {score}"
@@ -392,16 +395,16 @@ msgstr "{count} 条关系"
 #: SituationViews/templates/entity_timeline.html:172
 #, python-brace-format
 msgid ""
-"{type} · {count} relationships; select to view one supporting "
-"intelligence item"
+"{type} · {count} relationships; select to view one supporting intelligence "
+"item"
 msgstr "{type} · {count} 条关系；点击查看其中一条情报"
 
 #: SituationViews/templates/entity_timeline.html:173
 #, python-brace-format
 msgid ""
 "Ordered by {basis} · {events} events · {entities} related entities · "
-"{cooccurrence} events contain multiple selected entities. Use the wheel "
-"to zoom and drag to pan."
+"{cooccurrence} events contain multiple selected entities. Use the wheel to "
+"zoom and drag to pan."
 msgstr ""
 "按{basis}排列 · {events} 个事件 · {entities} 个关联实体 · {cooccurrence} "
 "个事件含多个所选实体。滚轮缩放，拖动画布平移。"
@@ -487,6 +490,7 @@ msgstr "事件类别"
 
 #: SituationViews/templates/situation_views.html:254
 #: SituationViews/templates/situation_views.html:257
+#: SituationViews/templates/situation_views.html:481
 msgid "All selected"
 msgstr "全部已选"
 
@@ -563,14 +567,15 @@ msgstr "国家、地点、大区、事件类别或谓词"
 
 #: SituationViews/templates/situation_views.html:286
 msgid ""
-"Matches hotspots visible under the current time and category filters; "
-"select a result to locate it and open its intelligence."
+"Matches hotspots visible under the current time and category filters; select"
+" a result to locate it and open its intelligence."
 msgstr "匹配当前时间与类别过滤后的热点；点击结果定位并打开情报。"
 
 #: SituationViews/templates/situation_views.html:287
+#: SituationViews/templates/situation_views.html:485
 msgid ""
-"Search place names in Chinese or English, ISO codes, and event semantics "
-"on the current map."
+"Search place names in Chinese or English, ISO codes, and event semantics on "
+"the current map."
 msgstr "可搜索中英文地名、ISO 代码和当前地图的事件语义。"
 
 #: SituationViews/templates/situation_views.html:289
@@ -578,6 +583,7 @@ msgid "Detailed coordinates"
 msgstr "细化坐标"
 
 #: SituationViews/templates/situation_views.html:295
+#: SituationViews/templates/situation_views.html:497
 msgid "Map overview"
 msgstr "地图概览"
 
@@ -589,6 +595,7 @@ msgstr "拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。
 
 #: SituationViews/templates/situation_views.html:300
 #: SituationViews/templates/situation_views.html:366
+#: SituationViews/templates/situation_views.html:624
 msgid "Collapse legend"
 msgstr "收起图例"
 
@@ -603,6 +610,7 @@ msgstr "选择地点后显示情报数量"
 
 #: SituationViews/templates/situation_views.html:309
 #: SituationViews/templates/situation_views.html:375
+#: SituationViews/templates/situation_views.html:483
 msgid "Expand"
 msgstr "展开"
 
@@ -613,8 +621,8 @@ msgstr "关闭对应情报"
 
 #: SituationViews/templates/situation_views.html:314
 msgid ""
-"Ordered by content time from newest to oldest. Select a title to open the"
-" full intelligence."
+"Ordered by content time from newest to oldest. Select a title to open the "
+"full intelligence."
 msgstr "按内容时间从新到旧排列，点击标题打开完整情报。"
 
 #: SituationViews/templates/situation_views.html:321
@@ -634,6 +642,7 @@ msgid "Dragging only hides nodes and edges and updates relationship counts"
 msgstr "拖动仅隐藏节点和边并更新关系计数"
 
 #: SituationViews/templates/situation_views.html:332
+#: SituationViews/templates/situation_views.html:527
 msgid "Aggregating entity relationships…"
 msgstr "正在聚合实体关系…"
 
@@ -654,6 +663,7 @@ msgid "Name, source expression, type, country, or ID"
 msgstr "名称、原文表述、类型、国家或 ID"
 
 #: SituationViews/templates/situation_views.html:339
+#: SituationViews/templates/situation_views.html:550
 msgid "Enter text to show all matching nodes."
 msgstr "输入内容后显示全部匹配节点。"
 
@@ -716,9 +726,7 @@ msgid "Select an entity or relationship to show its intelligence count"
 msgstr "选择实体或关系后显示情报数量"
 
 #: SituationViews/templates/situation_views.html:380
-msgid ""
-"Select a node or relationship edge to view the intelligence that supports"
-" it."
+msgid "Select a node or relationship edge to view the intelligence that supports it."
 msgstr "点击节点或关系边查看支撑它的真实情报。"
 
 #: SituationViews/templates/situation_views.html:382
@@ -751,8 +759,8 @@ msgstr "1. 选择目标实体"
 
 #: SituationViews/templates/situation_views.html:402
 msgid ""
-"Select an entity table and search it first. You may add a new entity when"
-" no suitable result exists, or even when results already exist."
+"Select an entity table and search it first. You may add a new entity when no"
+" suitable result exists, or even when results already exist."
 msgstr "选择实体表后先搜索。没有合适结果时可以添加；即使已有结果，也始终可以添加新实体。"
 
 #: SituationViews/templates/situation_views.html:406
@@ -784,10 +792,12 @@ msgid "Canonical name"
 msgstr "标准名"
 
 #: SituationViews/templates/situation_views.html:424
+#: SituationViews/templates/situation_views.html:644
 msgid "Person"
 msgstr "人物"
 
 #: SituationViews/templates/situation_views.html:424
+#: SituationViews/templates/situation_views.html:644
 msgid "Organization"
 msgstr "组织"
 
@@ -796,6 +806,7 @@ msgid "Country"
 msgstr "国家"
 
 #: SituationViews/templates/situation_views.html:425
+#: SituationViews/templates/situation_views.html:645
 msgid "Location"
 msgstr "地点"
 
@@ -821,6 +832,7 @@ msgid "2. Set the association scope"
 msgstr "2. 设置关联范围"
 
 #: SituationViews/templates/situation_views.html:449
+#: SituationViews/templates/situation_views.html:595
 msgid "Select a target entity above first."
 msgstr "请先在上方选择一个目标实体。"
 
@@ -851,8 +863,662 @@ msgid "Clear selected manual assignments"
 msgstr "清除所选人工指定"
 
 #: SituationViews/templates/situation_views.html:467
+#: SituationViews/templates/situation_views.html:2140
 msgid "Save global mapping"
 msgstr "保存全局映射"
+
+#: SituationViews/templates/situation_views.html:475
+msgid "There are no adjustable time points in the current window"
+msgstr "当前窗口没有可调时间点"
+
+#: SituationViews/templates/situation_views.html:476
+msgid ""
+"Fill color = dominant category; mixed-category hotspots have an outer ring "
+"in the secondary category color. Hover to see the distribution."
+msgstr "点填充色 = 主导类别；多类别混合热点带次类别色外环，悬停查看分布。"
+
+#: SituationViews/templates/situation_views.html:477
+msgid "Node color · Entity type"
+msgstr "节点颜色 · 实体类型"
+
+#: SituationViews/templates/situation_views.html:478
+msgid "Edge color · Event category"
+msgstr "边颜色 · 事件类别"
+
+#: SituationViews/templates/situation_views.html:479
+msgid "Dashed edge · Contains negated events (✗ all / ◐ some)"
+msgstr "虚线边 · 含否定事件（✗ 全部否定 / ◐ 部分）"
+
+#: SituationViews/templates/situation_views.html:480
+msgid "Show all edge labels (useful for inspection, but may look crowded)"
+msgstr "显示全部边标签（便于查看，但可能比较拥挤）"
+
+#: SituationViews/templates/situation_views.html:482
+#, python-brace-format
+msgid "Select all ({selected}/{total} selected)"
+msgstr "全选（已选 {selected}/{total}）"
+
+#: SituationViews/templates/situation_views.html:484
+#: templates/intelligence_cluster_list.html:47
+msgid "Collapse"
+msgstr "收起"
+
+#: SituationViews/templates/situation_views.html:486
+#, python-brace-format
+msgid "{count} currently visible results found."
+msgstr "找到 {count} 个当前可见结果。"
+
+#: SituationViews/templates/situation_views.html:488
+#, python-brace-format
+msgid "{field} match"
+msgstr "{field}匹配"
+
+#: SituationViews/templates/situation_views.html:489
+msgid "No matches in the current time and category range."
+msgstr "当前时间和类别范围内没有匹配结果。"
+
+#: SituationViews/templates/situation_views.html:490
+#: templates/_article_i18n.html:13
+#, python-brace-format
+msgid "Loading failed: {message}"
+msgstr "加载失败：{message}"
+
+#: SituationViews/templates/situation_views.html:491
+msgid "Country hotspot"
+msgstr "国家热点"
+
+#: SituationViews/templates/situation_views.html:492
+msgid "Extracted place"
+msgstr "提取地点"
+
+#: SituationViews/templates/situation_views.html:493
+msgid "Place name"
+msgstr "地名"
+
+#: SituationViews/templates/situation_views.html:494
+msgid "Region"
+msgstr "大区"
+
+#: SituationViews/templates/situation_views.html:495
+msgid "Event category"
+msgstr "事件类别"
+
+#: SituationViews/templates/situation_views.html:496
+msgid "Event predicate"
+msgstr "事件谓词"
+
+#: SituationViews/templates/situation_views.html:498
+msgid ""
+"Drag to rotate the globe, use the mouse wheel to zoom, and select a hotspot "
+"to inspect places and predicates."
+msgstr "拖动旋转地球，滚轮缩放，点击热点查看地点与谓词。"
+
+#: SituationViews/templates/situation_views.html:499
+msgid "Located events"
+msgstr "已定位事件"
+
+#: SituationViews/templates/situation_views.html:500
+msgid "Location coverage"
+msgstr "地点覆盖率"
+
+#: SituationViews/templates/situation_views.html:501
+msgid "Country hotspots"
+msgstr "国家热点"
+
+#: SituationViews/templates/situation_views.html:502
+msgid "Candidate events"
+msgstr "候选事件"
+
+#: SituationViews/templates/situation_views.html:503
+msgid "The article query limit was reached; these results are truncated."
+msgstr "文章数量达到查询上限，当前结果已截断。"
+
+#: SituationViews/templates/situation_views.html:504
+msgid "Current events"
+msgstr "当前事件"
+
+#: SituationViews/templates/situation_views.html:505
+msgid "Current articles"
+msgstr "当前文章"
+
+#: SituationViews/templates/situation_views.html:506
+msgid "Events in window"
+msgstr "窗口内事件"
+
+#: SituationViews/templates/situation_views.html:507
+#, python-brace-format
+msgid "{name} · Related intelligence"
+msgstr "{name} · 对应情报"
+
+#: SituationViews/templates/situation_views.html:508
+msgid "Loading related intelligence…"
+msgstr "正在加载对应情报…"
+
+#: SituationViews/templates/situation_views.html:509
+msgid "Loading intelligence records…"
+msgstr "正在加载真实情报…"
+
+#: SituationViews/templates/situation_views.html:510
+msgid "Country-level location only"
+msgstr "仅有国家级地点"
+
+#: SituationViews/templates/situation_views.html:511
+msgid "View this region in the entity timeline"
+msgstr "在实体时间线中查看此地域"
+
+#: SituationViews/templates/situation_views.html:512
+msgid "Events"
+msgstr "事件"
+
+#: SituationViews/templates/situation_views.html:513
+msgid "Highest score"
+msgstr "最高评分"
+
+#: SituationViews/templates/situation_views.html:514
+msgid "Categories"
+msgstr "类别"
+
+#: SituationViews/templates/situation_views.html:515
+msgid "Extracted places"
+msgstr "提取地点"
+
+#: SituationViews/templates/situation_views.html:516
+msgid "Predicates"
+msgstr "谓词"
+
+#: SituationViews/templates/situation_views.html:517
+msgid ""
+"Country hotspots are placed at country centers; zoom in to resolve and show "
+"actual detailed locations on demand."
+msgstr "国家热点位于国家中心；放大后会按需解析并显示真实的细化地点。"
+
+#: SituationViews/templates/situation_views.html:518
+msgid "No related intelligence under the current filters."
+msgstr "当前筛选条件下没有对应情报。"
+
+#: SituationViews/templates/situation_views.html:519
+msgid "Time unknown"
+msgstr "时间未知"
+
+#: SituationViews/templates/situation_views.html:520
+msgid "Uncategorized predicate"
+msgstr "未分类谓词"
+
+#: SituationViews/templates/situation_views.html:522
+#, python-brace-format
+msgid "{total} records in total; only the latest {limit} are shown."
+msgstr "共 {total} 条，仅显示最新 {limit} 条。"
+
+#: SituationViews/templates/situation_views.html:523
+#, python-brace-format
+msgid "{total} articles · Expand to see the latest {limit}"
+msgstr "共 {total} 篇 · 展开查看最新 {limit} 篇"
+
+#: SituationViews/templates/situation_views.html:524
+#, python-brace-format
+msgid "{total} articles · Select to expand"
+msgstr "共 {total} 篇 · 点击展开查看"
+
+#: SituationViews/templates/situation_views.html:525
+#, python-brace-format
+msgid "Intelligence loading failed: {message}"
+msgstr "情报加载失败：{message}"
+
+#: SituationViews/templates/situation_views.html:526
+msgid "Intelligence loading failed · Select to see the reason"
+msgstr "情报加载失败 · 点击展开查看原因"
+
+#: SituationViews/templates/situation_views.html:528
+#, python-brace-format
+msgid "{count} small networks"
+msgstr "{count} 个小网络"
+
+#: SituationViews/templates/situation_views.html:529
+#, python-brace-format
+msgid "{count} isolated nodes"
+msgstr "{count} 个孤立点"
+
+#: SituationViews/templates/situation_views.html:530
+#, python-brace-format
+msgid "{count} weak edges"
+msgstr "{count} 条弱边"
+
+#: SituationViews/templates/situation_views.html:531
+#, python-brace-format
+msgid "Client-side filters have hidden: {items}"
+msgstr "前端过滤中：已隐藏 {items}"
+
+#: SituationViews/templates/situation_views.html:532
+#, python-brace-format
+msgid ""
+"No network is visible after filtering: too few edges have support ≥ "
+"{support}, and every network is smaller than {size}. Try lowering the "
+"network size or support threshold."
+msgstr "过滤后无可见网络：印证 ≥ {support} 的边过少，且所有网络都低于规模下限 {size}。建议降低规模或印证。"
+
+#: SituationViews/templates/situation_views.html:533
+#, python-brace-format
+msgid "negated {negated}/{support}"
+msgstr "否定 {negated}/{support}"
+
+#: SituationViews/templates/situation_views.html:534
+#, python-brace-format
+msgid "Source text: {text}"
+msgstr "原文：{text}"
+
+#: SituationViews/templates/situation_views.html:535
+msgid "Retained nodes"
+msgstr "保留节点"
+
+#: SituationViews/templates/situation_views.html:536
+msgid "Retained relations"
+msgstr "保留关系"
+
+#: SituationViews/templates/situation_views.html:537
+msgid "Filtered relations"
+msgstr "过滤关系"
+
+#: SituationViews/templates/situation_views.html:538
+msgid "Relation events"
+msgstr "关系事件"
+
+#: SituationViews/templates/situation_views.html:539
+msgid ""
+"Unassigned entities are temporarily joined by name, type, and country. "
+"Manual global or contextual identities take precedence and can split "
+"incorrectly merged names."
+msgstr "未指定实体按名称、类型和国家临时连接；人工指定到全局或语境实体后，以指定身份优先，可拆分同名误合并节点。"
+
+#: SituationViews/templates/situation_views.html:540
+msgid "Current nodes"
+msgstr "当前节点"
+
+#: SituationViews/templates/situation_views.html:541
+msgid "Current relations"
+msgstr "当前关系"
+
+#: SituationViews/templates/situation_views.html:542
+msgid "Nodes in window"
+msgstr "窗口内节点"
+
+#: SituationViews/templates/situation_views.html:543
+msgid ""
+"The time axis only changes the visible client-side projection; it does not "
+"request data again or rerun the layout."
+msgstr "时间轴只改变当前图的可见投影，不重新请求数据或重跑布局。"
+
+#: SituationViews/templates/situation_views.html:544
+#, python-brace-format
+msgid "{count} relationships are hidden by the current time and network filters"
+msgstr "当前时间和网络条件下隐藏 {count} 条关系"
+
+#: SituationViews/templates/situation_views.html:545
+msgid "Global entity"
+msgstr "全局实体"
+
+#: SituationViews/templates/situation_views.html:546
+msgid "Contextual entity"
+msgstr "语境实体"
+
+#: SituationViews/templates/situation_views.html:547
+msgid "Temporarily joined by name"
+msgstr "按名称暂合并"
+
+#: SituationViews/templates/situation_views.html:548
+msgid "Not assigned"
+msgstr "尚未指定"
+
+#: SituationViews/templates/situation_views.html:549
+msgid "Legacy index node"
+msgstr "旧索引节点"
+
+#: SituationViews/templates/situation_views.html:551
+#, python-brace-format
+msgid "{count} found; {visible} visible after current filters."
+msgstr "找到 {count} 个；当前过滤后可见 {visible} 个。"
+
+#: SituationViews/templates/situation_views.html:552
+#, python-brace-format
+msgid "{count} intelligence records"
+msgstr "{count} 篇情报"
+
+#: SituationViews/templates/situation_views.html:553
+msgid "Currently visible"
+msgstr "当前可见"
+
+#: SituationViews/templates/situation_views.html:554
+msgid "Select to loosen client-side filters"
+msgstr "点击后放宽前端过滤"
+
+#: SituationViews/templates/situation_views.html:555
+#, python-brace-format
+msgid "Original: {text}"
+msgstr "原文：{text}"
+
+#: SituationViews/templates/situation_views.html:556
+msgid "No matching entities."
+msgstr "没有匹配实体。"
+
+#: SituationViews/templates/situation_views.html:557
+msgid ""
+"Shows intelligence in which this projected entity participates in a "
+"relationship under the current filters."
+msgstr "显示该投影实体在当前筛选条件下参与关系的情报。"
+
+#: SituationViews/templates/situation_views.html:558
+msgid "Loading relationship evidence…"
+msgstr "正在加载关系证据…"
+
+#: SituationViews/templates/situation_views.html:559
+msgid ""
+"Shows only intelligence that directly supports this entity relationship, "
+"predicate, and direction."
+msgstr "仅显示直接支撑这条实体关系、谓词和方向的情报。"
+
+#: SituationViews/templates/situation_views.html:560
+#, python-brace-format
+msgid "{count} matching events"
+msgstr "{count} 个匹配事件"
+
+#: SituationViews/templates/situation_views.html:561
+msgid "Agent"
+msgstr "施事"
+
+#: SituationViews/templates/situation_views.html:562
+msgid "Patient"
+msgstr "受事"
+
+#: SituationViews/templates/situation_views.html:563
+msgid "Undirected participant"
+msgstr "无向参与"
+
+#: SituationViews/templates/situation_views.html:564
+#, python-brace-format
+msgid "Counterpart: {names}"
+msgstr "对方：{names}"
+
+#: SituationViews/templates/situation_views.html:565
+#, python-brace-format
+msgid "{total} articles, sorted newest to oldest by content time."
+msgstr "共 {total} 篇，按内容时间从新到旧排列。"
+
+#: SituationViews/templates/situation_views.html:566
+msgid "Entity participation evidence"
+msgstr "实体参与证据"
+
+#: SituationViews/templates/situation_views.html:567
+msgid "Direct relationship evidence"
+msgstr "关系直接证据"
+
+#: SituationViews/templates/situation_views.html:568
+#, python-brace-format
+msgid "{total} articles · {kind} · Select to expand"
+msgstr "共 {total} 篇 · {kind} · 点击展开查看"
+
+#: SituationViews/templates/situation_views.html:569
+msgid "External search"
+msgstr "外部搜索"
+
+#: SituationViews/templates/situation_views.html:570
+msgid "Baidu Baike"
+msgstr "百度百科"
+
+#: SituationViews/templates/situation_views.html:571
+msgid "Assign this entity"
+msgstr "指定这个实体"
+
+#: SituationViews/templates/situation_views.html:572
+msgid "Copy entity name"
+msgstr "复制实体名称"
+
+#: SituationViews/templates/situation_views.html:573
+msgid "Relationship weight"
+msgstr "关系权重"
+
+#: SituationViews/templates/situation_views.html:574
+msgid "Articles"
+msgstr "文章"
+
+#: SituationViews/templates/situation_views.html:575
+#, python-brace-format
+msgid "Identity: {identity}"
+msgstr "身份：{identity}"
+
+#: SituationViews/templates/situation_views.html:576
+#, python-brace-format
+msgid "{count} intelligence entity references"
+msgstr "{count} 个情报实体引用"
+
+#: SituationViews/templates/situation_views.html:577
+msgid "View in the entity timeline"
+msgstr "在实体时间线中查看"
+
+#: SituationViews/templates/situation_views.html:578
+msgid "Original expressions"
+msgstr "原文表述"
+
+#: SituationViews/templates/situation_views.html:579
+msgid "The original expression matches the normalized label."
+msgstr "原文表述与规范标签一致。"
+
+#: SituationViews/templates/situation_views.html:580
+msgid "Directed agent–patient relationship"
+msgstr "有向施受关系"
+
+#: SituationViews/templates/situation_views.html:581
+msgid "Undirected multi-party relationship"
+msgstr "无向多方关系"
+
+#: SituationViews/templates/situation_views.html:582
+#, python-brace-format
+msgid "Predicate ID: {id}"
+msgstr "谓词 ID：{id}"
+
+#: SituationViews/templates/situation_views.html:583
+msgid "Independent events"
+msgstr "独立事件"
+
+#: SituationViews/templates/situation_views.html:584
+msgid "Average score"
+msgstr "平均评分"
+
+#: SituationViews/templates/situation_views.html:585
+msgid "Matching a region entity…"
+msgstr "正在匹配地域实体…"
+
+#: SituationViews/templates/situation_views.html:586
+#, python-brace-format
+msgid "No “{name}” entity is available for the timeline in the current window"
+msgstr "当前窗口内没有可用于时间线的“{name}”实体"
+
+#: SituationViews/templates/situation_views.html:587
+#, python-brace-format
+msgid "Unable to open the entity timeline: {message}"
+msgstr "无法打开实体时间线：{message}"
+
+#: SituationViews/templates/situation_views.html:588
+#, python-brace-format
+msgid "{selected} of {total} selected"
+msgstr "已选择 {selected} / {total} 个"
+
+#: SituationViews/templates/situation_views.html:589
+#, python-brace-format
+msgid "Assign entity · {name}"
+msgstr "指定实体 · {name}"
+
+#: SituationViews/templates/situation_views.html:590
+msgid "Loading intelligence entity references…"
+msgstr "正在加载情报实体引用…"
+
+#: SituationViews/templates/situation_views.html:591
+#, python-brace-format
+msgid "Current → {target}"
+msgstr "当前 → {target}"
+
+#: SituationViews/templates/situation_views.html:592
+msgid ""
+"This node has no editable stable ENT references. Rebuild the historical "
+"event index first."
+msgstr "该节点没有可编辑的稳定 ENT 引用；请先完成历史事件索引回填。"
+
+#: SituationViews/templates/situation_views.html:593
+msgid "Current entity"
+msgstr "当前实体"
+
+#: SituationViews/templates/situation_views.html:594
+msgid "Save selected intelligence links"
+msgstr "保存所选情报关联"
+
+#: SituationViews/templates/situation_views.html:596
+#, python-brace-format
+msgid "Link “{source}” in the selected intelligence to “{target}”."
+msgstr "将所选情报中的“{source}”关联到“{target}”。"
+
+#: SituationViews/templates/situation_views.html:597
+#, python-brace-format
+msgid "Map “{source}” globally to “{target}”."
+msgstr "将“{source}”全局映射到“{target}”。"
+
+#: SituationViews/templates/situation_views.html:598
+msgid ""
+"Contextual entities must be tied to specific intelligence and cannot create "
+"a global name mapping."
+msgstr "语境实体必须绑定具体情报，不能建立全局名称映射。"
+
+#: SituationViews/templates/situation_views.html:599
+msgid "Link only the checked intelligence entities to the selected global entity."
+msgstr "只把下方勾选的情报实体关联到所选全局实体。"
+
+#: SituationViews/templates/situation_views.html:600
+#, python-brace-format
+msgid ""
+"The current name “{name}” will map to the selected global entity in all "
+"intelligence."
+msgstr "当前名称“{name}”将在所有情报中映射到所选全局实体。"
+
+#: SituationViews/templates/situation_views.html:601
+msgid "No candidates found. Use “Add a new entity” below."
+msgstr "没有找到候选，请使用下方“添加新实体”。"
+
+#: SituationViews/templates/situation_views.html:602
+msgid "Searching global entities…"
+msgstr "正在搜索全局实体…"
+
+#: SituationViews/templates/situation_views.html:603
+msgid "Searching contextual entities…"
+msgstr "正在搜索语境实体…"
+
+#: SituationViews/templates/situation_views.html:605
+msgid "Enter the canonical name for the global entity."
+msgstr "请填写全局实体标准名。"
+
+#: SituationViews/templates/situation_views.html:606
+msgid "Enter a recognizable name for the contextual entity."
+msgstr "请填写一个便于识别的语境实体名称。"
+
+#: SituationViews/templates/situation_views.html:607
+#, python-brace-format
+msgid "Creation failed: {message}"
+msgstr "新建失败：{message}"
+
+#: SituationViews/templates/situation_views.html:608
+msgid "Search for or create and select a target entity."
+msgstr "请搜索或新建并选择目标实体。"
+
+#: SituationViews/templates/situation_views.html:609
+msgid "Select at least one intelligence entity reference."
+msgstr "请至少选择一个情报实体引用。"
+
+#: SituationViews/templates/situation_views.html:610
+#, python-brace-format
+msgid "Saving {count} assignments…"
+msgstr "正在保存 {count} 个指定…"
+
+#: SituationViews/templates/situation_views.html:611
+msgid ""
+"The selected intelligence entity links were saved. The graph is unchanged; "
+"refresh it manually when convenient."
+msgstr "所选情报的实体关联已保存。当前图保持不变，请在合适的时候手动刷新关系图。"
+
+#: SituationViews/templates/situation_views.html:612
+#, python-brace-format
+msgid "Save failed: {message}"
+msgstr "保存失败：{message}"
+
+#: SituationViews/templates/situation_views.html:613
+msgid "The current entity name is empty, so a global mapping cannot be created."
+msgstr "当前实体名称为空，无法建立全局映射。"
+
+#: SituationViews/templates/situation_views.html:614
+msgid ""
+"The target entity has the same name; no duplicate alias is needed. The graph"
+" is unchanged; refresh it manually when convenient."
+msgstr "目标实体与当前名称相同，无需添加重复别名。当前图保持不变，请在合适的时候手动刷新关系图。"
+
+#: SituationViews/templates/situation_views.html:615
+#, python-brace-format
+msgid "Saving the global mapping for “{name}”…"
+msgstr "正在保存“{name}”的全局映射…"
+
+#: SituationViews/templates/situation_views.html:616
+#, python-brace-format
+msgid ""
+"The global mapping for “{name}” was saved. The graph is unchanged; refresh "
+"it manually when convenient."
+msgstr "“{name}”的全局映射已保存。当前图保持不变，请在合适的时候手动刷新关系图。"
+
+#: SituationViews/templates/situation_views.html:617
+msgid ""
+"The manual assignment was cleared. The graph is unchanged; refresh it "
+"manually when convenient."
+msgstr "人工指定已清除。当前图保持不变，请在合适的时候手动刷新关系图。"
+
+#: SituationViews/templates/situation_views.html:618
+msgid "This reference has no manual assignment."
+msgstr "该引用没有人工指定。"
+
+#: SituationViews/templates/situation_views.html:619
+#, python-brace-format
+msgid "Clear failed: {message}"
+msgstr "清除失败：{message}"
+
+#: SituationViews/templates/situation_views.html:620
+msgid "Undo supports only one selected reference that has an assignment history."
+msgstr "撤销只支持单选一个有历史指定的引用。"
+
+#: SituationViews/templates/situation_views.html:621
+msgid ""
+"The last assignment was undone. The graph is unchanged; refresh it manually "
+"when convenient."
+msgstr "已撤销上次指定。当前图保持不变，请在合适的时候手动刷新关系图。"
+
+#: SituationViews/templates/situation_views.html:622
+#, python-brace-format
+msgid "Undo failed: {message}"
+msgstr "撤销失败：{message}"
+
+#: SituationViews/templates/situation_views.html:623
+msgid "Expand legend"
+msgstr "展开图例"
+
+#: SituationViews/templates/situation_views.html:625
+#, python-brace-format
+msgid ""
+"Visualization component {dependency} failed to load. Refresh the page to try"
+" again."
+msgstr "可视化组件 {dependency} 加载失败，请刷新页面重试。"
+
+#: SituationViews/templates/situation_views.html:645
+msgid "Geopolitical entity"
+msgstr "政治地理实体"
+
+#: SituationViews/templates/situation_views.html:646
+msgid "Facility"
+msgstr "设施"
+
+#: SituationViews/templates/situation_views.html:646
+msgid "Other entity"
+msgstr "其他实体"
 
 #: templates/_article_i18n.html:7
 msgid "Published"
@@ -877,11 +1543,6 @@ msgstr "归档时间排序依据"
 #: templates/_article_i18n.html:12
 msgid "Loading intelligence…"
 msgstr "正在加载情报…"
-
-#: templates/_article_i18n.html:13
-#, python-brace-format
-msgid "Loading failed: {message}"
-msgstr "加载失败：{message}"
 
 #: templates/_article_i18n.html:14
 msgid "No time information"
@@ -1015,8 +1676,7 @@ msgstr "聚合情报 · IIS"
 msgid "Maximum clusters:"
 msgstr "最大聚合数："
 
-#: templates/intelligence_cluster_list.html:27
-#: templates/intelligence_list.html:52
+#: templates/intelligence_cluster_list.html:27 templates/intelligence_list.html:52
 msgid "Refresh"
 msgstr "刷新"
 
@@ -1045,10 +1705,6 @@ msgstr "聚合 ID："
 #, python-brace-format
 msgid "{count} reports"
 msgstr "共 {count} 条"
-
-#: templates/intelligence_cluster_list.html:47
-msgid "Collapse"
-msgstr "收起"
 
 #: templates/intelligence_cluster_list.html:48
 msgid "Loading member reports…"

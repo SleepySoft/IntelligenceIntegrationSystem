@@ -749,14 +749,14 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="entity-limited-scope"' in embedded_html
     assert '仅针对所选情报中的实体生效' in embedded_html
     assert 'id="entity-mapping-preview">请先在上方选择一个目标实体' in embedded_html
-    assert '将所选情报中的“${sourceName}”关联到“${targetName}”' in embedded_html
-    assert '将“${sourceName}”全局映射到“${targetName}”' in embedded_html
+    assert "tr('link_selected_mapping', {source: sourceName, target: targetName})" in embedded_html
+    assert "tr('global_mapping_preview', {source: sourceName, target: targetName})" in embedded_html
     assert '已选择：${name}' not in embedded_html
     assert '即使已有结果，也始终可以添加新实体' in embedded_html
     assert 'id="entity-assign">保存全局映射' in embedded_html
     assert "scope.disabled = kind === 'contextual'" in embedded_html
     assert "if (!limited) return saveGlobalEntityMapping()" in embedded_html
-    assert '目标实体与当前名称相同，无需添加重复别名' in embedded_html
+    assert "showGraphNotice(tr('duplicate_alias_not_needed'))" in embedded_html
     assert 'id="entity-fixed-alias-save"' not in embedded_html
     assert 'name="entity-operation"' not in embedded_html
     assert 'entity-register-fixed-alias' not in embedded_html
@@ -786,7 +786,7 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert 'id="graph-manual-refresh"' in embedded_html
     assert '.graph-notice { position: fixed;' in embedded_html
     assert 'top: 14px; z-index: 30' in embedded_html
-    assert 'id="copy-graph-entity-name" title="复制实体名称"' in embedded_html
+    assert 'id="copy-graph-entity-name" title="${tr(\'copy_entity_name\')}"' in embedded_html
     assert 'id="open-entity-timeline"' in embedded_html
     assert 'id="open-map-entity-timeline"' in embedded_html
     assert "type: 'iis:open-timeline'" in embedded_html
@@ -802,7 +802,7 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "$('entity-contextual-new-name').value = '';" in embedded_html
     assert "$('entity-global-create-panel').open = false;" in embedded_html
     assert "$('entity-contextual-create-panel').open = false;" in embedded_html
-    assert "showGraphNotice('所选情报的实体关联已保存。" in embedded_html
+    assert "showGraphNotice(tr('selected_links_saved'))" in embedded_html
     assert "$('entity-editor').close(); refreshGraph()" not in embedded_html
     assert 'const ENTITY_EDIT_ENABLED = false' in embedded_html
     assert 'https://baike.baidu.com/search/word?word=' in embedded_html
@@ -906,6 +906,13 @@ def test_entity_editor_is_enabled_only_for_logged_in_user():
     assert '<html lang="en">' in english
     assert "Signed in · alice" in english
     assert "Sign out" in english
+    assert 'map_overview: "Map overview"' in english
+    assert 'assign_this_entity: "Assign this entity"' in english
+    assert 'graph_search_help: "Enter text to show all matching nodes."' in english
+    assert "tr('intelligence_load_failed'" in english
+    assert "正在加载对应情报" not in english
+    assert "指定这个实体" not in english
+    assert "请先在上方选择一个目标实体" not in english
 
     english_timeline = client.get(
         "/situation/embed/timeline?lang=en").get_data(as_text=True)

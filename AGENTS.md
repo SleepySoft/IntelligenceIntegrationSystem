@@ -357,8 +357,9 @@ python VectorDB/VectorDBBService.py \
 - 每批页面迁移保持小提交，并至少验证中文、英文、`Content-Language`、HTML `lang`、JS 语法
   和独立 Blueprint 渲染。相关测试为 `Test/test_web_i18n.py`、
   `Test/test_web_translation_friendliness.py` 及该页面所属子系统测试。
-- 当前已迁移公共视图壳、情报列表/卡片/分页、详情外壳/弹窗和聚合页；查询页、详情正文
-  协议标签、关系图、地域图、实体图、实体时间线、Vector 页面及管理页仍需逐页面迁移。
+- 当前已迁移公共视图壳、情报列表/卡片/分页、详情外壳/弹窗、聚合页，以及态势子系统的
+  地域图、实体关系图和实体时间线；查询页、详情正文协议标签、Vector 页面及管理页仍需
+  逐页面迁移。
 
 ---
 
