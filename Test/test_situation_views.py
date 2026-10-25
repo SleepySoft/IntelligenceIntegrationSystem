@@ -879,11 +879,31 @@ def test_entity_editor_is_enabled_only_for_logged_in_user():
 
     anonymous = client.get("/situation/embed/entities").get_data(as_text=True)
     assert "const ENTITY_EDIT_ENABLED = false" in anonymous
+    assert "data-viewer-session" not in anonymous
+    assert "退出登录" not in anonymous
+    anonymous_timeline = client.get(
+        "/situation/embed/timeline").get_data(as_text=True)
+    assert "data-viewer-session" not in anonymous_timeline
+    assert "退出登录" not in anonymous_timeline
     with client.session_transaction() as user_session:
         user_session["logged_in"] = True
         user_session["username"] = "alice"
     logged_in = client.get("/situation/embed/entities").get_data(as_text=True)
     assert "const ENTITY_EDIT_ENABLED = true" in logged_in
+    assert "data-viewer-session" in logged_in
+    assert "已登录 · alice" in logged_in
+    assert 'href="/logout" target="_top"' in logged_in
+
+    timeline = client.get("/situation/embed/timeline").get_data(as_text=True)
+    assert "data-viewer-session" in timeline
+    assert "已登录 · alice" in timeline
+    assert 'href="/logout" target="_top"' in timeline
+
+    english = client.get(
+        "/situation/embed/entities?lang=en").get_data(as_text=True)
+    assert '<html lang="en">' in english
+    assert "Signed in · alice" in english
+    assert "Sign out" in english
 
 
 def test_entity_resolution_routes_batch_refs_and_keep_fixed_alias_global():

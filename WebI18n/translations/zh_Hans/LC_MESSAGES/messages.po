@@ -255,3 +255,9 @@ msgstr "该聚合中没有其他情报。"
 
 msgid "Failed to load member reports: {message}"
 msgstr "成员情报加载失败：{message}"
+
+msgid "Signed in"
+msgstr "已登录"
+
+msgid "Sign out"
+msgstr "退出登录"

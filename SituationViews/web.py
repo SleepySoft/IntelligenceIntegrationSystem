@@ -511,6 +511,7 @@ class SituationViewsService:
     def _render_dashboard(self, view, *, profile=None, embedded=False, scoped=None):
         if scoped is None:
             scoped = embedded
+        viewer_logged_in = bool(session.get("logged_in", False))
         return render_template(
             "situation_views.html",
             categories=CATEGORY_LABELS,
@@ -527,13 +528,17 @@ class SituationViewsService:
             edit_api_prefix="../api" if embedded else "api",
             entity_edit_enabled=bool(
                 self.entity_resolution_service is not None
-                and session.get("logged_in", False)),
+                and viewer_logged_in),
+            viewer_logged_in=viewer_logged_in,
+            viewer_username=str(session.get("username") or ""),
+            logout_url="/logout",
             graph_max_nodes=GRAPH_MAX_NODES,
         )
 
     def _render_timeline(self, *, profile=None, embedded=False, scoped=None):
         if scoped is None:
             scoped = embedded
+        viewer_logged_in = bool(session.get("logged_in", False))
         return render_template(
             "entity_timeline.html",
             categories=CATEGORY_LABELS,
@@ -542,6 +547,9 @@ class SituationViewsService:
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
             api_prefix="../api/scoped" if scoped else ("../api" if embedded else "api"),
+            viewer_logged_in=viewer_logged_in,
+            viewer_username=str(session.get("username") or ""),
+            logout_url="/logout",
         )
 
     def _dashboard_profile(self, raw):

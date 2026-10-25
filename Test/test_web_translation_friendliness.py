@@ -24,6 +24,8 @@ def test_public_reading_pages_declare_chinese_source_language():
         "templates/intelligence_detail.html",
         "templates/intelligence_cluster_list.html",
         "IntelligenceViews/templates/intelligence_views.html",
+            "SituationViews/templates/situation_views.html",
+            "SituationViews/templates/entity_timeline.html",
     }
     for page in pages:
         source = _read(page)

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,6 +27,11 @@
         .search-results[hidden] { display:none }
         .search-result { width:100%; padding:8px; display:flex; justify-content:space-between; gap:10px; border:0; border-radius:7px; background:transparent; color:var(--text); text-align:left }
         .search-result:hover { background:color-mix(in srgb,var(--accent) 12%,transparent) }
+        .viewer-session { display:flex; align-items:center; gap:8px; padding-left:10px; border-left:1px solid var(--border); white-space:nowrap }
+        .viewer-session-status { color:var(--muted); font-size:12px }
+        .viewer-session-status::before { content:""; display:inline-block; width:7px; height:7px; margin-right:6px; border-radius:50%; background:#29a57e; box-shadow:0 0 0 3px color-mix(in srgb,#29a57e 18%,transparent); vertical-align:1px }
+        .viewer-session a { color:var(--muted); font-size:12px; text-decoration:none }
+        .viewer-session a:hover { color:var(--text); text-decoration:underline }
         .controls { padding:8px 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border) }
         .chips { display:flex; gap:6px; flex:1; flex-wrap:wrap; min-width:220px }
         .chip { display:flex; align-items:center; gap:5px; padding:5px 8px; border-radius:999px; background:color-mix(in srgb,var(--accent) 13%,var(--panel)); border:1px solid color-mix(in srgb,var(--accent) 35%,var(--border)) }
@@ -76,7 +81,7 @@
         .time-row { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px }
         .time-chip { padding:4px 8px; border:1px solid var(--border); border-radius:7px; background:var(--bg); color:var(--muted) }
         .time-chip.active { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 13%,var(--bg)); color:var(--text); font-weight:650 }
-        @media(max-width:760px){.search{margin-left:0;width:100%}.scope{display:none}.legend{display:none}.zoom-controls .wide{display:none}.detail{max-height:55%}.preview-grid{grid-template-columns:1fr}}
+        @media(max-width:760px){.search{margin-left:0;width:100%}.scope{display:none}.viewer-session{margin-left:auto}.legend{display:none}.zoom-controls .wide{display:none}.detail{max-height:55%}.preview-grid{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -89,6 +94,12 @@
             <button id="search-button" type="button">搜索</button>
             <div class="search-results" id="search-results" hidden></div>
         </div>
+        {% if viewer_logged_in %}
+        <div class="viewer-session" data-viewer-session>
+            <span class="viewer-session-status">{{ _('Signed in') }}{% if viewer_username %} · {{ viewer_username }}{% endif %}</span>
+            <a href="{{ logout_url }}" target="_top">{{ _('Sign out') }}</a>
+        </div>
+        {% endif %}
     </header>
     <section class="controls">
         <div class="chips" id="chips"><span class="muted">尚未指定实体</span></div>

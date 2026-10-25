@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -174,6 +174,12 @@
         .dashboard-nav { display: flex; gap: 8px; }
         .dashboard-nav a { min-height: 34px; padding: 7px 11px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--panel); text-decoration: none; font-weight: 650; }
         .dashboard-nav a.active { color: #fff; background: var(--accent); border-color: transparent; }
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        .viewer-session { display: flex; align-items: center; gap: 8px; padding-left: 10px; border-left: 1px solid var(--border); white-space: nowrap; }
+        .viewer-session-status { color: var(--muted); font-size: 12px; }
+        .viewer-session-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #29a57e; box-shadow: 0 0 0 3px color-mix(in srgb, #29a57e 18%, transparent); vertical-align: 1px; }
+        .viewer-session a { color: var(--muted); font-size: 12px; text-decoration: none; }
+        .viewer-session a:hover { color: var(--text); text-decoration: underline; }
         .dashboard .layout { display: block; position: relative; }
         .dashboard .canvas { min-height: calc(100vh - 94px); }
         .dashboard svg { height: calc(100vh - 94px); min-height: 620px; }
@@ -204,6 +210,7 @@
         @media (max-width: 520px) {
             .shell { padding: 10px; }
             header { display: block; }
+            .header-actions { margin-top: 10px; justify-content: space-between; }
             .filters { grid-template-columns: 1fr; }
             .intelligence-list { grid-template-columns: 1fr; }
             .canvas, svg { min-height: 520px; height: 520px; }
@@ -218,10 +225,18 @@
             <h1>{{ '地缘态势' if dashboard_view == 'map' else '实体关系' }}</h1>
             <p>态势洞察 · {{ dashboard_profile.subsystem_display_name }} · 最近 {{ dashboard_profile.window_days }} 天 · 评分不低于 {{ dashboard_profile.min_score }}</p>
         </div>
-        <nav class="dashboard-nav" aria-label="态势洞察看板">
-            <a href="map"{% if dashboard_view == 'map' %} class="active" aria-current="page"{% endif %}>地缘态势</a>
-            <a href="entities"{% if dashboard_view == 'graph' %} class="active" aria-current="page"{% endif %}>实体关系</a>
-        </nav>
+        <div class="header-actions">
+            <nav class="dashboard-nav" aria-label="态势洞察看板">
+                <a href="map"{% if dashboard_view == 'map' %} class="active" aria-current="page"{% endif %}>地缘态势</a>
+                <a href="entities"{% if dashboard_view == 'graph' %} class="active" aria-current="page"{% endif %}>实体关系</a>
+            </nav>
+            {% if viewer_logged_in %}
+            <div class="viewer-session" data-viewer-session>
+                <span class="viewer-session-status">{{ _('Signed in') }}{% if viewer_username %} · {{ viewer_username }}{% endif %}</span>
+                <a href="{{ logout_url }}" target="_top">{{ _('Sign out') }}</a>
+            </div>
+            {% endif %}
+        </div>
     </header>
 
     <section class="filters" aria-label="公共筛选条件" hidden>
