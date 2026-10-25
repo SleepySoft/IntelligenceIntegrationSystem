@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const clusters = data.clusters || [];
 
             if (clusters.length === 0) {
-                listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">No Aggregated Clusters Available</p>';
+                listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">暂无聚合事件</p>';
                 return;
             }
 
@@ -44,14 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? `<button class="cluster-toggle-btn"
                                data-cluster-id="${cluster.cluster_id}"
                                data-related-count="${cluster.size - 1}">
-                         <i class="bi bi-chevron-down"></i> Expand (${cluster.size - 1} related)
+                         <i class="bi bi-chevron-down"></i> 展开（${cluster.size - 1} 条相关情报）
                        </button>`
                     : '';
 
                 html += `
                 <div class="cluster-container" data-cluster-id="${cluster.cluster_id}">
                     <div class="cluster-badge">
-                        <i class="bi bi-diagram-3"></i> Cluster ID: ${cluster.cluster_id} • Total: ${cluster.size}
+                        <i class="bi bi-diagram-3"></i> 聚合 ID：<span class="notranslate" translate="no">${cluster.cluster_id}</span> · 共 ${cluster.size} 条
                     </div>
                     <div class="cluster-header ${hasToggle ? 'has-toggle' : ''}">
                         ${toggleBtn}
@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
             membersDiv.classList.remove('expanded');
 
             if (topBtn) {
-                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> Expand (${relatedCount} related)`;
+                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> 展开（${relatedCount} 条相关情报）`;
             }
             return;
         }
@@ -109,13 +109,13 @@ document.addEventListener('DOMContentLoaded', () => {
         membersDiv.classList.add('expanded');
 
         if (topBtn) {
-            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> Collapse`;
+            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> 收起`;
         }
 
         // 如果已经加载过，直接返回
         if (membersDiv.innerHTML.trim() !== '') return;
 
-        membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> Loading members...</div>`;
+        membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> 正在加载成员情报…</div>`;
 
         try {
             const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&sort_by=time&desc=1&limit=500`);
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const filteredItems = items.filter(item => item.uuid !== reprUuid);
 
             if (filteredItems.length === 0) {
-                membersDiv.innerHTML = '<p style="color:#666; font-size: 0.9em;">No other members in this cluster.</p>';
+                membersDiv.innerHTML = '<p style="color:#666; font-size: 0.9em;">该聚合中没有其他情报。</p>';
                 return;
             }
 
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${renderer.generateArticleCardHtml(item.doc)}
                     <div class="cluster-member-actions">
                         <button class="cluster-inline-collapse-btn" data-cluster-id="${clusterId}">
-                            <i class="bi bi-chevron-up"></i> Collapse
+                            <i class="bi bi-chevron-up"></i> 收起
                         </button>
                     </div>
                 </div>
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderer.updateTimeBackgrounds();
 
         } catch (err) {
-            membersDiv.innerHTML = `<div style="color:red;">Error loading members: ${err.message}</div>`;
+            membersDiv.innerHTML = `<div style="color:red;">成员情报加载失败：${err.message}</div>`;
         }
     });
 

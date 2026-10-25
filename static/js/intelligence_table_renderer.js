@@ -71,7 +71,7 @@ class ArticleRenderer {
             // 移除 Bootstrap spinner，改用纯文字或自定义样式
             this.listContainer.innerHTML = `
                 <div class="loading-spinner">
-                    Loading Intelligences...
+                    正在加载情报…
                 </div>`;
         }
     }
@@ -80,13 +80,13 @@ class ArticleRenderer {
         if (this.listContainer) {
             this.listContainer.innerHTML = `
                 <div style="color: red; padding: 20px; text-align: center;">
-                    Error: ${message}
+                    加载失败：${message}
                 </div>`;
         }
     }
 
     formatLocalTime(timeStr) {
-        if (!timeStr) return 'No Datetime';
+        if (!timeStr) return '无时间信息';
 
         // 尝试解析时间
         // 技巧：如果后端传的是 "2023-10-10 10:00:00" 这种不带时区的格式且你确定它是GMT，
@@ -128,14 +128,14 @@ class ArticleRenderer {
 
 
         // 1.2 ID 获取
-        const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
+        const uuid = this.escapeHTML(article.UUID || "未知 UUID");
         const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
 
         const informant_val = article.INFORMANT || "";
         const informant = this.escapeHTML(informant_val);
         const informant_html = this.isValidUrl(informant)
             ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
-            : (informant || 'Unknown Source');
+            : (informant || '未知来源');
 
         const time_html = this.renderTimeChips(article);
 
@@ -155,7 +155,7 @@ class ArticleRenderer {
         const ai_model = this.escapeHTML(article.ai_model || '');
 
         const prompt_version = article.prompt_version;
-        const taxonomy = this.escapeHTML(article.TAXONOMY || "Unclassified");
+        const taxonomy = this.escapeHTML(article.TAXONOMY || "未分类");
         const sub_categories = article.SUB_CATEGORY || [];
         const tags_html = sub_categories.map(
             tag => `<span class="category-tag">${this.escapeHTML(tag)}</span>`).join('');
@@ -166,13 +166,13 @@ class ArticleRenderer {
             <div class="article-rating" style="margin:6px 0 4px 0;">
                 <span class="debug-label">总分:</span>${this.createRatingStars(article.total_score)}
             </div>
-            <div><span class="debug-label">UUID:</span> ${uuid}</div>`;
+            <div><span class="debug-label">UUID:</span> <span class="notranslate" translate="no">${uuid}</span></div>`;
 
         // 3. 构建右侧调试信息 (right_content)
         let right_content = "";
         if (ai_service || ai_model) {
-            if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
-            if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
+            if (ai_service) right_content += `<div><span class="debug-label">服务:</span><span class="debug-value-truncate notranslate" translate="no" title="${ai_service}">${ai_service}</span></div>`;
+            if (ai_model) right_content += `<div><span class="debug-label">模型:</span><span class="debug-value-truncate notranslate" translate="no" title="${ai_model}">${ai_model}</span></div>`;
         }
 
         if (prompt_version) {
@@ -182,9 +182,10 @@ class ArticleRenderer {
                 <span class="debug-label">Prompt:</span>
                 <button
                   type="button"
-                  class="prompt-link-btn"
                   data-prompt-version="${pvEscaped}"
-                  title="Click to view prompt v${pvEscaped}"
+                  class="prompt-link-btn notranslate"
+                  translate="no"
+                  title="查看 Prompt v${pvEscaped}"
                 >v${pvEscaped}</button>
               </div>`;
         }
@@ -194,15 +195,15 @@ class ArticleRenderer {
         <div class="article-card">
             <h3>
               <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">
-                ${this.escapeHTML(article.EVENT_TITLE || "No Title")}
+                ${this.escapeHTML(article.EVENT_TITLE || "无标题")}
               </a>
             </h3>
             <div class="article-meta">
                 ${time_html}
                 ${vector_score_html}
-                <span class="article-source">Source: ${informant_html}</span>
+                <span class="article-source">来源: <span class="notranslate" translate="no">${informant_html}</span></span>
             </div>
-            <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
+            <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "暂无摘要")}</p>
 
             <div class="debug-info">
                 <div class="debug-left">
@@ -219,7 +220,7 @@ class ArticleRenderer {
         if (!this.listContainer) return;
 
         if (!articles || articles.length === 0) {
-            this.listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">NO Intelligence</p>';
+            this.listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">暂无情报</p>';
             return;
         }
 
@@ -283,22 +284,22 @@ class ArticleRenderer {
 
         // 首页按钮 (可选，根据你的习惯)
         if (has_prev) {
-            html += `<a class="page-btn" data-page="1">First</a>`;
-            html += `<a class="page-btn" data-page="${current_page - 1}">Prev</a>`;
+            html += `<a class="page-btn" data-page="1">首页</a>`;
+            html += `<a class="page-btn" data-page="${current_page - 1}">上一页</a>`;
         } else {
             // 保持布局稳定的占位符或禁用状态
-             html += `<span class="page-btn disabled">First</span>`;
-             html += `<span class="page-btn disabled">Prev</span>`;
+             html += `<span class="page-btn disabled">首页</span>`;
+             html += `<span class="page-btn disabled">上一页</span>`;
         }
 
         // 中间信息
-        html += `<span class="page-info">${current_page} / ${total_pages} (Total: ${total_results})</span>`;
+        html += `<span class="page-info">${current_page} / ${total_pages}（共 ${total_results} 条）</span>`;
 
         // 下一页按钮
         if (has_next) {
-            html += `<a class="page-btn" data-page="${current_page + 1}">Next</a>`;
+            html += `<a class="page-btn" data-page="${current_page + 1}">下一页</a>`;
         } else {
-            html += `<span class="page-btn disabled">Next</span>`;
+            html += `<span class="page-btn disabled">下一页</span>`;
         }
 
         html += '</div>';
@@ -419,16 +420,16 @@ class ArticleRenderer {
             overlay.id = 'prompt-modal-overlay';
             overlay.className = 'prompt-modal-overlay';
             overlay.innerHTML = `
-              <div class="prompt-modal" role="dialog" aria-modal="true" aria-label="Prompt Viewer">
+              <div class="prompt-modal" role="dialog" aria-modal="true" aria-label="Prompt 查看器">
                 <div class="prompt-modal-header">
                   <div class="prompt-modal-title" id="prompt-modal-title">Prompt</div>
                   <div class="prompt-modal-actions">
-                    <button class="prompt-modal-btn" id="prompt-copy-btn" type="button">Copy</button>
-                    <button class="prompt-modal-btn" id="prompt-close-btn" type="button">Close</button>
+                    <button class="prompt-modal-btn" id="prompt-copy-btn" type="button">复制</button>
+                    <button class="prompt-modal-btn" id="prompt-close-btn" type="button">关闭</button>
                   </div>
                 </div>
                 <div class="prompt-modal-body" id="prompt-modal-body">
-                  <div class="prompt-hint">Loading...</div>
+                  <div class="prompt-hint">正在加载…</div>
                 </div>
               </div>
             `;
@@ -454,8 +455,8 @@ class ArticleRenderer {
 
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     navigator.clipboard.writeText(text).then(() => {
-                        overlay.querySelector('#prompt-copy-btn').textContent = 'Copied';
-                        setTimeout(() => overlay.querySelector('#prompt-copy-btn').textContent = 'Copy', 900);
+                        overlay.querySelector('#prompt-copy-btn').textContent = '已复制';
+                        setTimeout(() => overlay.querySelector('#prompt-copy-btn').textContent = '复制', 900);
                     }).catch(() => {
                         this.fallbackCopyText(text);
                     });
@@ -483,7 +484,7 @@ class ArticleRenderer {
         if (!overlay || !titleEl || !bodyEl) return;
 
         titleEl.textContent = `Prompt v${promptVersion}`;
-        bodyEl.innerHTML = `<div class="prompt-hint">Loading prompt v${this.escapeHTML(promptVersion)}...</div>`;
+        bodyEl.innerHTML = `<div class="prompt-hint">正在加载 Prompt v${this.escapeHTML(promptVersion)}…</div>`;
         overlay.style.display = 'flex';
         overlay.dataset.promptText = '';
 
@@ -492,12 +493,12 @@ class ArticleRenderer {
             overlay.dataset.promptText = promptText;
 
             bodyEl.innerHTML = `
-              <pre class="prompt-text">${this.escapeHTML(promptText)}</pre>
-              <div class="prompt-hint">Tip: Click “Copy” to copy the full prompt text.</div>
+              <pre class="prompt-text notranslate" translate="no">${this.escapeHTML(promptText)}</pre>
+              <div class="prompt-hint">提示：点击“复制”可复制完整 Prompt。</div>
             `;
         } catch (err) {
             const msg = (err && err.message) ? err.message : String(err);
-            bodyEl.innerHTML = `<div class="prompt-error">Failed to load prompt v${this.escapeHTML(promptVersion)}: ${this.escapeHTML(msg)}</div>`;
+            bodyEl.innerHTML = `<div class="prompt-error">Prompt v${this.escapeHTML(promptVersion)} 加载失败：${this.escapeHTML(msg)}</div>`;
         }
     }
 
@@ -552,8 +553,8 @@ class ArticleRenderer {
 
             const btn = document.getElementById('prompt-copy-btn');
             if (btn) {
-                btn.textContent = 'Copied';
-                setTimeout(() => btn.textContent = 'Copy', 900);
+                btn.textContent = '已复制';
+                setTimeout(() => btn.textContent = '复制', 900);
             }
         } catch (e) {
             console.warn('Copy failed:', e);

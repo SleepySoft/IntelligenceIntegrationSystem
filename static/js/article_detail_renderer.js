@@ -12,7 +12,7 @@ window.ArticleDetailRenderer = {
     anyTimeToTimeStr: function(s) {
         try {
             const d = new Date(s);
-            if (isNaN(d.getTime())) return s || 'N/A';
+            if (isNaN(d.getTime())) return s || '无时间信息';
             const y = d.getFullYear();
             const m = String(d.getMonth()+1).padStart(2,'0');
             const day = String(d.getDate()).padStart(2,'0');
@@ -20,7 +20,7 @@ window.ArticleDetailRenderer = {
             const mm = String(d.getMinutes()).padStart(2,'0');
             const ss = String(d.getSeconds()).padStart(2,'0');
             return `${y}-${m}-${day} ${hh}:${mm}:${ss}`;
-        } catch { return s || 'N/A'; }
+        } catch { return s || '无时间信息'; }
     },
 
     renderStars: function(score) {
@@ -62,16 +62,16 @@ window.ArticleDetailRenderer = {
 
         return `
             <div class="mt-4">
-                <h5><i class="bi bi-graph-up"></i> Analysis & Evaluation</h5>
+                <h5><i class="bi bi-graph-up"></i> 分析与评分</h5>
                 <div class="table-responsive">
                     <table class="table table-sm">
-                        <thead><tr><th>Dimension</th><th>Rating</th><th>Manual Rating</th></tr></thead>
+                        <thead><tr><th>维度</th><th>AI 评分</th><th>人工评分</th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>
                 </div>
                 <div class="mt-3">
                     <button id="submit-rating" class="btn btn-primary btn-sm">
-                        <i class="bi bi-check-circle"></i> Submit Manual Ratings
+                        <i class="bi bi-check-circle"></i> 提交人工评分
                     </button>
                 </div>
             </div>`;
@@ -315,7 +315,7 @@ window.ArticleDetailRenderer = {
                 ${surface}
                 <details class="event-qualifier-technical"><summary>限定信息</summary><dl>
                     <div><dt>类别</dt><dd>${this.escapeHTML(this.humanLabel(qualifier.type, qualifierTypeLabels))}</dd></div>
-                    ${qualifier.id ? `<div><dt>限定词 ID</dt><dd>${this.escapeHTML(qualifier.id)}</dd></div>` : ''}
+                    ${qualifier.id ? `<div><dt>限定词 ID</dt><dd class="notranslate" translate="no">${this.escapeHTML(qualifier.id)}</dd></div>` : ''}
                     <div><dt>适用范围</dt><dd>${this.escapeHTML(qualifier.scope || 'event')}</dd></div>
                     ${qualifierTime ? `<div><dt>时间</dt><dd>${this.escapeHTML(qualifierTime)}</dd></div>` : ''}
                     ${by ? `<div><dt>表述主体</dt><dd class="event-chips">${by}</dd></div>` : ''}
@@ -386,7 +386,7 @@ window.ArticleDetailRenderer = {
                 ${renderStoryParty(affectedItems, '未指向特定对象', '影响谁 / 什么')}
             </div>`;
             const metadata = event?.metadata && Object.keys(event.metadata).length
-                ? `<span><b>附加元数据：</b><code>${this.escapeHTML(JSON.stringify(event.metadata))}</code></span>` : '';
+                ? `<span><b>附加元数据：</b><code class="notranslate" translate="no">${this.escapeHTML(JSON.stringify(event.metadata))}</code></span>` : '';
 
             return `
                 <article class="event-detail-panel${isPrimary ? ' primary' : ''}" data-event-panel="${this.escapeHTML(eventUuid)}" ${eventUuid === primaryKey ? '' : 'hidden'}>
@@ -405,7 +405,7 @@ window.ArticleDetailRenderer = {
                         </div>
                     </div>
                     <details class="event-technical">
-                        <summary>查看结构化字段</summary><div class="event-technical-structure"><div class="event-frame-strip">${renderFrame(event)}${predicate.id ? `<code>${this.escapeHTML(predicate.id)}</code>` : '<code>开放谓词</code>'}</div><span>${roleCount} 个实体引用 · ${Object.keys(event?.time || {}).length} 个时间表达 · ${(event?.qualifiers || []).length} 个限定词 · ${(event?.relations || []).length} 条关系</span></div><div class="event-technical-text"><span><b>局部编号：</b>${this.escapeHTML(event.local_event_id || `E${index + 1}`)}</span>${eventUuid ? `<span><b>事件 UUID：</b>${this.escapeHTML(eventUuid)}</span>` : ''}${event?.intelligence_uuid ? `<span><b>来源文章 UUID：</b>${this.escapeHTML(event.intelligence_uuid)}</span>` : ''}${event?.observed_at ? `<span><b>系统观察时间：</b>${this.escapeHTML(this.anyTimeToTimeStr(event.observed_at))}</span>` : ''}${metadata}</div>
+                        <summary>查看结构化字段</summary><div class="event-technical-structure"><div class="event-frame-strip">${renderFrame(event)}${predicate.id ? `<code class="notranslate" translate="no">${this.escapeHTML(predicate.id)}</code>` : '<code>开放谓词</code>'}</div><span>${roleCount} 个实体引用 · ${Object.keys(event?.time || {}).length} 个时间表达 · ${(event?.qualifiers || []).length} 个限定词 · ${(event?.relations || []).length} 条关系</span></div><div class="event-technical-text"><span><b>局部编号：</b><span class="notranslate" translate="no">${this.escapeHTML(event.local_event_id || `E${index + 1}`)}</span></span>${eventUuid ? `<span><b>事件 UUID：</b><span class="notranslate" translate="no">${this.escapeHTML(eventUuid)}</span></span>` : ''}${event?.intelligence_uuid ? `<span><b>来源文章 UUID：</b><span class="notranslate" translate="no">${this.escapeHTML(event.intelligence_uuid)}</span></span>` : ''}${event?.observed_at ? `<span><b>系统观察时间：</b>${this.escapeHTML(this.anyTimeToTimeStr(event.observed_at))}</span>` : ''}${metadata}</div>
                     </details>
                 </article>`;
         }).join('');
@@ -494,17 +494,17 @@ window.ArticleDetailRenderer = {
             || window.IntelligenceContract.ContentTimeSource.ARCHIVED;
         const contentTimeLabel = window.IntelligenceContract.contentTimeLabel(
             contentTimeSource, 'zh');
-        const title = this.escapeHTML(article?.EVENT_TITLE || 'No Title');
-        const brief = this.escapeHTML(article?.EVENT_BRIEF || 'No Brief');
+        const title = this.escapeHTML(article?.EVENT_TITLE || '无标题');
+        const brief = this.escapeHTML(article?.EVENT_BRIEF || '暂无摘要');
 
         // 正文保持原文渲染，不做强制转义以支持排版。若需纯文本展示请加上 this.escapeHTML()
-        const content = this.escapeHTML(article?.EVENT_TEXT || 'No Content');
+        const content = this.escapeHTML(article?.EVENT_TEXT || '暂无正文');
         const locations = (article?.LOCATION || []).map(value => this.escapeHTML(value));
         const people = (article?.PEOPLE || []).map(value => this.escapeHTML(value));
         const orgs = (article?.ORGANIZATION || []).map(value => this.escapeHTML(value));
         const times = (article?.TIME || []).map(value => this.anyTimeToTimeStr(value));
-        const impact = this.escapeHTML(article?.IMPACT || 'No Impact');
-        const tips = this.escapeHTML(article?.TIPS || 'No Tips');
+        const impact = this.escapeHTML(article?.IMPACT || '暂无影响分析');
+        const tips = this.escapeHTML(article?.TIPS || '暂无分析建议');
 
         // [修复] 补全了 <a> 标签
         return `
@@ -514,15 +514,15 @@ window.ArticleDetailRenderer = {
                     <div style="min-width:0;">
                         <div style="font-size:12px; color:#555;">
                             <i class="bi bi-calendar-event"></i> ${contentTimeLabel}：${contentTime}
-                            &nbsp;|&nbsp; <i class="bi bi-upc-scan"></i> ${uuid}
+                            &nbsp;|&nbsp; <i class="bi bi-upc-scan"></i> <span class="notranslate" translate="no">${uuid}</span>
                         </div>
                         <h3 style="margin:6px 0 0; font-size:20px; line-height:1.35;">${title}</h3>
                         <div style="margin-top:6px; color:#333;">${brief}</div>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        ${informant ? `<a href="${informant}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-link-45deg"></i> Source</a>` : ''}
+                        ${informant ? `<a href="${informant}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-link-45deg"></i> 来源</a>` : ''}
                         ${window.IIS_VECTOR_ENABLED === false ? '' : `<a href="${window.IIS_BASE_PATH || ''}/intelligences?search_mode=vector_similar&reference=${uuid}&score_threshold=0.6" class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-intersect"></i> Find Similar
+                            <i class="bi bi-intersect"></i> 查找相似情报
                         </a>`}
                     </div>
                 </div>
@@ -530,22 +530,22 @@ window.ArticleDetailRenderer = {
 
             <section class="meta-grid">
                 <div class="meta-card">
-                    <h5><i class="bi bi-geo-alt"></i> Geographic Locations</h5>
-                    ${locations.length ? locations.join(', ') : 'No location data'}
+                    <h5><i class="bi bi-geo-alt"></i> 相关地点</h5>
+                    ${locations.length ? locations.join(', ') : '暂无地点信息'}
                 </div>
                 <div class="meta-card">
-                    <h5><i class="bi bi-people"></i> Related People</h5>
-                    ${people.length ? people.join(', ') : 'No associated people'}
+                    <h5><i class="bi bi-people"></i> 相关人物</h5>
+                    ${people.length ? people.join(', ') : '暂无人物信息'}
                 </div>
                 <div class="meta-card">
-                    <h5><i class="bi bi-building"></i> Related Organizations</h5>
-                    ${orgs.length ? orgs.join(', ') : 'No related organizations'}
+                    <h5><i class="bi bi-building"></i> 相关组织</h5>
+                    ${orgs.length ? orgs.join(', ') : '暂无组织信息'}
                 </div>
             </section>
 
             <section class="meta-card" style="margin-top:10px;">
-                <h5><i class="bi bi-clock-history"></i> Event Time(s)</h5>
-                ${times.length ? times.join(', ') : 'No specific timing data'}
+                <h5><i class="bi bi-clock-history"></i> 事件时间</h5>
+                ${times.length ? times.join(', ') : '暂无明确时间'}
             </section>
 
             <section class="content-section" style="margin-top:16px;">
@@ -559,12 +559,12 @@ window.ArticleDetailRenderer = {
             </section>
 
             <section class="impact-card" style="margin-top:16px;">
-                <h5><i class="bi bi-lightning-charge"></i> Potential Impact</h5>
+                <h5><i class="bi bi-lightning-charge"></i> 潜在影响</h5>
                 <p>${impact}</p>
             </section>
 
             <section class="tip-card" style="margin-top:12px;">
-                <h5><i class="bi bi-lightbulb"></i> Analyst Notes</h5>
+                <h5><i class="bi bi-lightbulb"></i> 分析建议</h5>
                 <p>${tips}</p>
             </section>
         </div>`;
@@ -625,9 +625,9 @@ window.ArticleDetailRenderer = {
                     })
                 });
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                this.showToast(toastContainerId, 'Ratings submitted successfully!', 'success');
+                this.showToast(toastContainerId, '评分提交成功', 'success');
             } catch (e) {
-                this.showToast(toastContainerId, 'Error submitting ratings: ' + (e.message || e), 'danger');
+                this.showToast(toastContainerId, '评分提交失败：' + (e.message || e), 'danger');
             }
         });
     },

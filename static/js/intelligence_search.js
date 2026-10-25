@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Server Error: ${response.status}`);
+                throw new Error(errorData.error || `服务错误：${response.status}`);
             }
 
             const data = await response.json();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,7 @@
         window.IIS_PUBLIC_MODE = {{ public_mode|default(false)|tojson }};
         window.IIS_PUBLIC_LIMITS = {{ public_limits|default({})|tojson }};
     </script>
-    <title>Intelligence Integration System (IIS)</title>
+    <title>情报列表 · IIS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/intelligence_table.css">
 </head>
@@ -21,17 +21,17 @@
     <div class="article-list">
         <div class="controls-container">
             <label>
-                Threshold:
+                最低评分：
                 <select id="threshold-select">
-                    <option value="0">All (0+)</option>
-                    <option value="4">Wait (> 4)</option>
-                    <option value="6" selected>Good (> 6)</option>
-                    <option value="8">High (> 8)</option>
+                    <option value="0">全部（0+）</option>
+                    <option value="4">待观察（&gt; 4）</option>
+                    <option value="6" selected>良好（&gt; 6）</option>
+                    <option value="8">高价值（&gt; 8）</option>
                 </select>
             </label>
 
             <label>
-                Count:
+                每页数量：
                 <select id="count-select">
                     <option value="10">10</option>
                     <option value="20">20</option>
@@ -48,12 +48,12 @@
                 </select>
             </label>
 
-            <button id="refresh-btn" class="refresh-btn" title="Refresh">
+            <button id="refresh-btn" class="refresh-btn" title="刷新">
                 <i class="bi bi-arrow-clockwise"></i>
             </button>
         </div>
 
-        <h1>Intelligences</h1>
+        <h1>情报列表</h1>
 
         <div id="pagination-top" class="pagination-container"></div>
 

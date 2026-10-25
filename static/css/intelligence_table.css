@@ -139,6 +139,15 @@ body {
     text-decoration: underline;
 }
 
+/* 浏览器翻译后的西文通常比中文更长；允许标题、摘要和详情在卡片内自然换行。 */
+.article-title,
+.article-summary,
+.article-preview,
+.article-modal-title,
+.meta-card {
+    overflow-wrap: anywhere;
+}
+
 .article-meta {
     display: flex;
     flex-wrap: wrap;
