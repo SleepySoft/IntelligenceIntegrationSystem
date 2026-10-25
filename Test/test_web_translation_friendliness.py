@@ -22,6 +22,7 @@ def test_public_reading_pages_declare_chinese_source_language():
     dynamic_pages = {
         "templates/intelligence_list.html",
         "templates/intelligence_detail.html",
+        "templates/intelligence_cluster_list.html",
         "IntelligenceViews/templates/intelligence_views.html",
     }
     for page in pages:

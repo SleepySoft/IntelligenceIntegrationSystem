@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +8,7 @@
         window.IIS_SUBSYSTEM = {{ subsystem_name|default('')|tojson }};
         window.IIS_VECTOR_ENABLED = {{ vector_enabled|default(true)|tojson }};
     </script>
-    <title>聚合情报 · IIS</title>
+    <title>{{ _('Aggregated intelligence · IIS') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/intelligence_table.css">
 </head>
@@ -17,27 +17,39 @@
     <div class="article-list">
         <div class="controls-container">
             <label>
-                最大聚合数：
+                {{ _('Maximum clusters:') }}
                 <select id="limit-select">
                     <option value="20">20</option>
                     <option value="50" selected>50</option>
                     <option value="100">100</option>
                 </select>
             </label>
-            <button id="refresh-btn" class="refresh-btn" title="刷新">
+            <button id="refresh-btn" class="refresh-btn" title="{{ _('Refresh') }}" aria-label="{{ _('Refresh') }}">
                 <i class="bi bi-arrow-clockwise"></i>
             </button>
         </div>
 
-        <h1>聚合情报</h1>
+        <h1>{{ _('Aggregated intelligence') }}</h1>
         <p class="page-info" style="margin-top:-15px; margin-bottom:25px;">
-            按相似性分组显示情报（离线聚合）。
+            {{ _('Intelligence grouped by similarity (offline aggregation).') }}
         </p>
 
         <div id="article-list-container">
             </div>
     </div>
     {% include '_article_i18n.html' %}
+    <script>
+    Object.assign(window.IIS_I18N_MESSAGES, {
+        no_clusters: {{ _('No aggregated events found')|tojson }},
+        expand_related: {{ _('Expand ({count} related reports)')|tojson }},
+        cluster_id: {{ _('Cluster ID:')|tojson }},
+        reports_count: {{ _('{count} reports')|tojson }},
+        collapse: {{ _('Collapse')|tojson }},
+        loading_members: {{ _('Loading member reports…')|tojson }},
+        no_other_members: {{ _('This cluster has no other reports.')|tojson }},
+        member_load_failed: {{ _('Failed to load member reports: {message}')|tojson }}
+    });
+    </script>
     <script src="/static/js/iis_i18n.js"></script>
     <script src="/static/js/intelligence_contracts.js"></script>
     <script src="/static/js/article_detail_renderer.js"></script>

@@ -213,3 +213,39 @@ msgstr "保留所有权利"
 
 msgid "Turn data into insight"
 msgstr "让数据成为洞察"
+
+msgid "Aggregated intelligence · IIS"
+msgstr "聚合情报 · IIS"
+
+msgid "Maximum clusters:"
+msgstr "最大聚合数："
+
+msgid "Aggregated intelligence"
+msgstr "聚合情报"
+
+msgid "Intelligence grouped by similarity (offline aggregation)."
+msgstr "按相似性分组显示情报（离线聚合）。"
+
+msgid "No aggregated events found"
+msgstr "暂无聚合事件"
+
+msgid "Expand ({count} related reports)"
+msgstr "展开（{count} 条相关情报）"
+
+msgid "Cluster ID:"
+msgstr "聚合 ID："
+
+msgid "{count} reports"
+msgstr "共 {count} 条"
+
+msgid "Collapse"
+msgstr "收起"
+
+msgid "Loading member reports…"
+msgstr "正在加载成员情报…"
+
+msgid "This cluster has no other reports."
+msgstr "该聚合中没有其他情报。"
+
+msgid "Failed to load member reports: {message}"
+msgstr "成员情报加载失败：{message}"

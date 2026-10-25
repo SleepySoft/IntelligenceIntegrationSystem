@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const clusters = data.clusters || [];
 
             if (clusters.length === 0) {
-                listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">暂无聚合事件</p>';
+                listContainer.innerHTML = `<p style="text-align:center; padding: 50px;">${IIS_I18N.t('no_clusters')}</p>`;
                 return;
             }
 
@@ -44,14 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? `<button class="cluster-toggle-btn"
                                data-cluster-id="${cluster.cluster_id}"
                                data-related-count="${cluster.size - 1}">
-                         <i class="bi bi-chevron-down"></i> 展开（${cluster.size - 1} 条相关情报）
+                         <i class="bi bi-chevron-down"></i> ${IIS_I18N.t('expand_related', {count: cluster.size - 1})}
                        </button>`
                     : '';
 
                 html += `
                 <div class="cluster-container" data-cluster-id="${cluster.cluster_id}">
                     <div class="cluster-badge">
-                        <i class="bi bi-diagram-3"></i> 聚合 ID：<span class="notranslate" translate="no">${cluster.cluster_id}</span> · 共 ${cluster.size} 条
+                        <i class="bi bi-diagram-3"></i> ${IIS_I18N.t('cluster_id')} <span class="notranslate" translate="no">${renderer.escapeHTML(cluster.cluster_id)}</span> · ${IIS_I18N.t('reports_count', {count: cluster.size})}
                     </div>
                     <div class="cluster-header ${hasToggle ? 'has-toggle' : ''}">
                         ${toggleBtn}
@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
             membersDiv.classList.remove('expanded');
 
             if (topBtn) {
-                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> 展开（${relatedCount} 条相关情报）`;
+                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> ${IIS_I18N.t('expand_related', {count: relatedCount})}`;
             }
             return;
         }
@@ -109,13 +109,13 @@ document.addEventListener('DOMContentLoaded', () => {
         membersDiv.classList.add('expanded');
 
         if (topBtn) {
-            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> 收起`;
+            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> ${IIS_I18N.t('collapse')}`;
         }
 
         // 如果已经加载过，直接返回
         if (membersDiv.innerHTML.trim() !== '') return;
 
-        membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> 正在加载成员情报…</div>`;
+        membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> ${IIS_I18N.t('loading_members')}</div>`;
 
         try {
             const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&sort_by=time&desc=1&limit=500`);
@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const filteredItems = items.filter(item => item.uuid !== reprUuid);
 
             if (filteredItems.length === 0) {
-                membersDiv.innerHTML = '<p style="color:#666; font-size: 0.9em;">该聚合中没有其他情报。</p>';
+                membersDiv.innerHTML = `<p style="color:#666; font-size: 0.9em;">${IIS_I18N.t('no_other_members')}</p>`;
                 return;
             }
 
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${renderer.generateArticleCardHtml(item.doc)}
                     <div class="cluster-member-actions">
                         <button class="cluster-inline-collapse-btn" data-cluster-id="${clusterId}">
-                            <i class="bi bi-chevron-up"></i> 收起
+                            <i class="bi bi-chevron-up"></i> ${IIS_I18N.t('collapse')}
                         </button>
                     </div>
                 </div>
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderer.updateTimeBackgrounds();
 
         } catch (err) {
-            membersDiv.innerHTML = `<div style="color:red;">成员情报加载失败：${err.message}</div>`;
+            membersDiv.innerHTML = `<div style="color:red;">${IIS_I18N.t('member_load_failed', {message: err.message})}</div>`;
         }
     });
 
