@@ -3,9 +3,10 @@ from pydantic import ValidationError
 
 from event_engine.extraction import build_event_extraction_prompt
 from prompts_event_v4 import (
-    EVENT_ANALYSIS_PROMPT_V41,
-    EVENT_ANALYSIS_PROMPT_V47,
+    EVENT_ANALYSIS_EXTRA_PROMPTS,
+    EVENT_ANALYSIS_PROMPT_TABLE,
     EVENT_ANALYSIS_PROMPT_V48,
+    EVENT_V4_PROMPT_CATALOG,
     EVENT_V4_PREDICATE_CATALOG,
 )
 from ServiceComponent.IntelligenceHubDefines_v4 import (
@@ -85,29 +86,29 @@ def test_dangling_entity_reference_is_rejected():
         validate_analysis_result_v4(payload)
 
 
-def test_event_prompt_is_standalone_and_iis_prompt_composes_it():
+def test_event_prompt_is_standalone_and_v48_composes_current_contract():
     standalone = build_event_extraction_prompt(DEFAULT_EVENT_REGISTRY)
     assert "event-extraction/1.0" in standalone
     assert "{{CONTENT}}" in standalone
     assert EVENT_V4_PREDICATE_CATALOG in standalone
-    assert EVENT_V4_PREDICATE_CATALOG in EVENT_ANALYSIS_PROMPT_V41
-    assert "IIS 情报分析要求" in EVENT_ANALYSIS_PROMPT_V41
-    assert '"影响广度": 1' in EVENT_ANALYSIS_PROMPT_V41
-    assert "不得输出 kind、analysis、message、classification、assessment" in EVENT_ANALYSIS_PROMPT_V41
-    assert "不能单独输出事件抽取对象" in EVENT_ANALYSIS_PROMPT_V41
-
-
-def test_v47_is_a_static_system_prompt_with_v46_contract():
-    assert "{{CONTENT}}" not in EVENT_ANALYSIS_PROMPT_V47
-    assert "{{CURRENT_DATE}}" not in EVENT_ANALYSIS_PROMPT_V47
-    assert "NON_INTELLIGENCE_REASON" in EVENT_ANALYSIS_PROMPT_V47
-    assert "核心子集" in EVENT_ANALYSIS_PROMPT_V47
+    assert EVENT_V4_PREDICATE_CATALOG in EVENT_ANALYSIS_PROMPT_V48
+    assert "IIS 情报分析要求" in EVENT_ANALYSIS_PROMPT_V48
+    assert '"影响广度": "local"' in EVENT_ANALYSIS_PROMPT_V48
+    assert "不得输出 kind、analysis、message、classification、assessment" in EVENT_ANALYSIS_PROMPT_V48
+    assert "不能单独输出事件抽取对象" in EVENT_ANALYSIS_PROMPT_V48
 
 
 def test_v48_uses_minimal_unambiguous_time_shape():
     assert '{{CONTENT}}' not in EVENT_ANALYSIS_PROMPT_V48
     assert '{"normalized":"2026-10-17","surface":"原文时间"}' in EVENT_ANALYSIS_PROMPT_V48
     assert "不要输出 precision 或 approximate" in EVENT_ANALYSIS_PROMPT_V48
+
+
+def test_only_v48_is_registered_or_exported():
+    assert EVENT_V4_PROMPT_CATALOG.selectable_versions() == [48]
+    assert EVENT_V4_PROMPT_CATALOG.sampling_versions() == [48]
+    assert EVENT_ANALYSIS_PROMPT_TABLE == {48: EVENT_ANALYSIS_PROMPT_V48}
+    assert EVENT_ANALYSIS_EXTRA_PROMPTS == {}
 
 
 def test_catalog_and_json_schema_follow_complete_event_registry():

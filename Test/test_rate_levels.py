@@ -1,4 +1,4 @@
-"""v43 RATE 等级词映射与协议链路测试。"""
+"""v48 RATE 等级词映射与协议链路测试。"""
 
 import pytest
 from tenacity import wait_none
@@ -51,7 +51,7 @@ def test_map_rate_levels_rejects_unknown_level_and_dimension_set():
         map_rate_levels({"影响广度": "local"})
 
 
-def _v43_valuable():
+def _v48_valuable():
     return {
         "TAXONOMY": "政治与安全", "SUB_CATEGORY": ["国防军事"],
         "EVENT_TITLE": "A军袭击B设施", "EVENT_BRIEF": "A军袭击B设施。",
@@ -71,8 +71,8 @@ def _v43_valuable():
     }
 
 
-def test_v43_production_maps_levels_to_scores_end_to_end(monkeypatch):
-    # 默认目录的生产版本（当前 v43+ 词表协议）：等级词 RATE + 核心子集抽取。
+def test_v48_production_maps_levels_to_scores_end_to_end(monkeypatch):
+    # 默认目录唯一版本：等级词 RATE + 核心子集抽取。
     from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
     production_version = EVENT_V4_PROMPT_CATALOG.sampling_versions()[0]
     monkeypatch.setattr(
@@ -82,7 +82,7 @@ def test_v43_production_maps_levels_to_scores_end_to_end(monkeypatch):
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
-        analyzer=lambda *_, **__: _v43_valuable(),
+        analyzer=lambda *_, **__: _v48_valuable(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
     )
@@ -100,15 +100,15 @@ def test_v43_production_maps_levels_to_scores_end_to_end(monkeypatch):
     assert archive.EVENT_EXTRACTION.schema_version == "event-extraction/1.0"
 
 
-def test_v43_rejects_numeric_rate_with_retry():
+def test_v48_rejects_numeric_rate_with_retry():
     prompts = []
 
     def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
-        payload = _v43_valuable()
+        payload = _v48_valuable()
         if len(prompts) == 1:
             payload["RATE"] = _levels_payload()
-            payload["RATE"]["影响广度"] = 7  # 数字分数在 v43 下非法
+            payload["RATE"]["影响广度"] = 7  # 数字分数在 v48 下非法
         return payload
 
     ports = EventV4PipelinePorts(
@@ -127,20 +127,17 @@ def test_v43_rejects_numeric_rate_with_retry():
     assert result.payload.archive.RATE["影响广度"] == 4
 
 
-def test_v46_requires_structured_reason_but_legacy_protocol_remains_compatible():
+def test_v48_requires_structured_non_intelligence_reason():
     from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
 
     legacy_payload = {
         "TAXONOMY": "NonIntelligence", "SUB_CATEGORY": [],
         "REASON": "抓到的是访问拒绝页面。", "RATE": {},
     }
-    legacy = EVENT_V4_PROMPT_CATALOG.protocol_for(44).validate_result(legacy_payload)
-    assert legacy.NON_INTELLIGENCE_REASON is None
-
     with pytest.raises(ValueError, match="NON_INTELLIGENCE_REASON"):
-        EVENT_V4_PROMPT_CATALOG.protocol_for(46).validate_result(legacy_payload)
+        EVENT_V4_PROMPT_CATALOG.protocol_for(48).validate_result(legacy_payload)
 
     classified = dict(legacy_payload)
     classified["NON_INTELLIGENCE_REASON"] = "anti_bot_or_access_denied"
-    result = EVENT_V4_PROMPT_CATALOG.protocol_for(46).validate_result(classified)
+    result = EVENT_V4_PROMPT_CATALOG.protocol_for(48).validate_result(classified)
     assert result.NON_INTELLIGENCE_REASON.value == "anti_bot_or_access_denied"

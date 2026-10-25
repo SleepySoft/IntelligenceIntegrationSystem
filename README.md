@@ -425,8 +425,8 @@ Linux 生产部署可直接使用 [systemd](systemd/README.md) 中的独立单�
 + [prompts_event_v4.py](prompts_event_v4.py) 是 Event V4 Prompt 目录入口；
   [prompt_protocols.py](ServiceComponent/prompt_protocols.py) 将每个 Prompt 版本绑定到对应的
   前处理、后处理和校验链。事件谓词、角色与语义规则由 `event_engine` Registry 统一生成，
-  IIS 不复制规则表。当前生产灰度以 v48/v52 等概率抽样，首次分配写入 cache，重试和重启
-  恢复继续使用同一版本。
+  IIS 不复制规则表。当前只注册并使用 v48；首次分配写入 cache，重试和重启恢复继续使用
+  v48。缓存中残留的已移除版本会安全改派为 v48。
 
 + [IntelligenceAnalyzerProxy.py](ServiceComponent/IntelligenceAnalyzerProxy.py) 负责组织消息、
   调用 AI Client 并解析结果；[analysis_errors.py](ServiceComponent/analysis_errors.py) 统一区分

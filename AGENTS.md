@@ -48,8 +48,7 @@
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：基于 `ServiceComponent.prompt_protocols` 的协议族机制，prompt 版本绑定协议（前处理/后处理/校验链）并声明是否参与生产抽样 |
-| `prompts_event_v49.py` | v49 精简候选的独立构建入口：直接组合命名章节与权威词表，不读取或改写旧版 Prompt；与 v48 共用输出协议，暂不参与生产抽样 |
+| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：当前只构造和注册 v48，并绑定前处理/后处理/校验协议 |
 
 ### 3.2 主要子目录
 
@@ -264,7 +263,7 @@ python VectorDB/VectorDBBService.py \
 - `CollectedData`：独立于分析版本的采集端原始数据契约
 - `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
 - `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
-- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；LLM 面向的 Prompt 可使用完整契约（`full`，v41）或核心子集（`core_subset`，v42；v43 起 RATE 也从数字改为等级词，由服务端按 `IntelligenceHubDefines_v4.RATE_LEVELS` 映射为分数）。生产版本以 `prompts_event_v4.build_event_v4_prompt_catalog` 的注册为准；桥接由 `event_engine.extraction.complete_core_extraction` 完成，详见 `doc/20261013_event_v4_extraction_subset_design.md`
+- `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；当前唯一 Prompt v48 面向 LLM 使用核心子集、RATE 等级词和结构化低价值原因。服务端通过 `event_engine.extraction.complete_core_extraction` 补齐完整契约，并按 `IntelligenceHubDefines_v4.RATE_LEVELS` 映射分数；历史演进见 `doc/20261013_event_v4_extraction_subset_design.md`
 - `ArchivedDataV4`：分析结果加 `UUID`、`INFORMANT`、事件派生速查字段和 `APPENDIX`；`EVENT_EXTRACTION` 内嵌且是权威事件数据
 - Mongo `_id` 不是业务字段，读取后必须清除；`UUID` 始终表示文章 ID
 - `RAW_DATA`、评分、主时间、归档时间、翻译修订等系统元数据均位于 `APPENDIX`，键名只允许在 `intelligence_contracts.py` 定义；基本查询和前端输出默认移除 `APPENDIX`
@@ -297,17 +296,9 @@ python VectorDB/VectorDBBService.py \
 - Prompt 前缀缓存、V48 生产消息布局、无损校验归一化、Client 能力分层和异步 Batch 的
   调查结论见 `doc/20261019_ai_analysis_cache_batch_client_strategy.md`；V48 已启用，文档中
   标为后续方向的能力不得视为现有运行能力。
-- v49 将公共可选角色与完整 Frame 分组展示，完整保留谓词定义、评级词表和输出协议；
-  独立构建、不从历史 Prompt 派生，注册为 `sampling=False` 供人工调试/对照。
-  规则对照、长度与验证见 `doc/prompt_versions/reports/20261020_prompt_v49_compaction.md`。
-- v51 首轮灰度确认紧凑目录能降低 Token 并消除未登记角色，但时间/实体完整度下降，
-  已退出抽样并保留显式对照。v52 恢复完整角色落点、增加逐事件时间检查并保护核心
-  参与者，首次 Prompt 分配写入 cache，持久化重试和重启恢复复用同一版本。
-  v52 灰度发现实体与角色绑定完整度下降后退出抽样；v53 保留其时间门和紧凑目录，
-  改为先确定核心参与者再选谓词，角色无法合法安置时必须使用开放谓词，生产代码按
-  v48/v53 等概率灰度。设计与停止条件见
-  `doc/prompt_versions/reports/20261021_prompt_v52_gray_design.md`、
-  `doc/prompt_versions/reports/20261024_prompt_v53_converged_design.md`。
+- 当前运行时、手工选择与导出目录只保留 v48。旧版本构造器和完整静态文本已清理，
+  `doc/prompt_versions/reports/` 仅保留历史灰度依据；不得把报告中版本视为可运行能力。
+  缓存中残留的旧版本分配在恢复时会记录 warning、改派 v48 并写回，不阻塞主链。
 
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）
@@ -452,7 +443,7 @@ pytest Test/
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
 | `doc/20261025_web_interface_i18n_design.md` | Web 界面国际化边界、locale 契约、实施进度与 catalog 维护流程 |
-| `doc/prompt_versions/README.md` | v41—v52 完整 Prompt 归档、生成校验方式及各轮灰度/对比报告索引 |
+| `doc/prompt_versions/README.md` | 当前 v48 完整 Prompt、生成校验方式及历史灰度/对比报告索引 |
 | `doc/subsystems_overview.md` | 各可选子系统的装配模式、耦合边界、配置键与挂载时序；含 SubSystem/ 收拢重构计划 |
 | `doc/feed_20261017_survey.md` | 数据源普查：死源清单、新源列表页实测（Guardian/Euronews/Moscow Times/TOI/Africanews 等）与接入建议 |
 | `AIClientCenter/README.md` | AI 客户端中心说明 |

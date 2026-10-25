@@ -169,28 +169,27 @@ def test_control_panel_page_renders():
     assert "运行控制" in resp.get_data(as_text=True)
 
 
-def test_prompt_endpoint_serves_all_catalog_versions_not_only_production():
-    # 回归：历史归档（v41/42/43）的 prompt 链接也必须能打开，而非只服务生产版本。
+def test_prompt_endpoint_serves_only_current_v48():
     app = _build_app(RuntimeControlState())
     client = _logged_in_client(app)
-    for version in (41, 42, 43, 44):
-        resp = client.get(f"/api/prompts/{version}")
-        assert resp.status_code == 200
-        assert "Not configured" not in resp.get_data(as_text=True)
-    resp = client.get("/api/prompts/99")
-    assert "Not configured" in resp.get_data(as_text=True)
+    resp = client.get("/api/prompts/48")
+    assert resp.status_code == 200
+    assert "Not configured" not in resp.get_data(as_text=True)
+    for version in (41, 53, 99):
+        assert "Not configured" in client.get(
+            f"/api/prompts/{version}").get_data(as_text=True)
 
 
 def test_root_prompt_route_serves_card_prompt_viewer():
     # 情报卡片查看器请求的是 /prompt?version=N（此前只在子系统蓝图存在，根路径 404）。
     app = _build_app(RuntimeControlState())
     client = _logged_in_client(app)
-    for version in (41, 42, 43, 44):
-        resp = client.get(f"/prompt?version={version}")
-        assert resp.status_code == 200
-        assert "Not configured" not in resp.get_data(as_text=True)
-    resp = client.get("/prompt?version=99")
-    assert "Not configured" in resp.get_data(as_text=True)
+    resp = client.get("/prompt?version=48")
+    assert resp.status_code == 200
+    assert "Not configured" not in resp.get_data(as_text=True)
+    for version in (41, 53, 99):
+        assert "Not configured" in client.get(
+            f"/prompt?version={version}").get_data(as_text=True)
 
 
 def test_runtime_status_endpoint_returns_console_text():

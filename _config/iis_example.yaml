@@ -79,7 +79,7 @@ optional_subsystems:
 #   client_wait_timeout_sec: 60
 #   submission_timeout_sec: 30
 #   replay_unarchived: true
-#   shadow_versions: [43]
+#   shadow_versions: [48]     # 当前仅有 v48；配合 shadow_client_group 可比较同 Prompt 的不同模型
 #   shadow_sample_rate: 1.0   # 影子链路采样率（0-1），调低可控制灰度 Token 成本
 #   max_live_age_hours: 24    # 超过该年龄的情报走低优先级车道，防冷启动旧情报堵主链；0=不启用
 #   max_analysis_age_hours: 168  # 超旧情报直接弃用不分析（intake 拒绝 + 回放标 X）；0=不启用

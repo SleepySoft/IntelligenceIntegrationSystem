@@ -229,7 +229,23 @@ class BatchAnalysisService(HubPlugin):
                 "SELECT uuid FROM items WHERE job_id=? AND status='injected'",
                 (job_id,)).fetchall()}
         prompt_version = row[0]
-        protocol = self.ports._prompt_catalog.protocol_for(prompt_version)
+        catalog = self.ports._prompt_catalog
+        if catalog.has(prompt_version):
+            protocol = catalog.protocol_for(prompt_version)
+        else:
+            # Prompt 清理后，已在 Provider 侧执行中的旧 job 仍可能返回结果。
+            # 使用当前唯一生产协议完成回注，但保留原版本号用于历史归因；旧 Prompt
+            # 文本无需重新注册，也不会因此恢复为可选择版本。
+            current_versions = catalog.sampling_versions()
+            if len(current_versions) != 1:
+                raise ValueError(
+                    f"batch_prompt_version_not_configured:{prompt_version}")
+            current_version = current_versions[0]
+            logger.warning(
+                "Batch job %s uses removed prompt v%s; validate with current v%s protocol",
+                job_id, prompt_version, current_version,
+            )
+            protocol = catalog.protocol_for(current_version)
 
         injected = failed = skipped = 0
         for line in content.splitlines():

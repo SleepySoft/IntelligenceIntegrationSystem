@@ -527,7 +527,7 @@ def test_v4_persistent_retry_reuses_first_prompt_assignment(monkeypatch):
     assert seen_versions == [41, 41, 41, 41, 41, 41]
 
 
-def test_v4_persistent_assignment_can_finish_non_sampling_inflight_version():
+def test_v4_unavailable_persistent_assignment_is_migrated_to_v48():
     context = FakeContext()
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
@@ -538,8 +538,10 @@ def test_v4_persistent_assignment_can_finish_non_sampling_inflight_version():
     original = _original()
     original[APPENDIX_FIELD] = {APPENDIX_PROMPT_VERSION: 51}
 
-    assert ports._persistent_prompt_version(context, original) == 51
-    assert context.mongo_db_cache.updated == []
+    assert ports._persistent_prompt_version(context, original) == 48
+    assert original[APPENDIX_FIELD][APPENDIX_PROMPT_VERSION] == 48
+    assert context.mongo_db_cache.updated[-1][1][
+        f"APPENDIX.{APPENDIX_PROMPT_VERSION}"] == 48
 
 
 def test_v4_archive_failure_continues_existing_persistent_retry_round():
@@ -783,7 +785,13 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
 
     def analyzer(client, prompt, original, record_meta=None):
         prompts.append(prompt)
-        return _valuable()
+        payload = _valuable_core_subset()
+        payload["RATE"] = {
+            "影响广度": "local", "影响深度": "material",
+            "新颖性与异常性": "uncommon", "演化与连锁潜力": "contained",
+            "舆情及认知影响": "visible", "可行动性": "monitorable",
+        }
+        return payload
 
     ports = EventV4PipelinePorts(
         FakeRegistry(context), FakeClientManager(),
@@ -797,7 +805,7 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
         "source": MANUAL_TEST_SOURCE,
         "prompt": "V4 覆盖版 {{CONTENT}} Prompt",
         "temp_data": {
-            "manual_debug": {"prompt_version": 41, "prompt_overridden": True}
+            "manual_debug": {"prompt_version": 48, "prompt_overridden": True}
         },
     })
 
@@ -806,7 +814,7 @@ def test_v4_transient_analysis_uses_selected_prompt_override_with_normal_validat
 
     assert result.accepted
     assert prompts == ["V4 覆盖版 {{CONTENT}} Prompt"]
-    assert result.payload["debug_prompt"] == {"version": 41, "overridden": True}
+    assert result.payload["debug_prompt"] == {"version": 48, "overridden": True}
 
 
 def _valuable_core_subset():
@@ -832,6 +840,7 @@ def test_v4_adapter_completes_core_subset_before_archiving():
         FakeRegistry(context), FakeClientManager(),
         archive_repository=repository,
         prompt_table={42: "core subset prompt"},
+        extraction_modes={42: "core_subset"},
         analyzer=lambda *_, **__: _valuable_core_subset(),
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -869,6 +878,7 @@ def test_v4_adapter_core_subset_validation_failure_retries_with_feedback():
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
         prompt_table={42: "core subset prompt"},
+        extraction_modes={42: "core_subset"},
         analyzer=analyzer,
         scorer_factory=lambda _: FakeScorer(),
         retry_wait=wait_none(),
@@ -882,7 +892,7 @@ def test_v4_adapter_core_subset_validation_failure_retries_with_feedback():
     assert ports.statistics["validation_errors"] == 1
 
 
-def test_v4_debug_prompt_catalog_exposes_all_versions_and_gray_sampling_pair():
+def test_v4_debug_prompt_catalog_exposes_only_v48():
     ports = EventV4PipelinePorts(
         FakeRegistry(FakeContext()), FakeClientManager(),
         archive_repository=FakeArchiveRepository(),
@@ -893,10 +903,9 @@ def test_v4_debug_prompt_catalog_exposes_all_versions_and_gray_sampling_pair():
 
     table = ports.get_transient_prompt_table("news")
 
-    assert set(table) == {41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53}
-    assert "核心子集" in table[42]
-    # v48 作对照、v53 作核心参与者完整度修复灰度，两者共用输出协议。
-    assert list(ports._prompt_table) == [48, 53]
+    assert set(table) == {48}
+    assert "核心子集" in table[48]
+    assert list(ports._prompt_table) == [48]
 
 
 class FakeShadowRecorder:
