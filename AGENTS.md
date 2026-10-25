@@ -97,6 +97,15 @@
   - `config.py`：集合名/chunk 参数单一事实源与 `intelligence_hub.vectordb` 配置读取
   - 详细设计与迁移计划见 `doc/vector_intelligence_subsystem_refactor.md` 与 `doc/20261015_vector_subsystem_coupling_audit_and_plan.md`
 
+- **`WebI18n/`** — Web 界面国际化基础设施（不处理情报内容翻译）
+  - `extension.py`：安装 Flask-Babel，按 `?lang` → session → `Accept-Language` → 默认值选择语言，并注入模板上下文和 `Content-Language`
+  - `translations/<catalog>/LC_MESSAGES/messages.po`：翻译文本的可审阅事实源；当前中文目录为 `zh_Hans`，英文使用 msgid 回退
+  - 同目录的 `messages.mo`：运行时使用的编译产物，必须与 `.po` 一起提交；不得手工编辑
+  - 对外语言使用 BCP 47（如 `zh-CN`、`pt-BR`），gettext 目录名通过 `web.i18n.supported_locales` 显式映射（如 `zh-CN: zh_Hans`），不得自行用连字符/下划线猜测
+  - `static/js/iis_i18n.js`：浏览器端 `IIS_I18N.t()`；动态文案由 Jinja `tojson` 从同一 gettext catalog 注入，不维护第二套 JS 翻译文件
+  - `templates/_article_i18n.html`：文章卡片、详情弹窗等跨页面共用词条；使用这些共享渲染器的页面必须加载该片段和 `iis_i18n.js`
+  - 完整边界、进度和操作命令见 `doc/20261025_web_interface_i18n_design.md`
+
 - **`EntityAlias/`** — 实体别名子系统（标准名 ⇄ 别名映射，相对独立，可作独立项目）
   - `service.py`：解析（精确→模糊/部分→可选向量）、批量接口、CRUD、查询时别名展开（`expand_names`）
   - `store.py`：JSONL 文本存储（事实源，git 管理，按类型分文件、按标准名排序、原子重写）
@@ -310,6 +319,49 @@ python VectorDB/VectorDBBService.py \
 - 日志会自动轮转、归档到 `_log/history_log/`
 - 可通过 `limit_logger_level()` 压制第三方库噪音
 
+### 5.7 Web 界面国际化（新增或修改页面时必须遵守）
+
+- 国际化范围只包括网站自身的导航、按钮、表头、帮助、空状态、错误提示、`title`、
+  `aria-label`、日期和数字周边文案。`EVENT_TITLE`、`EVENT_BRIEF`、`EVENT_TEXT`、实体名、
+  event surface、来源原文等情报内容必须原样展示，**绝对不能作为 gettext msgid**。
+- Jinja 界面文本以英文 msgid 编写，例如 `{{ _('Refresh') }}`；中文翻译写入
+  `WebI18n/translations/zh_Hans/LC_MESSAGES/messages.po`。缺少翻译时允许安全回退到英文
+  msgid，不能因漏译导致页面 500。
+- 页面根节点必须使用 `<html lang="{{ ui_locale|default('zh-CN') }}">`。UUID、URL、模型名、
+  服务名、Prompt 版本、内部 ID、JSON 和代码块继续标记 `translate="no"` / `notranslate`。
+- JavaScript 中不得新增面向用户的硬编码字符串。页面按作用域把 gettext 结果写入
+  `window.IIS_I18N_MESSAGES`（必须使用 Jinja `tojson`），脚本通过 `IIS_I18N.t(key, params)`
+  读取。`{message}`、`{count}` 等 placeholder 在 msgid、译文和调用处必须保持一致。
+- 使用 `ArticleRenderer`、`ArticleDetailRenderer` 或 `ArticleModalManager` 的模板必须在这些
+  脚本之前依次加载 `{% include '_article_i18n.html' %}` 和 `/static/js/iis_i18n.js`；不得在
+  每个页面复制同一批卡片/弹窗词条。
+- 可独立挂载的 Blueprint 应在注册模板路由前调用 `WebI18n.ensure_web_i18n(app)`。完整 IIS
+  由 `IntelligenceHubStartup.py` 按配置安装；重复安装由扩展自行规避。子系统独立测试必须
+  同样能渲染页面，不能隐式依赖组合根。
+- 新页面或新控件提交前逐项检查：可见文案、动态错误/空状态、按钮 tooltip、ARIA、弹窗、
+  iframe 标题、URL 状态和语言切换。URL 无需在每个链接强行复制 `lang`，同源页面以 session
+  为可靠回退；若重建外层 URL，不得误删已有 `lang` 参数。
+- 新增语言时，在 `_config/iis.yaml` 的 `web.i18n.supported_locales` 增加 BCP 47 → catalog
+  映射，用 `pybabel init` 建目录并翻译；不得把代码改成中英二选一。
+- 更新词条的标准流程：
+
+  ```bash
+  pybabel extract -F babel.cfg \
+    -k _ -k gettext -k ngettext:1,2 -k lazy_gettext -k iis_msg:1 \
+    -o /tmp/iis_messages.pot .
+  pybabel update -i /tmp/iis_messages.pot \
+    -d WebI18n/translations -l zh_Hans
+  pybabel compile -d WebI18n/translations
+  ```
+
+  `.pot` 是临时文件不提交；提交 `.po` 和 `.mo`。提取配置只扫描 Web 路由与模板，避免业务
+  代码中普通 `_` 变量被误识别。
+- 每批页面迁移保持小提交，并至少验证中文、英文、`Content-Language`、HTML `lang`、JS 语法
+  和独立 Blueprint 渲染。相关测试为 `Test/test_web_i18n.py`、
+  `Test/test_web_translation_friendliness.py` 及该页面所属子系统测试。
+- 当前已迁移公共视图壳、情报列表/卡片/分页、详情外壳/弹窗和聚合页；查询页、详情正文
+  协议标签、关系图、地域图、实体图、实体时间线、Vector 页面及管理页仍需逐页面迁移。
+
 ---
 
 ## 6. 测试策略
@@ -371,6 +423,7 @@ pytest Test/
 
 - `fastapi==0.115.12`
 - `Flask==3.1.1`
+- `Flask-Babel==4.0.0`
 - `pymongo==4.13.0`
 - `pydantic==2.11.5`
 - `chromadb==1.2.1`
@@ -391,6 +444,7 @@ pytest Test/
 | `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
+| `doc/20261025_web_interface_i18n_design.md` | Web 界面国际化边界、locale 契约、实施进度与 catalog 维护流程 |
 | `doc/prompt_versions/README.md` | v41—v52 完整 Prompt 归档、生成校验方式及各轮灰度/对比报告索引 |
 | `doc/subsystems_overview.md` | 各可选子系统的装配模式、耦合边界、配置键与挂载时序；含 SubSystem/ 收拢重构计划 |
 | `doc/feed_20261017_survey.md` | 数据源普查：死源清单、新源列表页实测（Guardian/Euronews/Moscow Times/TOI/Africanews 等）与接入建议 |
