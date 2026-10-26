@@ -279,15 +279,15 @@ class HubApplication:
         return self.subsystem_registry.describe()
 
     def get_prompt(self, subsystem: Optional[str] = None, version: Optional[int] = None) -> str:
-        self._context(subsystem)
-        from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
+        ctx = self._context(subsystem)
+        definition = self._pipeline_ports.domain_definition(ctx.name)
+        catalog = definition.prompt_catalog
         if version is not None:
             try:
-                return EVENT_V4_PROMPT_CATALOG.text_for(int(version))
+                return catalog.text_for(int(version))
             except ValueError:
                 return f"[Prompt v{version}] Not configured."
-        return EVENT_V4_PROMPT_CATALOG.sampling_table()[
-            max(EVENT_V4_PROMPT_CATALOG.sampling_versions())]
+        return catalog.sampling_table()[max(catalog.sampling_versions())]
 
     def submit_intelligence_manual_rating(self, intelligence_uuid: str, rating: dict,
                                           subsystem: Optional[str] = None) -> bool:

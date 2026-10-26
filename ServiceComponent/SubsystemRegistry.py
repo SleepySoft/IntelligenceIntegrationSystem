@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from pymongo import ASCENDING
 
-from prompts_event_v4 import EVENT_ANALYSIS_PROMPT_TABLE
 from GlobalConfig import CONFIG_PATH
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
@@ -114,6 +113,8 @@ class SubsystemContext:
     enabled: bool = True
     url_prefix: str = ''                     # '' 表示挂载在根路径（默认子系统）
     collection_prefix: str = LEGACY_COLLECTION_PREFIX
+    # 领域实现工厂：内置短名（news）或 ``module:callable``。
+    domain_factory: str = 'news'
 
     mongo_db_cache: Optional[MongoDBStorage] = None
     statistics_engine: Optional[IntelligenceStatisticsEngine] = None
@@ -126,8 +127,6 @@ class SubsystemContext:
     event_v4_event_collection: Any = None
     event_v4_outbox_collection: Any = None
     event_v4_query_engine: Optional[EventV4QueryEngine] = None
-
-    prompt_table: Dict[int, str] = field(default_factory=dict)   # version -> prompt text
 
     ai_client_group: Optional[str] = None
     scoring_config: Optional[Dict[str, Any]] = None
@@ -261,7 +260,7 @@ class SubsystemRegistry:
                 enabled=True,
                 url_prefix=url_prefix,
                 collection_prefix=collection_prefix,
-                prompt_table=dict(EVENT_ANALYSIS_PROMPT_TABLE),
+                domain_factory=str(detail.get('factory') or 'news').strip() or 'news',
                 ai_client_group=detail.get('ai_client_group'),
                 scoring_config=detail.get('scoring'),
                 config_dir=config_dir,
@@ -328,7 +327,7 @@ class SubsystemRegistry:
             registry.add(ctx)
             logger.info(
                 f"Subsystem '{name}' ready: collections={ctx.collection_prefix}*, "
-                f"url_prefix='{url_prefix}', prompts={sorted(ctx.prompt_table)}")
+                f"url_prefix='{url_prefix}', factory={ctx.domain_factory!r}")
 
         return registry
 

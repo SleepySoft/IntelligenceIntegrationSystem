@@ -2,7 +2,7 @@
 
 > 讨论日期：2026-10-26
 >
-> 状态：已确认的设计方向，部分实施。
+> 状态：领域分析注册层已实施；采集字段归一仍待后续迁移。
 >
 > 上游调查：[`20261016_intelligence_domain_extensibility_audit.md`](20261016_intelligence_domain_extensibility_audit.md)
 
@@ -16,9 +16,19 @@
 - 无领域前缀的 URL 显式绑定 `hub.domains.default`；具名领域继续使用路径前缀。
 - 新领域发现端点为 `/api/domains`；`/api/subsystems` 暂作旧采集器兼容。
 
-尚未实施 `CollectedData.domain`、`DomainRegistry/DomainDefinition` 以及按域的
-Prompt/Schema/评分/存储注册。因此底层 Runtime 中的 `subsystem` 字段和部分历史类名
-目前仍保留。
+2026-10-26 已完成领域分析注册层：
+
+- 增加 `DomainRegistry` / `DomainDefinition`，启动时按启用领域及 `factory` 注册。
+- Pipeline 按领域选择 Prompt/校验、评分和存储，不再 import 新闻结果类型。
+- 新闻 Prompt、Schema、评分、后处理/存储集中到 `IntelligenceDomains/news/`；旧模块仅
+  保留导入兼容壳。
+- Batch 的每个 item 固化领域和 Prompt 版本，按领域协议校验、回注；领域未声明 Batch
+  支持时跳过。Shadow 同样先检查领域能力。
+- `finance`、`industry` 在拥有独立实现前显式使用 `factory: news`，Pipeline 中没有领域名
+  特判。
+
+尚未实施的是采集契约中 `subsystem` → `domain` 的字段归一。Runtime 的事件路由字段和
+部分历史类名也暂时保留；它们不再决定领域内分析实现。
 
 ## 1. 目标与范围
 
@@ -37,7 +47,8 @@ cache、URL 和查询资源已按域隔离，但分析主链仍共用全局 Prom
 
 本次明确不做：
 
-- 不引入通用 `CommonArchiveRecord` 或公共归档信封。
+- 不引入要求各领域共享业务字段的 `CommonArchiveRecord`；仅允许内部路由信封携带
+  `domain_name`、领域私有 payload 与重试元数据。
 - 不引入可配置的查询 Provider。
 - 不改造现有列表、搜索和详情页的数据结构。
 - 不预先建立地图、实体图、向量等完整能力声明体系。
@@ -224,7 +235,8 @@ class DomainSubsystems:
 
 - 公共层保留启动、定时、状态轮询、运行控制和统计等机制。
 - 领域目录提供 Batch 的 Prompt/消息构造、校验和回注内容。
-- Batch 必须按域拆分 job，不得把不同域的记录混入同一个 Prompt job。
+- Batch item 必须固化域名和 Prompt 版本；同一 Provider job 即使承载多个域，每条请求也
+  使用自己的领域 Prompt，并在回注时按原领域协议校验，不得使用全局 Prompt。
 - 领域目录提供 Shadow 可用版本、校验和领域对比内容。
 - 领域未提供对应子系统，或部署配置未启用时，公共机制直接跳过。
 - 配置启用了领域不支持的子系统时，应在启动校验阶段报明确错误。

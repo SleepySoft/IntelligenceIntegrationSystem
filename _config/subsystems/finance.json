@@ -1,5 +1,6 @@
 {
   "name": "finance",
+  "factory": "news",
   "display_name": "财经情报",
   "url_prefix": "/finance",
   "collection_prefix": "finance_intelligence_",

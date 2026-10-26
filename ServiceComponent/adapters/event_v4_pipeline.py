@@ -7,27 +7,18 @@ import logging
 import random
 import threading
 import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from pydantic import ValidationError
 from AIClientCenter.core.rate_limit import estimate_message_tokens
-from prompts_event_v4 import (
-    EVENT_ANALYSIS_EXTRA_PROMPTS,
-    EVENT_ANALYSIS_PROMPT_TABLE,
-    EXTRACTION_MODE_FULL,
-    PROMPT_EXTRACTION_MODES,
-    build_event_v4_prompt_catalog,
-    build_event_v4_protocols,
+from IntelligenceDomains import (
+    DomainRegistry,
+    PreparedDomainArchive,
+    build_domain_registry,
 )
 
-from ServiceComponent.IntelligenceHubDefines_v4 import (
-    AnalysisResultV4,
-    CollectedData,
-    DEFAULT_EVENT_REGISTRY,
-    validate_analysis_result_v4,
-)
+from ServiceComponent.collected_data import CollectedData
 from ServiceComponent.analysis_messages import (
     ANALYSIS_MAX_OUTPUT_TOKENS,
     build_analyze_message,
@@ -43,51 +34,28 @@ from ServiceComponent.analysis_stats import (
     OUTCOME_SENSITIVE,
     OUTCOME_SUCCESS,
 )
-from ServiceComponent.prompt_protocols import PromptCatalog
 from ServiceComponent.adapters.base_pipeline import BasePipelinePorts
-from ServiceComponent.event_v4_archive import (
-    ArchivedDataV4,
-    EventV4ArchiveRepository,
-    build_archive_appendix,
-)
-from ServiceComponent.event_v4_conversion import (
-    EventConversionResult,
-    convert_event_extraction,
-)
 from ServiceComponent.manual_debug_analysis import MANUAL_TEST_SOURCE
 from ServiceComponent.extraction_quality import compute_extraction_quality
 from ServiceComponent.intelligence_contracts import (
-    APPENDIX_CONTENT_TIME,
-    APPENDIX_CONTENT_TIME_SOURCE,
-    APPENDIX_EXTRACTION_QUALITY,
     APPENDIX_FIELD,
     APPENDIX_PROMPT_VERSION,
-    APPENDIX_RAW_DATA,
     APPENDIX_RETRY_FIRST_FAILED_AT,
     APPENDIX_RETRY_LAST_ERROR,
     APPENDIX_RETRY_LEASE_UNTIL,
     APPENDIX_RETRY_LEVEL,
     APPENDIX_RETRY_NEXT_AT,
-    APPENDIX_TIME_ARCHIVED,
     CACHE_ARCHIVED_FLAG_FIELD,
     CacheArchiveState,
     EventV4CollectionSuffix,
     appendix_path,
 )
-from ServiceComponent.intelligence_time import resolve_content_time
 from ServiceComponent.intelligence_identity import normalize_or_assign_intelligence_uuid
 from ServiceComponent.pipeline.contracts import StageResult
 from ServiceComponent.runtime.events import HubEvent
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class PreparedValuableV4:
-    archive: ArchivedDataV4
-    conversion: EventConversionResult
-    retry_metadata: Mapping[str, Any]
 
 
 class EventV4PipelinePorts(BasePipelinePorts):
@@ -108,9 +76,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
         subsystem_registry: Any,
         ai_client_manager: Any,
         *,
-        archive_repository: EventV4ArchiveRepository | None = None,
-        event_registry: Any = DEFAULT_EVENT_REGISTRY,
-        prompt_catalog: PromptCatalog | None = None,
+        domain_registry: DomainRegistry | None = None,
+        archive_repository: Any = None,
+        event_registry: Any = None,
+        prompt_catalog: Any = None,
         prompt_table: Mapping[int, str] | None = None,
         extra_prompt_versions: Mapping[int, str] | None = None,
         extraction_modes: Mapping[int, str] | None = None,
@@ -132,6 +101,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         control_state: Any = None,
         entity_name_normalizer: Callable[[str], str | None] | None = None,
     ):
+        scorer_factory_override = scorer_factory
         super().__init__(
             subsystem_registry,
             ai_client_manager,
@@ -142,18 +112,44 @@ class EventV4PipelinePorts(BasePipelinePorts):
             client_wait_timeout=client_wait_timeout,
             analysis_worker_count=analysis_worker_count,
         )
-        self._archive_repository = archive_repository
-        self._event_registry = event_registry
         self._failure_recorder = failure_recorder
-        self._prompt_catalog = prompt_catalog or self._build_catalog(
-            event_registry, prompt_table, extra_prompt_versions, extraction_modes)
+        enabled_contexts = getattr(subsystem_registry, "enabled_subsystems", None)
+        if callable(enabled_contexts):
+            contexts = enabled_contexts()
+        else:
+            legacy_context = getattr(subsystem_registry, "context", None)
+            if legacy_context is None:
+                legacy_context = getattr(subsystem_registry, "ctx", None)
+            contexts = [legacy_context] if legacy_context is not None else []
+        default_name = getattr(subsystem_registry, "default_name", None)
+        if not default_name and contexts:
+            default_name = contexts[0].name
+        self._domain_registry = domain_registry or build_domain_registry(
+            contexts,
+            default_name=default_name or "news",
+            factory_kwargs={
+                "archive_repository": archive_repository,
+                "event_registry": event_registry,
+                "prompt_catalog": prompt_catalog,
+                "prompt_table": prompt_table,
+                "extra_prompt_versions": extra_prompt_versions,
+                "extraction_modes": extraction_modes,
+                "scorer_factory": scorer_factory_override,
+            },
+        )
+        # 兼容旧扩展和测试的只读视图；生产路径始终按 ctx.name 查领域定义。
+        self._prompt_catalog = self._domain_registry.default().prompt_catalog
         self._prompt_table = self._prompt_catalog.sampling_table()
-        if not self._prompt_table:
-            raise ValueError("Event V4 prompt_catalog 没有参与生产抽样的 prompt 版本")
         self._selectable_prompts = self._prompt_catalog.selectable_table()
         # 影子链路：与主链并行执行同构分析，结果只落盘对比，不归档、不影响主链。
         self._shadow_versions = [int(version) for version in (shadow_versions or ())]
-        unknown_shadow = [v for v in self._shadow_versions if v not in self._selectable_prompts]
+        unknown_shadow = [
+            (name, version)
+            for name in self._domain_registry.names()
+            for version in self._shadow_versions
+            if self._domain_registry.require(name).subsystems.shadow is not None
+            and not self._domain_registry.require(name).prompt_catalog.has(version)
+        ]
         if unknown_shadow:
             raise ValueError(f"shadow prompt versions not configured: {unknown_shadow}")
         self._shadow_recorder = shadow_recorder
@@ -184,29 +180,12 @@ class EventV4PipelinePorts(BasePipelinePorts):
         """由组合根注入/移除可选的实体标准名解析器。"""
         self._entity_name_normalizer = normalizer
 
-    @staticmethod
-    def _build_catalog(event_registry: Any,
-                       prompt_table: Mapping[int, str] | None,
-                       extra_prompt_versions: Mapping[int, str] | None,
-                       extraction_modes: Mapping[int, str] | None) -> PromptCatalog:
-        """未显式传入目录时：默认使用 Event V4 目录；传入旧式表参数时折算为目录。"""
-        if prompt_table is None and extra_prompt_versions is None and extraction_modes is None:
-            return build_event_v4_prompt_catalog(event_registry)
-        catalog = PromptCatalog()
-        for protocol in build_event_v4_protocols(event_registry):
-            catalog.register_protocol(protocol)
-        table = dict(prompt_table or EVENT_ANALYSIS_PROMPT_TABLE)
-        extra = dict(EVENT_ANALYSIS_EXTRA_PROMPTS if extra_prompt_versions is None
-                     else extra_prompt_versions)
-        modes = dict(PROMPT_EXTRACTION_MODES if extraction_modes is None
-                     else extraction_modes)
-        for version, text in {**extra, **table}.items():
-            catalog.register_prompt(
-                int(version), text,
-                protocol=modes.get(int(version), EXTRACTION_MODE_FULL),
-                sampling=int(version) in table,
-            )
-        return catalog
+    def domain_definition(self, domain_name: str | None):
+        """供 Batch/调试等附属机制读取同一领域定义。"""
+        return self._domain_registry.require(domain_name)
+
+    def _domain_for_context(self, ctx: Any):
+        return self.domain_definition(getattr(ctx, "name", None))
 
     def accept(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
@@ -294,9 +273,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
         return self._analyze_v4(event, persist=False)
 
     def get_transient_prompt_table(self, subsystem: str) -> dict[int, str]:
-        if self._registry.resolve(subsystem) is None:
+        ctx = self._registry.resolve(subsystem)
+        if ctx is None:
             raise ValueError(f"unknown_subsystem:{subsystem!r}")
-        return dict(self._selectable_prompts)
+        return dict(self._domain_for_context(ctx).prompt_catalog.selectable_table())
 
     def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
         ctx = self._resolve_context(event)
@@ -313,13 +293,13 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 cache_identity = ({"UUID": original_uuid} if original_uuid
                                   else {"informant": informant})
                 ctx.mongo_db_cache.update(cache_identity, {"UUID": canonical_uuid})
-        repository = self._require_archive_repository(ctx) if persist else None
-        if persist and repository.contains_source(informant):
+        storage = self._domain_for_context(ctx).storage
+        if persist and storage.contains_source(ctx, informant):
             self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DUPLICATED, ctx)
             self._increment_stat(ctx, "dropped")
             return StageResult.reject("already_archived")
         if persist:
-            while repository.contains_id(intelligence_uuid):
+            while storage.contains_id(ctx, intelligence_uuid):
                 previous_uuid = original_data["UUID"]
                 intelligence_uuid = normalize_or_assign_intelligence_uuid(None)
                 original_data["UUID"] = str(intelligence_uuid)
@@ -390,7 +370,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
             assigned_version = int(assigned) if assigned is not None else None
         except (TypeError, ValueError):
             assigned_version = None
-        if assigned_version is not None and self._prompt_catalog.has(assigned_version):
+        catalog = self._domain_for_context(ctx).prompt_catalog
+        if assigned_version is not None and catalog.has(assigned_version):
             appendix[APPENDIX_PROMPT_VERSION] = assigned_version
             original_data[APPENDIX_FIELD] = appendix
             return assigned_version
@@ -400,7 +381,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 assigned, original_data.get("UUID"),
             )
 
-        version = random.choice(self._prompt_catalog.sampling_versions())
+        version = random.choice(catalog.sampling_versions())
         appendix[APPENDIX_PROMPT_VERSION] = version
         original_data[APPENDIX_FIELD] = appendix
         storage = getattr(ctx, "mongo_db_cache", None)
@@ -420,7 +401,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         return version
 
     def prepare_analysis_outcome(self, ctx: Any, original_data: dict,
-                                 analysis: AnalysisResultV4, *,
+                                 analysis: Any, *,
                                  prompt_version: int, ai_service: str,
                                  ai_model: str, intelligence_uuid: Any,
                                  informant: str, persist: bool,
@@ -430,85 +411,38 @@ class EventV4PipelinePorts(BasePipelinePorts):
         实时主链（_analyze_v4）与批量回注（BatchAnalysisService）共用，
         保证两条路径的归档结构与质量统计完全一致。
         """
-        repository = self._require_archive_repository(ctx) if persist else None
-        processed_at = datetime.now(timezone.utc)
-        if analysis.is_non_intelligence:
-            appendix = build_archive_appendix(
-                original_data,
-                subsystem=ctx.name,
-                ai_service=ai_service,
-                ai_model=ai_model,
-                prompt_version=prompt_version,
-                processed_at=processed_at,
-                archived_at=processed_at,
-            )
-            low_value = ArchivedDataV4(
-                **analysis.model_dump(mode="python", by_alias=True),
-                UUID=str(intelligence_uuid),
-                INFORMANT=informant,
-                APPENDIX=appendix,
-            )
-            if persist:
-                repository.save_low_value(low_value)
-                self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DROP, ctx)
-                self._increment_stat(ctx, "dropped")
-                return StageResult.reject("non_intelligence")
-            debug_result = low_value.model_dump(mode="json", by_alias=True)
-            debug_result["debug_prompt"] = {
-                "version": prompt_version,
-                "overridden": bool(prompt_override),
-            }
-            return StageResult.allow(
-                debug_result,
-                subsystem=ctx.name, transient=True, low_value=True,
-            )
-
-        conversion = convert_event_extraction(
-            analysis.EVENT_EXTRACTION,
-            intelligence_uuid=intelligence_uuid,
-            registry=self._event_registry,
-            observed_at=processed_at,
-            metadata={"informant": informant, "subsystem": ctx.name},
-        )
-        scorer = self._scorer_factory(getattr(ctx, "scoring_config", None))
-        if not hasattr(scorer, "calculate_v4"):
-            raise TypeError("V4 评分器必须实现 calculate_v4()")
-        total_score = scorer.calculate_v4(analysis)
-        appendix = build_archive_appendix(
-            original_data,
-            subsystem=ctx.name,
+        definition = self._domain_for_context(ctx)
+        total_score = None
+        if not analysis.is_non_intelligence:
+            total_score = definition.score(
+                analysis, getattr(ctx, "scoring_config", None))
+        quality = self._compute_quality(ctx, analysis, original_data)
+        prepared = definition.storage.prepare(
+            ctx, original_data, analysis,
+            prompt_version=prompt_version,
             ai_service=ai_service,
             ai_model=ai_model,
-            prompt_version=prompt_version,
-            processed_at=processed_at,
-            archived_at=processed_at,
+            intelligence_uuid=intelligence_uuid,
+            informant=informant,
             total_score=total_score,
-        )
-        quality = self._compute_quality(analysis, original_data)
-        if quality is not None:
-            appendix[APPENDIX_EXTRACTION_QUALITY] = quality
-        archive = ArchivedDataV4(
-            **analysis.model_dump(mode="python", by_alias=True),
-            UUID=str(intelligence_uuid),
-            INFORMANT=informant,
-            APPENDIX=appendix,
+            quality=quality,
+            prompt_override=prompt_override,
         )
         if not persist:
-            result = archive.model_dump(mode="json", by_alias=True)
-            # conversion.events 已经是可查询的派生事件文档，不再是 Event Engine
-            # 的领域对象，也不应再经过旧的 UUID 引用序列化器。
-            result["events"] = [dict(item) for item in conversion.events]
-            result["debug_prompt"] = {
-                "version": prompt_version,
-                "overridden": bool(prompt_override),
-            }
             return StageResult.allow(
-                result, subsystem=ctx.name, transient=True, low_value=False,
+                dict(prepared.output), subsystem=ctx.name, transient=True,
+                low_value=prepared.low_value,
             )
+        if prepared.low_value:
+            definition.storage.save_low_value(ctx, prepared.archive_payload)
+            self._mark_cache(original_data.get("UUID", ""), CacheArchiveState.DROP, ctx)
+            self._increment_stat(ctx, "dropped")
+            return StageResult.reject("non_intelligence")
         return StageResult.allow(
-            PreparedValuableV4(
-                archive=archive,
-                conversion=conversion,
+            PreparedDomainArchive(
+                domain_name=ctx.name,
+                payload=prepared.archive_payload,
+                intelligence_uuid=str(intelligence_uuid),
                 retry_metadata=dict(original_data.get(APPENDIX_FIELD) or {}),
             ),
             subsystem=ctx.name,
@@ -517,42 +451,31 @@ class EventV4PipelinePorts(BasePipelinePorts):
     def archive(self, event: HubEvent) -> StageResult:
         ctx = self._resolve_context(event)
         prepared = event.payload
-        if not isinstance(prepared, PreparedValuableV4):
+        if (not isinstance(prepared, PreparedDomainArchive)
+                or prepared.domain_name != ctx.name):
             self._increment_stat(ctx, "error")
-            return StageResult.reject("invalid_v4_archive_payload")
+            return StageResult.reject("invalid_domain_archive_payload")
         try:
-            repository = self._require_archive_repository(ctx)
-            archive = prepared.archive.model_copy(deep=True)
-            archived_at = datetime.now(timezone.utc)
-            archive.APPENDIX[APPENDIX_TIME_ARCHIVED] = archived_at
-            content_time, source = resolve_content_time(
-                archive.APPENDIX.get(APPENDIX_RAW_DATA) or {}, archived_at)
-            archive.APPENDIX[APPENDIX_CONTENT_TIME] = content_time
-            archive.APPENDIX[APPENDIX_CONTENT_TIME_SOURCE] = source
-            repository.commit(archive, prepared.conversion.events)
-            source_uuid = archive.UUID
+            definition = self._domain_for_context(ctx)
+            archive = definition.storage.commit(ctx, prepared.payload)
+            source_uuid = prepared.intelligence_uuid
             self._mark_cache(source_uuid, CacheArchiveState.ARCHIVED, ctx)
             self._increment_stat(ctx, "archived")
             return StageResult.allow(
-                archive.model_dump(mode="json", by_alias=True),
+                definition.storage.serialize(archive),
                 subsystem=ctx.name,
             )
         except Exception as exc:
-            source_uuid = prepared.archive.UUID
+            source_uuid = prepared.intelligence_uuid
             retry_state = self._schedule_retry(
                 ctx, source_uuid, {APPENDIX_FIELD: prepared.retry_metadata}, exc)
             self._increment_stat(ctx, "error")
             return StageResult.reject(
                 f"archive_{retry_state.lower()}:{type(exc).__name__}:{exc}")
 
-    def _require_archive_repository(self, ctx: Any) -> EventV4ArchiveRepository:
-        repository = (
-            self._archive_repository
-            or getattr(ctx, "event_v4_archive_repository", None)
-        )
-        if repository is None:
-            raise RuntimeError("Event V4 端口仅配置为无持久化调试模式")
-        return repository
+    def _require_archive_repository(self, ctx: Any) -> Any:
+        """旧 Batch 扩展兼容入口；新代码应通过领域 storage 查询。"""
+        return self._domain_for_context(ctx).storage.repository(ctx)
 
     @staticmethod
     def _mark_cache(uuid: str, state: CacheArchiveState, ctx: Any) -> None:
@@ -653,15 +576,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
         avoid_client_names: set[str] | None = None,
         avoid_model: str | None = None,
         shadow: bool = False,
-    ) -> tuple[AnalysisResultV4, int, str, str, str]:
+    ) -> tuple[Any, int, str, str, str]:
+        catalog = self._domain_for_context(ctx).prompt_catalog
         if prompt_version is None:
-            prompt_version = random.choice(self._prompt_catalog.sampling_versions())
-        elif not self._prompt_catalog.has(prompt_version):
+            prompt_version = random.choice(catalog.sampling_versions())
+        elif not catalog.has(prompt_version):
             raise ValueError(f"prompt_version_not_configured:{prompt_version}")
-        protocol = self._prompt_catalog.protocol_for(prompt_version)
+        protocol = catalog.protocol_for(prompt_version)
         base_prompt = (
             prompt_override if prompt_override is not None
-            else self._prompt_catalog.text_for(prompt_version)
+            else catalog.text_for(prompt_version)
         )
         # 前处理/注入钩子属于协议；prompt_override 通常是对该版本的改写，沿用同一协议。
         base_prompt = protocol.prepare_prompt(base_prompt, original_data)
@@ -793,7 +717,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             elif raw_result is not None:
                 self._change_runtime_stat("validation_running", 1)
                 try:
-                    validated = self._validate_analysis(raw_result, prompt_version)
+                    validated = self._validate_analysis(ctx, raw_result, prompt_version)
                     self._report_client_feedback(
                         ai_client, request_id, valid=True,
                         labels={"stage": "event_v4_validation", "attempt": attempt},
@@ -910,14 +834,17 @@ class EventV4PipelinePorts(BasePipelinePorts):
         with self._shadow_stats_lock:
             return dict(self._shadow_stats)
 
-    def _compute_quality(self, analysis: AnalysisResultV4, original_data: dict) -> dict | None:
+    def _compute_quality(self, ctx: Any, analysis: Any,
+                         original_data: dict) -> dict | None:
         """计算抽取质量统计；仅供后续聚合参考，任何异常都不得影响主链。"""
         if not self._quality_enabled or analysis.EVENT_EXTRACTION is None:
             return None
         raw_text = f"{original_data.get('title') or ''}\n{original_data.get('content') or ''}"
         try:
             return compute_extraction_quality(
-                analysis.EVENT_EXTRACTION, self._event_registry, raw_text=raw_text)
+                analysis.EVENT_EXTRACTION,
+                self._domain_for_context(ctx).event_registry,
+                raw_text=raw_text)
         except Exception:
             logger.exception("extraction quality check failed; ignored")
             return None
@@ -927,7 +854,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                              primary_client_name: str = "",
                              primary_model: str = "") -> None:
         """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
-        if not persist or self._shadow_recorder is None:
+        definition = self._domain_for_context(ctx)
+        if (not persist or self._shadow_recorder is None
+                or definition.subsystems.shadow is None):
             return
         if self._control_state is not None and self._control_state.is_paused("shadow"):
             return
@@ -957,7 +886,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     analysis=analysis.model_dump(mode="json", by_alias=True),
                     ai_service=service,
                     ai_model=model,
-                    extraction_quality=self._compute_quality(analysis, original_data),
+                    extraction_quality=self._compute_quality(ctx, analysis, original_data),
                 )
                 with self._shadow_stats_lock:
                     self._shadow_stats["recorded"] += 1
@@ -966,16 +895,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._shadow_stats["failed"] += 1
                 logger.warning("shadow analysis failed for prompt v%s", version, exc_info=True)
 
-    def _validate_analysis(self, raw_result: dict, prompt_version: int) -> AnalysisResultV4:
+    def _validate_analysis(self, ctx: Any, raw_result: dict, prompt_version: int) -> Any:
         """按所选版本绑定的协议做后处理（桥接）与校验。
 
-        归档与下游索引消费的始终是规范契约（AnalysisResultV4 + 完整
-        event-extraction/1.0 的 EVENT_EXTRACTION）；各协议的差异封装在
-        PromptProtocol.validate_result 内。
+        归档与下游消费的始终是当前领域协议返回的规范结果；各领域差异封装在
+        PromptProtocol.validate_result 内，公共流程不依赖具体结果类型。
         """
-        return self._prompt_catalog.protocol_for(prompt_version).validate_result(raw_result)
+        return self._domain_for_context(ctx).prompt_catalog.protocol_for(
+            prompt_version).validate_result(raw_result)
 
-    def _normalize_entity_names(self, analysis: AnalysisResultV4) -> AnalysisResultV4:
+    def _normalize_entity_names(self, analysis: Any) -> Any:
         """协议校验后的可选实体名规范化；任何失败均降级为保留原名。"""
         normalizer = self._entity_name_normalizer
         if normalizer is None or analysis.EVENT_EXTRACTION is None:

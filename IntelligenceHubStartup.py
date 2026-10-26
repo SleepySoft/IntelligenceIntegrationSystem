@@ -26,6 +26,7 @@ from WebI18n import install_web_i18n
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
 from ServiceComponent.SubsystemRegistry import SubsystemRegistry
+from IntelligenceDomains import build_domain_registry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
 from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
@@ -159,6 +160,12 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     )
     logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
                 f"list={subsystem_registry.describe()}")
+    # 领域行为在启动期一次性注册；主流程只按 domain_name 查定义。
+    domain_registry = build_domain_registry(
+        subsystem_registry.enabled_subsystems(),
+        default_name=subsystem_registry.default_name,
+    )
+    services = {"domain_registry": domain_registry}
 
     scheduling_capacity = client_manager.get_scheduling_capacity()
     if ai_analysis_thread > scheduling_capacity:
@@ -211,6 +218,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     pipeline_ports = EventV4PipelinePorts(
         subsystem_registry,
         client_manager,
+        domain_registry=domain_registry,
         client_wait_timeout=ai_client_wait_timeout,
         analysis_worker_count=ai_analysis_thread,
         failure_recorder=failure_recorder,
@@ -229,7 +237,6 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         control_state=control_state,
     )
     extensions = []
-    services = {}
     manual_debug_service = ManualDebugAnalysisService(
         pipeline_ports,
         subsystem_registry,

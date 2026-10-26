@@ -28,7 +28,7 @@ from ServiceComponent.runtime import HubEvent, HubPlugin, HubRuntime
 logger = logging.getLogger(__name__)
 
 # outcome_port 需要满足（duck typing，由 Hub 的 EventV4PipelinePorts 直接满足）：
-#   ._prompt_catalog          PromptCatalog（sampling_table/protocol_for）
+#   .domain_definition(name)  领域定义（prompt/subsystems/storage）
 #   .prepare_analysis_outcome(ctx, original_data, analysis, **kwargs) -> StageResult
 #   ._require_archive_repository(ctx)
 
@@ -107,18 +107,32 @@ class BatchAnalysisService(HubPlugin):
 
     # ---------------- 构建与提交 ----------------
 
+    def _definition(self, ctx: Any) -> Any:
+        resolver = getattr(self.ports, "domain_definition", None)
+        if callable(resolver):
+            return resolver(ctx.name)
+        # 兼容独立测试中的旧式 fake port。
+        return type("LegacyDomain", (), {
+            "prompt_catalog": self.ports._prompt_catalog,
+            "subsystems": type("LegacySubsystems", (), {"batch": object()})(),
+            "storage": None,
+        })()
+
     def submit_backlog(self, *, lookback_days: int | None = None,
                        limit: int | None = None) -> dict[str, Any]:
         """手动触发：收集积压 → 构建 JSONL → 上传 → 创建 batch。"""
         lookback = lookback_days or self.lookback_days
         cap = min(limit or self.max_items, self.max_items)
-        catalog = self.ports._prompt_catalog
-        prompt_version = max(catalog.sampling_versions())
-        prompt = catalog.sampling_table()[prompt_version]
         cutoff = datetime.now(timezone.utc) - timedelta(days=lookback)
 
-        items: list[tuple[Any, Any]] = []  # (ctx, record)
+        items: list[tuple[Any, Any, int, str]] = []  # (ctx, record, version, prompt)
         for ctx in self.registry.enabled_subsystems():
+            definition = self._definition(ctx)
+            if definition.subsystems.batch is None:
+                continue
+            catalog = definition.prompt_catalog
+            prompt_version = max(catalog.sampling_versions())
+            prompt = catalog.sampling_table()[prompt_version]
             cache = getattr(ctx, "mongo_db_cache", None)
             if cache is None:
                 continue
@@ -129,14 +143,14 @@ class BatchAnalysisService(HubPlugin):
                 cursor = cursor.limit(cap - len(items))
             for record in list(cursor)[:cap - len(items)]:
                 record.pop("_id", None)
-                items.append((ctx, record))
+                items.append((ctx, record, prompt_version, prompt))
         if not items:
             return {"submitted": False, "reason": "no_backlog"}
 
         lines = []
-        for _ctx, record in items:
+        for ctx, record, prompt_version, prompt in items:
             lines.append(json.dumps({
-                "custom_id": str(record["UUID"]),
+                "custom_id": f"{ctx.name}|{prompt_version}|{record['UUID']}",
                 "method": "POST",
                 "url": "/v1/chat/completions",
                 "body": {
@@ -173,15 +187,16 @@ class BatchAnalysisService(HubPlugin):
                 " input_file_id, item_count, created_at, updated_at)"
                 " VALUES (?,?,?,?,?,?,?,?,?)",
                 (job_id, job.get("status", "validating"), "mimo", self.model,
-                 prompt_version, file_id, len(items),
+                 -1, file_id, len(items),
                  datetime.now(timezone.utc).isoformat(),
                  datetime.now(timezone.utc).isoformat()))
             conn.executemany(
                 "INSERT OR REPLACE INTO items (job_id, uuid, status) VALUES (?,?,?)",
-                [(job_id, str(record["UUID"]), "pending") for _ctx, record in items])
+                [(job_id, f"{ctx.name}|{version}|{record['UUID']}", "pending")
+                 for ctx, record, version, _prompt in items])
         logger.warning("批量分析已提交：job=%s，%d 条（凌晨 1-8 点执行）", job_id, len(items))
         return {"submitted": True, "job_id": job_id, "item_count": len(items),
-                "prompt_version": prompt_version}
+                "prompt_version": -1}
 
     # ---------------- 轮询与回注 ----------------
 
@@ -228,33 +243,28 @@ class BatchAnalysisService(HubPlugin):
             done = {r[0] for r in conn.execute(
                 "SELECT uuid FROM items WHERE job_id=? AND status='injected'",
                 (job_id,)).fetchall()}
-        prompt_version = row[0]
-        catalog = self.ports._prompt_catalog
-        if catalog.has(prompt_version):
-            protocol = catalog.protocol_for(prompt_version)
-        else:
-            # Prompt 清理后，已在 Provider 侧执行中的旧 job 仍可能返回结果。
-            # 使用当前唯一生产协议完成回注，但保留原版本号用于历史归因；旧 Prompt
-            # 文本无需重新注册，也不会因此恢复为可选择版本。
-            current_versions = catalog.sampling_versions()
-            if len(current_versions) != 1:
-                raise ValueError(
-                    f"batch_prompt_version_not_configured:{prompt_version}")
-            current_version = current_versions[0]
-            logger.warning(
-                "Batch job %s uses removed prompt v%s; validate with current v%s protocol",
-                job_id, prompt_version, current_version,
-            )
-            protocol = catalog.protocol_for(current_version)
+        job_prompt_version = row[0]
 
         injected = failed = skipped = 0
         for line in content.splitlines():
             if not line.strip():
                 continue
             item = json.loads(line)
-            uuid = str(item.get("custom_id") or "")
-            if not uuid or uuid in done:
+            item_key = str(item.get("custom_id") or "")
+            if not item_key or item_key in done:
                 continue
+            domain_name, prompt_version, uuid = self._decode_item_key(
+                item_key, job_prompt_version)
+            ctx = self.registry.resolve(domain_name) if domain_name else None
+            if ctx is None:
+                ctx = self._find_context(uuid)
+            if ctx is None or self._definition(ctx).subsystems.batch is None:
+                skipped += 1
+                self._item_mark(job_id, item_key, "skipped")
+                continue
+            catalog = self._definition(ctx).prompt_catalog
+            protocol = self._protocol_for_batch(
+                catalog, prompt_version, job_id=job_id)
             try:
                 body = (item.get("response") or {}).get("body") or {}
                 text = (body.get("choices") or [{}])[0].get("message", {}).get(
@@ -264,14 +274,14 @@ class BatchAnalysisService(HubPlugin):
                 analysis = protocol.validate_result(raw)
             except Exception:
                 failed += 1
-                self._item_mark(job_id, uuid, "failed")
+                self._item_mark(job_id, item_key, "failed")
                 continue
-            if self._inject(uuid, analysis, prompt_version):
+            if self._inject(ctx, uuid, analysis, prompt_version):
                 injected += 1
-                self._item_mark(job_id, uuid, "injected")
+                self._item_mark(job_id, item_key, "injected")
             else:
                 skipped += 1
-                self._item_mark(job_id, uuid, "skipped")
+                self._item_mark(job_id, item_key, "skipped")
         self._job_update(job_id, status="injected",
                          note=f"injected={injected} failed={failed} skipped={skipped}")
         logger.warning("批量分析回注完成：job=%s 归档 %d 条，失败 %d，跳过 %d",
@@ -283,29 +293,63 @@ class BatchAnalysisService(HubPlugin):
                 "INSERT OR REPLACE INTO items (job_id, uuid, status) VALUES (?,?,?)",
                 (job_id, uuid, status))
 
-    def _inject(self, uuid: str, analysis: Any, prompt_version: int) -> bool:
+    @staticmethod
+    def _decode_item_key(item_key: str, fallback_version: int) -> tuple[str | None, int, str]:
+        parts = item_key.split("|", 2)
+        if len(parts) == 3:
+            try:
+                return parts[0], int(parts[1]), parts[2]
+            except ValueError:
+                pass
+        return None, int(fallback_version), item_key
+
+    def _find_context(self, uuid: str) -> Any | None:
+        for ctx in self.registry.enabled_subsystems():
+            cache = getattr(ctx, "mongo_db_cache", None)
+            if cache is not None and cache.collection.find_one({"UUID": uuid}):
+                return ctx
+        return None
+
+    @staticmethod
+    def _protocol_for_batch(catalog: Any, prompt_version: int, *, job_id: str) -> Any:
+        if catalog.has(prompt_version):
+            return catalog.protocol_for(prompt_version)
+        current_versions = catalog.sampling_versions()
+        if len(current_versions) != 1:
+            raise ValueError(f"batch_prompt_version_not_configured:{prompt_version}")
+        current_version = current_versions[0]
+        logger.warning(
+            "Batch job %s uses removed prompt v%s; validate with current v%s protocol",
+            job_id, prompt_version, current_version,
+        )
+        return catalog.protocol_for(current_version)
+
+    def _inject(self, ctx: Any, uuid: str, analysis: Any, prompt_version: int) -> bool:
         """单条回注：查 cache 原文 → 已归档则跳过 → 公共后段 → 发 ARCHIVE_REQUESTED。"""
         runtime = self._runtime
         if runtime is None:
             return False
-        for ctx in self.registry.enabled_subsystems():
-            cache = getattr(ctx, "mongo_db_cache", None)
-            if cache is None:
-                continue
-            record = cache.collection.find_one({"UUID": uuid})
-            if not record:
-                continue
-            record.pop("_id", None)
-            informant = str(record.get("informant") or "")
-            repository = self.ports._require_archive_repository(ctx)
-            if repository.contains_source(informant):
-                return False  # 期间已被实时链归档
-            result = self.ports.prepare_analysis_outcome(
-                ctx, record, analysis,
-                prompt_version=prompt_version, ai_service=self.base_url,
-                ai_model=self.model, intelligence_uuid=uuid,
-                informant=informant, persist=True)
-            if result.accepted:
-                runtime.emit(HubEvent(ARCHIVE_REQUESTED, result.payload, ctx.name))
-            return True  # 低价值已在 prepare 内落 low_value
-        return False
+        cache = getattr(ctx, "mongo_db_cache", None)
+        if cache is None:
+            return False
+        record = cache.collection.find_one({"UUID": uuid})
+        if not record:
+            return False
+        record.pop("_id", None)
+        informant = str(record.get("informant") or "")
+        definition = self._definition(ctx)
+        repository = (
+            definition.storage.repository(ctx)
+            if definition.storage is not None
+            else self.ports._require_archive_repository(ctx)
+        )
+        if repository.contains_source(informant):
+            return False
+        result = self.ports.prepare_analysis_outcome(
+            ctx, record, analysis,
+            prompt_version=prompt_version, ai_service=self.base_url,
+            ai_model=self.model, intelligence_uuid=uuid,
+            informant=informant, persist=True)
+        if result.accepted:
+            runtime.emit(HubEvent(ARCHIVE_REQUESTED, result.payload, ctx.name))
+        return True

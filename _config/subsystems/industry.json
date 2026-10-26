@@ -1,5 +1,6 @@
 {
   "name": "industry",
+  "factory": "news",
   "display_name": "行业情报",
   "url_prefix": "/industry",
   "collection_prefix": "industry_intelligence_",

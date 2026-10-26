@@ -48,7 +48,7 @@
 | `IntelligenceHubStartup.py` | **组合根**。读取配置、初始化 MongoDB/AIClientManager，并按配置安装流程端口、恢复、翻译、向量、维护、聚合和图谱扩展。 |
 | `IntelligenceHubLauncher.py` | **WSGI 启动器**。自动选择 Waitress/Gunicorn/Flask dev server，带健康检查与自动重启 |
 | `CrawlerServiceEngine.py` | **爬虫服务入口**。插件化任务管理、文件系统监控、热重载、爬虫治理后台 |
-| `prompts_event_v4.py` | Event V4 AI 分析 Prompt 注册点：当前只构造和注册 v48，并绑定前处理/后处理/校验协议 |
+| `prompts_event_v4.py` | 新闻 Event V4 Prompt 的兼容导入壳；正式实现位于 `IntelligenceDomains/news/prompt.py` |
 
 ### 3.2 主要子目录
 
