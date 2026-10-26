@@ -1,0 +1,21 @@
+[Unit]
+Description=Sleepysoft site routing controller
+After=network-online.target nginx.service home-ddns.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=site-controller
+Group=site-controller
+Environment=PYTHONUNBUFFERED=1
+Environment=SITE_CONTROLLER_CONFIG=/etc/site-controller/config.json
+ExecStart=/usr/bin/python3 /opt/site-controller/app.py
+Restart=on-failure
+RestartSec=3
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/nginx/site-modes /var/www/site-announcement /var/lib/site-controller /var/log/site-controller /var/log/nginx /run/nginx.pid
+
+[Install]
+WantedBy=multi-user.target

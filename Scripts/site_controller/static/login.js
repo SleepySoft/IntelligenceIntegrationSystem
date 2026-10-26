@@ -1,0 +1,1 @@
+document.getElementById('login-form').addEventListener('submit',async(e)=>{e.preventDefault();const b=Object.fromEntries(new FormData(e.target));const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json();if(d.ok)location='/';else document.getElementById('login-error').textContent=d.error||'登录失败';});

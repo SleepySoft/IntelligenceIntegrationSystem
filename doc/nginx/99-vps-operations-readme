@@ -1,0 +1,4 @@
+#!/bin/sh
+echo ""
+echo ">>> sleepysoft.org 运维文档：/root/VPS-OPERATIONS-README.md"
+echo ">>> 登录后请先阅读；服务/公告切换后台已部署在 127.0.0.1:9100。"

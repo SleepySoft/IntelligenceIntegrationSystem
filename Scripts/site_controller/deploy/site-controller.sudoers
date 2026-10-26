@@ -1,0 +1,1 @@
+site-controller ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /bin/systemctl reload nginx
