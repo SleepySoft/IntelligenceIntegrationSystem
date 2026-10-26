@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 import shlex
+from copy import deepcopy
 from typing import Callable, Optional
 
 from flask import (
@@ -39,6 +40,25 @@ class IISConfigurationWeb:
             if not expected or not secrets.compare_digest(expected, supplied or ""):
                 return jsonify({"error": "Invalid or missing CSRF token."}), 403
             return None
+
+        def localized_schema(schema: dict) -> dict:
+            """只翻译 JSON Schema 的界面元数据，不改变校验契约。"""
+
+            localized = deepcopy(schema)
+
+            def visit(value):
+                if isinstance(value, dict):
+                    for key, item in value.items():
+                        if key in {"title", "description"} and isinstance(item, str):
+                            value[key] = gettext(item)
+                        else:
+                            visit(item)
+                elif isinstance(value, list):
+                    for item in value:
+                        visit(item)
+
+            visit(localized)
+            return localized
 
         def admin_secret_error(code: str) -> str:
             messages = {
@@ -114,7 +134,9 @@ class IISConfigurationWeb:
         @protected
         def get_config():
             try:
-                return jsonify(self.service.read())
+                payload = self.service.read()
+                payload["schema"] = localized_schema(payload["schema"])
+                return jsonify(payload)
             except (OSError, ValueError) as exc:
                 return jsonify({"error": str(exc)}), 400
 

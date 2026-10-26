@@ -19,16 +19,27 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 logger = logging.getLogger(__name__)
 
 
+def iis_msg(message: str) -> str:
+    """标记可进入 gettext 目录、同时保留在 JSON Schema 中的配置说明。"""
+
+    return message
+
+
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
 class ServerSettings(_StrictModel):
-    host: str = "0.0.0.0"
-    port: int = Field(5000, ge=1, le=65535)
-    threads: int = Field(4, ge=1)
-    workers: int = Field(1, ge=1)
-    public_origin: str | None = None
+    host: str = Field("0.0.0.0", description=iis_msg(
+        "Network address on which the IIS web service listens. Use 0.0.0.0 to accept connections on all interfaces."))
+    port: int = Field(5000, ge=1, le=65535, description=iis_msg(
+        "TCP port exposed by the IIS web service."))
+    threads: int = Field(4, ge=1, description=iis_msg(
+        "Number of request threads used by a threaded WSGI server such as Waitress."))
+    workers: int = Field(1, ge=1, description=iis_msg(
+        "Number of WSGI worker processes when the selected server supports multiple workers."))
+    public_origin: str | None = Field(None, description=iis_msg(
+        "Public base URL used to generate external links, for example https://intel.example.com. Leave empty to use the local service address."))
 
     @field_validator("host")
     @classmethod
@@ -42,16 +53,22 @@ class ServerSettings(_StrictModel):
 
 
 class DatabaseSettings(_StrictModel):
-    host: str = "localhost"
-    port: int = Field(27017, ge=1, le=65535)
-    username: str = ""
-    password: str = ""
+    host: str = Field("localhost", description=iis_msg(
+        "Hostname or IP address of the external MongoDB service."))
+    port: int = Field(27017, ge=1, le=65535, description=iis_msg(
+        "TCP port of the external MongoDB service."))
+    username: str = Field("", description=iis_msg(
+        "MongoDB username. Leave empty when MongoDB authentication is disabled."))
+    password: str = Field("", description=iis_msg(
+        "MongoDB password. The configuration page masks an existing value."))
 
 
 class SubsystemSettings(_StrictModel):
-    default: str = "news"
+    default: str = Field("news", description=iis_msg(
+        "Name of the intelligence subsystem used when a request does not specify one."))
     enabled: dict[str, str] = Field(
-        default_factory=lambda: {"news": "国际新闻"})
+        default_factory=lambda: {"news": "国际新闻"}, description=iis_msg(
+            "Mapping of enabled subsystem identifiers to their display names. The default subsystem must be present."))
 
     @field_validator("default")
     @classmethod
@@ -75,44 +92,67 @@ class SubsystemSettings(_StrictModel):
 
 class BatchAnalysisSettings(_StrictModel):
     """Provider Batch 积压分析（凌晨空闲半价）。默认关闭。"""
-    enabled: bool = False
-    base_url: str = "https://batch-api-cn.xiaomimimo.com/v1"
-    model: str = "mimo-v2.6-flash"
-    lookback_days: int = Field(7, ge=1, le=30)
-    max_items: int = Field(500, ge=1, le=5000)
-    poll_interval_sec: float = Field(300, gt=0)
+    enabled: bool = Field(False, description=iis_msg(
+        "Enable asynchronous provider batch analysis for eligible backlog items."))
+    base_url: str = Field("https://batch-api-cn.xiaomimimo.com/v1", description=iis_msg(
+        "Base URL of the provider Batch API."))
+    model: str = Field("mimo-v2.6-flash", description=iis_msg(
+        "Provider model identifier used for batch analysis."))
+    lookback_days: int = Field(7, ge=1, le=30, description=iis_msg(
+        "Maximum age in days of backlog items eligible for a batch job."))
+    max_items: int = Field(500, ge=1, le=5000, description=iis_msg(
+        "Maximum number of items submitted in one batch job."))
+    poll_interval_sec: float = Field(300, gt=0, description=iis_msg(
+        "Seconds between checks for provider batch job completion."))
 
 
 class HubSettings(_StrictModel):
-    workers: int = Field(1, ge=1)
-    max_inflight: int = Field(2000, ge=1)
-    client_wait_timeout_sec: float = Field(60, gt=0)
-    submission_timeout_sec: float = Field(30, gt=0)
-    replay_unarchived: bool = True
-    conversation_retention_days: int = Field(7, ge=1)
-    shadow_versions: list[int] = Field(default_factory=list)
+    workers: int = Field(1, ge=1, description=iis_msg(
+        "Number of concurrent AI analysis workers. Keep this no higher than available AI clients unless intentional."))
+    max_inflight: int = Field(2000, ge=1, description=iis_msg(
+        "Maximum accepted but unfinished intelligence items kept in the runtime pipeline."))
+    client_wait_timeout_sec: float = Field(60, gt=0, description=iis_msg(
+        "Maximum seconds an analysis worker waits for an available AI client."))
+    submission_timeout_sec: float = Field(30, gt=0, description=iis_msg(
+        "Maximum seconds the collection endpoint waits for intake and archive-stage acknowledgement."))
+    replay_unarchived: bool = Field(True, description=iis_msg(
+        "Automatically replay unfinished cached items when IIS starts. Disable for manual replay."))
+    conversation_retention_days: int = Field(7, ge=1, description=iis_msg(
+        "Number of days to retain stored AI conversation diagnostics."))
+    shadow_versions: list[int] = Field(default_factory=list, description=iis_msg(
+        "Prompt versions run as shadow analysis after the main result succeeds. Shadow results are not archived."))
     # 影子链路采样率：1.0 = 每条主链成功样本都跑影子；0.1 = 约 10% 样本跑影子，
     # 用于控制灰度 Token 成本。仅对 shadow_versions 非空时生效。
-    shadow_sample_rate: float = Field(1.0, ge=0.0, le=1.0)
+    shadow_sample_rate: float = Field(1.0, ge=0.0, le=1.0, description=iis_msg(
+        "Fraction of successful main analyses selected for all configured shadow versions, from 0 to 1."))
     # 影子链路定向 AI 客户端分组（ai_clients.yaml 的 group）；固定后可与主链形成
     # 受控的 同模型比 prompt / 同 prompt 比模型 对比。空 = 随机分配。
-    shadow_client_group: str = ""
+    shadow_client_group: str = Field("", description=iis_msg(
+        "AI client group reserved for shadow analysis. Leave empty for normal client selection."))
     # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道，防止冷启动/久停后
     # 旧情报淹没问题主队列。0 = 不启用（全部进主队列）。
-    max_live_age_hours: float = Field(0, ge=0)
+    max_live_age_hours: float = Field(0, ge=0, description=iis_msg(
+        "Items older than this many hours enter the lower-priority replay lane. Zero disables age-based routing."))
     # 分析年龄硬上限（小时）：超旧情报直接弃用不分析（intake 拒绝 + 回放跳过标 X）。
     # 0 = 不启用。与 max_live_age_hours 构成 新鲜→主队列 / 超龄→慢车道 / 超旧→弃用 三层。
-    max_analysis_age_hours: float = Field(0, ge=0)
+    max_analysis_age_hours: float = Field(0, ge=0, description=iis_msg(
+        "Items older than this many hours are discarded without analysis. Zero disables the hard age limit."))
     # 未处理记录回放顺序：True = 新的优先（冷启动先消化新情报），False = 按入库顺序。
-    replay_newest_first: bool = True
-    subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings)
+    replay_newest_first: bool = Field(True, description=iis_msg(
+        "Process newer unfinished cached items before older ones during replay."))
+    subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings, description=iis_msg(
+        "Defines the enabled intelligence domains and the default domain."))
 
 
 class VectorSettings(_StrictModel):
-    enabled: bool = False
-    endpoint: str = "http://127.0.0.1:8001"
-    database: str = "vectordb"
-    model: str = "BAAI/bge-m3"
+    enabled: bool = Field(False, description=iis_msg(
+        "Enable vector indexing, semantic search, aggregation, and graph features that depend on VectorDB."))
+    endpoint: str = Field("http://127.0.0.1:8001", description=iis_msg(
+        "HTTP endpoint of the external VectorDB service."))
+    database: str = Field("vectordb", description=iis_msg(
+        "Logical VectorDB database or collection namespace used by IIS."))
+    model: str = Field("BAAI/bge-m3", description=iis_msg(
+        "Embedding model identifier expected by the VectorDB service."))
 
     @field_validator("endpoint")
     @classmethod
@@ -130,8 +170,10 @@ class VectorSettings(_StrictModel):
 
 
 class TranslationSettings(_StrictModel):
-    enabled: bool = True
-    client_group: str = "translate_small"
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable asynchronous translation for intelligence that requires a Chinese revision."))
+    client_group: str = Field("translate_small", description=iis_msg(
+        "AI client group from ai_clients.yaml used for translation jobs."))
 
     @field_validator("client_group")
     @classmethod
@@ -142,51 +184,77 @@ class TranslationSettings(_StrictModel):
 
 
 class SituationSettings(_StrictModel):
-    enabled: bool = True
-    subsystem: str | None = None
-    window_days: int = Field(7, ge=1, le=365)
-    min_score: float = Field(6.0, ge=0, le=10)
-    geocoding: bool = True
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable geographic, entity relationship, and timeline situation views."))
+    subsystem: str | None = Field(None, description=iis_msg(
+        "Intelligence subsystem used by situation views. Leave empty to use the default subsystem."))
+    window_days: int = Field(7, ge=1, le=365, description=iis_msg(
+        "Number of recent days included in authenticated situation views."))
+    min_score: float = Field(6.0, ge=0, le=10, description=iis_msg(
+        "Minimum intelligence score included in situation calculations."))
+    geocoding: bool = Field(True, description=iis_msg(
+        "Enable location geocoding required by geographic views."))
     # 态势看板细节参数（与 SituationViews._dashboard_profile 的界限保持一致）
-    min_support: int = Field(2, ge=1, le=50)            # 实体图：关系最少独立事件数
-    max_nodes: int = Field(80, ge=10, le=5000)          # 实体图节点上限
-    max_edges: int = Field(240, ge=10, le=20000)        # 实体图边上限
-    max_articles: int = Field(5000, ge=100, le=20000)   # 单次分析的最大文章数
-    primary_only: bool = True                           # 只用主事件构图
-    keep_high_score_singletons: bool = True             # 保留高评分单次关系
+    min_support: int = Field(2, ge=1, le=50, description=iis_msg(
+        "Minimum number of independent events required to display an entity relationship."))
+    max_nodes: int = Field(80, ge=10, le=5000, description=iis_msg(
+        "Maximum entity nodes returned by one relationship graph calculation."))
+    max_edges: int = Field(240, ge=10, le=20000, description=iis_msg(
+        "Maximum relationship edges returned by one graph calculation."))
+    max_articles: int = Field(5000, ge=100, le=20000, description=iis_msg(
+        "Maximum intelligence articles scanned by one situation calculation."))
+    primary_only: bool = Field(True, description=iis_msg(
+        "Build relationship graphs from primary events only."))
+    keep_high_score_singletons: bool = Field(True, description=iis_msg(
+        "Keep high-scoring relationships even when they have only one supporting event."))
 
 
 class ToggleSettings(_StrictModel):
-    enabled: bool = True
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable this optional subsystem."))
 
 
 class IntelligenceViewsSettings(ToggleSettings):
     # /views and its fixed-scope, read-only data dependencies are public by
     # default. Unscoped SituationViews queries remain authenticated.
-    public_access: bool = True
+    public_access: bool = Field(True, description=iis_msg(
+        "Allow unauthenticated access to the fixed-scope read-only /views interface."))
     # 公开访问使用更小的固定窗口；空值表示沿用 situation.window_days。
-    public_window_days: int | None = Field(None, ge=1, le=365)
+    public_window_days: int | None = Field(None, ge=1, le=365, description=iis_msg(
+        "Recent-day window used for public situation views. Leave empty to use the authenticated window."))
     # 登录用户仍可使用时间线自身的 8 实体上限。
-    public_timeline_max_entities: int = Field(8, ge=1, le=8)
+    public_timeline_max_entities: int = Field(8, ge=1, le=8, description=iis_msg(
+        "Maximum number of entities accepted by a public timeline request."))
 
 
 class EntityAliasWikidataSettings(_StrictModel):
     """Wikidata 在线建议源（本地查不到时的回落）。"""
-    enabled: bool = True
-    user_agent: str = ""          # 空 = 内置 UA；建议部署时填工具名+联系方式
-    proxy: str = ""               # 空 = GlobalConfig.DEFAULT_PROXY
-    min_interval_sec: float = Field(0.5, ge=0)
-    timeout_sec: float = Field(10.0, gt=0)
-    langs: str = "zh,en"          # prefill 拉取的语言集，逗号分隔
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable Wikidata suggestions when an entity name is not found locally."))
+    user_agent: str = Field("", description=iis_msg(
+        "Descriptive HTTP User-Agent for Wikidata requests. Leave empty to use the built-in value."))
+    proxy: str = Field("", description=iis_msg(
+        "Proxy URL for Wikidata requests. Leave empty to use the project default proxy."))
+    min_interval_sec: float = Field(0.5, ge=0, description=iis_msg(
+        "Minimum delay in seconds between Wikidata requests."))
+    timeout_sec: float = Field(10.0, gt=0, description=iis_msg(
+        "Timeout in seconds for one Wikidata request."))
+    langs: str = Field("zh,en", description=iis_msg(
+        "Comma-separated language codes fetched when prefilling entity names."))
 
 
 class EntityAliasSettings(_StrictModel):
-    enabled: bool = True
-    url_prefix: str = "/entity-alias"
-    data_dir: str = ""            # 空 = 包内 EntityAlias/data
-    vector_enabled: bool = True   # 复用 vector 子系统的 VectorDB 做语义召回
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable entity alias resolution and its management interface."))
+    url_prefix: str = Field("/entity-alias", description=iis_msg(
+        "URL prefix used to mount the entity alias subsystem."))
+    data_dir: str = Field("", description=iis_msg(
+        "Directory containing entity alias JSONL data. Leave empty to use EntityAlias/data."))
+    vector_enabled: bool = Field(True, description=iis_msg(
+        "Use the VectorDB service for semantic recall of similar entity names."))
     wikidata: EntityAliasWikidataSettings = Field(
-        default_factory=EntityAliasWikidataSettings)
+        default_factory=EntityAliasWikidataSettings, description=iis_msg(
+            "Settings for the optional Wikidata suggestion source."))
 
     @field_validator("url_prefix")
     @classmethod
@@ -198,18 +266,26 @@ class EntityAliasSettings(_StrictModel):
 
 
 class OptionalSubsystemSettings(_StrictModel):
-    translation: TranslationSettings = Field(default_factory=TranslationSettings)
-    vector: VectorSettings = Field(default_factory=VectorSettings)
-    situation: SituationSettings = Field(default_factory=SituationSettings)
+    translation: TranslationSettings = Field(default_factory=TranslationSettings, description=iis_msg(
+        "Asynchronous intelligence translation settings."))
+    vector: VectorSettings = Field(default_factory=VectorSettings, description=iis_msg(
+        "Vector intelligence integration settings."))
+    situation: SituationSettings = Field(default_factory=SituationSettings, description=iis_msg(
+        "Situation view and graph calculation settings."))
     intelligence_views: IntelligenceViewsSettings = Field(
-        default_factory=IntelligenceViewsSettings)
-    entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings)
-    batch_analysis: BatchAnalysisSettings = Field(default_factory=BatchAnalysisSettings)
+        default_factory=IntelligenceViewsSettings, description=iis_msg(
+            "Unified intelligence view shell and public access settings."))
+    entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings, description=iis_msg(
+        "Entity alias resolution settings."))
+    batch_analysis: BatchAnalysisSettings = Field(default_factory=BatchAnalysisSettings, description=iis_msg(
+        "Provider Batch API backlog analysis settings."))
 
 
 class AccessSettings(_StrictModel):
-    rpc_tokens: list[str] = Field(default_factory=list)
-    collector_tokens: list[str] = Field(default_factory=list)
+    rpc_tokens: list[str] = Field(default_factory=list, description=iis_msg(
+        "Tokens accepted by the privileged RPC API. Use independent random values."))
+    collector_tokens: list[str] = Field(default_factory=list, description=iis_msg(
+        "Tokens accepted by the /collect endpoint. Each crawler must use one configured value."))
 
     @field_validator("rpc_tokens", "collector_tokens")
     @classmethod
@@ -218,22 +294,32 @@ class AccessSettings(_StrictModel):
 
 
 class PublicSearchSettings(_StrictModel):
-    page_size: int = Field(50, ge=1, le=100)
-    max_pages: int = Field(5, ge=1, le=100)
-    window_days: int = Field(30, ge=1, le=3650)
-    requests_per_minute: int = Field(10, ge=1)
-    vector_enabled: bool = False
-    vector_page_size: int = Field(10, ge=1, le=100)
-    vector_top_n: int = Field(20, ge=1, le=1000)
+    page_size: int = Field(50, ge=1, le=100, description=iis_msg(
+        "Maximum records returned per public MongoDB search page."))
+    max_pages: int = Field(5, ge=1, le=100, description=iis_msg(
+        "Maximum page number available to unauthenticated search users."))
+    window_days: int = Field(30, ge=1, le=3650, description=iis_msg(
+        "Maximum content-time window in days available to public search."))
+    requests_per_minute: int = Field(10, ge=1, description=iis_msg(
+        "Per-client public search request limit per minute."))
+    vector_enabled: bool = Field(False, description=iis_msg(
+        "Allow unauthenticated users to run vector search."))
+    vector_page_size: int = Field(10, ge=1, le=100, description=iis_msg(
+        "Maximum records returned per public vector search page."))
+    vector_top_n: int = Field(20, ge=1, le=1000, description=iis_msg(
+        "Maximum vector candidates recalled before public result pagination."))
 
 
 class PostSettings(_StrictModel):
-    watch_enabled: bool = True
+    watch_enabled: bool = Field(True, description=iis_msg(
+        "Watch repository Markdown posts and publish changes without restarting IIS."))
     # Trailing-edge quiet period: deliberately longer than common 1s auto-save
     # intervals, so an active editing session does not compile every save.
-    debounce_ms: int = Field(2000, ge=50, le=60_000)
+    debounce_ms: int = Field(2000, ge=50, le=60_000, description=iis_msg(
+        "Quiet period in milliseconds before recompiling a changed Markdown post."))
     # Continuous edits still publish occasionally instead of starving forever.
-    max_wait_ms: int = Field(30_000, ge=50, le=300_000)
+    max_wait_ms: int = Field(30_000, ge=50, le=300_000, description=iis_msg(
+        "Maximum milliseconds to postpone publication while edits continue."))
 
     @model_validator(mode="after")
     def _max_wait_covers_debounce(self):
@@ -245,12 +331,15 @@ class PostSettings(_StrictModel):
 class I18nSettings(_StrictModel):
     """Web 界面翻译配置；键使用对外 BCP 47 标签，值使用 gettext 目录名。"""
 
-    enabled: bool = True
-    default_locale: str = "zh-CN"
+    enabled: bool = Field(True, description=iis_msg(
+        "Enable interface language selection from URL, session, and browser preferences."))
+    default_locale: str = Field("zh-CN", description=iis_msg(
+        "Default BCP 47 interface language used when no valid preference is available."))
     supported_locales: dict[str, str] = Field(default_factory=lambda: {
         "zh-CN": "zh_Hans",
         "en": "en",
-    })
+    }, description=iis_msg(
+        "Mapping of public BCP 47 language tags to gettext catalog directory names."))
 
     @field_validator("default_locale")
     @classmethod
@@ -288,19 +377,28 @@ class I18nSettings(_StrictModel):
 
 
 class WebSettings(_StrictModel):
-    i18n: I18nSettings = Field(default_factory=I18nSettings)
-    public_search: PublicSearchSettings = Field(default_factory=PublicSearchSettings)
-    posts: PostSettings = Field(default_factory=PostSettings)
+    i18n: I18nSettings = Field(default_factory=I18nSettings, description=iis_msg(
+        "Web interface internationalization settings."))
+    public_search: PublicSearchSettings = Field(default_factory=PublicSearchSettings, description=iis_msg(
+        "Limits applied to unauthenticated intelligence search."))
+    posts: PostSettings = Field(default_factory=PostSettings, description=iis_msg(
+        "Markdown post hot-reload settings."))
 
 
 class IISSettings(_StrictModel):
-    server: ServerSettings = Field(default_factory=ServerSettings)
-    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    hub: HubSettings = Field(default_factory=HubSettings)
-    access: AccessSettings = Field(default_factory=AccessSettings)
+    server: ServerSettings = Field(default_factory=ServerSettings, description=iis_msg(
+        "IIS web server listener and public address settings."))
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings, description=iis_msg(
+        "Connection settings for the external MongoDB service."))
+    hub: HubSettings = Field(default_factory=HubSettings, description=iis_msg(
+        "Core intelligence processing pipeline settings."))
+    access: AccessSettings = Field(default_factory=AccessSettings, description=iis_msg(
+        "Machine-to-machine access tokens."))
     optional_subsystems: OptionalSubsystemSettings = Field(
-        default_factory=OptionalSubsystemSettings)
-    web: WebSettings = Field(default_factory=WebSettings)
+        default_factory=OptionalSubsystemSettings, description=iis_msg(
+            "Settings for independently switchable optional subsystems."))
+    web: WebSettings = Field(default_factory=WebSettings, description=iis_msg(
+        "Web interface behavior and public access limits."))
 
 
 class IISConfig:

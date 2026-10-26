@@ -23,6 +23,8 @@
         .tab:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 8%, transparent); }
         .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
         .open-view { margin-left: auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; white-space: nowrap; }
+        .viewer-session { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .viewer-session a { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
         .language-picker { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
         .language-picker select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); font: inherit; }
         .scope-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
@@ -37,6 +39,7 @@
             .tabs { min-height: 42px; flex: 1; }
             .tab { min-width: 0; flex: 1; }
             .open-view { display: none; }
+            .viewer-session { margin-left: auto; }
             .shell { grid-template-rows: auto minmax(0, 1fr); }
         }
     </style>
@@ -60,6 +63,12 @@
             </select>
         </label>
         <a class="open-view" id="open-view" href="#" target="_blank" rel="noopener">{{ _('Open separately') }}</a>
+        {% if session.get('logged_in') %}
+        <div class="viewer-session" data-viewer-session>
+            <span>{{ _('Signed in') }}{% if session.get('username') %} · <span translate="no">{{ session.get('username') }}</span>{% endif %}</span>
+            <a href="/logout">{{ _('Sign out') }}</a>
+        </div>
+        {% endif %}
     </header>
     <main class="frames">
         <div class="loading" id="loading">{{ _('Loading view…') }}</div>

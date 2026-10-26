@@ -60,6 +60,37 @@ def test_iis_schema_change_requires_configuration_ui_review(monkeypatch):
     assert contract["warning"]
 
 
+def test_every_editable_iis_schema_field_has_central_help_text():
+    from IISConfig import IISSettings
+
+    document = IISSettings.model_json_schema()
+    missing = []
+
+    def resolve(node):
+        if "$ref" in node:
+            target = document["$defs"][node["$ref"].rsplit("/", 1)[-1]]
+            return {**target, **node}
+        return node
+
+    def visit(node, path=()):
+        node = resolve(node)
+        for name, raw_child in (node.get("properties") or {}).items():
+            child = resolve(raw_child)
+            child_path = path + (name,)
+            object_schema = next(
+                (resolve(item) for item in child.get("anyOf", [])
+                 if resolve(item).get("properties")),
+                child,
+            )
+            if object_schema.get("properties"):
+                visit(object_schema, child_path)
+            elif not child.get("description"):
+                missing.append(".".join(child_path))
+
+    visit(document)
+    assert missing == []
+
+
 def test_ai_configuration_preserves_masked_secret_and_creates_history(tmp_path):
     path = tmp_path / "clients.yaml"
     path.write_text(
@@ -94,6 +125,8 @@ def test_iis_configuration_blueprint_supports_page_and_csrf_api(tmp_path):
 
     page = client.get("/settings/?lang=en")
     assert page.status_code == 200
+    assert 'data-language-select' in page.get_data(as_text=True)
+    assert '<option value="en" selected>' in page.get_data(as_text=True)
     token = _csrf(page.get_data(as_text=True))
     config = client.get("/settings/api/config")
     assert config.status_code == 200
@@ -128,6 +161,8 @@ def test_iis_first_run_redirects_to_setup_and_can_save(tmp_path):
     chinese = client.get("/settings/setup/?lang=zh-CN")
     assert chinese.headers["Content-Language"] == "zh-CN"
     assert "创建启动 IIS 所需的最小配置" in chinese.get_data(as_text=True)
+    assert 'data-language-select' in chinese.get_data(as_text=True)
+    assert '<option value="zh-CN" selected>' in chinese.get_data(as_text=True)
     token = _csrf(chinese.get_data(as_text=True))
     config = client.get("/settings/api/config").get_json()
     config["data"]["server"]["port"] = 5055
@@ -152,3 +187,37 @@ def test_ai_configuration_blueprint_renders_standalone(tmp_path):
     response = app.test_client().get("/config/?lang=en")
     assert response.status_code == 200
     assert "AI client configuration" in response.get_data(as_text=True)
+    payload = app.test_client().get("/config/api/config").get_json()
+    metadata = payload["configuration_metadata"]
+    assert metadata["version"] == 1
+    assert metadata["common_fields"]["factory"]
+    assert metadata["factories"]["openai_compatible"]["fields"][
+        "api_base_url"]["description"]
+
+
+def test_configuration_pages_show_authenticated_user_and_sign_out(tmp_path):
+    iis_path = tmp_path / "iis.yaml"
+    iis_path.write_text("{}\n", encoding="utf-8")
+    ai_path = tmp_path / "clients.yaml"
+    ai_path.write_text("clients: []\ngroup_limits: {}\n", encoding="utf-8")
+    app = Flask(__name__)
+    app.secret_key = "test"
+    IISConfigurationWeb(IISConfigurationService(iis_path)).mount_to_app(
+        app, url_prefix="/settings")
+    AIClientConfigurationWeb(AIClientConfigurationService(ai_path)).mount_to_app(
+        app, url_prefix="/ai-config")
+    client = app.test_client()
+
+    assert "Sign out" not in client.get(
+        "/settings/?lang=en").get_data(as_text=True)
+    with client.session_transaction() as user_session:
+        user_session["logged_in"] = True
+        user_session["username"] = "operator"
+
+    for url in ("/settings/?lang=en", "/settings/setup/?lang=en",
+                "/ai-config/?lang=en"):
+        html = client.get(url).get_data(as_text=True)
+        assert "Signed in" in html
+        assert "operator" in html
+        assert 'href="/logout"' in html
+        assert "Sign out" in html

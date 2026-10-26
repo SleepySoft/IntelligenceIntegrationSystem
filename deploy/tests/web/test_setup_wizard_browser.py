@@ -63,6 +63,11 @@ def test_setup_wizard_in_real_browser(tmp_path):
             assert "browser-admin-password" not in command
             assert page.get_by_label(
                 "Administrator password", exact=True).input_value() == ""
+            page.get_by_role("link", name="Open full configuration").click()
+            page.locator("details.config-help").first.wait_for()
+            assert page.locator("details.config-help").count() >= 75
+            page.locator("details.config-help summary").first.click()
+            assert page.locator(".config-help-text").first.is_visible()
             browser.close()
     finally:
         server.shutdown()

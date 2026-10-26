@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-26 12:14+0800\n"
+"POT-Creation-Date: 2026-10-26 13:55+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -14,256 +14,719 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
+#: IISConfig.py:34
+msgid ""
+"Network address on which the IIS web service listens. Use 0.0.0.0 to "
+"accept connections on all interfaces."
+msgstr ""
+
+#: IISConfig.py:36
+msgid "TCP port exposed by the IIS web service."
+msgstr ""
+
+#: IISConfig.py:38
+msgid "Number of request threads used by a threaded WSGI server such as Waitress."
+msgstr ""
+
+#: IISConfig.py:40
+msgid ""
+"Number of WSGI worker processes when the selected server supports "
+"multiple workers."
+msgstr ""
+
+#: IISConfig.py:42
+msgid ""
+"Public base URL used to generate external links, for example "
+"https://intel.example.com. Leave empty to use the local service address."
+msgstr ""
+
+#: IISConfig.py:57
+msgid "Hostname or IP address of the external MongoDB service."
+msgstr ""
+
+#: IISConfig.py:59
+msgid "TCP port of the external MongoDB service."
+msgstr ""
+
+#: IISConfig.py:61
+msgid "MongoDB username. Leave empty when MongoDB authentication is disabled."
+msgstr ""
+
+#: IISConfig.py:63
+msgid "MongoDB password. The configuration page masks an existing value."
+msgstr ""
+
+#: IISConfig.py:68
+msgid ""
+"Name of the intelligence subsystem used when a request does not specify "
+"one."
+msgstr ""
+
+#: IISConfig.py:71
+msgid ""
+"Mapping of enabled subsystem identifiers to their display names. The "
+"default subsystem must be present."
+msgstr ""
+
+#: IISConfig.py:96
+msgid "Enable asynchronous provider batch analysis for eligible backlog items."
+msgstr ""
+
+#: IISConfig.py:98
+msgid "Base URL of the provider Batch API."
+msgstr ""
+
+#: IISConfig.py:100
+msgid "Provider model identifier used for batch analysis."
+msgstr ""
+
+#: IISConfig.py:102
+msgid "Maximum age in days of backlog items eligible for a batch job."
+msgstr ""
+
+#: IISConfig.py:104
+msgid "Maximum number of items submitted in one batch job."
+msgstr ""
+
+#: IISConfig.py:106
+msgid "Seconds between checks for provider batch job completion."
+msgstr ""
+
+#: IISConfig.py:111
+msgid ""
+"Number of concurrent AI analysis workers. Keep this no higher than "
+"available AI clients unless intentional."
+msgstr ""
+
+#: IISConfig.py:113
+msgid ""
+"Maximum accepted but unfinished intelligence items kept in the runtime "
+"pipeline."
+msgstr ""
+
+#: IISConfig.py:115
+msgid "Maximum seconds an analysis worker waits for an available AI client."
+msgstr ""
+
+#: IISConfig.py:117
+msgid ""
+"Maximum seconds the collection endpoint waits for intake and archive-"
+"stage acknowledgement."
+msgstr ""
+
+#: IISConfig.py:119
+msgid ""
+"Automatically replay unfinished cached items when IIS starts. Disable for"
+" manual replay."
+msgstr ""
+
+#: IISConfig.py:121
+msgid "Number of days to retain stored AI conversation diagnostics."
+msgstr ""
+
+#: IISConfig.py:123
+msgid ""
+"Prompt versions run as shadow analysis after the main result succeeds. "
+"Shadow results are not archived."
+msgstr ""
+
+#: IISConfig.py:127
+msgid ""
+"Fraction of successful main analyses selected for all configured shadow "
+"versions, from 0 to 1."
+msgstr ""
+
+#: IISConfig.py:131
+msgid ""
+"AI client group reserved for shadow analysis. Leave empty for normal "
+"client selection."
+msgstr ""
+
+#: IISConfig.py:135
+msgid ""
+"Items older than this many hours enter the lower-priority replay lane. "
+"Zero disables age-based routing."
+msgstr ""
+
+#: IISConfig.py:139
+msgid ""
+"Items older than this many hours are discarded without analysis. Zero "
+"disables the hard age limit."
+msgstr ""
+
+#: IISConfig.py:142
+msgid "Process newer unfinished cached items before older ones during replay."
+msgstr ""
+
+#: IISConfig.py:144
+msgid "Defines the enabled intelligence domains and the default domain."
+msgstr ""
+
+#: IISConfig.py:149
+msgid ""
+"Enable vector indexing, semantic search, aggregation, and graph features "
+"that depend on VectorDB."
+msgstr ""
+
+#: IISConfig.py:151
+msgid "HTTP endpoint of the external VectorDB service."
+msgstr ""
+
+#: IISConfig.py:153
+msgid "Logical VectorDB database or collection namespace used by IIS."
+msgstr ""
+
+#: IISConfig.py:155
+msgid "Embedding model identifier expected by the VectorDB service."
+msgstr ""
+
+#: IISConfig.py:174
+msgid ""
+"Enable asynchronous translation for intelligence that requires a Chinese "
+"revision."
+msgstr ""
+
+#: IISConfig.py:176
+msgid "AI client group from ai_clients.yaml used for translation jobs."
+msgstr "用于翻译任务的 ai_clients.yaml 客户端分组。"
+
+#: IISConfig.py:188
+msgid "Enable geographic, entity relationship, and timeline situation views."
+msgstr ""
+
+#: IISConfig.py:190
+msgid ""
+"Intelligence subsystem used by situation views. Leave empty to use the "
+"default subsystem."
+msgstr ""
+
+#: IISConfig.py:192
+msgid "Number of recent days included in authenticated situation views."
+msgstr ""
+
+#: IISConfig.py:194
+msgid "Minimum intelligence score included in situation calculations."
+msgstr ""
+
+#: IISConfig.py:196
+msgid "Enable location geocoding required by geographic views."
+msgstr ""
+
+#: IISConfig.py:199
+msgid ""
+"Minimum number of independent events required to display an entity "
+"relationship."
+msgstr ""
+
+#: IISConfig.py:201
+msgid "Maximum entity nodes returned by one relationship graph calculation."
+msgstr ""
+
+#: IISConfig.py:203
+msgid "Maximum relationship edges returned by one graph calculation."
+msgstr ""
+
+#: IISConfig.py:205
+msgid "Maximum intelligence articles scanned by one situation calculation."
+msgstr ""
+
+#: IISConfig.py:207
+msgid "Build relationship graphs from primary events only."
+msgstr ""
+
+#: IISConfig.py:209
+msgid ""
+"Keep high-scoring relationships even when they have only one supporting "
+"event."
+msgstr ""
+
+#: IISConfig.py:214
+msgid "Enable this optional subsystem."
+msgstr ""
+
+#: IISConfig.py:221
+msgid ""
+"Allow unauthenticated access to the fixed-scope read-only /views "
+"interface."
+msgstr ""
+
+#: IISConfig.py:224
+msgid ""
+"Recent-day window used for public situation views. Leave empty to use the"
+" authenticated window."
+msgstr ""
+
+#: IISConfig.py:227
+msgid "Maximum number of entities accepted by a public timeline request."
+msgstr ""
+
+#: IISConfig.py:233
+msgid "Enable Wikidata suggestions when an entity name is not found locally."
+msgstr ""
+
+#: IISConfig.py:235
+msgid ""
+"Descriptive HTTP User-Agent for Wikidata requests. Leave empty to use the"
+" built-in value."
+msgstr ""
+
+#: IISConfig.py:237
+msgid ""
+"Proxy URL for Wikidata requests. Leave empty to use the project default "
+"proxy."
+msgstr ""
+
+#: IISConfig.py:239
+msgid "Minimum delay in seconds between Wikidata requests."
+msgstr ""
+
+#: IISConfig.py:241
+msgid "Timeout in seconds for one Wikidata request."
+msgstr ""
+
+#: IISConfig.py:243
+msgid "Comma-separated language codes fetched when prefilling entity names."
+msgstr ""
+
+#: IISConfig.py:248
+msgid "Enable entity alias resolution and its management interface."
+msgstr ""
+
+#: IISConfig.py:250
+msgid "URL prefix used to mount the entity alias subsystem."
+msgstr ""
+
+#: IISConfig.py:252
+msgid ""
+"Directory containing entity alias JSONL data. Leave empty to use "
+"EntityAlias/data."
+msgstr ""
+
+#: IISConfig.py:254
+msgid "Use the VectorDB service for semantic recall of similar entity names."
+msgstr ""
+
+#: IISConfig.py:257
+msgid "Settings for the optional Wikidata suggestion source."
+msgstr ""
+
+#: IISConfig.py:270
+msgid "Asynchronous intelligence translation settings."
+msgstr ""
+
+#: IISConfig.py:272
+msgid "Vector intelligence integration settings."
+msgstr "向量情报集成设置。"
+
+#: IISConfig.py:274
+msgid "Situation view and graph calculation settings."
+msgstr ""
+
+#: IISConfig.py:277
+msgid "Unified intelligence view shell and public access settings."
+msgstr ""
+
+#: IISConfig.py:279
+msgid "Entity alias resolution settings."
+msgstr "实体别名解析设置。"
+
+#: IISConfig.py:281
+msgid "Provider Batch API backlog analysis settings."
+msgstr ""
+
+#: IISConfig.py:286
+msgid "Tokens accepted by the privileged RPC API. Use independent random values."
+msgstr ""
+
+#: IISConfig.py:288
+msgid ""
+"Tokens accepted by the /collect endpoint. Each crawler must use one "
+"configured value."
+msgstr ""
+
+#: IISConfig.py:298
+msgid "Maximum records returned per public MongoDB search page."
+msgstr ""
+
+#: IISConfig.py:300
+msgid "Maximum page number available to unauthenticated search users."
+msgstr ""
+
+#: IISConfig.py:302
+msgid "Maximum content-time window in days available to public search."
+msgstr ""
+
+#: IISConfig.py:304
+msgid "Per-client public search request limit per minute."
+msgstr ""
+
+#: IISConfig.py:306
+msgid "Allow unauthenticated users to run vector search."
+msgstr ""
+
+#: IISConfig.py:308
+msgid "Maximum records returned per public vector search page."
+msgstr ""
+
+#: IISConfig.py:310
+msgid "Maximum vector candidates recalled before public result pagination."
+msgstr ""
+
+#: IISConfig.py:315
+msgid ""
+"Watch repository Markdown posts and publish changes without restarting "
+"IIS."
+msgstr ""
+
+#: IISConfig.py:319
+msgid "Quiet period in milliseconds before recompiling a changed Markdown post."
+msgstr ""
+
+#: IISConfig.py:322
+msgid "Maximum milliseconds to postpone publication while edits continue."
+msgstr ""
+
+#: IISConfig.py:335
+msgid ""
+"Enable interface language selection from URL, session, and browser "
+"preferences."
+msgstr ""
+
+#: IISConfig.py:337
+msgid ""
+"Default BCP 47 interface language used when no valid preference is "
+"available."
+msgstr ""
+
+#: IISConfig.py:342
+msgid "Mapping of public BCP 47 language tags to gettext catalog directory names."
+msgstr ""
+
+#: IISConfig.py:381
+msgid "Web interface internationalization settings."
+msgstr ""
+
+#: IISConfig.py:383
+msgid "Limits applied to unauthenticated intelligence search."
+msgstr ""
+
+#: IISConfig.py:385
+msgid "Markdown post hot-reload settings."
+msgstr ""
+
+#: IISConfig.py:390
+msgid "IIS web server listener and public address settings."
+msgstr ""
+
+#: IISConfig.py:392
+msgid "Connection settings for the external MongoDB service."
+msgstr ""
+
+#: IISConfig.py:394
+msgid "Core intelligence processing pipeline settings."
+msgstr ""
+
+#: IISConfig.py:396
+msgid "Machine-to-machine access tokens."
+msgstr "机器间访问令牌。"
+
+#: IISConfig.py:399
+msgid "Settings for independently switchable optional subsystems."
+msgstr ""
+
+#: IISConfig.py:401
+msgid "Web interface behavior and public access limits."
+msgstr ""
+
 #: AIClientCenter/templates/ai_client_config.html:6
-#: AIClientCenter/templates/ai_client_config.html:20
+#: AIClientCenter/templates/ai_client_config.html:21
 #: templates/control_panel.html:65
 msgid "AI client configuration"
 msgstr "AI 客户端配置"
 
-#: AIClientCenter/templates/ai_client_config.html:21
+#: AIClientCenter/templates/ai_client_config.html:22
 msgid ""
 "Edit clients here, validate them with their real factories, then save and"
 " apply without restarting IIS."
 msgstr "在此编辑客户端，使用真实工厂完成校验，然后保存并应用，无需重启 IIS。"
 
-#: AIClientCenter/templates/ai_client_config.html:23
-#: IISConfiguration/templates/iis_configuration.html:17
+#: AIClientCenter/templates/ai_client_config.html:22
+#: IISConfiguration/templates/iis_configuration.html:19
+#: IISConfiguration/templates/iis_setup.html:16
+#: IntelligenceViews/templates/intelligence_views.html:68
+#: SituationViews/templates/entity_timeline.html:99
+#: SituationViews/templates/situation_views.html:235 templates/post.html:59
+msgid "Signed in"
+msgstr "已登录"
+
+#: AIClientCenter/templates/ai_client_config.html:22
+#: IISConfiguration/templates/iis_configuration.html:19
+#: IISConfiguration/templates/iis_setup.html:16
+#: IntelligenceViews/templates/intelligence_views.html:69
+#: SituationViews/templates/entity_timeline.html:100
+#: SituationViews/templates/situation_views.html:236 templates/post.html:60
+msgid "Sign out"
+msgstr "退出登录"
+
+#: AIClientCenter/templates/ai_client_config.html:24
+#: IISConfiguration/templates/iis_configuration.html:19
 msgid "Guided editor"
 msgstr "引导编辑"
 
-#: AIClientCenter/templates/ai_client_config.html:23
-#: IISConfiguration/templates/iis_configuration.html:17
+#: AIClientCenter/templates/ai_client_config.html:24
+#: IISConfiguration/templates/iis_configuration.html:19
 msgid "Advanced YAML"
 msgstr "高级 YAML"
 
-#: AIClientCenter/templates/ai_client_config.html:23
-#: IISConfiguration/templates/iis_configuration.html:17
+#: AIClientCenter/templates/ai_client_config.html:24
+#: IISConfiguration/templates/iis_configuration.html:19
 msgid "History"
 msgstr "历史版本"
 
-#: AIClientCenter/templates/ai_client_config.html:26
+#: AIClientCenter/templates/ai_client_config.html:27
 msgid "Clients"
 msgstr "客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:27
+#: AIClientCenter/templates/ai_client_config.html:28
 msgid "Add client"
 msgstr "添加客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:28
 #: AIClientCenter/templates/ai_client_config.html:29
+#: AIClientCenter/templates/ai_client_config.html:30
 msgid "Group concurrency limits"
 msgstr "分组并发限制"
 
-#: AIClientCenter/templates/ai_client_config.html:32
-#: IISConfiguration/templates/iis_configuration.html:19
+#: AIClientCenter/templates/ai_client_config.html:33
+#: IISConfiguration/templates/iis_configuration.html:21
 msgid "YAML configuration"
 msgstr "YAML 配置"
 
-#: AIClientCenter/templates/ai_client_config.html:34
-#: IISConfiguration/templates/iis_configuration.html:20
+#: AIClientCenter/templates/ai_client_config.html:35
+#: IISConfiguration/templates/iis_configuration.html:22
 msgid "Saved versions"
 msgstr "已保存版本"
 
-#: AIClientCenter/templates/ai_client_config.html:36
-#: IISConfiguration/templates/iis_configuration.html:21
+#: AIClientCenter/templates/ai_client_config.html:37
+#: IISConfiguration/templates/iis_configuration.html:23
 msgid "Validate"
 msgstr "校验"
 
-#: AIClientCenter/templates/ai_client_config.html:36
-#: IISConfiguration/templates/iis_configuration.html:21
+#: AIClientCenter/templates/ai_client_config.html:37
+#: IISConfiguration/templates/iis_configuration.html:23
 msgid "Save"
 msgstr "保存"
 
-#: AIClientCenter/templates/ai_client_config.html:36
+#: AIClientCenter/templates/ai_client_config.html:37
 msgid "Apply to running service"
 msgstr "应用到运行中服务"
 
-#: AIClientCenter/templates/ai_client_config.html:36
-#: IISConfiguration/templates/iis_configuration.html:21
+#: AIClientCenter/templates/ai_client_config.html:37
+#: IISConfiguration/templates/iis_configuration.html:23
 msgid "Discard unsaved changes"
 msgstr "放弃未保存修改"
 
-#: AIClientCenter/templates/ai_client_config.html:37
+#: AIClientCenter/templates/ai_client_config.html:38
 msgid ""
 "Sensitive values are masked. Leave the mask unchanged to preserve the "
 "stored value. Every save creates a restorable backup."
 msgstr "敏感值已遮蔽。保留遮蔽标记即可沿用已有值。每次保存都会创建可恢复的备份。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 #: SituationViews/templates/situation_views.html:460
 #: templates/_article_i18n.html:33 templates/_article_i18n.html:39
 #: templates/intelligence_detail.html:42
 msgid "Loading…"
 msgstr "正在加载…"
 
-#: AIClientCenter/templates/ai_client_config.html:43
-#: IISConfiguration/templates/iis_configuration.html:25
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "Configuration is valid."
 msgstr "配置有效。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Configuration was saved."
 msgstr "配置已保存。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Configuration was applied to the running service."
 msgstr "配置已应用到运行中的服务。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Factory parameters and group limits must be valid JSON."
 msgstr "工厂参数和分组并发限制必须是有效 JSON。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Factory"
 msgstr "工厂"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Name"
 msgstr "名称"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Group"
 msgstr "分组"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Tags"
 msgstr "标签"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Enabled"
 msgstr "启用"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Factory parameters (JSON)"
 msgstr "工厂参数（JSON）"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "Remove client"
 msgstr "移除客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:43
-#: IISConfiguration/templates/iis_configuration.html:25
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "Restore"
 msgstr "恢复"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid "The selected version was restored."
 msgstr "已恢复所选版本。"
 
-#: AIClientCenter/templates/ai_client_config.html:43
-#: IISConfiguration/templates/iis_configuration.html:25
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "bytes"
 msgstr "字节"
 
-#: AIClientCenter/templates/ai_client_config.html:43
-#: IISConfiguration/templates/iis_configuration.html:25
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "Active configuration"
 msgstr "当前配置"
 
-#: AIClientCenter/templates/ai_client_config.html:43
-#: IISConfiguration/templates/iis_configuration.html:25
-#: IISConfiguration/templates/iis_setup.html:82
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "selected by"
 msgstr "选择来源"
 
-#: AIClientCenter/templates/ai_client_config.html:43
+#: AIClientCenter/templates/ai_client_config.html:44
 msgid ""
 "The AI client configuration contract changed and the configuration page "
 "has not been reviewed yet."
 msgstr "AI 客户端配置契约已变化，但配置页面尚未完成兼容性审查。"
 
-#: IISConfiguration/web.py:46
+#: AIClientCenter/templates/ai_client_config.html:44
+#: IISConfiguration/templates/iis_configuration.html:28
+msgid "Configuration help"
+msgstr "配置说明"
+
+#: AIClientCenter/templates/ai_client_config.html:44
+msgid "Additional factory parameter"
+msgstr "额外工厂参数"
+
+#: IISConfiguration/web.py:66
 msgid ""
 "Administrator username must be 3-50 characters using letters, numbers, "
 "underscores, or hyphens."
 msgstr "管理员用户名须为 3-50 个字符，只能使用字母、数字、下划线或连字符。"
 
-#: IISConfiguration/web.py:48
+#: IISConfiguration/web.py:68
 msgid "Administrator password is required."
 msgstr "请输入管理员密码。"
 
-#: IISConfiguration/templates/iis_setup.html:82 IISConfiguration/web.py:50
+#: IISConfiguration/templates/iis_setup.html:83 IISConfiguration/web.py:70
 msgid "The administrator passwords do not match."
 msgstr "两次输入的管理员密码不一致。"
 
-#: IISConfiguration/web.py:52
+#: IISConfiguration/web.py:72
 msgid "Administrator password must be 12-1024 characters."
 msgstr "管理员密码长度须为 12-1024 个字符。"
 
-#: IISConfiguration/web.py:54
+#: IISConfiguration/web.py:74
 msgid "Administrator password must be a single line."
 msgstr "管理员密码只能包含一行。"
 
-#: IISConfiguration/web.py:56
+#: IISConfiguration/web.py:76
 msgid "Administrator secret directory is invalid."
 msgstr "管理员秘密文件目录无效。"
 
-#: IISConfiguration/web.py:58
+#: IISConfiguration/web.py:78
 msgid "Administrator secret directory is owned by another user."
 msgstr "管理员秘密文件目录属于其他用户。"
 
-#: IISConfiguration/web.py:60
+#: IISConfiguration/web.py:80
 msgid "Administrator secret directory permissions must be 0700."
 msgstr "管理员秘密文件目录权限必须为 0700。"
 
-#: IISConfiguration/web.py:62
+#: IISConfiguration/web.py:82
 msgid ""
 "An authentication database already exists; use the administrator "
 "management command instead."
 msgstr "认证数据库已存在，请改用管理员管理命令。"
 
-#: IISConfiguration/web.py:66
+#: IISConfiguration/web.py:86
 msgid "Could not prepare the administrator credential."
 msgstr "无法准备管理员凭据。"
 
-#: IISConfiguration/web.py:94
+#: IISConfiguration/web.py:114
 msgid ""
 "Configuration and the temporary administrator credential are ready. "
 "Configure AI clients, then run the unattended installation command below."
 msgstr "配置和临时管理员凭据已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
 
-#: IISConfiguration/web.py:98
+#: IISConfiguration/web.py:118
 msgid ""
 "Configuration is ready. Configure AI clients, then run the unattended "
 "installation command below."
 msgstr "配置已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
 
 #: IISConfiguration/templates/iis_configuration.html:5
-#: IISConfiguration/templates/iis_configuration.html:17
+#: IISConfiguration/templates/iis_configuration.html:19
 #: templates/control_panel.html:52 templates/control_panel.html:63
 msgid "IIS configuration"
 msgstr "IIS 配置"
 
-#: IISConfiguration/templates/iis_configuration.html:17
+#: IISConfiguration/templates/iis_configuration.html:19
 msgid ""
 "Change IIS settings with a guided form. Validation uses the same schema "
 "as service startup."
 msgstr "使用引导表单修改 IIS 设置。校验使用与服务启动相同的配置模型。"
 
-#: IISConfiguration/templates/iis_configuration.html:17
+#: IISConfiguration/templates/iis_configuration.html:19
+#: IISConfiguration/templates/iis_setup.html:16
+#: IntelligenceViews/templates/intelligence_views.html:58
+msgid "Language"
+msgstr "语言"
+
+#: IISConfiguration/templates/iis_configuration.html:19
+#: IISConfiguration/templates/iis_setup.html:16
+#: IntelligenceViews/templates/intelligence_views.html:59
+msgid "Interface language"
+msgstr "界面语言"
+
+#: IISConfiguration/templates/iis_configuration.html:19
 msgid "Setup wizard"
 msgstr "配置向导"
 
-#: IISConfiguration/templates/iis_configuration.html:21
+#: IISConfiguration/templates/iis_configuration.html:23
 msgid ""
 "Saving does not restart IIS. The new IIS configuration takes effect after"
 " the service restarts. Sensitive values stay masked unless replaced."
 msgstr "保存不会重启 IIS。新配置会在服务重启后生效。敏感值会保持遮蔽，除非主动替换。"
 
-#: IISConfiguration/templates/iis_configuration.html:25
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "Configuration was saved. Restart IIS to apply it."
 msgstr "配置已保存。重启 IIS 后生效。"
 
-#: IISConfiguration/templates/iis_configuration.html:25
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "The selected version was restored. Restart IIS to apply it."
 msgstr "已恢复所选版本。重启 IIS 后生效。"
 
-#: IISConfiguration/templates/iis_configuration.html:25
+#: IISConfiguration/templates/iis_configuration.html:28
 msgid "This field must contain valid JSON."
 msgstr "此字段必须包含有效 JSON。"
 
-#: IISConfiguration/templates/iis_configuration.html:25
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_configuration.html:28
+#: IISConfiguration/templates/iis_setup.html:83
 msgid ""
 "The IIS configuration schema changed and the configuration pages have not"
 " been reviewed yet."
@@ -449,27 +912,27 @@ msgstr "下一页"
 msgid "Validate and save"
 msgstr "校验并保存"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Validating configuration and preparing installation artifacts…"
 msgstr "正在校验配置并准备安装产物……"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Configure AI clients"
 msgstr "配置 AI 客户端"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Open full configuration"
 msgstr "打开完整配置"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Configuration target"
 msgstr "配置写入位置"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Loaded defaults from"
 msgstr "默认值来源"
 
-#: IISConfiguration/templates/iis_setup.html:82
+#: IISConfiguration/templates/iis_setup.html:83
 msgid "Enter an administrator username and password."
 msgstr "请输入管理员用户名和密码。"
 
@@ -477,67 +940,59 @@ msgstr "请输入管理员用户名和密码。"
 msgid "Intelligence views"
 msgstr "情报视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:47
+#: IntelligenceViews/templates/intelligence_views.html:50
 msgid "Intelligence display mode"
 msgstr "情报展示方式"
 
-#: IntelligenceViews/templates/intelligence_views.html:48
+#: IntelligenceViews/templates/intelligence_views.html:51
 #: templates/intelligence_list.html:57
 msgid "Intelligence list"
 msgstr "情报列表"
 
-#: IntelligenceViews/templates/intelligence_views.html:49
+#: IntelligenceViews/templates/intelligence_views.html:52
 #: SituationViews/templates/situation_views.html:263
 msgid "Map view"
 msgstr "地域视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:50
+#: IntelligenceViews/templates/intelligence_views.html:53
 msgid "Entity view"
 msgstr "实体视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:51
+#: IntelligenceViews/templates/intelligence_views.html:54
 #: SituationViews/templates/entity_timeline.html:90
 msgid "Entity timeline"
 msgstr "实体时间线"
 
-#: IntelligenceViews/templates/intelligence_views.html:55
-msgid "Language"
-msgstr "语言"
-
-#: IntelligenceViews/templates/intelligence_views.html:56
-msgid "Interface language"
-msgstr "界面语言"
-
-#: IntelligenceViews/templates/intelligence_views.html:62
+#: IntelligenceViews/templates/intelligence_views.html:65
 msgid "Open separately"
 msgstr "单独打开"
 
-#: IntelligenceViews/templates/intelligence_views.html:65
+#: IntelligenceViews/templates/intelligence_views.html:74
 msgid "Loading view…"
 msgstr "正在加载视图…"
 
-#: IntelligenceViews/templates/intelligence_views.html:66
+#: IntelligenceViews/templates/intelligence_views.html:75
 msgid "Intelligence list view"
 msgstr "情报列表视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:67
+#: IntelligenceViews/templates/intelligence_views.html:76
 msgid "Geographic situation view"
 msgstr "地域态势视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:68
+#: IntelligenceViews/templates/intelligence_views.html:77
 msgid "Entity relationship view"
 msgstr "实体关系视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:69
+#: IntelligenceViews/templates/intelligence_views.html:78
 msgid "Entity timeline view"
 msgstr "实体时间线视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:75
+#: IntelligenceViews/templates/intelligence_views.html:84
 #, python-brace-format
 msgid "Last {days} days · score ≥ {score}"
 msgstr "最近 {days} 天 · 评分 ≥ {score}"
 
-#: IntelligenceViews/templates/intelligence_views.html:76
+#: IntelligenceViews/templates/intelligence_views.html:85
 #, python-brace-format
 msgid " · relationships require {count} corroborating reports"
 msgstr " · 关系需 {count} 起印证"
@@ -597,16 +1052,6 @@ msgstr "搜索当前范围内的实体"
 #: SituationViews/templates/situation_views.html:435
 msgid "Search"
 msgstr "搜索"
-
-#: SituationViews/templates/entity_timeline.html:99
-#: SituationViews/templates/situation_views.html:235
-msgid "Signed in"
-msgstr "已登录"
-
-#: SituationViews/templates/entity_timeline.html:100
-#: SituationViews/templates/situation_views.html:236
-msgid "Sign out"
-msgstr "退出登录"
 
 #: SituationViews/templates/entity_timeline.html:105
 #: SituationViews/templates/entity_timeline.html:140

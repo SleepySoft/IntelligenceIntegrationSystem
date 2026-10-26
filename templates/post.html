@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ ui_locale|default('zh-CN') }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -40,9 +40,26 @@
             background: rgba(255, 255, 255, 0.9) !important;
             border: 1px solid #F8C3CD !important;
         }
+        .account-bar {
+            max-width: 800px;
+            margin: 0 auto 12px;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.9);
+        }
     </style>
 </head>
 <body>
+{% if session.get('logged_in') %}
+<div class="account-bar">
+    <span>{{ _('Signed in') }} · <span translate="no">{{ session.get('username', '') }}</span></span>
+    <a href="/logout">{{ _('Sign out') }}</a>
+</div>
+{% endif %}
 <div class="theme-selector">
     <label for="cssSelector">页面样式</label>
     <select id="cssSelector" onchange="changeTheme()">

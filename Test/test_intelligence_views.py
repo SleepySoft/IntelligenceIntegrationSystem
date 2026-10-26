@@ -132,14 +132,21 @@ def test_public_timeline_limits_entities_and_logged_in_view_uses_full_scope():
     assert "entity=ent_c" not in public_urls["timeline"]
     assert '"timeline_max_entities": 2' in public_html
     assert '"window_days": 5' in public_html
+    assert 'data-viewer-session' not in public_html
 
     with client.session_transaction() as values:
         values["logged_in"] = True
+        values["username"] = "operator"
     logged_html = client.get("/views/", query_string=query).get_data(as_text=True)
     logged_urls = _frame_urls(logged_html)
     assert "entity=ent_c" in logged_urls["timeline"]
     assert '"timeline_max_entities": 8' in logged_html
     assert '"window_days": 14' in logged_html
+    assert 'data-viewer-session' in logged_html
+    assert "已登录" in logged_html
+    assert "operator" in logged_html
+    assert 'href="/logout"' in logged_html
+    assert "退出登录" in logged_html
 
 
 def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():
