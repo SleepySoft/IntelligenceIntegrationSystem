@@ -7,11 +7,26 @@ SOURCE_PATH = os.path.dirname(os.path.abspath(__file__))
 PRJ_PATH = SOURCE_PATH
 
 
+def _expanded_path(value):
+    return os.path.abspath(os.path.expanduser(value))
+
+
+# 只作为可写运行目录的共同父目录，绝不替代源码根 PRJ_PATH。未设置时仍使用项目根，
+# 因而仓库内开发、现有脚本和历史部署的默认行为保持不变。
+_runtime_root_value = os.environ.get('IIS_RUNTIME_ROOT', '').strip()
+RUNTIME_ROOT = (
+    _expanded_path(_runtime_root_value) if _runtime_root_value else SOURCE_PATH)
+RUNTIME_ROOT_SOURCE = 'IIS_RUNTIME_ROOT' if _runtime_root_value else 'project_default'
+_RUNTIME_PATH_SOURCES = {}
+
+
 def _runtime_path(env_name, default_name):
     value = os.environ.get(env_name, '').strip()
     if value:
-        return os.path.abspath(os.path.expanduser(value))
-    return os.path.join(SOURCE_PATH, default_name)
+        _RUNTIME_PATH_SOURCES[default_name] = env_name
+        return _expanded_path(value)
+    _RUNTIME_PATH_SOURCES[default_name] = RUNTIME_ROOT_SOURCE
+    return os.path.join(RUNTIME_ROOT, default_name)
 
 
 LOG_PATH = _runtime_path('IIS_LOG_DIR', '_log')
@@ -51,8 +66,75 @@ def resolve_iis_config_files():
 
     explicit = os.environ.get('IIS_CONFIG', '').strip()
     if explicit:
-        return os.path.abspath(os.path.expanduser(explicit)), None
+        return _expanded_path(explicit), None
     return DEFAULT_CONFIG_FILE, DEFAULT_ALTER_CONFIG_FILE
+
+
+def resolve_ai_client_config_file():
+    explicit = os.environ.get('AI_CLIENT_CONFIG', '').strip()
+    return _expanded_path(explicit) if explicit else os.path.join(
+        CONFIG_PATH, 'ai_clients.yaml')
+
+
+def resolve_collector_config_file():
+    explicit = os.environ.get('IIS_COLLECTOR_CONFIG', '').strip()
+    return _expanded_path(explicit) if explicit else os.path.join(
+        CONFIG_PATH, 'collector.json')
+
+
+def runtime_path_report():
+    """返回不含秘密值的路径选择报告，供启动日志、doctor 和配置页面复用。"""
+
+    iis_config, fallback = resolve_iis_config_files()
+    paths = {
+        'config': CONFIG_PATH,
+        'data': DATA_PATH,
+        'log': LOG_PATH,
+        'export': EXPORT_PATH,
+        'products': PRODUCTS_PATH,
+        'models': MODEL_PATH,
+    }
+    default_names = {
+        'config': '_config', 'data': '_data', 'log': '_log',
+        'export': '_export', 'products': '_products', 'models': '_models',
+    }
+    return {
+        'source_root': SOURCE_PATH,
+        'runtime_root': {
+            'path': RUNTIME_ROOT,
+            'selected_by': RUNTIME_ROOT_SOURCE,
+        },
+        'directories': {
+            name: {
+                'path': path,
+                'selected_by': _RUNTIME_PATH_SOURCES[default_names[name]],
+            }
+            for name, path in paths.items()
+        },
+        'configs': {
+            'iis': {
+                'path': iis_config,
+                'selected_by': (
+                    'IIS_CONFIG' if os.environ.get('IIS_CONFIG', '').strip()
+                    else _RUNTIME_PATH_SOURCES['_config']),
+                'fallback': fallback,
+            },
+            'ai_clients': {
+                'path': resolve_ai_client_config_file(),
+                'selected_by': (
+                    'AI_CLIENT_CONFIG'
+                    if os.environ.get('AI_CLIENT_CONFIG', '').strip()
+                    else _RUNTIME_PATH_SOURCES['_config']),
+            },
+            'collector': {
+                'path': resolve_collector_config_file(),
+                'selected_by': (
+                    'IIS_COLLECTOR_CONFIG'
+                    if os.environ.get('IIS_COLLECTOR_CONFIG', '').strip()
+                    else _RUNTIME_PATH_SOURCES['_config']),
+            },
+        },
+    }
 
 
 USER_DB_FILE = 'Authentication.db'

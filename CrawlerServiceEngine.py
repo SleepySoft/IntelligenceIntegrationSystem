@@ -30,7 +30,7 @@ logger.info(f"[BOOT] pid={os.getpid()}")
 project_root = os.path.dirname(os.path.abspath(__file__))
 
 
-COLLECTOR_CONFIG_FILE = os.path.join(CONFIG_PATH, 'collector.json')
+COLLECTOR_CONFIG_FILE = resolve_collector_config_file()
 COLLECTOR_ALTER_CONFIG_FILE = os.path.join(
     SOURCE_PATH, '_config', 'collector_example.json')
 
@@ -41,7 +41,7 @@ def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
     优先级：显式参数 / IIS_COLLECTOR_CONFIG 环境变量 / _config/collector.json
             / _config/collector_example.json。
     """
-    path = config_path or os.environ.get('IIS_COLLECTOR_CONFIG') or COLLECTOR_CONFIG_FILE
+    path = config_path or resolve_collector_config_file()
     if os.path.isfile(path):
         return EasyConfig(config_file=path, config_file_alter=COLLECTOR_ALTER_CONFIG_FILE)
     if os.path.isfile(COLLECTOR_ALTER_CONFIG_FILE):
@@ -555,6 +555,15 @@ def main():
     setup_logging(CRAWL_LOG_FILE)
 
     config_log_level()
+
+    selected_config = (
+        os.path.abspath(os.path.expanduser(args.config))
+        if args.config else resolve_collector_config_file())
+    selected_by = '--config' if args.config else runtime_path_report()[
+        'configs']['collector']['selected_by']
+    logger.info(
+        "Selected collector config: %s (by %s); runtime root: %s",
+        selected_config, selected_by, RUNTIME_ROOT)
 
     log_backend = LoggerBackend(monitoring_file_path=CRAWL_LOG_FILE, cache_limit_count=100000,
                                 link_file_roots={

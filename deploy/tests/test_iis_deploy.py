@@ -66,3 +66,19 @@ def test_configure_launches_local_configuration_module(tmp_path, monkeypatch):
     assert command[:3] == [iis_deploy.sys.executable, "-m", "IISConfiguration"]
     assert command[-4:] == ["--port", "5099", "--config", "/tmp/iis.yaml"]
     assert kwargs["cwd"] == tmp_path
+
+
+def test_paths_reports_selected_runtime_root(tmp_path, monkeypatch, capsys):
+    import importlib
+    import GlobalConfig
+    with monkeypatch.context() as scoped:
+        scoped.setenv("IIS_RUNTIME_ROOT", str(tmp_path))
+        # GlobalConfig may already be imported by another test; reload to apply process env.
+        importlib.reload(GlobalConfig)
+        assert iis_deploy.run_paths(as_json=True) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["runtime_root"] == {
+            "path": str(tmp_path), "selected_by": "IIS_RUNTIME_ROOT"}
+        assert payload["configs"]["iis"]["path"] == str(
+            tmp_path / "_config" / "iis.yaml")
+    importlib.reload(GlobalConfig)

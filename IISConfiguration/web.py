@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import shlex
 from typing import Callable, Optional
 
 from flask import (
@@ -59,6 +60,12 @@ class IISConfigurationWeb:
                 config_api_url=url_for("iis_configuration.get_config"),
                 validate_api_url=url_for("iis_configuration.validate"),
                 save_api_url=url_for("iis_configuration.save"),
+                install_command=(
+                    "sudo deploy/iisctl install --non-interactive "
+                    f"--config {shlex.quote(str(self.service.config_path))} "
+                    f"--ai-config {shlex.quote(str(self.service.config_path.with_name('ai_clients.yaml')))} "
+                    "--admin-user admin --admin-password-file /path/to/admin-password"
+                ),
             )
 
         @bp.get("/api/config")

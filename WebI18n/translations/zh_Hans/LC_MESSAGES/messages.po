@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-25 22:56+0800\n"
+"POT-Creation-Date: 2026-10-26 08:04+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -26,134 +26,151 @@ msgid ""
 " apply without restarting IIS."
 msgstr "在此编辑客户端，使用真实工厂完成校验，然后保存并应用，无需重启 IIS。"
 
-#: AIClientCenter/templates/ai_client_config.html:22
+#: AIClientCenter/templates/ai_client_config.html:23
 #: IISConfiguration/templates/iis_configuration.html:17
 msgid "Guided editor"
 msgstr "引导编辑"
 
-#: AIClientCenter/templates/ai_client_config.html:22
+#: AIClientCenter/templates/ai_client_config.html:23
 #: IISConfiguration/templates/iis_configuration.html:17
 msgid "Advanced YAML"
 msgstr "高级 YAML"
 
-#: AIClientCenter/templates/ai_client_config.html:22
+#: AIClientCenter/templates/ai_client_config.html:23
 #: IISConfiguration/templates/iis_configuration.html:17
 msgid "History"
 msgstr "历史版本"
 
-#: AIClientCenter/templates/ai_client_config.html:25
+#: AIClientCenter/templates/ai_client_config.html:26
 msgid "Clients"
 msgstr "客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:26
+#: AIClientCenter/templates/ai_client_config.html:27
 msgid "Add client"
 msgstr "添加客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:27
 #: AIClientCenter/templates/ai_client_config.html:28
+#: AIClientCenter/templates/ai_client_config.html:29
 msgid "Group concurrency limits"
 msgstr "分组并发限制"
 
-#: AIClientCenter/templates/ai_client_config.html:31
+#: AIClientCenter/templates/ai_client_config.html:32
 #: IISConfiguration/templates/iis_configuration.html:19
 msgid "YAML configuration"
 msgstr "YAML 配置"
 
-#: AIClientCenter/templates/ai_client_config.html:33
+#: AIClientCenter/templates/ai_client_config.html:34
 #: IISConfiguration/templates/iis_configuration.html:20
 msgid "Saved versions"
 msgstr "已保存版本"
 
-#: AIClientCenter/templates/ai_client_config.html:35
+#: AIClientCenter/templates/ai_client_config.html:36
 #: IISConfiguration/templates/iis_configuration.html:21
 msgid "Validate"
 msgstr "校验"
 
-#: AIClientCenter/templates/ai_client_config.html:35
+#: AIClientCenter/templates/ai_client_config.html:36
 #: IISConfiguration/templates/iis_configuration.html:21
 msgid "Save"
 msgstr "保存"
 
-#: AIClientCenter/templates/ai_client_config.html:35
+#: AIClientCenter/templates/ai_client_config.html:36
 msgid "Apply to running service"
 msgstr "应用到运行中服务"
 
-#: AIClientCenter/templates/ai_client_config.html:35
+#: AIClientCenter/templates/ai_client_config.html:36
 #: IISConfiguration/templates/iis_configuration.html:21
 msgid "Discard unsaved changes"
 msgstr "放弃未保存修改"
 
-#: AIClientCenter/templates/ai_client_config.html:36
+#: AIClientCenter/templates/ai_client_config.html:37
 msgid ""
 "Sensitive values are masked. Leave the mask unchanged to preserve the "
 "stored value. Every save creates a restorable backup."
 msgstr "敏感值已遮蔽。保留遮蔽标记即可沿用已有值。每次保存都会创建可恢复的备份。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 #: SituationViews/templates/situation_views.html:460
 #: templates/_article_i18n.html:33 templates/_article_i18n.html:39
 #: templates/intelligence_detail.html:42
 msgid "Loading…"
 msgstr "正在加载…"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 #: IISConfiguration/templates/iis_configuration.html:25
 msgid "Configuration is valid."
 msgstr "配置有效。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Configuration was saved."
 msgstr "配置已保存。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Configuration was applied to the running service."
 msgstr "配置已应用到运行中的服务。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Factory parameters and group limits must be valid JSON."
 msgstr "工厂参数和分组并发限制必须是有效 JSON。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Factory"
 msgstr "工厂"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Name"
 msgstr "名称"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Group"
 msgstr "分组"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Tags"
 msgstr "标签"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Enabled"
 msgstr "启用"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Factory parameters (JSON)"
 msgstr "工厂参数（JSON）"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "Remove client"
 msgstr "移除客户端"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 #: IISConfiguration/templates/iis_configuration.html:25
 msgid "Restore"
 msgstr "恢复"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 msgid "The selected version was restored."
 msgstr "已恢复所选版本。"
 
-#: AIClientCenter/templates/ai_client_config.html:42
+#: AIClientCenter/templates/ai_client_config.html:43
 #: IISConfiguration/templates/iis_configuration.html:25
 msgid "bytes"
 msgstr "字节"
+
+#: AIClientCenter/templates/ai_client_config.html:43
+#: IISConfiguration/templates/iis_configuration.html:25
+msgid "Active configuration"
+msgstr "当前配置"
+
+#: AIClientCenter/templates/ai_client_config.html:43
+#: IISConfiguration/templates/iis_configuration.html:25
+#: IISConfiguration/templates/iis_setup.html:73
+msgid "selected by"
+msgstr "选择来源"
+
+#: AIClientCenter/templates/ai_client_config.html:43
+msgid ""
+"The AI client configuration contract changed and the configuration page "
+"has not been reviewed yet."
+msgstr "AI 客户端配置契约已变化，但配置页面尚未完成兼容性审查。"
 
 #: IISConfiguration/templates/iis_configuration.html:5
 #: IISConfiguration/templates/iis_configuration.html:17
@@ -188,6 +205,13 @@ msgstr "已恢复所选版本。重启 IIS 后生效。"
 #: IISConfiguration/templates/iis_configuration.html:25
 msgid "This field must contain valid JSON."
 msgstr "此字段必须包含有效 JSON。"
+
+#: IISConfiguration/templates/iis_configuration.html:25
+#: IISConfiguration/templates/iis_setup.html:73
+msgid ""
+"The IIS configuration schema changed and the configuration pages have not"
+" been reviewed yet."
+msgstr "IIS 配置 schema 已变化，但配置页面尚未完成兼容性审查。"
 
 #: IISConfiguration/templates/iis_setup.html:5
 #: IISConfiguration/templates/iis_setup.html:15
@@ -333,49 +357,49 @@ msgstr "确认并保存"
 
 #: IISConfiguration/templates/iis_setup.html:64
 msgid ""
-"After saving, configure AI clients and create an administrator before "
-"exposing IIS to other machines."
-msgstr "保存后请先配置 AI 客户端并创建管理员，再将 IIS 开放给其他机器访问。"
+"Before installation, store the administrator password in a 0600 file and "
+"replace the placeholder path in the generated command."
+msgstr "安装前请把管理员密码保存到权限为 0600 的文件中，并替换生成命令里的占位路径。"
 
-#: IISConfiguration/templates/iis_setup.html:69
+#: IISConfiguration/templates/iis_setup.html:68
 msgid "Back"
 msgstr "上一步"
 
-#: IISConfiguration/templates/iis_setup.html:69
+#: IISConfiguration/templates/iis_setup.html:68
 msgid "Advanced configuration"
 msgstr "高级配置"
 
-#: IISConfiguration/templates/iis_setup.html:69 templates/_article_i18n.html:28
+#: IISConfiguration/templates/iis_setup.html:68 templates/_article_i18n.html:28
 msgid "Next"
 msgstr "下一页"
 
-#: IISConfiguration/templates/iis_setup.html:69
+#: IISConfiguration/templates/iis_setup.html:68
 msgid "Validate and save"
 msgstr "校验并保存"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid "Validating…"
 msgstr "正在校验…"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid ""
-"IIS configuration is ready. Restart IIS if it is already running, then "
-"configure AI clients."
-msgstr "IIS 配置已准备好。如果 IIS 正在运行，请重启服务，然后配置 AI 客户端。"
+"IIS configuration is ready. Configure AI clients, then run the unattended"
+" installation command below."
+msgstr "IIS 配置已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid "Configure AI clients"
 msgstr "配置 AI 客户端"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid "Open full configuration"
 msgstr "打开完整配置"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid "Configuration target"
 msgstr "配置写入位置"
 
-#: IISConfiguration/templates/iis_setup.html:74
+#: IISConfiguration/templates/iis_setup.html:73
 msgid "Loaded defaults from"
 msgstr "默认值来源"
 
@@ -2132,3 +2156,15 @@ msgstr "每页数量："
 #: templates/intelligence_list.html:45
 msgid "Sort by:"
 msgstr "排序："
+
+#~ msgid ""
+#~ "IIS configuration is ready. Restart IIS"
+#~ " if it is already running, then "
+#~ "configure AI clients."
+#~ msgstr "IIS 配置已准备好。如果 IIS 正在运行，请重启服务，然后配置 AI 客户端。"
+
+#~ msgid ""
+#~ "After saving, configure AI clients and"
+#~ " create an administrator before exposing"
+#~ " IIS to other machines."
+#~ msgstr "保存后请先配置 AI 客户端并创建管理员，再将 IIS 开放给其他机器访问。"

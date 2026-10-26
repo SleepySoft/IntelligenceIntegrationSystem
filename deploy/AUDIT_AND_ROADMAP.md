@@ -133,6 +133,10 @@ API Key 仍只写入权限 `0600` 的 EnvironmentFile，不写进 YAML、命令�
 
 验收：初始化结果权限正确、preflight 通过，日志和终端不出现秘密值。
 
+状态：**主体已完成。** 配置网页只生成并校验配置；无人值守安装器负责匹配的 collector
+骨架、持久 Session Secret、管理员密码文件、0600 权限、覆盖前备份和重复执行。外部 AI
+CLI 的可执行性检查仍需补充到 runtime doctor。
+
 ### M4：单命令安装与服务生命周期
 
 - `iisctl install --profile core` 安装 IIS 系统依赖、venv、浏览器和 systemd 单元。
@@ -142,6 +146,10 @@ API Key 仍只写入权限 `0600` 的 EnvironmentFile，不写进 YAML、命令�
 
 验收：满足外部 MongoDB/AI 前置条件的支持系统上，一次安装命令即可进入登录页；第二次
 执行不改变 Token、管理员或数据。
+
+状态：**安装链路初版已完成。** `iisctl install --non-interactive` 已能校验配置、创建目录
+与 venv、安装 Python/Chromium 依赖、渲染并启动 systemd、执行健康检查；`--sandbox-root` 沙箱复用
+同一后端。系统包 profile、status/logs 生命周期命令和干净虚拟机矩阵仍待完成。
 
 ### M5：升级、备份与回滚
 

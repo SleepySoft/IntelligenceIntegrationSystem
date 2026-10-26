@@ -18,6 +18,8 @@ from typing import Callable
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DEPLOY_DIR.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 SUPPORTED_SYSTEMS = {
     ("ubuntu", "22.04"),
     ("ubuntu", "24.04"),
@@ -167,9 +169,13 @@ def check_submodules() -> CheckResult:
 
 
 def _permission_result(path: Path) -> CheckResult:
+    try:
+        display_path = str(path.relative_to(PROJECT_DIR))
+    except ValueError:
+        display_path = str(path)
     if not path.is_file():
         return CheckResult(
-            f"config.{path.name}", "warn", f"缺少 {path.relative_to(PROJECT_DIR)}",
+            f"config.{path.name}", "warn", f"缺少 {display_path}",
             "M3 配置初始化器将负责安全生成；当前需人工从示例创建。")
     mode = stat.S_IMODE(path.stat().st_mode)
     exposed = mode & (stat.S_IRWXG | stat.S_IRWXO)
@@ -179,15 +185,16 @@ def _permission_result(path: Path) -> CheckResult:
         if exposed else "文件仅所有者可访问。")
     return CheckResult(
         f"config.{path.name}", status,
-        f"{path.relative_to(PROJECT_DIR)} 权限为 {mode:04o}", detail)
+        f"{display_path} 权限为 {mode:04o}", detail)
 
 
 def check_configs() -> list[CheckResult]:
-    config_dir = PROJECT_DIR / "_config"
+    from GlobalConfig import runtime_path_report
+    configs = runtime_path_report()["configs"]
     return [
-        _permission_result(config_dir / "iis.yaml"),
-        _permission_result(config_dir / "ai_clients.yaml"),
-        _permission_result(config_dir / "collector.json"),
+        _permission_result(Path(configs["iis"]["path"])),
+        _permission_result(Path(configs["ai_clients"]["path"])),
+        _permission_result(Path(configs["collector"]["path"])),
     ]
 
 
@@ -256,6 +263,31 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--fallback", type=Path)
     configure.add_argument("--host", default="127.0.0.1")
     configure.add_argument("--port", type=int, default=5070)
+    paths = subparsers.add_parser(
+        "paths", help="显示最终使用的源码根、运行目录和配置文件")
+    paths.add_argument("--json", action="store_true")
+    install = subparsers.add_parser(
+        "install", help="读取已验证配置并执行无人值守安装")
+    install.add_argument("--config", type=Path, required=True)
+    install.add_argument("--ai-config", type=Path)
+    install.add_argument("--collector-config", type=Path)
+    install.add_argument("--install-root", type=Path, default=Path("/opt/iis"),
+                         help="IIS 虚拟环境与共享下划线目录的安装根")
+    install.add_argument("--sandbox-root", "--root", dest="sandbox_root", type=Path,
+                         help="把绝对路径投影到该目录，用于沙箱测试")
+    install.add_argument("--source", type=Path, default=PROJECT_DIR)
+    install.add_argument("--service-user")
+    install.add_argument("--components", default="web,crawler")
+    install.add_argument("--non-interactive", action="store_true", required=True)
+    install.add_argument("--skip-dependencies", action="store_true")
+    install.add_argument("--skip-browser", action="store_true")
+    install.add_argument("--no-systemd", action="store_true")
+    install.add_argument("--no-start", action="store_true")
+    install.add_argument("--force-config", action="store_true")
+    install.add_argument("--admin-user")
+    install.add_argument("--admin-password-file", type=Path)
+    install.add_argument("--skip-admin", action="store_true")
+    install.add_argument("--json", action="store_true")
     return parser
 
 
@@ -274,6 +306,79 @@ def run_configure(args) -> int:
         return 130
 
 
+def run_paths(*, as_json: bool = False) -> int:
+    from GlobalConfig import runtime_path_report
+    report = runtime_path_report()
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    runtime = report["runtime_root"]
+    print(f"Source root: {report['source_root']}")
+    print(f"Runtime root: {runtime['path']} (by {runtime['selected_by']})")
+    for name, selected in report["directories"].items():
+        print(f"Directory {name}: {selected['path']} (by {selected['selected_by']})")
+    for name, selected in report["configs"].items():
+        exists = "exists" if Path(selected["path"]).is_file() else "missing"
+        print(
+            f"Config {name}: {selected['path']} "
+            f"(by {selected['selected_by']}; {exists})")
+    return 0
+
+
+def _service_user(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+    return os.environ.get("SUDO_USER") or os.environ.get("USER") or "root"
+
+
+def run_install(args) -> int:
+    from deploy.installer import (
+        InstallError, InstallLayout, InstallRequest, install, result_json,
+    )
+
+    config_path = args.config.expanduser().resolve()
+    ai_path = (args.ai_config or config_path.with_name("ai_clients.yaml"))
+    collector_path = args.collector_config
+    try:
+        request = InstallRequest(
+            config_path=config_path,
+            ai_config_path=ai_path.expanduser().resolve(),
+            collector_config_path=(collector_path.expanduser().resolve()
+                                   if collector_path else None),
+            layout=InstallLayout.build(
+                args.source, args.install_root, args.sandbox_root),
+            service_user=_service_user(args.service_user),
+            components=tuple(
+                item.strip() for item in args.components.split(",") if item.strip()),
+            install_dependencies=not args.skip_dependencies,
+            install_browser=not args.skip_browser,
+            manage_systemd=not args.no_systemd,
+            start_services=not args.no_start,
+            force_config=args.force_config,
+            admin_user=args.admin_user,
+            admin_password_file=(args.admin_password_file.expanduser().resolve()
+                                 if args.admin_password_file else None),
+            skip_admin=args.skip_admin,
+        )
+        result = install(request)
+    except (InstallError, OSError, ValueError, subprocess.CalledProcessError) as exc:
+        if args.json:
+            print(json.dumps({
+                "status": "error", "error": f"{type(exc).__name__}: {exc}",
+            }, ensure_ascii=False, indent=2))
+        else:
+            print(f"安装失败: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(result_json(result))
+    else:
+        print(f"安装完成。配置目录: {result.config_dir}")
+        print(f"状态文件: {result.state_file}")
+        for warning in result.warnings:
+            print(f"警告: {warning}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "doctor":
@@ -290,6 +395,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if any(result.status == "fail" for result in results) else 0
     if args.command == "configure":
         return run_configure(args)
+    if args.command == "paths":
+        return run_paths(as_json=args.json)
+    if args.command == "install":
+        return run_install(args)
     return 2
 
 

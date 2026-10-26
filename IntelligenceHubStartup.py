@@ -75,8 +75,7 @@ def show_intelligence_hub_statistics_forever(
 def build_ai_client_manager(config: IISConfig):
     from AIClientCenter import build_manager, load_config, validate_config
 
-    ai_config_path = Path(os.getenv(
-        "AI_CLIENT_CONFIG", os.path.join(CONFIG_PATH, "ai_clients.yaml")))
+    ai_config_path = Path(resolve_ai_client_config_file())
     clients, group_limits = load_config(ai_config_path)
     errors, warnings = validate_config(clients, group_limits)
     for warning in warnings:
@@ -616,6 +615,15 @@ def run():
     # --------------------------------- Config --------------------------------
 
     config_file, fallback_file = resolve_iis_config_files()
+    path_report = runtime_path_report()
+    logger.info(
+        "Runtime paths: source=%s, root=%s (%s)",
+        path_report['source_root'], path_report['runtime_root']['path'],
+        path_report['runtime_root']['selected_by'])
+    for name, selected in path_report['configs'].items():
+        logger.info(
+            "Selected %s config: %s (by %s)",
+            name, selected['path'], selected['selected_by'])
     config = load_iis_config(config_file, fallback_file=fallback_file)
 
     logger.info('Apply config: ')

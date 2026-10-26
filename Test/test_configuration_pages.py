@@ -10,6 +10,7 @@ from AIClientCenter.configuration import (
 )
 from AIClientCenter.web.configuration import AIClientConfigurationWeb
 from IISConfiguration.service import IISConfigurationService
+from IISConfiguration import schema_contract
 from IISConfiguration.web import IISConfigurationWeb
 
 
@@ -26,6 +27,7 @@ def test_iis_configuration_validates_masks_saves_and_backs_up(tmp_path):
 
     public = service.read()
     assert public["data"]["database"]["password"] != "first-secret"
+    assert public["schema_ui_contract"]["compatible"] is True
     public["data"]["server"]["port"] = 5100
     result = service.save_data(public["data"])
 
@@ -51,6 +53,13 @@ def test_iis_configuration_rejects_invalid_draft_without_overwrite(tmp_path):
     assert path.read_text(encoding="utf-8") == original
 
 
+def test_iis_schema_change_requires_configuration_ui_review(monkeypatch):
+    monkeypatch.setattr(schema_contract, "REVIEWED_IIS_SCHEMA_SHA256", "outdated")
+    contract = schema_contract.schema_ui_contract()
+    assert contract["compatible"] is False
+    assert contract["warning"]
+
+
 def test_ai_configuration_preserves_masked_secret_and_creates_history(tmp_path):
     path = tmp_path / "clients.yaml"
     path.write_text(
@@ -61,7 +70,10 @@ def test_ai_configuration_preserves_masked_secret_and_creates_history(tmp_path):
         encoding="utf-8",
     )
     service = AIClientConfigurationService(path, include_builtins=False)
-    public = service.read()["data"]
+    response = service.read()
+    assert response["schema_ui_contract"]["compatible"] is True
+    assert response["selected_by"] == "explicit_argument"
+    public = response["data"]
     assert public["clients"][0]["api_key"] == AI_KEEP_SECRET
     public["clients"][0]["name"] = "still disabled"
 

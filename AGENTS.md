@@ -181,6 +181,11 @@
 | `_log/` | 日志文件及历史归档 |
 | `_products/` | 产物目录（预留） |
 
+运行目录默认仍位于源码项目根。生产部署可设置 `IIS_RUNTIME_ROOT`，统一把上述六个下划线
+目录定位到该根下；`IIS_CONFIG_DIR`、`IIS_DATA_DIR` 等单目录变量优先级更高。
+`PRJ_PATH`/`SOURCE_PATH` 始终表示源码根，不得改成运行目录。用 `deploy/iisctl paths` 查看
+最终路径、选择来源和实际使用的 IIS/AI Client/Collector 配置文件。
+
 ---
 
 ## 4. 构建与运行

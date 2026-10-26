@@ -14,6 +14,8 @@ from typing import Any, Mapping
 import yaml
 
 from IISConfig import IISConfig, IISSettings
+from GlobalConfig import runtime_path_report
+from .schema_contract import schema_ui_contract
 
 
 KEEP_SECRET = "__KEEP_EXISTING_SECRET__"
@@ -85,13 +87,22 @@ class IISConfigurationService:
             raw = self._current()
             settings = IISSettings.model_validate(raw)
             effective = settings.model_dump(mode="json")
+        paths = runtime_path_report()
+        selected = paths["configs"]["iis"]
+        selected_by = (
+            selected["selected_by"]
+            if Path(selected["path"]).resolve() == self.config_path
+            else "explicit_argument")
         return {
             "path": str(self.config_path),
             "source_path": str(self._source_path() or self.config_path),
+            "selected_by": selected_by,
+            "runtime_paths": paths,
             "exists": self.config_path.is_file(),
             "data": _redact(effective),
             "yaml": yaml.safe_dump(_redact(raw), allow_unicode=True, sort_keys=False),
             "schema": IISSettings.model_json_schema(),
+            "schema_ui_contract": schema_ui_contract(),
             "keep_secret_sentinel": KEEP_SECRET,
         }
 

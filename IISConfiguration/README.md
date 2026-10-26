@@ -17,7 +17,7 @@ deploy/iisctl configure
 
 ```bash
 python -m IISConfiguration \
-  --config /etc/iis/iis.yaml \
+  --config /opt/iis/_config/iis.yaml \
   --fallback ./_config/iis_example.yaml
 ```
 
@@ -38,6 +38,10 @@ SSH 端口转发。
 - 旧版本保存在配置目录下 `.config-history/iis/`，默认保留 30 份。
 - 密码与 Token 返回浏览器前会替换为保留标记；未改动标记时保存会恢复旧值。
 - IIS 配置保存后需要重启服务生效，页面不会擅自重启生产进程。
+- 页面只生成配置并显示无人值守安装命令；不会安装依赖、调用 sudo 或操作 systemd。
+
+`IISSettings` 的规范化 JSON Schema 带有一个已审查指纹。schema 发生变化后，如果开发者
+尚未审查完整编辑器和首次配置向导，页面会显示兼容性警告，配置页面测试也会失败。
 
 ## 模块边界
 

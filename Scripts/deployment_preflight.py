@@ -11,11 +11,17 @@ import sys
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-CONFIG_DIR = Path(os.getenv("IIS_CONFIG_DIR", PROJECT_DIR / "_config")).expanduser().resolve()
-DATA_DIR = Path(os.getenv("IIS_DATA_DIR", PROJECT_DIR / "_data")).expanduser().resolve()
-MODEL_DIR = Path(os.getenv("IIS_MODEL_DIR", PROJECT_DIR / "_models")).expanduser().resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
+
+from GlobalConfig import (  # noqa: E402
+    CONFIG_PATH, DATA_PATH, MODEL_PATH, resolve_ai_client_config_file,
+    resolve_collector_config_file, resolve_iis_config_files, runtime_path_report,
+)
+
+CONFIG_DIR = Path(CONFIG_PATH)
+DATA_DIR = Path(DATA_PATH)
+MODEL_DIR = Path(MODEL_PATH)
 
 
 def fail(message: str) -> None:
@@ -26,8 +32,8 @@ def validate_web() -> None:
     from AIClientCenter import load_config, validate_config
     from IISConfig import load_iis_config
 
-    iis_path = Path(os.getenv("IIS_CONFIG", CONFIG_DIR / "iis.yaml"))
-    ai_path = Path(os.getenv("AI_CLIENT_CONFIG", CONFIG_DIR / "ai_clients.yaml"))
+    iis_path = Path(resolve_iis_config_files()[0])
+    ai_path = Path(resolve_ai_client_config_file())
     if not iis_path.is_file():
         fail(f"missing IIS_CONFIG: {iis_path} (the example fallback is not valid for deployment)")
     if not ai_path.is_file():
@@ -66,7 +72,7 @@ def load_collector(path: Path) -> dict:
 
 
 def validate_crawler() -> None:
-    path = Path(os.getenv("IIS_COLLECTOR_CONFIG", CONFIG_DIR / "collector.json"))
+    path = Path(resolve_collector_config_file())
     if not path.is_file():
         fail(f"missing IIS_COLLECTOR_CONFIG: {path} (the example fallback is not valid for deployment)")
     collector = load_collector(path)
@@ -94,8 +100,8 @@ def validate_crawler() -> None:
 def validate_cross_config() -> None:
     from IISConfig import load_iis_config
 
-    iis_path = Path(os.getenv("IIS_CONFIG", CONFIG_DIR / "iis.yaml"))
-    collector_path = Path(os.getenv("IIS_COLLECTOR_CONFIG", CONFIG_DIR / "collector.json"))
+    iis_path = Path(resolve_iis_config_files()[0])
+    collector_path = Path(resolve_collector_config_file())
     config = load_iis_config(iis_path)
     collector = load_collector(collector_path)
     token = str(collector.get("default_token") or "").strip()
@@ -127,6 +133,15 @@ def main() -> int:
     parser.add_argument(
         "--component", choices=("web", "crawler", "vectordb", "all"), default="all")
     args = parser.parse_args()
+    report = runtime_path_report()
+    print(
+        "Selected runtime root: "
+        f"{report['runtime_root']['path']} "
+        f"(by {report['runtime_root']['selected_by']})")
+    for name, selected in report["configs"].items():
+        print(
+            f"Selected {name} config: {selected['path']} "
+            f"(by {selected['selected_by']})")
     try:
         if args.component in ("web", "all"):
             validate_web()
