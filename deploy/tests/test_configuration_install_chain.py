@@ -10,7 +10,10 @@ from IISConfiguration import IISConfigurationService, IISConfigurationWeb
 from deploy import iis_deploy
 
 
-def test_web_generated_configuration_is_consumed_by_unattended_installer(tmp_path):
+def test_web_generated_configuration_is_consumed_by_unattended_installer(
+        tmp_path, monkeypatch):
+    # 本测试验证网页输出到安装后端的契约，不验证 bootstrap 的版本选择。
+    monkeypatch.setattr(iis_deploy, "install_python_supported", lambda: True)
     config = tmp_path / "answers" / "iis.yaml"
     fallback = tmp_path / "example.yaml"
     config.parent.mkdir()

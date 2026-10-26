@@ -27,6 +27,34 @@ Playwright Chromium。MongoDB、Codex/Kimi/Ollama 等 AI 程序属于外部前�
 首版服务直接使用发起安装的普通用户运行；`sudo` 只用于安装系统包和 systemd 文件。这样
 外部 CLI 的登录状态和用户目录天然保持一致，不创建或迁移额外认证身份。
 
+## Python bootstrap 设计
+
+部署入口采用“Shell 最小引导，Python 统一接管”：
+
+```text
+deploy/iisctl (Bash)
+  ├─ 为 install 选择并验证 CPython 3.12/3.11
+  ├─ 缺失时安装固定、带 SHA-256 校验的独立 CPython 3.12
+  └─ exec Python 部署控制器
+       └─ 创建 /opt/iis/.venv，随后执行全部安装和服务管理
+```
+
+系统已有解释器只作为 venv 的基础解释器，项目依赖不会安装到其全局环境。候选必须通过
+版本、非 venv/Conda、`ssl`、`venv` 和 pip 自检；优先 3.12，其次 3.11。选定路径记录为
+`/opt/iis/runtime/selected-python`，保证重复执行稳定。找不到候选时，bootstrap 安装固定的
+`python-build-standalone` CPython 3.12 到 `/opt/iis/runtime/python-<version>`，不会替换
+`/usr/bin/python3`。独立运行时和 `.venv` 不冲突：前者提供解释器与标准库，后者隔离 IIS
+第三方依赖，二者在该 release 生命周期内均须保留。
+
+Shell 到此为止，不解析业务配置、不安装 Python 包、不生成 systemd，也不实现第二套状态
+机。`iis_deploy.py`/`installer.py` 继续负责目录、配置消费、venv、依赖、浏览器、服务、
+健康检查和幂等状态。只读诊断命令可使用 Python 3.10+，避免 Ubuntu 22.04 在安装前无法
+运行 doctor；正式 install 只接受已验证的 3.11/3.12。
+
+Python 接管后仍分为两个阶段：标准库阶段先创建 `.venv` 并安装 requirements，然后以
+`.venv/bin/python` 重新执行同一控制器；完整后端只在第二阶段导入。这避免全新独立 Python
+在 venv 尚未创建时因缺少 PyYAML/Pydantic 而形成启动死锁。
+
 ## 当前不适合直接落地的项目
 
 ### P0：会直接阻塞其他机器安装
@@ -118,10 +146,14 @@ API Key 仍只写入权限 `0600` 的 EnvironmentFile，不写进 YAML、命令�
 - 拆分 `core`、`crawler`、`vector`、`gui`、`dev` 依赖。
 - 保留顶层完整开发环境入口，避免破坏贡献者工作流。
 - 固定首版 Python 3.11/3.12，建立 Ubuntu 24.04、Debian 12 安装验证脚本。
+- `iisctl` 优先复用功能完整的系统 CPython 3.12/3.11；缺失时安装固定校验的独立 3.12，
+  然后由同一 Python 后端创建项目 venv。
 - 以最终服务用户安装并验证 Playwright Chromium。
 
 验收：`core+crawler` 不安装 PyQt、Streamlit、ChromaDB、sentence-transformers 或测试工具；
 全新虚拟环境能通过 imports 与 preflight。
+
+状态：**Python bootstrap 已完成。** 依赖 profile 拆分和发行版干净环境矩阵仍待完成。
 
 ### M3：安全、幂等的配置初始化
 

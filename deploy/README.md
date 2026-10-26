@@ -6,6 +6,40 @@
 完整问题清单、改造顺序和验收标准见
 [`AUDIT_AND_ROADMAP.md`](AUDIT_AND_ROADMAP.md)。
 
+## Python bootstrap 边界
+
+`deploy/iisctl` 是很薄的 Bash bootstrap，Python 部署控制器仍是唯一安装流程实现。执行
+`install` 时，Shell 按以下顺序准备基础解释器：
+
+1. `IIS_BOOTSTRAP_PYTHON` 显式指定的解释器；
+2. 上次安装记录在 `<install-root>/runtime/selected-python` 的解释器；
+3. PATH 中的 `python3.12`、`python3.11`、`python3`；
+4. 都不满足时，下载固定版本的独立 CPython 3.12 到
+   `<install-root>/runtime/python-3.12.14/`。
+
+候选必须是非 venv、非 Conda 的 CPython 3.11/3.12，并实际通过 `ssl`、`venv` 和带 pip 的
+临时虚拟环境自检。首次选定后用稳定链接记录，后续重复安装不会因为 PATH 中新增了解释器
+而静默换版本。无论基础解释器来自系统还是独立运行时，Python 安装器都统一创建并使用
+`<install-root>/.venv`；不会向系统或独立基础解释器的全局 site-packages 安装 IIS 依赖。
+这里采用两阶段 Python 启动：第一阶段的 `iis_deploy.py` 只使用标准库创建 `.venv`、安装
+依赖并重新执行自身；第二阶段才加载 PyYAML、Pydantic 和完整安装后端。因此全新的独立
+Python 不需要预装项目第三方包。
+
+独立运行时使用 `astral-sh/python-build-standalone` 的 Linux x86_64 glibc
+`install_only_stripped` 产物，版本、Release 和 SHA-256 固定在
+`python_bootstrap.sh`。下载后先校验摘要，再解压和运行功能自检。可使用以下变量指向相同产物
+的内部 HTTPS 镜像或离线文件，但摘要校验不可跳过：
+
+```text
+IIS_STANDALONE_PYTHON_URL
+IIS_STANDALONE_PYTHON_ARCHIVE
+IIS_STANDALONE_PYTHON_SHA256
+```
+
+`doctor`、`paths` 等非安装命令不修改主机，可继续使用 Python 3.10+ 运行控制器；正式
+`install` 必须由 3.11/3.12 执行。调用 `iis_deploy.py` 绕过 bootstrap 时也会拒绝不受支持
+的安装解释器。
+
 M1 已支持按需外置以下目录，同时保持仓库内运行的默认行为不变：
 
 ```text
@@ -59,7 +93,7 @@ sudo deploy/iisctl install --non-interactive \
 密码只从权限受控文件读取，不进入命令参数值、配置 YAML 或安装日志。Crawler 配置未显式
 提供时，安装器会从 IIS 的监听端口、默认子系统和第一个 collector token 生成安全骨架。
 安装器默认以 `/opt/iis` 为根创建 `_config`、`_data`、`_log`、`_export`、`_products`、
-`_models` 和虚拟环境，并生成无本机硬编码的 systemd 单元；只有 systemd 单元本身进入
+`_models`、`runtime` 和虚拟环境，并生成无本机硬编码的 systemd 单元；只有 systemd 单元本身进入
 `/etc/systemd/system`。已有不同配置默认拒绝覆盖，`--force-config` 会先备份到
 `_data/deployment/config-backups`。
 

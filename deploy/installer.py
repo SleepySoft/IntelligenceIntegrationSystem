@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import pwd
 import secrets
 import shutil
@@ -343,20 +344,33 @@ def _install_dependencies(request: InstallRequest) -> Path:
     layout = request.layout
     if not request.install_dependencies:
         return Path(sys.executable).resolve()
-    builder = venv.EnvBuilder(with_pip=True, clear=False, upgrade_deps=False)
-    builder.create(layout.venv_dir)
-    python_path = layout.venv_dir / "bin" / "python"
-    subprocess.run(
-        [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
-        cwd=layout.source_dir, check=True)
-    subprocess.run(
-        [str(python_path), "-m", "pip", "install", "-r", "requirements.txt"],
-        cwd=layout.source_dir, check=True)
+    if Path(sys.prefix).resolve() == layout.venv_dir.resolve():
+        # iis_deploy 的纯标准库阶段已经创建环境、安装依赖并重新执行自身。
+        python_path = Path(sys.executable)
+    else:
+        # 保留可直接复用的安装后端 API；正式 CLI 通常不会进入该分支。
+        builder = venv.EnvBuilder(with_pip=True, clear=False, upgrade_deps=False)
+        builder.create(layout.venv_dir)
+        python_path = layout.venv_dir / "bin" / "python"
+        subprocess.run(
+            [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
+            cwd=layout.source_dir, check=True)
+        subprocess.run(
+            [str(python_path), "-m", "pip", "install", "-r", "requirements.txt"],
+            cwd=layout.source_dir, check=True)
     if request.install_browser and "crawler" in request.components:
         subprocess.run(
             [str(python_path), "-m", "playwright", "install", "chromium"],
             cwd=layout.source_dir, check=True)
     return python_path
+
+
+def _base_python_path() -> str:
+    selected = os.environ.get("IIS_BOOTSTRAP_BASE_PYTHON", "").strip()
+    if selected:
+        return str(Path(selected).expanduser().resolve())
+    base = getattr(sys, "_base_executable", sys.executable)
+    return str(Path(base).resolve())
 
 
 def _initialize_authentication(request: InstallRequest) -> list[str]:
@@ -480,7 +494,13 @@ def install(request: InstallRequest) -> InstallResult:
     _state(request.layout, "configured")
 
     python_path = _install_dependencies(request)
-    _state(request.layout, "dependencies_ready", python=str(python_path))
+    _state(
+        request.layout,
+        "dependencies_ready",
+        python=str(python_path),
+        base_python=_base_python_path(),
+        base_python_version=platform.python_version(),
+    )
     env_path = request.layout.config_dir / "iis.env"
     session_secret = _read_env_value(env_path, "IIS_SESSION_SECRET") or secrets.token_urlsafe(48)
     _atomic_write(
@@ -498,7 +518,14 @@ def install(request: InstallRequest) -> InstallResult:
         if request.start_services:
             subprocess.run(["systemctl", "restart", "iis.target"], check=True)
             _health_check(config.settings.server.port)
-    state_file = _state(request.layout, "complete", units=sorted(units))
+    state_file = _state(
+        request.layout,
+        "complete",
+        units=sorted(units),
+        python=str(python_path),
+        base_python=_base_python_path(),
+        base_python_version=platform.python_version(),
+    )
     return InstallResult(
         status="complete",
         state_file=str(state_file),

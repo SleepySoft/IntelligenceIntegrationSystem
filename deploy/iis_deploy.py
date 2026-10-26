@@ -11,6 +11,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import venv
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -331,10 +332,68 @@ def _service_user(explicit: str | None) -> str:
     return os.environ.get("SUDO_USER") or os.environ.get("USER") or "root"
 
 
-def run_install(args) -> int:
-    from deploy.installer import (
-        InstallError, InstallLayout, InstallRequest, install, result_json,
+def install_python_supported() -> bool:
+    """正式安装只允许已经进入兼容矩阵的基础解释器。"""
+
+    return (
+        platform.python_implementation() == "CPython"
+        and sys.version_info[:2] in {(3, 11), (3, 12)}
     )
+
+
+def install_venv_path(args) -> Path:
+    install_root = args.install_root.expanduser()
+    if not install_root.is_absolute():
+        raise ValueError("--install-root 必须是绝对路径。")
+    if args.sandbox_root is not None:
+        sandbox = args.sandbox_root.expanduser().resolve()
+        install_root = sandbox / install_root.relative_to("/")
+    return install_root / ".venv"
+
+
+def prepare_install_environment(args) -> Path | None:
+    """只用标准库创建依赖环境；返回需要重新执行控制器的 Python。"""
+
+    if args.skip_dependencies:
+        return None
+    venv_dir = install_venv_path(args)
+    if Path(sys.prefix).resolve() == venv_dir.resolve():
+        return None
+    source = args.source.expanduser().resolve()
+    requirements = source / "requirements.txt"
+    if not requirements.is_file():
+        raise FileNotFoundError(f"找不到依赖文件: {requirements}")
+    venv_dir.parent.mkdir(parents=True, exist_ok=True)
+    venv.EnvBuilder(
+        with_pip=True, clear=False, upgrade_deps=False).create(venv_dir)
+    python_path = venv_dir / "bin" / "python"
+    subprocess.run(
+        [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
+        cwd=source, check=True)
+    subprocess.run(
+        [str(python_path), "-m", "pip", "install", "-r", str(requirements)],
+        cwd=source, check=True)
+    return python_path
+
+
+def run_install(args) -> int:
+    if not install_python_supported():
+        print(
+            "安装必须由 CPython 3.11/3.12 执行；请通过 deploy/iisctl 调用安装器。",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        from deploy.installer import (
+            InstallError, InstallLayout, InstallRequest, install, result_json,
+        )
+    except ModuleNotFoundError as exc:
+        print(
+            f"安装后端依赖尚未准备: {exc}；不要在全新解释器上使用 --skip-dependencies。",
+            file=sys.stderr,
+        )
+        return 1
 
     config_path = args.config.expanduser().resolve()
     ai_path = (args.ai_config or config_path.with_name("ai_clients.yaml"))
@@ -380,7 +439,8 @@ def run_install(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw_argv)
     if args.command == "doctor":
         results = run_doctor()
         if args.json:
@@ -398,6 +458,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "paths":
         return run_paths(as_json=args.json)
     if args.command == "install":
+        if install_python_supported():
+            try:
+                prepared_python = prepare_install_environment(args)
+            except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+                print(
+                    f"准备 IIS 虚拟环境失败: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+                return 1
+            if prepared_python is not None:
+                os.execv(
+                    str(prepared_python),
+                    [str(prepared_python), str(Path(__file__).resolve()), *raw_argv],
+                )
         return run_install(args)
     return 2
 

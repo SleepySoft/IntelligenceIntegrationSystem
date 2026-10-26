@@ -65,6 +65,9 @@ def test_sandbox_unattended_install_writes_complete_layout(tmp_path):
     state = json.loads(Path(result.state_file).read_text(encoding="utf-8"))
     assert result.status == "complete"
     assert state["phase"] == "complete"
+    assert state["base_python"] == str(Path(sys.executable).resolve())
+    assert state["base_python_version"]
+    assert state["python"] == str(Path(sys.executable).resolve())
     assert stat.S_IMODE(installed_config.stat().st_mode) == 0o600
     assert stat.S_IMODE(environment.stat().st_mode) == 0o600
     assert collector["collector"]["default_token"] == "collector-secret"

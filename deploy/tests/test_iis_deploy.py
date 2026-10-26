@@ -1,5 +1,6 @@
 import json
 import stat
+from pathlib import Path
 from types import SimpleNamespace
 
 from deploy import iis_deploy
@@ -82,3 +83,54 @@ def test_paths_reports_selected_runtime_root(tmp_path, monkeypatch, capsys):
         assert payload["configs"]["iis"]["path"] == str(
             tmp_path / "_config" / "iis.yaml")
     importlib.reload(GlobalConfig)
+
+
+def test_install_rejects_unvalidated_python_before_reading_config(
+        tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(iis_deploy, "install_python_supported", lambda: False)
+    args = iis_deploy.build_parser().parse_args([
+        "install", "--non-interactive", "--config", str(tmp_path / "missing.yaml"),
+    ])
+
+    assert iis_deploy.run_install(args) == 1
+    assert "deploy/iisctl" in capsys.readouterr().err
+
+
+def test_prepare_install_environment_uses_only_stdlib_stage(
+        tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    requirements = source / "requirements.txt"
+    requirements.write_text("PyYAML>=6\n", encoding="utf-8")
+    calls = []
+
+    class FakeBuilder:
+        def __init__(self, **kwargs):
+            calls.append(("builder", kwargs))
+
+        def create(self, path):
+            python = Path(path) / "bin/python"
+            python.parent.mkdir(parents=True)
+            python.write_text("", encoding="utf-8")
+            calls.append(("create", Path(path)))
+
+    monkeypatch.setattr(iis_deploy.venv, "EnvBuilder", FakeBuilder)
+    monkeypatch.setattr(
+        iis_deploy.subprocess, "run",
+        lambda command, **kwargs: calls.append((command, kwargs))
+        or SimpleNamespace(returncode=0),
+    )
+    args = SimpleNamespace(
+        skip_dependencies=False,
+        install_root=Path("/opt/iis"),
+        sandbox_root=tmp_path / "sandbox",
+        source=source,
+    )
+
+    prepared = iis_deploy.prepare_install_environment(args)
+
+    expected = tmp_path / "sandbox/opt/iis/.venv/bin/python"
+    assert prepared == expected
+    pip_commands = [item[0] for item in calls if isinstance(item[0], list)]
+    assert pip_commands[0][-3:] == ["install", "--upgrade", "pip"]
+    assert pip_commands[1][-3:] == ["install", "-r", str(requirements)]

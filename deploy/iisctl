@@ -3,4 +3,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$script_dir/iis_deploy.py" "$@"
+# Shell 只负责让一个受支持的 Python 能运行；目录、依赖和服务安装均由 Python 接管。
+# shellcheck source=python_bootstrap.sh
+source "$script_dir/python_bootstrap.sh"
+iis_bootstrap_exec "$script_dir/iis_deploy.py" "$@"
