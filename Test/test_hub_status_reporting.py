@@ -4,7 +4,7 @@ from ServiceComponent.runtime.status import (
 )
 
 
-def _statistics(*, emitted=1, subsystem_name="news"):
+def _statistics(*, emitted=1, domain_name="news"):
     return {
         "runtime": {
             "emitted": emitted,
@@ -41,7 +41,7 @@ def _statistics(*, emitted=1, subsystem_name="news"):
             "last_call_ms": 35000,
             "call_ms_total": 90000,
         },
-        "subsystems": [{"name": subsystem_name}],
+        "subsystems": [{"name": domain_name}],
     }
 
 
@@ -72,5 +72,5 @@ def test_status_gate_logs_changes_and_one_minute_heartbeat_only():
 def test_status_gate_ignores_non_numeric_subsystem_metadata_changes():
     gate = HubStatusLogGate(unchanged_log_interval=60)
 
-    assert gate.should_log(_statistics(subsystem_name="news"), now=100) is True
-    assert gate.should_log(_statistics(subsystem_name="dry_run"), now=101) is False
+    assert gate.should_log(_statistics(domain_name="news"), now=100) is True
+    assert gate.should_log(_statistics(domain_name="dry_run"), now=101) is False

@@ -15,9 +15,9 @@ database:
 
 hub:
   workers: 1
-  subsystems:
+  domains:
     default: news
-    # 键是稳定的子系统名，值是界面显示名；详细设置从 subsystems/<名称>.json 加载。
+    # 键是稳定的情报域名，值是界面显示名；详细设置暂从 subsystems/<名称>.json 加载。
     enabled:
       news: 国际新闻
       finance: 财经情报

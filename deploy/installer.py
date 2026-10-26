@@ -233,18 +233,18 @@ def _validate_collector(path: Path, accepted_tokens: set[str]) -> dict[str, Any]
 def build_default_collector(config, source_dir: Path) -> dict[str, Any]:
     settings = config.settings
     task_dirs: dict[str, str] = {}
-    for subsystem in settings.hub.subsystems.enabled:
+    for subsystem in settings.hub.domains.enabled:
         candidate = source_dir / "CrawlTasks" / subsystem
         if candidate.is_dir():
             task_dirs[subsystem] = str(candidate)
     if not task_dirs:
-        task_dirs[settings.hub.subsystems.default] = str(source_dir / "CrawlTasks")
+        task_dirs[settings.hub.domains.default] = str(source_dir / "CrawlTasks")
     return {
         "collector": {
             "name": "main",
             "submit_ihub_url": f"http://127.0.0.1:{settings.server.port}",
             "default_token": settings.access.collector_tokens[0],
-            "default_subsystem": settings.hub.subsystems.default,
+            "default_subsystem": settings.hub.domains.default,
             "global_site_proxy": {},
             "cn_site_proxy": {},
             "task_dirs": task_dirs,

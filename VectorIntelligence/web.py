@@ -77,12 +77,16 @@ class VectorWebService:
                 public_mode=is_public,
                 public_limits=hub_service.public_search_limits if is_public else {},
                 vector_enabled=True,  # 本蓝图仅在向量已配置时挂载
-                **hub_service._default_subsystem_plugin_params()
+                **hub_service._default_domain_plugin_params()
             )
 
         @bp.route('/clusters', methods=['GET'])
         def clusters_page():
-            return render_template('vector_cluster_list.html', vector_base=url_prefix)
+            return render_template(
+                'vector_cluster_list.html',
+                vector_base=url_prefix,
+                **hub_service._default_domain_plugin_params(),
+            )
 
         @bp.route('/graph', methods=['GET'])
         @protect

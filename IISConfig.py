@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 logger = logging.getLogger(__name__)
@@ -63,12 +63,12 @@ class DatabaseSettings(_StrictModel):
         "MongoDB password. The configuration page masks an existing value."))
 
 
-class SubsystemSettings(_StrictModel):
+class DomainSettings(_StrictModel):
     default: str = Field("news", description=iis_msg(
-        "Name of the intelligence subsystem used when a request does not specify one."))
+        "Name of the intelligence domain used when a URL does not include a domain prefix."))
     enabled: dict[str, str] = Field(
         default_factory=lambda: {"news": "国际新闻"}, description=iis_msg(
-            "Mapping of enabled subsystem identifiers to their display names. The default subsystem must be present."))
+            "Mapping of enabled domain identifiers to their display names. The default domain must be present."))
 
     @field_validator("default")
     @classmethod
@@ -86,7 +86,7 @@ class SubsystemSettings(_StrictModel):
             if str(name).strip()
         }
         if not normalized:
-            raise ValueError("enabled 至少需要一个子系统")
+            raise ValueError("enabled 至少需要一个情报域")
         return normalized
 
 
@@ -140,8 +140,11 @@ class HubSettings(_StrictModel):
     # 未处理记录回放顺序：True = 新的优先（冷启动先消化新情报），False = 按入库顺序。
     replay_newest_first: bool = Field(True, description=iis_msg(
         "Process newer unfinished cached items before older ones during replay."))
-    subsystems: SubsystemSettings = Field(default_factory=SubsystemSettings, description=iis_msg(
-        "Defines the enabled intelligence domains and the default domain."))
+    domains: DomainSettings = Field(
+        default_factory=DomainSettings,
+        validation_alias=AliasChoices("domains", "subsystems"),
+        description=iis_msg("Defines the enabled intelligence domains and the default domain."),
+    )
 
 
 class VectorSettings(_StrictModel):
@@ -429,8 +432,8 @@ class IISConfig:
 
     def _runtime_projection(self, config_dir: Path) -> dict[str, Any]:
         settings = self.settings
-        subsystem_entries = []
-        for name, display_name in settings.hub.subsystems.enabled.items():
+        domain_entries = []
+        for name, display_name in settings.hub.domains.enabled.items():
             entry: dict[str, Any] = {
                 "name": name,
                 "display_name": display_name,
@@ -439,11 +442,11 @@ class IISConfig:
             detail_file = config_dir / "subsystems" / f"{name}.json"
             if detail_file.is_file():
                 entry["config_file"] = str(detail_file)
-            subsystem_entries.append(entry)
-        default_name = settings.hub.subsystems.default
-        if default_name not in settings.hub.subsystems.enabled:
+            domain_entries.append(entry)
+        default_name = settings.hub.domains.default
+        if default_name not in settings.hub.domains.enabled:
             raise ValueError(
-                f"默认子系统 {default_name!r} 不在 hub.subsystems.enabled 中。")
+                f"默认情报域 {default_name!r} 不在 hub.domains.enabled 中。")
 
         optional_subsystems = settings.optional_subsystems
         translation = optional_subsystems.translation
@@ -487,9 +490,9 @@ class IISConfig:
                     "enabled": translation.enabled,
                     "client_group": translation.client_group,
                 },
-                "subsystems": {
+                "domains": {
                     "default": default_name,
-                    "list": subsystem_entries,
+                    "list": domain_entries,
                 },
                 "systemd_watchdog": {"enabled": True, "interval_sec": 10},
                 "vectordb": {

@@ -288,11 +288,11 @@ class IntelligenceHubWebService:
     # INTERNAL 没有 HTTP 路由，只允许服务端组件经 HubApplication 显式使用。
 
     def _intelligence_detail_json(self, intelligence_uuid: str,
-                                  subsystem: Optional[str] = None):
+                                  domain_name: Optional[str] = None):
         """DETAIL：返回可 JSON 序列化的单篇详情，包括权威事件抽取。"""
         try:
             intelligence = self.intelligence_hub.get_intelligence(
-                intelligence_uuid, subsystem=subsystem,
+                intelligence_uuid, subsystem=domain_name,
                 profile=IntelligenceProjectionProfile.DETAIL)
             if not intelligence:
                 return jsonify({"error": "Intelligence not found"}), 404
@@ -302,14 +302,14 @@ class IntelligenceHubWebService:
             }), 200
         except Exception:
             logger.exception(
-                "intelligence detail query failed: uuid=%s subsystem=%s",
+                "intelligence detail query failed: uuid=%s domain=%s",
                 intelligence_uuid,
-                subsystem,
+                domain_name,
             )
             return jsonify({"error": "Server error"}), 500
 
-    # ============================================ Subsystem Query Helpers ============================================
-    # 说明：根路径（默认子系统）与具名子系统 Blueprint 共用以下同一套查询实现。
+    # ============================================== Domain Query Helpers =============================================
+    # 说明：根路径（默认领域）与具名领域 Blueprint 共用以下同一套查询实现。
 
     def _get_client_ip(self) -> str:
         """从请求头中提取真实客户端 IP。"""
@@ -449,7 +449,7 @@ class IntelligenceHubWebService:
 
         return None
 
-    def _do_mongo_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
+    def _do_mongo_search(self, p: dict, domain_name: Optional[str] = None) -> Tuple[List[dict], int]:
         """走 Mongo 过滤"""
         query = {}
         if p['start_time'] and p['end_time']:
@@ -474,16 +474,16 @@ class IntelligenceHubWebService:
         skip = (p['page'] - 1) * p['per_page']
         return self.intelligence_hub.query_intelligence(
             skip=skip, limit=p['per_page'], sort_by=p['sort_by'],
-            subsystem=subsystem_name, **query)
+            subsystem=domain_name, **query)
 
-    def _do_vector_search(self, p: dict, subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
-        """走向量召回 + 内存分页（向量检索当前仅默认子系统启用）"""
+    def _do_vector_search(self, p: dict, domain_name: Optional[str] = None) -> Tuple[List[dict], int]:
+        """走向量召回 + 内存分页（向量检索当前仅默认领域启用）"""
         if self._vector_search_handler is not None:
-            return self._vector_search_handler(p, subsystem_name=subsystem_name)
+            return self._vector_search_handler(p, domain_name=domain_name)
         # ---- 历史 fallback：向量子系统未挂载时使用（VectorDB 未配置则返回空） ----
-        default_name = self.intelligence_hub.default_subsystem_name
-        if subsystem_name and subsystem_name != default_name:
-            raise ValueError("\u5411\u91cf\u68c0\u7d22\u6682\u4ec5\u652f\u6301\u9ed8\u8ba4\u5b50\u7cfb\u7edf\u3002")
+        default_name = self.intelligence_hub.default_domain_name
+        if domain_name and domain_name != default_name:
+            raise ValueError("向量检索暂仅支持默认情报域。")
 
         text = ''
         if p['search_mode'] == 'vector_text':
@@ -491,7 +491,7 @@ class IntelligenceHubWebService:
         elif p['search_mode'] == 'vector_similar':
             if ref_uuids := p.get('reference', ''):
                 intelligence = self.intelligence_hub.get_intelligence(
-                    ref_uuids, subsystem=subsystem_name,
+                    ref_uuids, subsystem=domain_name,
                     profile=IntelligenceProjectionProfile.CARD)
                 if intelligence:
                     text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
@@ -531,7 +531,7 @@ class IntelligenceHubWebService:
             uuids.append(doc_id)
             score_map[doc_id] = score
         articles = self.intelligence_hub.get_intelligence(
-            uuids, subsystem=subsystem_name,
+            uuids, subsystem=domain_name,
             profile=IntelligenceProjectionProfile.CARD)
 
         articles = [
@@ -544,33 +544,33 @@ class IntelligenceHubWebService:
 
         return articles, len(raw)
 
-    def _perform_search_logic(self, params: Dict[str, Any], subsystem_name: Optional[str] = None) -> Dict[str, Any]:
+    def _perform_search_logic(self, params: Dict[str, Any], domain_name: Optional[str] = None) -> Dict[str, Any]:
         mode = params['search_mode']
         if mode.startswith('vector'):
-            results, total = self._do_vector_search(params, subsystem_name)
+            results, total = self._do_vector_search(params, domain_name)
         else:
-            results, total = self._do_mongo_search(params, subsystem_name)
+            results, total = self._do_mongo_search(params, domain_name)
 
         if not results:
             return {'results': [], 'total': 0}
         summary_result = exclude_raw_data(results)
         return {'results': summary_result, 'total': total}
 
-    def _query_api(self, subsystem_name: Optional[str] = None) -> Any:
-        """CARD：列表/搜索接口；具名子系统与默认子系统共用。"""
+    def _query_api(self, domain_name: Optional[str] = None) -> Any:
+        """CARD：列表/搜索接口；具名领域与默认领域共用。"""
         try:
             params = self._get_combined_params()
         except Exception as e:
             logger.exception("intelligences_query_api param parsing error")
             return jsonify({'error': str(e)}), 500
-        return self._query_api_with_params(params, subsystem_name)
+        return self._query_api_with_params(params, domain_name)
 
-    def _query_api_with_params(self, params: Dict[str, Any], subsystem_name: Optional[str] = None) -> Any:
+    def _query_api_with_params(self, params: Dict[str, Any], domain_name: Optional[str] = None) -> Any:
         """在已解析参数上执行查询流程（供 /vector/ Blueprint 等外部入口复用）。"""
         client_ip = self._get_client_ip()
         is_logged_in = bool(session.get('logged_in', False))
         is_public = not is_logged_in
-        path = f'/{subsystem_name}/intelligences/query' if subsystem_name else '/intelligences/query'
+        path = request.path
         perf_extra = {
             'client_ip': client_ip,
             'is_public': is_public,
@@ -582,13 +582,13 @@ class IntelligenceHubWebService:
             perf_extra['page'] = params.get('page', 1)
             perf_extra['per_page'] = params.get('per_page', 10)
 
-            # 向量检索仅默认子系统可用
-            default_name = self.intelligence_hub.default_subsystem_name
+            # 向量检索仅默认领域可用
+            default_name = self.intelligence_hub.default_domain_name
             if params.get('search_mode', 'mongo').startswith('vector') \
-                    and subsystem_name and subsystem_name != default_name:
+                    and domain_name and domain_name != default_name:
                 return jsonify({
-                    'error': '\u5411\u91cf\u68c0\u7d22\u6682\u4ec5\u652f\u6301\u9ed8\u8ba4\u5b50\u7cfb\u7edf\uff0c'
-                             '\u8bf7\u4f7f\u7528\u666e\u901a\u641c\u7d22\u3002'
+                    'error': '向量检索暂仅支持默认情报域，'
+                             '请使用普通搜索。'
                 }), 400
 
             if is_public:
@@ -622,7 +622,7 @@ class IntelligenceHubWebService:
                 # 把 DTO 构造与 JSON 序列化纳入同一性能区间；只记录数字和 profile，
                 # 不把标题、正文、查询词等情报内容写进性能日志。
                 with self._perf_logger.timed('search_query', **perf_extra) as perf_span:
-                    data = self._perform_search_logic(params, subsystem_name)
+                    data = self._perform_search_logic(params, domain_name)
                     # 游客请求可能被服务端限额收紧；把实际分页值返回给前端，
                     # 否则前端继续用请求前的 per_page 会算错总页数。
                     data['page'] = params.get('page', 1)
@@ -652,24 +652,31 @@ class IntelligenceHubWebService:
             )
             return jsonify({'error': str(e)}), 500
 
-    def _default_subsystem_plugin_params(self) -> Dict[str, Any]:
-        """????????news?? UI ????????????????"""
+    def _default_domain_plugin_params(self) -> Dict[str, Any]:
+        """返回默认情报域的页面路由与 UI 插件参数。"""
         try:
-            ctx = self.intelligence_hub.default_subsystem
+            ctx = self.intelligence_hub.default_domain
         except Exception:
             ctx = None
-        if ctx is None or not ctx.ui_plugin_enabled:
-            return {'ui_plugin_enabled': False, 'plugin_asset_prefix': ''}
+        if ctx is None:
+            return {
+                'base_path': '', 'domain_name': '',
+                'ui_plugin_enabled': False, 'plugin_asset_prefix': '',
+            }
         base = ctx.url_prefix or ''
         return {
-            'ui_plugin_enabled': True,
-            'plugin_asset_prefix': f"{base}/assets" if base else '/assets',
+            'base_path': '',
+            'domain_name': ctx.name,
+            'ui_plugin_enabled': bool(ctx.ui_plugin_enabled),
+            'plugin_asset_prefix': (
+                f"{base}/assets" if base else '/assets'
+            ) if ctx.ui_plugin_enabled else '',
         }
 
-    def _build_subsystem_blueprint(self, ctx, url_prefix: str = '') -> Blueprint:
-        """为单个子系统注册带 URL 前缀的页面/接口路由。"""
-        bp = Blueprint(f'sub_{ctx.name}', __name__)
-        subsystem_name = ctx.name
+    def _build_domain_blueprint(self, ctx, url_prefix: str = '') -> Blueprint:
+        """为单个情报域注册带 URL 前缀的页面/接口路由。"""
+        bp = Blueprint(f'domain_{ctx.name}', __name__)
+        domain_name = ctx.name
         base_path = url_prefix or ''
         is_default = ctx.is_default
 
@@ -679,7 +686,7 @@ class IntelligenceHubWebService:
             return render_template(
                 'intelligence_list.html',
                 base_path=base_path,
-                subsystem_name=subsystem_name,
+                domain_name=domain_name,
                 vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
@@ -695,7 +702,7 @@ class IntelligenceHubWebService:
                 public_mode=is_public,
                 public_limits=self.public_search_limits if is_public else {},
                 base_path=base_path,
-                subsystem_name=subsystem_name,
+                domain_name=domain_name,
                 vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
@@ -704,7 +711,7 @@ class IntelligenceHubWebService:
         # 情报读取路由保持相邻：列表只走 CARD，单篇 JSON 只走 DETAIL。
         @bp.route('/intelligences/query', methods=['GET', 'POST'])
         def intelligences_query_api():
-            return self._query_api(subsystem_name)
+            return self._query_api(domain_name)
 
         @bp.route('/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_api(intelligence_uuid: str):
@@ -712,7 +719,7 @@ class IntelligenceHubWebService:
                 'intelligence_detail.html',
                 uuid=intelligence_uuid,
                 base_path=base_path,
-                subsystem_name=subsystem_name,
+                domain_name=domain_name,
                 vector_enabled=is_default and self.intelligence_hub.vector_search_available,
                 ui_plugin_enabled=ctx.ui_plugin_enabled,
                 plugin_asset_prefix=f"{base_path}/assets" if ctx.ui_plugin_enabled else '',
@@ -721,10 +728,10 @@ class IntelligenceHubWebService:
         @bp.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_json(intelligence_uuid: str):
             return self._intelligence_detail_json(
-                intelligence_uuid, subsystem=subsystem_name)
+                intelligence_uuid, domain_name=domain_name)
 
         @bp.route('/assets/<path:filename>', methods=['GET'])
-        def subsystem_assets(filename: str):
+        def domain_assets(filename: str):
             """??????????????ui_plugin.js?assets/*?????????"""
             if not ctx.config_dir or not os.path.isdir(ctx.config_dir):
                 return abort(404)
@@ -734,7 +741,7 @@ class IntelligenceHubWebService:
                 return abort(404)
 
         @bp.route('/page_detail', methods=['GET'])
-        def subsystem_detail_page():
+        def domain_detail_page():
             """???????????? HTML?????? 404?"""
             if not ctx.config_dir:
                 return abort(404)
@@ -744,11 +751,11 @@ class IntelligenceHubWebService:
             return send_file(page)
 
         @bp.route('/prompt', methods=['GET'])
-        def subsystem_prompt():
+        def domain_prompt():
             version = request.args.get('version')
             try:
                 prompt_text = self.intelligence_hub.get_prompt(
-                    subsystem_name, int(version) if version else None)
+                    domain_name, int(version) if version else None)
             except Exception:
                 prompt_text = "[Prompt] Not configured."
             resp = Response(prompt_text, content_type="text/plain; charset=utf-8")
@@ -904,7 +911,7 @@ class IntelligenceHubWebService:
             return render_template(
                 'manual_debug_intelligence.html',
                 subsystems=self.intelligence_hub.get_subsystems(),
-                default_subsystem=self.intelligence_hub.default_subsystem_name,
+                default_subsystem=self.intelligence_hub.default_domain_name,
                 mechanisms=mechanism_catalog["items"],
                 default_mechanism=mechanism_catalog["default"],
             )
@@ -1007,15 +1014,25 @@ class IntelligenceHubWebService:
             version = request.args.get('version')
             try:
                 prompt_text = self.intelligence_hub.get_prompt(
-                    self.intelligence_hub.default_subsystem_name,
+                    self.intelligence_hub.default_domain_name,
                     int(version) if version else None)
             except Exception:
                 prompt_text = "[Prompt] Not configured."
             return Response(prompt_text, content_type="text/plain; charset=utf-8")
 
+        @app.get('/api/domains')
+        def api_domains():
+            """返回情报域注册表，供前端导航/切换使用。"""
+            if self.subsystem_registry is None:
+                return jsonify({"domains": [], "default": None})
+            return jsonify({
+                "domains": self.subsystem_registry.describe(),
+                "default": self.subsystem_registry.default_name,
+            })
+
         @app.get('/api/subsystems')
-        def api_subsystems():
-            """返回子系统注册表，供前端导航/切换使用。"""
+        def api_subsystems_legacy():
+            """历史采集器校验端点；新调用方应使用 /api/domains。"""
             if self.subsystem_registry is None:
                 return jsonify({"subsystems": [], "default": None})
             return jsonify({
@@ -1025,7 +1042,10 @@ class IntelligenceHubWebService:
 
         @app.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
         def intelligence_viewer_json(intelligence_uuid: str):
-            return self._intelligence_detail_json(intelligence_uuid)
+            return self._intelligence_detail_json(
+                intelligence_uuid,
+                domain_name=self.intelligence_hub.default_domain_name,
+            )
 
         @app.route('/manual_rate', methods=['POST'])
         def submit_rating():
@@ -1069,10 +1089,10 @@ class IntelligenceHubWebService:
         #         return 'Error'
 
         @app.route('/assets/<path:filename>', methods=['GET'])
-        def default_subsystem_assets(filename: str):
+        def default_domain_assets(filename: str):
             """????????news?? UI ???????"""
             try:
-                ctx = self.intelligence_hub.default_subsystem
+                ctx = self.intelligence_hub.default_domain
             except Exception:
                 ctx = None
             if ctx is None or not ctx.config_dir or not os.path.isdir(ctx.config_dir):
@@ -1089,7 +1109,7 @@ class IntelligenceHubWebService:
                                    vector_enabled=self.intelligence_hub.vector_search_available,
                                    public_mode=is_public,
                                    public_limits=self.public_search_limits if is_public else {},
-                                   **self._default_subsystem_plugin_params())
+                                   **self._default_domain_plugin_params())
 
         @app.route('/recommendations', methods=['GET'])
         def intelligences_recommendations_page():
@@ -1100,7 +1120,10 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligences/clusters', methods=['GET'])
         def intelligences_clusters_view():
-            return render_template('intelligence_cluster_list.html')
+            return render_template(
+                'intelligence_cluster_list.html',
+                **self._default_domain_plugin_params(),
+            )
 
         @app.route('/intelligences/search', methods=['GET'])
         def intelligences_search_page():
@@ -1110,7 +1133,7 @@ class IntelligenceHubWebService:
                 public_mode=is_public,
                 public_limits=self.public_search_limits if is_public else {},
                 vector_enabled=self.intelligence_hub.vector_search_available,
-                **self._default_subsystem_plugin_params()
+                **self._default_domain_plugin_params()
             )
 
         @app.route('/intelligence/graph/view', methods=['GET'])
@@ -1124,8 +1147,8 @@ class IntelligenceHubWebService:
 
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         def intelligences_query_api():
-            # 根路径（默认子系统）与具名子系统 Blueprint 共用同一实现（见 _query_api）。
-            return self._query_api(None)
+            # 无领域前缀的路径显式绑定配置中的默认领域。
+            return self._query_api(self.intelligence_hub.default_domain_name)
 
         # --------------------------------------------------------------------------------------------
 
@@ -1259,7 +1282,7 @@ class IntelligenceHubWebService:
         def intelligence_viewer_api(intelligence_uuid: str):
             return render_template('intelligence_detail.html', uuid=intelligence_uuid,
                                    vector_enabled=self.intelligence_hub.vector_search_available,
-                                   **self._default_subsystem_plugin_params())
+                                   **self._default_domain_plugin_params())
 
         # ---------------------------------------------- Management Pages ----------------------------------------------
 
@@ -1665,7 +1688,7 @@ class IntelligenceHubWebService:
         def api_sources():
             """获取所有数据源域名列表及文章数量。"""
             try:
-                engine = self.intelligence_hub.default_subsystem.event_v4_query_engine
+                engine = self.intelligence_hub.default_domain.event_v4_query_engine
                 domains = engine.get_source_domains(limit=500)
                 return jsonify({"domains": domains})
             except Exception as e:
@@ -2044,7 +2067,7 @@ class IntelligenceHubWebService:
                 # --- Export Archive DB ---
                 if target in ['archive', 'all']:
                     run_export(
-                        db_instance=self.intelligence_hub.default_subsystem.event_v4_intelligence_storage,
+                        db_instance=self.intelligence_hub.default_domain.event_v4_intelligence_storage,
                         sub_dir='mongo_db_archive',
                         time_field=appendix_path(APPENDIX_TIME_ARCHIVED),
                         prefix='intelligence_archived'
@@ -2054,7 +2077,7 @@ class IntelligenceHubWebService:
                 if target in ['cache', 'all']:
                     cache_time_field = 'collect_time'
                     run_export(
-                        db_instance=self.intelligence_hub.default_subsystem.mongo_db_cache,
+                        db_instance=self.intelligence_hub.default_domain.mongo_db_cache,
                         sub_dir='mongo_db_cache',
                         time_field=cache_time_field,
                         prefix='intelligence_cache'
@@ -2102,9 +2125,9 @@ class IntelligenceHubWebService:
                     'message': 'File not found'
                 }), 404
 
-        # ---------------------------------------------------- Subsystem Blueprints ----------------------------------------------------
+        # ------------------------------------------------------ Domain Blueprints ------------------------------------------------------
 
-        # 具名子系统注册到各自 URL 前缀；默认子系统额外挂载具名前缀（如 /news），
+        # 具名领域注册到各自 URL 前缀；默认领域额外挂载具名前缀（如 /news），
         # 根路径仍由上方原有路由提供，保证向前兼容。
         if self.subsystem_registry is not None:
             registered_prefixes = set()
@@ -2113,12 +2136,12 @@ class IntelligenceHubWebService:
                 if ctx.is_default:
                     prefix = f'/{ctx.name}'
                 if not prefix or prefix in registered_prefixes:
-                    logger.warning(f"Subsystem '{ctx.name}': url_prefix '{prefix}' conflicts, skip.")
+                    logger.warning(f"Domain '{ctx.name}': url_prefix '{prefix}' conflicts, skip.")
                     continue
                 registered_prefixes.add(prefix)
-                bp = self._build_subsystem_blueprint(ctx, url_prefix=prefix)
-                app.register_blueprint(bp, url_prefix=prefix, name=f'sub_{ctx.name}')
-                logger.info(f"Subsystem '{ctx.name}' web routes registered at prefix '{prefix}'.")
+                bp = self._build_domain_blueprint(ctx, url_prefix=prefix)
+                app.register_blueprint(bp, url_prefix=prefix, name=f'domain_{ctx.name}')
+                logger.info(f"Domain '{ctx.name}' web routes registered at prefix '{prefix}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 

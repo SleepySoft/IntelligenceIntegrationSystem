@@ -10,12 +10,12 @@
 
 ## 配置
 
-当前情报域入口仍位于 `_config/iis.yaml` 的历史键 `hub.subsystems`，详细参数仍分离在
+当前情报域入口位于 `_config/iis.yaml` 的 `hub.domains`，详细参数暂仍分离在
 `_config/subsystems/`：
 
 ```yaml
 hub:
-  subsystems:
+  domains:
     default: news
     enabled:
       news: 国际新闻
@@ -36,7 +36,7 @@ hub:
 
 ## 新增同构情报域
 
-1. 在主配置 `hub.subsystems.enabled` 中登记名称和显示名。
+1. 在主配置 `hub.domains.enabled` 中登记名称和显示名。
 2. 设置唯一 `collection_prefix` 与 `url_prefix`。
 3. 如有需要，设置 AI 客户端分组和 V4 评分权重。
 4. 如需定制展示，新增读取 V4 DTO 的 `ui_plugin.js`。

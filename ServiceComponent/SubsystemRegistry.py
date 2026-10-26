@@ -5,10 +5,10 @@
 每个子系统拥有一套独立资源（Mongo collection、查询引擎、prompt 表、URL 前缀等），
 但分析与归档流程完全复用 IntelligenceHub 的同一套框架。
 
-外部配置入口位于 iis.yaml 的 `hub.subsystems` 段：
+外部配置入口位于 iis.yaml 的 `hub.domains` 段：
 
     hub:
-      subsystems:
+      domains:
         default: news
         enabled:
           news: 国际新闻
@@ -206,7 +206,8 @@ class SubsystemRegistry:
         从 IISConfig 的运行时投影构建注册表。
         配置段缺失时退化为单一默认子系统。
         """
-        subsystems_cfg = config.get('intelligence_hub.subsystems', None)
+        # 注册表类名暂保留历史命名；配置语义已正式改为情报域。
+        subsystems_cfg = config.get('intelligence_hub.domains', None)
         default_name = 'news'
         entries: List[Dict[str, Any]] = []
         if subsystems_cfg:

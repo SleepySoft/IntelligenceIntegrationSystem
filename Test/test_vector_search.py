@@ -34,8 +34,8 @@ def test_vector_result_backfill_uses_card_profile():
         _params(),
         vector_search=lambda **_kwargs: [("b", 0.8, {}), ("a", 0.9, {})],
         get_intelligence=get_intelligence,
-        subsystem_name="news",
-        default_subsystem_name="news",
+        domain_name="news",
+        default_domain_name="news",
     )
 
     assert total == 2

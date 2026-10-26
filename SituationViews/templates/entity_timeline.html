@@ -328,7 +328,7 @@ document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{mode=el.dat
 $('time-basis').onchange=()=>{timeBasis=$('time-basis').value;syncUrl();$('detail').hidden=true;render()};
 $('zoom-in').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1.3);$('zoom-out').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1/1.3);$('zoom-fit').onclick=fitGraph;$('zoom-reset').onclick=resetGraph;
 $('search-button').onclick=searchEntities;$('entity-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(searchEntities,250)};$('entity-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();searchEntities()}};
-document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});SituationArticleModal.init({subsystems:SUBSYSTEMS,subsystemName:PROFILE.subsystem,detailOrigin:DETAIL_ORIGIN});updateButtons();renderChips();loadTimeline();
+document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});SituationArticleModal.init({domains:SUBSYSTEMS,domainName:PROFILE.subsystem,detailOrigin:DETAIL_ORIGIN});updateButtons();renderChips();loadTimeline();
 </script>
 </body>
 </html>

@@ -60,7 +60,7 @@ def test_public_query_returns_effective_clamped_pagination():
     service._perform_search_logic = lambda params, subsystem: {
         "results": [{"UUID": "one"}], "total": 100,
     }
-    service.intelligence_hub = SimpleNamespace(default_subsystem_name="news")
+    service.intelligence_hub = SimpleNamespace(default_domain_name="news")
     app = Flask(__name__)
     app.secret_key = "test"
     params = {

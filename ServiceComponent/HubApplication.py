@@ -56,10 +56,10 @@ class HubApplication:
             raise ValueError("submission_ack_timeout 必须大于 0。")
         self.subsystem_registry = subsystem_registry
         self.ai_client_manager = ai_client_manager
-        self.default_subsystem = subsystem_registry.default()
-        if self.default_subsystem is None:
-            raise ValueError("subsystem_registry 必须提供默认子系统。")
-        self.default_subsystem_name = self.default_subsystem.name
+        self.default_domain = subsystem_registry.default()
+        if self.default_domain is None:
+            raise ValueError("subsystem_registry 必须提供默认情报域。")
+        self.default_domain_name = self.default_domain.name
         self.runtime = runtime or HubRuntime(
             worker_count=1,
             worker_groups={
@@ -224,7 +224,7 @@ class HubApplication:
 
     def submit_collected_data_result(self, data: dict) -> Tuple[bool, str]:
         """提交并等待 intake 回执；返回 (是否接收, 拒绝原因)。接受时原因为空串。"""
-        subsystem = str(data.get("subsystem") or "").strip() or self.default_subsystem_name
+        subsystem = str(data.get("subsystem") or "").strip() or self.default_domain_name
         if self.subsystem_registry.resolve(subsystem) is None:
             return False, "unknown_subsystem"
         return self._submit_and_wait_result(
@@ -234,7 +234,7 @@ class HubApplication:
 
     def submit_archived_data(self, data: dict) -> bool:
         subsystem = str(data.get("subsystem") or "").strip()
-        subsystem = subsystem or self.default_subsystem_name
+        subsystem = subsystem or self.default_domain_name
         if self.subsystem_registry.resolve(subsystem) is None:
             return False
         return self._submit_and_wait(
@@ -272,6 +272,10 @@ class HubApplication:
         return self._context(subsystem).event_v4_query_engine
 
     def get_subsystems(self) -> List[Dict[str, Any]]:
+        return self.subsystem_registry.describe()
+
+    def get_domains(self) -> List[Dict[str, Any]]:
+        """返回已启用情报域；get_subsystems 仅作历史兼容。"""
         return self.subsystem_registry.describe()
 
     def get_prompt(self, subsystem: Optional[str] = None, version: Optional[int] = None) -> str:
@@ -371,5 +375,5 @@ class HubApplication:
         self._inflight_slots.release()
 
     def _context(self, subsystem: Optional[str]) -> Any:
-        ctx = self.subsystem_registry.resolve(subsystem) or self.default_subsystem
+        ctx = self.subsystem_registry.resolve(subsystem) or self.default_domain
         return ctx

@@ -24,17 +24,17 @@ VECTOR_DEFAULT_SCORE_THRESHOLD = 0.6
 def do_vector_search(p: Dict[str, Any], *,
                      vector_search: Callable[..., List[Tuple[str, float, dict]]],
                      get_intelligence: Callable[..., Any],
-                     subsystem_name: Optional[str] = None,
-                     default_subsystem_name: Optional[str] = None,
+                     domain_name: Optional[str] = None,
+                     default_domain_name: Optional[str] = None,
                      ) -> Tuple[List[dict], int]:
-    """走向量召回 + 内存分页（向量检索当前仅默认子系统启用）。
+    """走向量召回 + 内存分页（向量检索当前仅默认情报域启用）。
 
     参数与返回与历史 IntelligenceHubWebService._do_vector_search 完全一致：
     返回 (articles, total)，其中 total 为召回总数（封顶 top_n），
     articles 已注入查询时临时字段 vector_score（不写回权威归档）。
     """
-    if default_subsystem_name and subsystem_name and subsystem_name != default_subsystem_name:
-        raise ValueError("向量检索暂仅支持默认子系统。")
+    if default_domain_name and domain_name and domain_name != default_domain_name:
+        raise ValueError("向量检索暂仅支持默认情报域。")
 
     text = ''
     if p['search_mode'] == 'vector_text':
@@ -42,7 +42,7 @@ def do_vector_search(p: Dict[str, Any], *,
     elif p['search_mode'] == 'vector_similar':
         if ref_uuids := p.get('reference', ''):
             intelligence = get_intelligence(
-                ref_uuids, subsystem=subsystem_name,
+                ref_uuids, subsystem=domain_name,
                 profile=IntelligenceProjectionProfile.CARD)
             if intelligence:
                 text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
@@ -82,7 +82,7 @@ def do_vector_search(p: Dict[str, Any], *,
         uuids.append(doc_id)
         score_map[doc_id] = score
     articles = get_intelligence(
-        uuids, subsystem=subsystem_name,
+        uuids, subsystem=domain_name,
         profile=IntelligenceProjectionProfile.CARD)
 
     articles = [
@@ -102,13 +102,13 @@ def build_vector_search_handler(*, hub) -> Callable[..., Tuple[List[dict], int]]
     经 hub 门面访问向量检索与 Mongo 回填，VectorDB 未配置时门面返回空列表，
     行为与历史 fallback 一致。
     """
-    def handler(p: Dict[str, Any], subsystem_name: Optional[str] = None) -> Tuple[List[dict], int]:
+    def handler(p: Dict[str, Any], domain_name: Optional[str] = None) -> Tuple[List[dict], int]:
         return do_vector_search(
             p,
             vector_search=hub.vector_search_intelligence,
             get_intelligence=hub.get_intelligence,
-            subsystem_name=subsystem_name,
-            default_subsystem_name=hub.default_subsystem_name,
+            domain_name=domain_name,
+            default_domain_name=hub.default_domain_name,
         )
 
     return handler

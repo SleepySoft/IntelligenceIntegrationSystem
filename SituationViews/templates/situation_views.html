@@ -2351,7 +2351,7 @@ document.querySelectorAll('.side-toggle').forEach(button => button.addEventListe
     button.textContent = collapsed ? tr('expand_legend') : tr('collapse_legend');
 }));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
-SituationArticleModal.init({subsystems: SUBSYSTEMS, subsystemName: DASHBOARD_PROFILE.subsystem, detailOrigin: DETAIL_ORIGIN});
+SituationArticleModal.init({domains: SUBSYSTEMS, domainName: DASHBOARD_PROFILE.subsystem, detailOrigin: DETAIL_ORIGIN});
 if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
     const dependency = typeof d3 === 'undefined' ? 'D3' : 'TopoJSON';
     const status = DASHBOARD_VIEW === 'graph' ? $('graph-status') : $('map-status');

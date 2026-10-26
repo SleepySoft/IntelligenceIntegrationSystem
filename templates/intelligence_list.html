@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script>
         window.IIS_BASE_PATH = {{ base_path|default('')|tojson }};
-        window.IIS_SUBSYSTEM = {{ subsystem_name|default('')|tojson }};
+        window.IIS_DOMAIN = {{ domain_name|default('')|tojson }};
         window.IIS_VECTOR_ENABLED = {{ vector_enabled|default(true)|tojson }};
         window.IIS_UI_PLUGIN_ENABLED = {{ ui_plugin_enabled|default(false)|tojson }};
         window.IIS_PLUGIN_ASSET_PREFIX = {{ plugin_asset_prefix|default('')|tojson }};

@@ -1,7 +1,10 @@
 # IIS 情报域扩展能力调查与重构建议
 
 > 调查日期：2026-10-16
-> 状态：设计记录，尚未完成本文所述的异构情报域改造。
+> 状态：调查记录，尚未完成本文所述的异构情报域改造。
+>
+> 2026-10-26 后续讨论已将实施方向收敛为“`domain` 路由 + 领域注册”，见
+> [`20261026_intelligence_domain_registration_design.md`](20261026_intelligence_domain_registration_design.md)。
 
 ## 1. 术语决定
 
@@ -12,16 +15,15 @@
 | **情报域（intelligence domain）** | 一类情报的采集输入、Prompt、输出契约、评分、归档和展示规则 | `news`、`finance`、`industry` |
 | **可选子系统（optional subsystem）** | 可整体启停、通过编排挂入 IIS 的外围能力 | `translation`、`vector`、`situation`、`intelligence_views` |
 
-现有代码和配置仍使用 `SubsystemRegistry`、`SubsystemContext` 和
-`hub.subsystems` 表示情报域。这是历史命名，不代表它们与
+现有注册表类名仍使用 `SubsystemRegistry` 和 `SubsystemContext`，但正式配置入口
+已改为 `hub.domains`；旧 `hub.subsystems` 仅作输入兼容别名。这些历史类名不代表它们与
 `optional_subsystems` 是同一层概念。后续重构的目标命名为：
 
 ```yaml
-intelligence_domains:   # news / finance / industry
+hub:
+  domains:              # news / finance / industry
 optional_subsystems:    # translation / vector / situation / ...
 ```
-
-在代码完成迁移之前，不应只修改部署配置中的 `hub.subsystems`，否则当前版本无法加载。
 
 ## 2. 调查结论
 
@@ -217,8 +219,8 @@ views:
    用一个非 Event V4 的最小示例域验证接入不修改 Core。
 5. **外围能力域化**：翻译、向量和态势子系统显式声明适用情报域，并为每个域维护自己的
    队列、存储命名空间和失败隔离。
-6. **配置更名**：代码和测试完成后，将 `hub.subsystems` 一次性迁移为
-   `intelligence_domains`；项目既然不要求旧配置兼容，就不要长期双读两个名称。
+6. **配置更名（已完成）**：正式配置与运行时投影使用 `hub.domains`；
+   `hub.subsystems` 暂作旧部署输入兼容，不再向下游投影。
 
 ## 7. 验收条件
 

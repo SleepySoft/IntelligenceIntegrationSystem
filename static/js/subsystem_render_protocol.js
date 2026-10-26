@@ -223,10 +223,10 @@ function buildCard(plugin, doc, ctx, helpers) {
     }
 
     // 平台下发给插件的只读工具集
-    function makeHelpers(ctx, base, subsystem) {
+    function makeHelpers(ctx, base, domain) {
         const helpers = {
             base: base || (window.IIS_BASE_PATH || ''),
-            subsystem: subsystem || (window.IIS_SUBSYSTEM || ''),
+            domain: domain || (window.IIS_DOMAIN || ''),
         };
         if (ctx && typeof ctx.escapeHTML === 'function') helpers.escapeHTML = (s) => ctx.escapeHTML(s);
         if (ctx && typeof ctx.formatLocalTime === 'function') helpers.formatLocalTime = (s) => ctx.formatLocalTime(s);

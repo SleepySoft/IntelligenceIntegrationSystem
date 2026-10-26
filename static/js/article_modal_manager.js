@@ -275,12 +275,12 @@
         if (!uuid) return;
 
         // 插件导航委洺：先看插件是否声明 detailURL / onCardClick
-        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_SUBSYSTEM || '')) || null;
+        const plugin = (window.SubsystemUI && window.SubsystemUI.getPlugin(window.IIS_DOMAIN || '')) || null;
         let nav = null;
         if (plugin) {
             const helpers = window.SubsystemUI.makeHelpers
-                ? window.SubsystemUI.makeHelpers(null, window.IIS_BASE_PATH || '', window.IIS_SUBSYSTEM || '')
-                : { base: window.IIS_BASE_PATH || '', subsystem: window.IIS_SUBSYSTEM || '' };
+                ? window.SubsystemUI.makeHelpers(null, window.IIS_BASE_PATH || '', window.IIS_DOMAIN || '')
+                : { base: window.IIS_BASE_PATH || '', domain: window.IIS_DOMAIN || '' };
             nav = window.SubsystemUI.navFromPlugin(plugin, { UUID: uuid }, helpers);
         }
 

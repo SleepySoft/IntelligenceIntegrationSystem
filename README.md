@@ -251,6 +251,8 @@ python CrawlerServiceEngine.py
 > [IISConfig.py](IISConfig.py) 负责默认值、严格 schema 校验以及运行时组件装配。主配置
 > 只分为 `server`、`database`、`hub`、`access`、`optional_subsystems` 和可选的 `web`，不会要求
 > 用户复制大量默认参数。未知字段会在启动时直接报错，避免“写了但实际没有生效”。
+> `hub.domains.default` 指定 URL 未带领域前缀时使用的默认情报域，
+> `hub.domains.enabled` 声明已启用情报域及显示名。
 > `optional_subsystems` 下的键是子系统名，每个子系统自带 `enabled` 及必要参数；
 > 当前包括翻译、向量、态势视图、公开情报视图、实体别名和 Batch 分析；例如翻译子系统用
 > `client_group` 选择 `ai_clients.yaml` 中的 Client 分组。公开搜索的分页、时间窗和限流位于

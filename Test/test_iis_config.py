@@ -16,7 +16,7 @@ def test_example_is_valid_and_projects_component_settings():
     assert config.get("mongodb.host") == "localhost"
     assert config.get("intelligence_hub.ai_analysis_thread") == 1
     assert config.get("intelligence_hub.translation.client_group") == "translate_small"
-    assert config.get("intelligence_hub.subsystems.default") == "news"
+    assert config.get("intelligence_hub.domains.default") == "news"
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.situation.min_score"
     ) == 6.0
@@ -48,7 +48,7 @@ def test_minimal_yaml_uses_code_defaults(tmp_path):
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.public_access"
     ) is True
-    assert config.get("intelligence_hub.subsystems.list") == [{
+    assert config.get("intelligence_hub.domains.list") == [{
         "name": "news",
         "display_name": "国际新闻",
         "enabled": True,
@@ -78,11 +78,11 @@ def test_i18n_default_locale_must_be_supported(tmp_path):
         load_iis_config(path)
 
 
-def test_default_subsystem_must_be_enabled(tmp_path):
+def test_default_domain_must_be_enabled(tmp_path):
     path = tmp_path / "iis.yaml"
     path.write_text(
         "hub:\n"
-        "  subsystems:\n"
+        "  domains:\n"
         "    default: finance\n"
         "    enabled:\n"
         "      news: News\n",
@@ -93,6 +93,24 @@ def test_default_subsystem_must_be_enabled(tmp_path):
         load_iis_config(path)
 
 
+def test_legacy_subsystems_input_is_normalized_to_domains(tmp_path):
+    path = tmp_path / "iis.yaml"
+    path.write_text(
+        "hub:\n"
+        "  subsystems:\n"
+        "    default: finance\n"
+        "    enabled:\n"
+        "      finance: Finance\n",
+        encoding="utf-8",
+    )
+
+    config = load_iis_config(path)
+
+    assert config.settings.hub.domains.default == "finance"
+    assert config.get("intelligence_hub.domains.default") == "finance"
+    assert config.get("intelligence_hub.subsystems") is None
+
+
 def test_vector_endpoint_and_subsystem_detail_are_projected(tmp_path):
     subsystem_dir = tmp_path / "subsystems"
     subsystem_dir.mkdir()
@@ -101,7 +119,7 @@ def test_vector_endpoint_and_subsystem_detail_are_projected(tmp_path):
     path = tmp_path / "iis.yaml"
     path.write_text(
         "hub:\n"
-        "  subsystems:\n"
+        "  domains:\n"
         "    default: finance\n"
         "    enabled:\n"
         "      finance: Finance\n"
@@ -116,7 +134,7 @@ def test_vector_endpoint_and_subsystem_detail_are_projected(tmp_path):
 
     config = load_iis_config(path)
     vector = load_vector_db_settings(config)
-    entries = config.get("intelligence_hub.subsystems.list")
+    entries = config.get("intelligence_hub.domains.list")
 
     assert vector == {
         "url": "http://vector.example:9000",

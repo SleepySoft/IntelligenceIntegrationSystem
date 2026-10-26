@@ -27,6 +27,7 @@ def test_iis_configuration_validates_masks_saves_and_backs_up(tmp_path):
 
     public = service.read()
     assert public["data"]["database"]["password"] != "first-secret"
+    assert public["data"]["hub"]["domains"]["default"] == "news"
     assert public["schema_ui_contract"]["compatible"] is True
     public["data"]["server"]["port"] = 5100
     result = service.save_data(public["data"])

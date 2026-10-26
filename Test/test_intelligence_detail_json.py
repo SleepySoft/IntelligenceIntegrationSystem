@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 from flask import Flask
@@ -37,7 +39,7 @@ def test_intelligence_detail_api_returns_public_v4_shape_without_storage_metadat
 
     app = Flask(__name__)
     app.register_blueprint(
-        service._build_subsystem_blueprint(_Context(), url_prefix="/news"),
+        service._build_domain_blueprint(_Context(), url_prefix="/news"),
         url_prefix="/news",
     )
 
@@ -53,3 +55,37 @@ def test_intelligence_detail_api_returns_public_v4_shape_without_storage_metadat
     assert payload["data"]["archived_at"] == "2026-10-10T00:00:00+00:00"
     assert hub.calls == [(
         "intelligence-id", "news", IntelligenceProjectionProfile.DETAIL)]
+
+
+def test_domain_blueprint_exposes_domain_name_to_page():
+    service = IntelligenceHubWebService.__new__(IntelligenceHubWebService)
+    service.intelligence_hub = SimpleNamespace(vector_search_available=False)
+    service.public_search_limits = {}
+
+    app = Flask(
+        __name__,
+        template_folder=str(Path(__file__).parents[1] / "templates"),
+    )
+    app.jinja_env.globals["_"] = lambda value: value
+    app.register_blueprint(
+        service._build_domain_blueprint(_Context(), url_prefix="/news"),
+        url_prefix="/news",
+    )
+
+    response = app.test_client().get("/news/intelligences")
+
+    assert response.status_code == 200
+    assert 'window.IIS_DOMAIN = "news";' in response.get_data(as_text=True)
+
+
+def test_root_page_context_uses_configured_default_domain():
+    context = SimpleNamespace(
+        name="finance", url_prefix="/finance", ui_plugin_enabled=False,
+    )
+    service = IntelligenceHubWebService.__new__(IntelligenceHubWebService)
+    service.intelligence_hub = SimpleNamespace(default_domain=context)
+
+    params = service._default_domain_plugin_params()
+
+    assert params["domain_name"] == "finance"
+    assert params["base_path"] == ""

@@ -12,6 +12,7 @@ from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAcces
 from ServiceComponent.runtime.control import RuntimeControlState
 from ServiceComponent.adapters import EventV4PipelinePorts
 from ServiceComponent.runtime import HubEvent
+from WebI18n import ensure_web_i18n
 
 from test_event_v4_pipeline_adapter import (
     FakeClientManager,
@@ -29,7 +30,7 @@ class FakeRSSPublisher:
 
 
 class FakeHub:
-    default_subsystem_name = "news"
+    default_domain_name = "news"
 
     @property
     def statistics(self):
@@ -91,6 +92,7 @@ def _build_app(control: RuntimeControlState, subsystem_registry=None):
         template_folder=str(Path(__file__).resolve().parent.parent / "templates"),
     )
     app.secret_key = "test-secret"
+    ensure_web_i18n(app)
     access_manager = WebServiceAccessManager(
         rpc_api_tokens=["rpc-token"], collector_tokens=["collector-token"],
         user_manager=None, deny_on_empty_config=True)
@@ -111,6 +113,15 @@ def _logged_in_client(app):
         sess["logged_in"] = True
         sess["username"] = "tester"
     return client
+
+
+def test_domain_catalog_endpoint_uses_domain_vocabulary():
+    app = _build_app(RuntimeControlState())
+
+    response = app.test_client().get("/api/domains")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"domains": [], "default": None}
 
 
 def test_control_state_pause_resume_and_maintenance_umbrella():
