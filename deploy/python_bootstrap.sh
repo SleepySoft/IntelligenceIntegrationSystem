@@ -233,7 +233,15 @@ iis_bootstrap_exec() {
     local command_name="${1:-}"
     local roots install_root python_path select_status
 
-    if [[ "$command_name" != "install" ]]; then
+    local help_only="false"
+    local argument
+    for argument in "$@"; do
+        if [[ "$argument" == "-h" || "$argument" == "--help" ]]; then
+            help_only="true"
+            break
+        fi
+    done
+    if [[ "$command_name" != "install" || "$help_only" == "true" ]]; then
         python_path="$(iis_select_controller_python)" || {
             iis_bootstrap_error "需要 Python 3.10+ 才能运行部署控制器。"
             return 1

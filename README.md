@@ -350,7 +350,8 @@ deploy/iisctl doctor
 
 正式执行 `deploy/iisctl install` 时会优先复用功能完整的 CPython 3.12/3.11；缺失时安装
 带固定 SHA-256 校验的独立 CPython 3.12，再统一创建 IIS 专属虚拟环境，不修改系统默认
-Python。
+Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui`、`dev` 按需叠加，
+`full` 保留原 `requirements.txt` 的完整安装行为。
 
 诊断工具、当前落地阻塞项和各阶段验收标准见
 [Linux 部署目录](deploy/README.md)与[审计及路线图](deploy/AUDIT_AND_ROADMAP.md)。

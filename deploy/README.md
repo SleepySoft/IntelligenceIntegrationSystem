@@ -40,6 +40,42 @@ IIS_STANDALONE_PYTHON_SHA256
 `install` 必须由 3.11/3.12 执行。调用 `iis_deploy.py` 绕过 bootstrap 时也会拒绝不受支持
 的安装解释器。
 
+## 依赖 profile
+
+依赖采用两层事实源：[`dependency_profiles.yaml`](dependency_profiles.yaml) 只描述 profile
+之间的组合、需要启动的服务和浏览器能力；实际交给 pip 的包及版本仍保存在
+[`requirements/`](requirements/) 下的 TXT 文件。这样 YAML 不重复包版本，TXT 也仍可用
+标准 `pip install -r` 检查和安装。仓库根 `requirements.txt` 保留为完整开发环境入口。
+
+| Profile | 自动包含 | 用途 |
+|---|---|---|
+| `core` | — | Web、AI Client、MongoDB 和公共运行基础 |
+| `crawler` | `core` | Crawler、正文提取、Playwright 和 Chromium |
+| `vector` | `core` | ChromaDB、嵌入模型、聚类和语义检索 |
+| `gui` | `core` | PyQt、WebEngine 和 Streamlit 工具 |
+| `dev` | `core` | pytest 等开发工具，可叠加其他 profile |
+| `full` | — | 原根目录 `requirements.txt` 的完整兼容安装 |
+
+未指定时默认选择 `core,crawler`。参数可以重复，也可以使用逗号：
+
+```bash
+# 只运行 Web，不安装爬虫、Chromium、向量或 GUI 依赖
+sudo deploy/iisctl install --profile core ...
+
+# Web + Crawler（默认组合）
+sudo deploy/iisctl install --profile core,crawler ...
+
+# Web + Crawler + 向量能力
+sudo deploy/iisctl install --profile crawler --profile vector ...
+
+# 保持历史完整 requirements.txt 行为
+sudo deploy/iisctl install --profile full ...
+```
+
+`requires` 会自动展开并按依赖顺序安装，例如选择 `vector` 会自动先安装 `core`。最终展开的
+profile、requirements 文件和基础 Python 会写入安装状态文件，便于复现和排障。高级参数
+`--profile-file` 可换用经过版本管理的自定义 manifest；其中引用的 TXT 必须位于源码树内。
+
 M1 已支持按需外置以下目录，同时保持仓库内运行的默认行为不变：
 
 ```text
@@ -84,6 +120,7 @@ IIS 与 AI Client 配置后，使用无人值守安装器：
 
 ```bash
 sudo deploy/iisctl install --non-interactive \
+  --profile core,crawler \
   --config ./_config/iis.yaml \
   --ai-config ./_config/ai_clients.yaml \
   --admin-user admin \

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from deploy import installer as installer_module
 from deploy.installer import (
     InstallError, InstallLayout, InstallRequest, install,
 )
@@ -68,6 +69,8 @@ def test_sandbox_unattended_install_writes_complete_layout(tmp_path):
     assert state["base_python"] == str(Path(sys.executable).resolve())
     assert state["base_python_version"]
     assert state["python"] == str(Path(sys.executable).resolve())
+    assert state["profiles"] == ["core", "crawler"]
+    assert state["components"] == ["web", "crawler"]
     assert stat.S_IMODE(installed_config.stat().st_mode) == 0o600
     assert stat.S_IMODE(environment.stat().st_mode) == 0o600
     assert collector["collector"]["default_token"] == "collector-secret"
@@ -134,3 +137,37 @@ def test_unattended_install_can_create_administrator_from_password_file(tmp_path
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
     assert UserManager(str(database)).authenticate(
         "admin", "correct horse battery staple", "127.0.0.1")[0] is True
+
+
+def test_installer_api_uses_selected_requirement_files(tmp_path, monkeypatch):
+    config, ai = _inputs(tmp_path)
+    first = tmp_path / "core.txt"
+    second = tmp_path / "vector.txt"
+    first.write_text("PyYAML\n", encoding="utf-8")
+    second.write_text("numpy\n", encoding="utf-8")
+    request = replace(
+        _request(tmp_path, config, ai),
+        install_dependencies=True,
+        requirement_files=(str(first), str(second)),
+    )
+    calls = []
+
+    class FakeBuilder:
+        def __init__(self, **kwargs):
+            pass
+
+        def create(self, path):
+            python = Path(path) / "bin/python"
+            python.parent.mkdir(parents=True)
+            python.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(installer_module.venv, "EnvBuilder", FakeBuilder)
+    monkeypatch.setattr(
+        installer_module.subprocess, "run",
+        lambda command, **kwargs: calls.append(command),
+    )
+
+    installer_module._install_dependencies(request)
+
+    requirements = [command[-1] for command in calls if "-r" in command]
+    assert requirements == [str(first), str(second)]

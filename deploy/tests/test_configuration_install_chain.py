@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 from flask import Flask
@@ -56,4 +57,7 @@ def test_web_generated_configuration_is_consumed_by_unattended_installer(
     assert (install_root / "_config/iis.yaml").is_file()
     assert (install_root / "_config/ai_clients.yaml").is_file()
     assert (install_root / "_config/collector.json").is_file()
-    assert (install_root / "_data/deployment/install-state.json").is_file()
+    state_path = install_root / "_data/deployment/install-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["profiles"] == ["core", "crawler"]
+    assert state["components"] == ["web", "crawler"]

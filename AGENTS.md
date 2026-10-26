@@ -160,6 +160,7 @@
 
 - **`deploy/`** — Linux 单命令部署工程（与业务代码隔离）
   - `iisctl` / `iis_deploy.py`：统一部署控制入口；当前 M0 提供零第三方依赖的只读 `doctor`
+  - `dependency_profiles.yaml`：声明 `core`/`crawler`/`vector`/`gui`/`dev`/`full` 的组合、服务与浏览器能力；具体 pip 包仍位于 `deploy/requirements/*.txt`
   - `AUDIT_AND_ROADMAP.md`：落地阻塞项、部署身份模式、阶段计划和逐阶段验收标准
   - 首版目标为 Ubuntu 22.04/24.04、Debian 12 x86_64 的 `core` profile；VectorDB 后置
 

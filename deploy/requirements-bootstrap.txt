@@ -1,0 +1,2 @@
+# Python 标准库阶段创建 venv 后，只先安装 YAML profile 解析所需的最小依赖。
+PyYAML>=6.0,<7

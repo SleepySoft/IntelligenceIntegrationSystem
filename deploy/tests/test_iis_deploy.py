@@ -99,9 +99,9 @@ def test_install_rejects_unvalidated_python_before_reading_config(
 def test_prepare_install_environment_uses_only_stdlib_stage(
         tmp_path, monkeypatch):
     source = tmp_path / "source"
-    source.mkdir()
-    requirements = source / "requirements.txt"
-    requirements.write_text("PyYAML>=6\n", encoding="utf-8")
+    bootstrap_requirements = source / "deploy/requirements-bootstrap.txt"
+    bootstrap_requirements.parent.mkdir(parents=True)
+    bootstrap_requirements.write_text("PyYAML>=6\n", encoding="utf-8")
     calls = []
 
     class FakeBuilder:
@@ -133,4 +133,34 @@ def test_prepare_install_environment_uses_only_stdlib_stage(
     assert prepared == expected
     pip_commands = [item[0] for item in calls if isinstance(item[0], list)]
     assert pip_commands[0][-3:] == ["install", "--upgrade", "pip"]
-    assert pip_commands[1][-3:] == ["install", "-r", str(requirements)]
+    assert pip_commands[1][-3:] == [
+        "install", "-r", str(bootstrap_requirements)]
+
+
+def test_prepare_install_environment_installs_only_expanded_profiles(
+        tmp_path, monkeypatch):
+    venv_dir = tmp_path / "sandbox/opt/iis/.venv"
+    calls = []
+    monkeypatch.setattr(iis_deploy.sys, "prefix", str(venv_dir))
+    monkeypatch.setattr(iis_deploy.sys, "executable", str(venv_dir / "bin/python"))
+    monkeypatch.delenv(iis_deploy.DEPENDENCY_STAGE_ENV, raising=False)
+    monkeypatch.setattr(
+        iis_deploy.subprocess, "run",
+        lambda command, **kwargs: calls.append((command, kwargs))
+        or SimpleNamespace(returncode=0),
+    )
+    args = SimpleNamespace(
+        skip_dependencies=False,
+        install_root=Path("/opt/iis"),
+        sandbox_root=tmp_path / "sandbox",
+        source=iis_deploy.PROJECT_DIR,
+        profile_file=Path("deploy/dependency_profiles.yaml"),
+        profiles=["vector"],
+    )
+
+    prepared = iis_deploy.prepare_install_environment(args)
+
+    assert prepared == venv_dir / "bin/python"
+    installed = [Path(command[-1]).name for command, _ in calls]
+    assert installed == ["core.txt", "vector.txt"]
+    assert iis_deploy.DEPENDENCY_STAGE_ENV in iis_deploy.os.environ

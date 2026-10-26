@@ -1,0 +1,64 @@
+schema: iis-dependency-profiles/1
+
+defaults:
+  - core
+  - crawler
+
+profiles:
+  core:
+    description: IIS Web、AI Client、MongoDB 与公共运行基础
+    requires: []
+    requirement_files:
+      - deploy/requirements/core.txt
+    services:
+      - web
+    browsers: []
+
+  crawler:
+    description: Crawler 服务、内容抽取与 Chromium 自动化
+    requires:
+      - core
+    requirement_files:
+      - deploy/requirements/crawler.txt
+    services:
+      - crawler
+    browsers:
+      - chromium
+
+  vector:
+    description: ChromaDB、向量模型、聚类与语义检索能力
+    requires:
+      - core
+    requirement_files:
+      - deploy/requirements/vector.txt
+    services: []
+    browsers: []
+
+  gui:
+    description: PyQt、WebEngine 与 Streamlit 桌面工具
+    requires:
+      - core
+    requirement_files:
+      - deploy/requirements/gui.txt
+    services: []
+    browsers: []
+
+  dev:
+    description: 自动化测试和开发工具；按需叠加到其他 profile
+    requires:
+      - core
+    requirement_files:
+      - deploy/requirements/dev.txt
+    services: []
+    browsers: []
+
+  full:
+    description: 兼容原 requirements.txt 的完整开发环境
+    requires: []
+    requirement_files:
+      - requirements.txt
+    services:
+      - web
+      - crawler
+    browsers:
+      - chromium

@@ -19,6 +19,8 @@ from typing import Callable
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = DEPLOY_DIR.parent
+DEFAULT_PROFILE_FILE = Path("deploy/dependency_profiles.yaml")
+DEPENDENCY_STAGE_ENV = "IIS_DEPENDENCY_PLAN_SHA256"
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 SUPPORTED_SYSTEMS = {
@@ -278,7 +280,15 @@ def build_parser() -> argparse.ArgumentParser:
                          help="把绝对路径投影到该目录，用于沙箱测试")
     install.add_argument("--source", type=Path, default=PROJECT_DIR)
     install.add_argument("--service-user")
-    install.add_argument("--components", default="web,crawler")
+    install.add_argument(
+        "--profile", dest="profiles", action="append",
+        help="依赖 profile，可重复使用或用逗号组合；默认 core,crawler")
+    install.add_argument(
+        "--profile-file", type=Path, default=DEFAULT_PROFILE_FILE,
+        help="依赖 profile YAML，默认 deploy/dependency_profiles.yaml")
+    install.add_argument(
+        "--components",
+        help="兼容用服务覆盖（web,crawler）；默认由 profile 决定")
     install.add_argument("--non-interactive", action="store_true", required=True)
     install.add_argument("--skip-dependencies", action="store_true")
     install.add_argument("--skip-browser", action="store_true")
@@ -357,23 +367,48 @@ def prepare_install_environment(args) -> Path | None:
     if args.skip_dependencies:
         return None
     venv_dir = install_venv_path(args)
-    if Path(sys.prefix).resolve() == venv_dir.resolve():
-        return None
     source = args.source.expanduser().resolve()
-    requirements = source / "requirements.txt"
-    if not requirements.is_file():
-        raise FileNotFoundError(f"找不到依赖文件: {requirements}")
-    venv_dir.parent.mkdir(parents=True, exist_ok=True)
-    venv.EnvBuilder(
-        with_pip=True, clear=False, upgrade_deps=False).create(venv_dir)
-    python_path = venv_dir / "bin" / "python"
-    subprocess.run(
-        [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
-        cwd=source, check=True)
-    subprocess.run(
-        [str(python_path), "-m", "pip", "install", "-r", str(requirements)],
-        cwd=source, check=True)
+    if Path(sys.prefix).resolve() != venv_dir.resolve():
+        bootstrap_requirements = source / "deploy/requirements-bootstrap.txt"
+        if not bootstrap_requirements.is_file():
+            raise FileNotFoundError(
+                f"找不到 bootstrap 依赖文件: {bootstrap_requirements}")
+        venv_dir.parent.mkdir(parents=True, exist_ok=True)
+        venv.EnvBuilder(
+            with_pip=True, clear=False, upgrade_deps=False).create(venv_dir)
+        python_path = venv_dir / "bin" / "python"
+        subprocess.run(
+            [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
+            cwd=source, check=True)
+        subprocess.run(
+            [str(python_path), "-m", "pip", "install", "-r",
+             str(bootstrap_requirements)],
+            cwd=source, check=True)
+        return python_path
+
+    plan = load_dependency_plan(args)
+    if os.environ.get(DEPENDENCY_STAGE_ENV) == plan.fingerprint:
+        return None
+    python_path = Path(sys.executable)
+    for requirements in plan.requirement_files:
+        subprocess.run(
+            [str(python_path), "-m", "pip", "install", "-r", str(requirements)],
+            cwd=source, check=True)
+    os.environ[DEPENDENCY_STAGE_ENV] = plan.fingerprint
     return python_path
+
+
+def load_dependency_plan(args):
+    from deploy.dependency_profiles import (
+        DependencyProfileCatalog, parse_profile_arguments,
+    )
+
+    source = args.source.expanduser().resolve()
+    profile_file = args.profile_file.expanduser()
+    if not profile_file.is_absolute():
+        profile_file = source / profile_file
+    catalog = DependencyProfileCatalog(profile_file, source)
+    return catalog.resolve(parse_profile_arguments(args.profiles))
 
 
 def run_install(args) -> int:
@@ -388,12 +423,31 @@ def run_install(args) -> int:
         from deploy.installer import (
             InstallError, InstallLayout, InstallRequest, install, result_json,
         )
+        from deploy.dependency_profiles import ProfileError
     except ModuleNotFoundError as exc:
         print(
             f"安装后端依赖尚未准备: {exc}；不要在全新解释器上使用 --skip-dependencies。",
             file=sys.stderr,
         )
         return 1
+
+    try:
+        dependency_plan = load_dependency_plan(args)
+    except ProfileError as exc:
+        print(f"依赖 profile 无效: {exc}", file=sys.stderr)
+        return 1
+    components = dependency_plan.services
+    if args.components:
+        components = tuple(dict.fromkeys(
+            item.strip() for item in args.components.split(",") if item.strip()))
+        unavailable = set(components).difference(dependency_plan.services)
+        if unavailable:
+            print(
+                "服务覆盖需要对应依赖 profile: "
+                + ", ".join(sorted(unavailable)),
+                file=sys.stderr,
+            )
+            return 1
 
     config_path = args.config.expanduser().resolve()
     ai_path = (args.ai_config or config_path.with_name("ai_clients.yaml"))
@@ -407,10 +461,14 @@ def run_install(args) -> int:
             layout=InstallLayout.build(
                 args.source, args.install_root, args.sandbox_root),
             service_user=_service_user(args.service_user),
-            components=tuple(
-                item.strip() for item in args.components.split(",") if item.strip()),
+            components=components,
+            profiles=dependency_plan.profiles,
+            requirement_files=tuple(
+                str(path) for path in dependency_plan.requirement_files),
+            dependency_fingerprint=dependency_plan.fingerprint,
             install_dependencies=not args.skip_dependencies,
-            install_browser=not args.skip_browser,
+            install_browser=(
+                not args.skip_browser and "chromium" in dependency_plan.browsers),
             manage_systemd=not args.no_systemd,
             start_services=not args.no_start,
             force_config=args.force_config,
@@ -432,6 +490,7 @@ def run_install(args) -> int:
         print(result_json(result))
     else:
         print(f"安装完成。配置目录: {result.config_dir}")
+        print(f"依赖 profile: {', '.join(result.profiles)}")
         print(f"状态文件: {result.state_file}")
         for warning in result.warnings:
             print(f"警告: {warning}")

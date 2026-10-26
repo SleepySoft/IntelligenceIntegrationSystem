@@ -1,0 +1,21 @@
+# Crawler 服务、静态/动态网页抓取与正文提取。
+
+requests[socks]==2.32.3
+beautifulsoup4==4.13.4
+bs4==0.0.2
+lxml==5.4.0
+feedparser==6.0.10
+ultimate-sitemap-parser
+tldextract==5.3.0
+
+playwright==1.52.0
+tf-playwright-stealth==1.2.0
+crawl4ai==0.6.3
+
+readability-lxml
+trafilatura
+newspaper3k
+html2text==2025.4.15
+markdownify==1.1.0
+python-dateutil
+watchdog==6.0.0

@@ -70,8 +70,9 @@ Python 接管后仍分为两个阶段：标准库阶段先创建 `.venv` 并安�
    但 AI 示例只有 `codex_cli` 分组而没有 `translate_small`；预检会正确拒绝这套组合。
 4. **没有配置初始化器。** Collector/RPC Token、Flask Session Secret、管理员账号和 AI
    配置仍需人工分别创建；`UserManagerConsole.py` 只有交互菜单，不能安全地用于无人值守安装。
-5. **依赖没有按运行能力分层。** 根 `requirements.txt` 同时安装 Web、Crawler、VectorDB、
-   Torch/ChromaDB、PyQt、Streamlit 和测试工具，导致最小部署体积大、安装慢、失败面扩大。
+5. **依赖 profile 的发行版验证仍未完成。** 当前已经用 YAML manifest 将 TXT 依赖事实源
+   分成 core/crawler/vector/gui/dev/full，但还需在支持矩阵的干净主机上验证每层 imports、
+   wheel 可用性和系统库前置条件。
 6. **外部 AI 程序缺少明确检查契约。** Codex/Kimi/Ollama 的安装、登录和升级不属于 IIS，
    但安装器仍需以最终运行用户验证配置引用的命令确实可执行；API Client 只校验配置和必要
    环境变量存在，不发送会消耗额度的测试请求。
@@ -153,7 +154,8 @@ API Key 仍只写入权限 `0600` 的 EnvironmentFile，不写进 YAML、命令�
 验收：`core+crawler` 不安装 PyQt、Streamlit、ChromaDB、sentence-transformers 或测试工具；
 全新虚拟环境能通过 imports 与 preflight。
 
-状态：**Python bootstrap 已完成。** 依赖 profile 拆分和发行版干净环境矩阵仍待完成。
+状态：**Python bootstrap 与依赖 profile 拆分已完成。** YAML 负责组合关系，TXT 保留 pip
+事实源，支持按用户选择展开安装；发行版干净环境矩阵仍待完成。
 
 ### M3：安全、幂等的配置初始化
 

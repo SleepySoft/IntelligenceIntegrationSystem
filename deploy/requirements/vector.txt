@@ -1,0 +1,13 @@
+# VectorDB、嵌入模型、聚类与语义检索。
+
+hf_xet
+chromadb==1.2.1
+onnxruntime
+sentence_transformers
+langchain_text_splitters
+numpy==2.2.6
+pandas==2.2.3
+faiss-cpu==1.11.0
+huggingface-hub==0.32.2
+hdbscan
+prompt_toolkit

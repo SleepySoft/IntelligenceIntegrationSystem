@@ -81,6 +81,9 @@ class InstallRequest:
     layout: InstallLayout
     service_user: str
     components: tuple[str, ...] = ("web", "crawler")
+    profiles: tuple[str, ...] = ("core", "crawler")
+    requirement_files: tuple[str, ...] = ()
+    dependency_fingerprint: str = ""
     install_dependencies: bool = True
     install_browser: bool = True
     manage_systemd: bool = True
@@ -98,6 +101,7 @@ class InstallResult:
     config_dir: str
     environment_file: str
     units: tuple[str, ...]
+    profiles: tuple[str, ...]
     warnings: tuple[str, ...]
 
 
@@ -355,9 +359,12 @@ def _install_dependencies(request: InstallRequest) -> Path:
         subprocess.run(
             [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
             cwd=layout.source_dir, check=True)
-        subprocess.run(
-            [str(python_path), "-m", "pip", "install", "-r", "requirements.txt"],
-            cwd=layout.source_dir, check=True)
+        requirement_files = request.requirement_files or (
+            str(layout.source_dir / "requirements.txt"),)
+        for requirements in requirement_files:
+            subprocess.run(
+                [str(python_path), "-m", "pip", "install", "-r", requirements],
+                cwd=layout.source_dir, check=True)
     if request.install_browser and "crawler" in request.components:
         subprocess.run(
             [str(python_path), "-m", "playwright", "install", "chromium"],
@@ -458,7 +465,13 @@ def install(request: InstallRequest) -> InstallResult:
         raise InstallError("拒绝把 root 配置为 IIS 长期服务用户。")
 
     config, warnings = validate_inputs(request)
-    _state(request.layout, "validated")
+    _state(
+        request.layout, "validated",
+        profiles=request.profiles,
+        requirement_files=request.requirement_files,
+        dependency_fingerprint=request.dependency_fingerprint,
+        components=request.components,
+    )
     for directory in (
             request.layout.config_dir, request.layout.data_dir, request.layout.log_dir,
             request.layout.export_dir, request.layout.products_dir,
@@ -500,6 +513,10 @@ def install(request: InstallRequest) -> InstallResult:
         python=str(python_path),
         base_python=_base_python_path(),
         base_python_version=platform.python_version(),
+        profiles=request.profiles,
+        requirement_files=request.requirement_files,
+        dependency_fingerprint=request.dependency_fingerprint,
+        components=request.components,
     )
     env_path = request.layout.config_dir / "iis.env"
     session_secret = _read_env_value(env_path, "IIS_SESSION_SECRET") or secrets.token_urlsafe(48)
@@ -525,6 +542,10 @@ def install(request: InstallRequest) -> InstallResult:
         python=str(python_path),
         base_python=_base_python_path(),
         base_python_version=platform.python_version(),
+        profiles=request.profiles,
+        requirement_files=request.requirement_files,
+        dependency_fingerprint=request.dependency_fingerprint,
+        components=request.components,
     )
     return InstallResult(
         status="complete",
@@ -532,6 +553,7 @@ def install(request: InstallRequest) -> InstallResult:
         config_dir=str(request.layout.config_dir),
         environment_file=str(env_path),
         units=tuple(sorted(units)),
+        profiles=request.profiles,
         warnings=tuple(warnings),
     )
 

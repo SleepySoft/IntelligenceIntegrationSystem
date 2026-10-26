@@ -130,3 +130,17 @@ def test_install_roots_apply_sandbox_projection(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines()[0] == str(tmp_path / "opt/custom")
+
+
+def test_install_help_does_not_require_runtime_bootstrap():
+    result = subprocess.run(
+        [str(ROOT / "deploy/iisctl"), "install", "--help"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--profile" in result.stdout
+    assert "下载 CPython" not in result.stderr

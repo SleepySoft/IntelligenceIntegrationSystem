@@ -1,0 +1,5 @@
+# 非服务器必需的桌面/交互工具。
+
+PyQt5==5.15.11
+PyQtWebEngine
+streamlit
