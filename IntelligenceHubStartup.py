@@ -25,7 +25,7 @@ from IISConfig import IISConfig, load_iis_config
 from WebI18n import install_web_i18n
 from ServiceComponent.UserManager import UserManager
 from ServiceComponent.RSSPublisher import RSSPublisher
-from ServiceComponent.SubsystemRegistry import SubsystemRegistry
+from ServiceComponent.DomainResources import DomainResourceRegistry
 from IntelligenceDomains import build_domain_registry
 from ServiceComponent.manual_debug_analysis import ManualDebugAnalysisService
 from ServiceComponent.analysis_failure_dump import AnalysisFailureRecorder
@@ -146,9 +146,9 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     mongodb_user = config.get('mongodb.user', '')
     mongodb_pass = config.get('mongodb.password', '')
 
-    # ------------------------------- Subsystems ------------------------------
+    # -------------------------------- Domains --------------------------------
 
-    subsystem_registry = SubsystemRegistry.build_from_config(
+    domain_resources = DomainResourceRegistry.build_from_config(
         config,
         mongodb_params={
             'host': mongodb_host,
@@ -158,12 +158,12 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         },
         db_name='IntelligenceIntegrationSystem',
     )
-    logger.info(f"Subsystems: default='{subsystem_registry.default_name}', "
-                f"list={subsystem_registry.describe()}")
+    logger.info(f"Domains: default='{domain_resources.default_name}', "
+                f"list={domain_resources.describe_domains()}")
     # 领域行为在启动期一次性注册；主流程只按 domain_name 查定义。
     domain_registry = build_domain_registry(
-        subsystem_registry.enabled_subsystems(),
-        default_name=subsystem_registry.default_name,
+        domain_resources.enabled_domains(),
+        default_name=domain_resources.default_name,
     )
     services = {"domain_registry": domain_registry}
 
@@ -216,7 +216,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     shadow_sample_rate = float(config.get(
         'intelligence_hub.shadow_analysis.sample_rate', 1.0))
     pipeline_ports = EventV4PipelinePorts(
-        subsystem_registry,
+        domain_resources,
         client_manager,
         domain_registry=domain_registry,
         client_wait_timeout=ai_client_wait_timeout,
@@ -239,7 +239,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     extensions = []
     manual_debug_service = ManualDebugAnalysisService(
         pipeline_ports,
-        subsystem_registry,
+        domain_resources,
         max_results=config.get('intelligence_hub.manual_debug.max_results', 50),
         worker_count=config.get('intelligence_hub.manual_debug.worker_count', 1),
     )
@@ -249,7 +249,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     # replay_unarchived 只控制启动时是否自动回放未处理记录，False 时可经
     # POST /api/control/replay_unarchived 手工触发。
     replay_extension = IISUnarchivedReplayExtension(
-        subsystem_registry,
+        domain_resources,
         auto_replay=config.get('intelligence_hub.replay_unarchived', True),
         replay_newest_first=config.get('intelligence_hub.replay_newest_first', True),
         max_analysis_age_hours=float(config.get(
@@ -263,7 +263,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         from BatchAnalysis.iis_integration import create_service as create_batch_service
         batch_analysis_service = create_batch_service(
             config=config,
-            subsystem_registry=subsystem_registry,
+            domain_resources=domain_resources,
             outcome_port=pipeline_ports,
             data_path=DATA_PATH,
         )
@@ -281,8 +281,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
         def create_translation_patch(shutdown_flag, on_patched):
             return AsyncTranslationPatch(
-                mongo_db_archive=subsystem_registry.default().event_v4_intelligence_collection,
-                query_engine=subsystem_registry.default().event_v4_query_engine,
+                mongo_db_archive=domain_resources.default().event_v4_intelligence_collection,
+                query_engine=domain_resources.default().event_v4_query_engine,
                 ai_client_manager=client_manager,
                 shutdown_flag=shutdown_flag,
                 on_patched=on_patched,
@@ -294,7 +294,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             )
 
         translation_extension = IISAsyncTranslationExtension(
-            default_subsystem=subsystem_registry.default_name,
+            default_domain=domain_resources.default_name,
             translator_factory=create_translation_patch,
             needs_translation=needs_translation,
         )
@@ -309,7 +309,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     try:
         from VectorIntelligence.iis_integration import create_vector_intelligence
         vector_handles = create_vector_intelligence(
-            config, subsystem_registry=subsystem_registry)
+            config, domain_resources=domain_resources)
     except Exception:
         logger.exception("向量子系统装配失败，IIS 主服务继续运行（向量能力禁用）。")
     if vector_handles is not None:
@@ -328,7 +328,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             vector_client=vector_handles.vector_client if vector_handles else None,
         )
         if entity_alias_service is not None:
-            for _ctx in subsystem_registry.enabled_subsystems():
+            for _ctx in domain_resources.enabled_domains():
                 _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
             services["entity_alias"] = entity_alias_service
     except Exception:
@@ -339,7 +339,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     try:
         from EntityResolution.iis_integration import create_entity_resolution
         entity_resolution_service = create_entity_resolution(
-            subsystem_registry=subsystem_registry,
+            domain_resources=domain_resources,
             entity_registry=entity_alias_service,
         )
         if entity_resolution_service is not None:
@@ -353,14 +353,14 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     entity_frequency_engine = EntityFrequencyEngine(
         db_path=os.path.join(DATA_PATH, "entity_frequency.db"),
-        event_collection=subsystem_registry.default().event_v4_event_collection,
+        event_collection=domain_resources.default().event_v4_event_collection,
     )
     services["entity_frequency"] = entity_frequency_engine
 
     def export_weekly():
         now = datetime.datetime.now()
         year, week, _ = now.isocalendar()
-        context = subsystem_registry.default()
+        context = domain_resources.default()
         if context.event_v4_intelligence_storage:
             context.event_v4_intelligence_storage.export_by_week(
                 year=year, week=week, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
@@ -372,7 +372,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
 
     def export_monthly():
         target = datetime.datetime.now().replace(day=1) - datetime.timedelta(days=1)
-        context = subsystem_registry.default()
+        context = domain_resources.default()
         if context.event_v4_intelligence_storage:
             context.event_v4_intelligence_storage.export_by_month(
                 year=target.year, month=target.month, directory=os.path.join(EXPORT_PATH, "mongo_db_archive"),
@@ -420,7 +420,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     ))
 
     hub = HubApplication(
-        subsystem_registry=subsystem_registry,
+        domain_resources=domain_resources,
         ai_client_manager=client_manager,
         worker_count=ai_analysis_thread,
         pipeline_ports=pipeline_ports,
@@ -453,7 +453,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         rss_publisher=RSSPublisher(rss_base_url),
         public_search_limits=public_search_limits,
         post_settings=post_settings,
-        subsystem_registry=subsystem_registry,
+        domain_resources=domain_resources,
         control_state=control_state,
     )
 
@@ -536,7 +536,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         mount_situation_views(
             wsgi_app,
             config=config,
-            subsystem_registry=subsystem_registry,
+            domain_resources=domain_resources,
             wrapper=hub_service.access_manager.login_required,
             data_path=DATA_PATH,
             dashboard=situation_scope,
@@ -554,7 +554,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         mount_intelligence_views(
             wsgi_app,
             config=config,
-            subsystem_registry=subsystem_registry,
+            domain_resources=domain_resources,
             wrapper=hub_service.access_manager.login_required,
         )
     except Exception:

@@ -73,7 +73,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
 
     def __init__(
         self,
-        subsystem_registry: Any,
+        domain_resources: Any,
         ai_client_manager: Any,
         *,
         domain_registry: DomainRegistry | None = None,
@@ -103,7 +103,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
     ):
         scorer_factory_override = scorer_factory
         super().__init__(
-            subsystem_registry,
+            domain_resources,
             ai_client_manager,
             analyzer=analyzer,
             transient_analyzer=transient_analyzer,
@@ -113,15 +113,17 @@ class EventV4PipelinePorts(BasePipelinePorts):
             analysis_worker_count=analysis_worker_count,
         )
         self._failure_recorder = failure_recorder
-        enabled_contexts = getattr(subsystem_registry, "enabled_subsystems", None)
+        enabled_contexts = getattr(domain_resources, "enabled_domains", None)
+        if not callable(enabled_contexts):
+            enabled_contexts = getattr(domain_resources, "enabled_subsystems", None)
         if callable(enabled_contexts):
             contexts = enabled_contexts()
         else:
-            legacy_context = getattr(subsystem_registry, "context", None)
+            legacy_context = getattr(domain_resources, "context", None)
             if legacy_context is None:
-                legacy_context = getattr(subsystem_registry, "ctx", None)
+                legacy_context = getattr(domain_resources, "ctx", None)
             contexts = [legacy_context] if legacy_context is not None else []
-        default_name = getattr(subsystem_registry, "default_name", None)
+        default_name = getattr(domain_resources, "default_name", None)
         if not default_name and contexts:
             default_name = contexts[0].name
         self._domain_registry = domain_registry or build_domain_registry(
@@ -199,7 +201,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             return StageResult.reject(str(exc))
         if data.get("source") == MANUAL_TEST_SOURCE:
             return StageResult.reject("manual_test_requires_debug_route")
-        data["subsystem"] = ctx.name
+        data["domain"] = ctx.name
         with self._dedupe_lock:
             collection = ctx.mongo_db_cache.collection if ctx.mongo_db_cache else None
             if collection is not None:
@@ -222,8 +224,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
             return StageResult.reject("stale_content")
         if (self._max_live_age_hours > 0 and age_hours is not None
                 and age_hours > self._max_live_age_hours):
-            return StageResult.allow(data, subsystem=ctx.name, lane="replay")
-        return StageResult.allow(data, subsystem=ctx.name)
+            return StageResult.allow(data, domain_name=ctx.name, lane="replay")
+        return StageResult.allow(data, domain_name=ctx.name)
 
     @staticmethod
     def _content_age_hours(data: Mapping[str, Any]) -> float | None:
@@ -256,7 +258,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 "informant": str(payload.get("informant") or ""),
                 "source": str(payload.get("source") or ""),
                 "title": str(payload.get("title") or "")[:200],
-                "subsystem": getattr(ctx, "name", ""),
+                "domain_name": getattr(ctx, "name", ""),
                 "reason": reason[:1000],
                 "rejected_at": datetime.now(timezone.utc),
             })
@@ -272,10 +274,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
             return StageResult.reject("transient_analysis_requires_manual_test_source")
         return self._analyze_v4(event, persist=False)
 
-    def get_transient_prompt_table(self, subsystem: str) -> dict[int, str]:
-        ctx = self._registry.resolve(subsystem)
+    def get_transient_prompt_table(self, domain_name: str) -> dict[int, str]:
+        ctx = self._domain_resources.resolve(domain_name)
         if ctx is None:
-            raise ValueError(f"unknown_subsystem:{subsystem!r}")
+            raise ValueError(f"unknown_domain:{domain_name!r}")
         return dict(self._domain_for_context(ctx).prompt_catalog.selectable_table())
 
     def _analyze_v4(self, event: HubEvent, *, persist: bool) -> StageResult:
@@ -353,7 +355,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         try:
                             marker(
                                 uuid=str(original_data.get("UUID") or ""),
-                                subsystem=getattr(ctx, "name", ""), shadow=False)
+                                domain_name=getattr(ctx, "name", ""), shadow=False)
                         except Exception:
                             pass
                 self._increment_stat(ctx, "error")
@@ -430,7 +432,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         )
         if not persist:
             return StageResult.allow(
-                dict(prepared.output), subsystem=ctx.name, transient=True,
+                dict(prepared.output), domain_name=ctx.name, transient=True,
                 low_value=prepared.low_value,
             )
         if prepared.low_value:
@@ -445,7 +447,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 intelligence_uuid=str(intelligence_uuid),
                 retry_metadata=dict(original_data.get(APPENDIX_FIELD) or {}),
             ),
-            subsystem=ctx.name,
+            domain_name=ctx.name,
         )
 
     def archive(self, event: HubEvent) -> StageResult:
@@ -463,7 +465,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             self._increment_stat(ctx, "archived")
             return StageResult.allow(
                 definition.storage.serialize(archive),
-                subsystem=ctx.name,
+                domain_name=ctx.name,
             )
         except Exception as exc:
             source_uuid = prepared.intelligence_uuid
@@ -547,7 +549,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         try:
             recorder.record_attempt(
                 uuid=str(original_data.get("UUID") or ""),
-                subsystem=getattr(ctx, "name", ""), shadow=shadow,
+                domain_name=getattr(ctx, "name", ""), shadow=shadow,
                 prompt_version=prompt_version, ai_service=service, ai_model=model,
                 attempt_no=attempt, latency_ms=latency_ms, error_class=error_class,
                 request_id=request_id, client_name=client_name)
@@ -563,7 +565,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         try:
             recorder.record_outcome(
                 uuid=str(original_data.get("UUID") or ""),
-                subsystem=getattr(ctx, "name", ""), shadow=shadow,
+                domain_name=getattr(ctx, "name", ""), shadow=shadow,
                 prompt_version=prompt_version, ai_service=service, ai_model=model,
                 outcome=outcome, attempts_used=attempts_used)
         except Exception:
@@ -880,7 +882,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 )
                 self._shadow_recorder.record(
                     original_data=original_data,
-                    subsystem=ctx.name,
+                    domain_name=ctx.name,
                     primary_prompt_version=primary_version,
                     shadow_prompt_version=version,
                     analysis=analysis.model_dump(mode="json", by_alias=True),
@@ -945,7 +947,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             error=error,
             raw_response=raw_response,
             original_data=original_data,
-            subsystem=ctx.name,
+            domain_name=ctx.name,
             trace_id=event.correlation_id or event.event_id,
             attempt=attempt,
             prompt_version=prompt_version,

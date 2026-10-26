@@ -12,7 +12,8 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_FIELD,
     APPENDIX_RAW_DATA,
     APPENDIX_SCHEMA_VERSION,
-    APPENDIX_SUBSYSTEM,
+    APPENDIX_DOMAIN_NAME,
+    APPENDIX_LEGACY_SUBSYSTEM,
     APPENDIX_TIME_ARCHIVED,
     APPENDIX_TOTAL_SCORE,
 )
@@ -80,7 +81,10 @@ class IntelligenceVectorDBEngine:
             "informant": intelligence.INFORMANT,
             "archived_timestamp": archived_ts,
             "total_score": float(appendix.get(APPENDIX_TOTAL_SCORE, 0.0)),
-            "subsystem": appendix.get(APPENDIX_SUBSYSTEM, ""),
+            "domain_name": (
+                appendix.get(APPENDIX_DOMAIN_NAME)
+                or appendix.get(APPENDIX_LEGACY_SUBSYSTEM, "")
+            ),
             "schema_version": appendix.get(APPENDIX_SCHEMA_VERSION, ""),
             "timestamp": content_ts if content_ts is not None else archived_ts,
             "content_time_source": appendix.get(APPENDIX_CONTENT_TIME_SOURCE),

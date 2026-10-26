@@ -26,11 +26,16 @@ def _reference_loader(archive_collection):
     return load
 
 
-def create_entity_resolution(*, subsystem_registry, entity_registry=None):
-    """复用各子系统 MongoDB，构造统一的指称解析服务。失败时返回 None。"""
+def create_entity_resolution(*, domain_resources=None, subsystem_registry=None,
+                             entity_registry=None):
+    """复用各情报域 MongoDB，构造统一的指称解析服务。"""
     try:
+        resources = domain_resources or subsystem_registry
         scopes = {}
-        for ctx in subsystem_registry.enabled_subsystems():
+        enabled = getattr(resources, "enabled_domains", None)
+        if not callable(enabled):
+            enabled = resources.enabled_subsystems
+        for ctx in enabled():
             database = ctx.mongo_db_cache.db
             store = MongoResolutionStore(
                 global_resolutions=database[ctx.collection_name("entity_global_resolutions")],

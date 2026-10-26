@@ -10,7 +10,8 @@ from .web import IntelligenceViewsService
 logger = logging.getLogger(__name__)
 
 
-def mount_to_iis(app, *, config, subsystem_registry, wrapper=None):
+def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
+                 wrapper=None):
     app.config["INTELLIGENCE_VIEWS_ENABLED"] = False
     settings = config.get("intelligence_hub_web_service.intelligence_views", {}) or {}
     if not isinstance(settings, dict):
@@ -21,7 +22,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper=None):
         return None
     try:
         service = IntelligenceViewsService(
-            subsystem_registry.describe(),
+            (domain_resources or subsystem_registry).describe_domains(),
             settings=settings,
             situation_prefix=settings.get("situation_prefix", "/situation"),
         )

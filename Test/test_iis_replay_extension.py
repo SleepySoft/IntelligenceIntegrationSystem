@@ -57,7 +57,7 @@ class Registry:
     def __init__(self):
         self.context = Context()
 
-    def enabled_subsystems(self):
+    def enabled_domains(self):
         return [self.context]
 
 

@@ -29,19 +29,19 @@ class FakeEngine:
 
 def build_extension():
     return IISVectorExtension(
-        FakeClient(), default_subsystem="news", engine_factory=FakeEngine,
+        FakeClient(), default_domain="news", engine_factory=FakeEngine,
         record_factory=lambda payload: {"converted": payload["UUID"]}, retry_interval=0.01)
 
 
-def test_vector_extension_indexes_only_default_subsystem_and_merges_search_results():
+def test_vector_extension_indexes_only_default_domain_and_merges_search_results():
     extension = build_extension()
     runtime = HubRuntime()
     runtime.install(extension)
     runtime.start()
     assert _wait_until(lambda: extension.ready)
 
-    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "one"}, subsystem="news"))
-    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "two"}, subsystem="other"))
+    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "one"}, domain_name="news"))
+    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "two"}, domain_name="other"))
     assert runtime.wait_for_idle(timeout=1)
     assert extension.wait_for_index_idle(timeout=1)
 
@@ -56,12 +56,12 @@ def test_vector_extension_indexes_only_default_subsystem_and_merges_search_resul
 
 def test_vector_extension_without_client_remains_disabled():
     extension = IISVectorExtension(
-        None, default_subsystem="news", engine_factory=FakeEngine,
+        None, default_domain="news", engine_factory=FakeEngine,
         record_factory=dict)
     runtime = HubRuntime()
     runtime.install(extension)
     runtime.start()
-    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "one"}, subsystem="news"))
+    runtime.emit(HubEvent(ARCHIVE_COMPLETED, {"UUID": "one"}, domain_name="news"))
     assert runtime.wait_for_idle(timeout=1)
     assert not extension.ready
     assert extension.search("test") == []

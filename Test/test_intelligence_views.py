@@ -9,7 +9,7 @@ from IntelligenceViews.iis_integration import mount_to_iis
 from IntelligenceViews.web import IntelligenceViewsService
 
 
-SUBSYSTEMS = [
+DOMAINS = [
     {
         "name": "news",
         "display_name": "国际新闻",
@@ -35,16 +35,16 @@ def _frame_urls(html):
 
 def test_integration_page_limits_only_situation_views_from_configuration():
     app = Flask(__name__)
-    service = IntelligenceViewsService(SUBSYSTEMS, settings={
+    service = IntelligenceViewsService(DOMAINS, settings={
         "situation": {
-            "subsystem": "finance",
+            "domain_name": "finance",
             "window_days": 14,
             "min_score": 7.5,
         },
     })
     service.mount_to_app(app, url_prefix="/views")
     response = app.test_client().get("/views/", query_string={
-        "subsystem": "news",
+        "domain": "news",
         "start": "2026-10-01T00:00:00Z",
         "end": "2026-10-15T00:00:00Z",
         "min_score": "1",
@@ -61,8 +61,8 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     assert "实体时间线" in html
     assert 'let activeView = "map"' in html
     assert service.situation == {
-        "subsystem": "finance",
-        "subsystem_display_name": "财经情报",
+        "domain_name": "finance",
+        "domain_display_name": "财经情报",
         "window_days": 14,
         "public_window_days": 14,
         "timeline_max_entities": 8,
@@ -84,7 +84,7 @@ def test_integration_page_limits_only_situation_views_from_configuration():
 
 def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
     app = Flask(__name__)
-    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+    IntelligenceViewsService(DOMAINS).mount_to_app(app, url_prefix="/views")
     response = app.test_client().get("/views/", query_string=[
         ("view", "timeline"),
         ("entity", "ent_us"),
@@ -111,7 +111,7 @@ def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
 def test_public_timeline_limits_entities_and_logged_in_view_uses_full_scope():
     app = Flask(__name__)
     app.secret_key = "test"
-    service = IntelligenceViewsService(SUBSYSTEMS, settings={
+    service = IntelligenceViewsService(DOMAINS, settings={
         "public_access": True,
         "situation": {
             "window_days": 14,
@@ -151,7 +151,7 @@ def test_public_timeline_limits_entities_and_logged_in_view_uses_full_scope():
 
 def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():
     app = Flask(__name__)
-    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+    IntelligenceViewsService(DOMAINS).mount_to_app(app, url_prefix="/views")
     client = app.test_client()
 
     response = client.get(
@@ -163,7 +163,7 @@ def test_integration_page_ignores_scope_query_and_falls_back_for_unknown_view():
 
 def test_list_query_is_forwarded_and_parent_url_tracks_iframe_pagination():
     app = Flask(__name__)
-    IntelligenceViewsService(SUBSYSTEMS).mount_to_app(app, url_prefix="/views")
+    IntelligenceViewsService(DOMAINS).mount_to_app(app, url_prefix="/views")
 
     response = app.test_client().get("/views/", query_string={
         "view": "list",
@@ -190,8 +190,8 @@ def test_list_query_is_forwarded_and_parent_url_tracks_iframe_pagination():
 def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     class Registry:
         @staticmethod
-        def describe():
-            return SUBSYSTEMS
+        def describe_domains():
+            return DOMAINS
 
     class EnabledConfig:
         @staticmethod
@@ -214,7 +214,7 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     service = mount_to_iis(
         app,
         config=EnabledConfig(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
         wrapper=require_login,
     )
     assert service is not None
@@ -236,7 +236,7 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     service = mount_to_iis(
         public_app,
         config=PublicConfig(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
         wrapper=require_login,
     )
     assert service is not None
@@ -253,7 +253,7 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     service = mount_to_iis(
         disabled_app,
         config=DisabledConfig(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
     )
     assert service is None
     assert disabled_app.config["INTELLIGENCE_VIEWS_ENABLED"] is False

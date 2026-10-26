@@ -10,8 +10,8 @@
 
 ## 配置
 
-当前情报域入口位于 `_config/iis.yaml` 的 `hub.domains`，详细参数暂仍分离在
-`_config/subsystems/`：
+当前情报域入口位于 `_config/iis.yaml` 的 `hub.domains`，详细参数分离在
+`_config/domains/`：
 
 ```yaml
 hub:
@@ -23,16 +23,17 @@ hub:
 ```
 
 详细配置支持：`collection_prefix`、`url_prefix`、`ai_client_group`、`scoring`、`ui_plugin`
-和 `detail_page`。Prompt 不再由各情报域加载旧式 `prompt_v*.md`；所有情报域从
-`prompts_event_v4.EVENT_ANALYSIS_PROMPT_TABLE` 选择版本，人工调试可在单次请求中覆盖 Prompt。
+和 `detail_page`。每个领域通过 `factory` 注册自己的 Prompt Catalog、结果校验、评分和存储；
+`finance`、`industry` 尚无独立实现时可显式复用 `news` 工厂。人工调试可按领域选择 Prompt，
+也可在单次请求中覆盖 Prompt。
 
 ## 资源隔离
 
-`SubsystemRegistry` 为每个情报域构造独立的 cache、V4 intelligence、low-value、event、entity
+`DomainResourceRegistry` 为每个情报域构造独立的 cache、V4 intelligence、low-value、event、entity
 和 outbox 集合，并注册 `EventV4QueryEngine`、统计引擎、实体解析器和归档仓库。
 
 默认情报域挂载根 URL；其他情报域通常挂载 `/{name}`。UI 插件入口为
-`_config/subsystems/{name}/ui_plugin.js`，插件接收的文档只使用 V4 字段。
+`_config/domains/{name}/ui_plugin.js`，插件接收的文档只使用该领域归档 DTO。
 
 ## 新增同构情报域
 
@@ -42,5 +43,5 @@ hub:
 4. 如需定制展示，新增读取 V4 DTO 的 `ui_plugin.js`。
 5. 使用人工情报调试页验证正式 Prompt 拼接、覆盖 Prompt 和 V4 校验结果。
 
-以上步骤不能创建任意 Schema 的异构情报域。当前 `schema.json` 只是 UI 元数据，生产
-pipeline 仍固定校验 `AnalysisResultV4` 并归档 `ArchivedDataV4`。
+若要创建异构情报域，必须另外实现并注册领域工厂；仅增加 `schema.json` 不会改变主链校验。
+公共查询和页面当前仍要求最终存储结构兼容，查询 Provider 的领域定制尚未实施。

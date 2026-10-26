@@ -36,7 +36,7 @@ class FakeRegistry:
     def __init__(self, ctx):
         self.ctx = ctx
 
-    def enabled_subsystems(self):
+    def enabled_domains(self):
         return [self.ctx]
 
 

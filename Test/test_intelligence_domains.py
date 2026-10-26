@@ -25,7 +25,7 @@ class _ResourceRegistry:
             for name in ("news", "industry")
         }
 
-    def enabled_subsystems(self):
+    def enabled_domains(self):
         return list(self.contexts.values())
 
     def resolve(self, name):

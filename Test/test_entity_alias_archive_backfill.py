@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 def _archive_document():
     now = datetime.now(timezone.utc)
     appendix = build_archive_appendix(
-        _original(), subsystem="news", ai_service="fake", ai_model="fake",
+        _original(), domain_name="news", ai_service="fake", ai_model="fake",
         prompt_version=41, processed_at=now, archived_at=now, total_score=6.5)
     return ArchivedDataV4(
         **_valuable(), UUID=_original()["UUID"],

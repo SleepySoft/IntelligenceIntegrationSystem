@@ -45,8 +45,10 @@ def _event_v4_record_factory(payload: Dict[str, Any]) -> ArchivedDataV4:
     return ArchivedDataV4.model_validate(document)
 
 
-def create_vector_intelligence(config, *, subsystem_registry) -> Optional[VectorIntelligenceHandles]:
+def create_vector_intelligence(config, *, domain_resources=None,
+                               subsystem_registry=None) -> Optional[VectorIntelligenceHandles]:
     """按配置装配向量子系统；未启用时返回 None。"""
+    resources = domain_resources or subsystem_registry
     settings = load_vector_db_settings(config)
     if settings is None:
         return None
@@ -60,7 +62,7 @@ def create_vector_intelligence(config, *, subsystem_registry) -> Optional[Vector
 
     vector_extension = VectorIntelligenceExtension(
         vector_db_client,
-        default_subsystem=subsystem_registry.default_name,
+        default_domain=resources.default_name,
         engine_factory=IntelligenceVectorDBEngine,
         record_factory=_event_v4_record_factory,
     )
@@ -75,7 +77,7 @@ def create_vector_intelligence(config, *, subsystem_registry) -> Optional[Vector
         service = aggregation_extension.service
         if service is None:
             return
-        query_engine = subsystem_registry.default().event_v4_query_engine
+        query_engine = resources.default().event_v4_query_engine
         latest = query_engine.get_latest_archive_timestamp()
         period = None
         if latest and datetime.datetime.now().timestamp() - latest >= 24 * 3600:
@@ -94,8 +96,8 @@ def create_vector_intelligence(config, *, subsystem_registry) -> Optional[Vector
     graph_extension = DeferredServicePlugin(
         lambda: vector_extension.ready,
         lambda: DynamicGraphEngine(
-            mongo_db=subsystem_registry.default().event_v4_intelligence_storage,
-            query_engine=subsystem_registry.default().event_v4_query_engine,
+            mongo_db=resources.default().event_v4_intelligence_storage,
+            query_engine=resources.default().event_v4_query_engine,
             vector_engine=vector_extension.summary_engine,
             ai_client=None,
         ),

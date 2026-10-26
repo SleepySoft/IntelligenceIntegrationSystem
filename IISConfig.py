@@ -189,8 +189,9 @@ class TranslationSettings(_StrictModel):
 class SituationSettings(_StrictModel):
     enabled: bool = Field(True, description=iis_msg(
         "Enable geographic, entity relationship, and timeline situation views."))
-    subsystem: str | None = Field(None, description=iis_msg(
-        "Intelligence subsystem used by situation views. Leave empty to use the default subsystem."))
+    domain: str | None = Field(
+        None, validation_alias=AliasChoices("domain", "subsystem"), description=iis_msg(
+            "Intelligence domain used by situation views. Leave empty to use the default domain."))
     window_days: int = Field(7, ge=1, le=365, description=iis_msg(
         "Number of recent days included in authenticated situation views."))
     min_score: float = Field(6.0, ge=0, le=10, description=iis_msg(
@@ -439,7 +440,9 @@ class IISConfig:
                 "display_name": display_name,
                 "enabled": True,
             }
-            detail_file = config_dir / "subsystems" / f"{name}.json"
+            detail_file = config_dir / "domains" / f"{name}.json"
+            if not detail_file.is_file():
+                detail_file = config_dir / "subsystems" / f"{name}.json"
             if detail_file.is_file():
                 entry["config_file"] = str(detail_file)
             domain_entries.append(entry)
@@ -452,7 +455,7 @@ class IISConfig:
         translation = optional_subsystems.translation
         vector = optional_subsystems.vector
         situation = optional_subsystems.situation
-        situation_subsystem = situation.subsystem or default_name
+        situation_domain = situation.domain or default_name
         search = settings.web.public_search
         origin = settings.server.origin()
         return {
@@ -512,7 +515,7 @@ class IISConfig:
                     "enabled": situation.enabled,
                     "geocoding": {"enabled": situation.geocoding},
                     "dashboard": {
-                        "subsystem": situation_subsystem,
+                        "domain_name": situation_domain,
                         "window_days": situation.window_days,
                         "min_score": situation.min_score,
                         "min_support": situation.min_support,
@@ -533,7 +536,7 @@ class IISConfig:
                     "situation_prefix": "/situation",
                     "default_view": "list",
                     "situation": {
-                        "subsystem": situation_subsystem,
+                        "domain_name": situation_domain,
                         "window_days": situation.window_days,
                         "public_window_days": (
                             optional_subsystems.intelligence_views.public_window_days),

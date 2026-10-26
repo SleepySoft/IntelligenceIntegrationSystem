@@ -39,7 +39,8 @@ class HubApplication:
     def __init__(
             self,
             *,
-            subsystem_registry: Any,
+            subsystem_registry: Any = None,
+            domain_resources: Any = None,
             ai_client_manager: Any,
             worker_count: int = 1,
             pipeline_ports: Any = None,
@@ -54,11 +55,17 @@ class HubApplication:
             raise ValueError("max_inflight 必须大于 0。")
         if submission_ack_timeout <= 0:
             raise ValueError("submission_ack_timeout 必须大于 0。")
-        self.subsystem_registry = subsystem_registry
+        if domain_resources is not None and subsystem_registry is not None:
+            if domain_resources is not subsystem_registry:
+                raise ValueError("domain_resources and legacy subsystem_registry disagree")
+        self.domain_resources = domain_resources or subsystem_registry
+        if self.domain_resources is None:
+            raise ValueError("domain_resources 必须提供情报域资源注册表。")
+        self.subsystem_registry = self.domain_resources  # 历史兼容别名
         self.ai_client_manager = ai_client_manager
-        self.default_domain = subsystem_registry.default()
+        self.default_domain = self.domain_resources.default()
         if self.default_domain is None:
-            raise ValueError("subsystem_registry 必须提供默认情报域。")
+            raise ValueError("domain_resources 必须提供默认情报域。")
         self.default_domain_name = self.default_domain.name
         self.runtime = runtime or HubRuntime(
             worker_count=1,
@@ -109,7 +116,7 @@ class HubApplication:
             "runtime": {**self.runtime.stats, "in_flight_submissions": in_flight},
             "analysis": dict(getattr(self._pipeline_ports, "statistics", {}) or {}),
             "shadow": dict(getattr(self._pipeline_ports, "shadow_statistics", {}) or {}),
-            "subsystems": self.subsystem_registry.describe(),
+            "domains": self._describe_domains(),
             "workflow_outcomes": self._workflow_outcomes(),
             "today_flow": self._today_flow(),
         }
@@ -125,7 +132,9 @@ class HubApplication:
             "day_start": day_start.isoformat(),
             "intake": 0, "intake_rejected": 0, "archived": 0, "low_value": 0,
         }
-        enabled = getattr(self.subsystem_registry, "enabled_subsystems", None)
+        enabled = getattr(self.domain_resources, "enabled_domains", None)
+        if not callable(enabled):
+            enabled = getattr(self.domain_resources, "enabled_subsystems", None)
         if not callable(enabled):
             return flow
         for ctx in enabled():
@@ -156,12 +165,14 @@ class HubApplication:
 
     def _workflow_outcomes(self) -> List[Dict[str, Any]]:
         """从持久集合汇总整个工作流结果，不受进程重启影响。"""
-        enabled_subsystems = getattr(self.subsystem_registry, "enabled_subsystems", None)
-        if not callable(enabled_subsystems):
+        enabled_domains = getattr(self.domain_resources, "enabled_domains", None)
+        if not callable(enabled_domains):
+            enabled_domains = getattr(self.domain_resources, "enabled_subsystems", None)
+        if not callable(enabled_domains):
             return []
 
         outcomes = []
-        for ctx in enabled_subsystems():
+        for ctx in enabled_domains():
             try:
                 cache_collection = ctx.mongo_db_cache.collection
                 state_rows = cache_collection.aggregate([{
@@ -224,62 +235,88 @@ class HubApplication:
 
     def submit_collected_data_result(self, data: dict) -> Tuple[bool, str]:
         """提交并等待 intake 回执；返回 (是否接收, 拒绝原因)。接受时原因为空串。"""
-        subsystem = str(data.get("subsystem") or "").strip() or self.default_domain_name
-        if self.subsystem_registry.resolve(subsystem) is None:
-            return False, "unknown_subsystem"
+        try:
+            requested_domain = self._requested_domain(data)
+        except ValueError:
+            return False, "conflicting_domain"
+        legacy_used = bool(data.get("subsystem")) and not (
+            data.get("domain") or data.get("domain_name"))
+        domain_name = requested_domain or self.default_domain_name
+        if self.domain_resources.resolve(domain_name) is None:
+            return False, "unknown_subsystem" if legacy_used else "unknown_domain"
+        normalized = dict(data)
+        normalized.pop("subsystem", None)
+        normalized.pop("domain_name", None)
+        normalized["domain"] = domain_name
         return self._submit_and_wait_result(
-            HubEvent(INTAKE_RECEIVED, dict(data), subsystem),
+            HubEvent(INTAKE_RECEIVED, normalized, domain_name),
             accepted_event=INTAKE_ACCEPTED,
         )
 
     def submit_archived_data(self, data: dict) -> bool:
-        subsystem = str(data.get("subsystem") or "").strip()
-        subsystem = subsystem or self.default_domain_name
-        if self.subsystem_registry.resolve(subsystem) is None:
+        try:
+            domain_name = self._requested_domain(data) or self.default_domain_name
+        except ValueError:
+            return False
+        if self.domain_resources.resolve(domain_name) is None:
             return False
         return self._submit_and_wait(
-            HubEvent(ARCHIVE_REQUESTED, dict(data), subsystem),
+            HubEvent(ARCHIVE_REQUESTED, dict(data), domain_name),
             accepted_event=ARCHIVE_COMPLETED,
         )
 
     def get_intelligence(self, intelligence_uuid, light_weight: bool = False,
-                         subsystem: Optional[str] = None,
+                         domain_name: Optional[str] = None,
                          include_appendix: bool = False,
-                         profile=None):
-        ctx = self._context(subsystem)
+                         profile=None, *, subsystem: Optional[str] = None):
+        domain_name = self._coalesce_domain(domain_name, subsystem)
+        ctx = self._context(domain_name)
         return ctx.event_v4_query_engine.get_intelligence(
             intelligence_uuid, light_weight=light_weight,
             include_appendix=include_appendix, profile=profile)
 
-    def query_intelligence(self, *, subsystem: Optional[str] = None, **kwargs):
-        ctx = self._context(subsystem)
+    def query_intelligence(self, *, domain_name: Optional[str] = None,
+                           subsystem: Optional[str] = None, **kwargs):
+        ctx = self._context(self._coalesce_domain(domain_name, subsystem))
         return ctx.event_v4_query_engine.query_intelligence(**kwargs)
 
-    def get_intelligence_summary(self, subsystem: Optional[str] = None):
-        summary = self._context(subsystem).event_v4_query_engine.get_intelligence_summary()
+    def get_intelligence_summary(self, domain_name: Optional[str] = None, *,
+                                 subsystem: Optional[str] = None):
+        summary = self._context(self._coalesce_domain(
+            domain_name, subsystem)).event_v4_query_engine.get_intelligence_summary()
         return summary["total_count"], summary["base_uuid"]
 
-    def aggregate(self, pipeline: list, subsystem: Optional[str] = None):
-        return self._context(subsystem).event_v4_query_engine.aggregate(pipeline)
+    def aggregate(self, pipeline: list, domain_name: Optional[str] = None, *,
+                  subsystem: Optional[str] = None):
+        return self._context(self._coalesce_domain(
+            domain_name, subsystem)).event_v4_query_engine.aggregate(pipeline)
 
-    def count_documents(self, query: dict, subsystem: Optional[str] = None) -> int:
-        return self._context(subsystem).event_v4_query_engine.count_documents(query)
+    def count_documents(self, query: dict, domain_name: Optional[str] = None, *,
+                        subsystem: Optional[str] = None) -> int:
+        return self._context(self._coalesce_domain(
+            domain_name, subsystem)).event_v4_query_engine.count_documents(query)
 
-    def get_statistics_engine(self, subsystem: Optional[str] = None):
-        return self._context(subsystem).statistics_engine
+    def get_statistics_engine(self, domain_name: Optional[str] = None, *,
+                              subsystem: Optional[str] = None):
+        return self._context(self._coalesce_domain(
+            domain_name, subsystem)).statistics_engine
 
-    def get_query_engine(self, subsystem: Optional[str] = None):
-        return self._context(subsystem).event_v4_query_engine
+    def get_query_engine(self, domain_name: Optional[str] = None, *,
+                         subsystem: Optional[str] = None):
+        return self._context(self._coalesce_domain(
+            domain_name, subsystem)).event_v4_query_engine
 
     def get_subsystems(self) -> List[Dict[str, Any]]:
-        return self.subsystem_registry.describe()
+        """历史兼容别名。"""
+        return self._describe_domains()
 
     def get_domains(self) -> List[Dict[str, Any]]:
         """返回已启用情报域；get_subsystems 仅作历史兼容。"""
-        return self.subsystem_registry.describe()
+        return self._describe_domains()
 
-    def get_prompt(self, subsystem: Optional[str] = None, version: Optional[int] = None) -> str:
-        ctx = self._context(subsystem)
+    def get_prompt(self, domain_name: Optional[str] = None, version: Optional[int] = None,
+                   *, subsystem: Optional[str] = None) -> str:
+        ctx = self._context(self._coalesce_domain(domain_name, subsystem))
         definition = self._pipeline_ports.domain_definition(ctx.name)
         catalog = definition.prompt_catalog
         if version is not None:
@@ -290,10 +327,12 @@ class HubApplication:
         return catalog.sampling_table()[max(catalog.sampling_versions())]
 
     def submit_intelligence_manual_rating(self, intelligence_uuid: str, rating: dict,
+                                          domain_name: Optional[str] = None, *,
                                           subsystem: Optional[str] = None) -> bool:
         if not isinstance(rating, dict):
             return False
-        self._context(subsystem).event_v4_intelligence_collection.update_one(
+        self._context(self._coalesce_domain(
+            domain_name, subsystem)).event_v4_intelligence_collection.update_one(
             {"UUID": intelligence_uuid},
             {"$set": {appendix_path(APPENDIX_MANUAL_RATING): rating}})
         return True
@@ -374,6 +413,31 @@ class HubApplication:
             self._active_submissions.remove(correlation_id)
         self._inflight_slots.release()
 
-    def _context(self, subsystem: Optional[str]) -> Any:
-        ctx = self.subsystem_registry.resolve(subsystem) or self.default_domain
+    def _context(self, domain_name: Optional[str]) -> Any:
+        ctx = self.domain_resources.resolve(domain_name)
+        if ctx is None:
+            raise ValueError(f"unknown_domain:{domain_name!r}")
         return ctx
+
+    def _describe_domains(self) -> List[Dict[str, Any]]:
+        describe = getattr(self.domain_resources, "describe_domains", None)
+        if not callable(describe):
+            describe = getattr(self.domain_resources, "describe", None)
+        return list(describe() if callable(describe) else [])
+
+    @staticmethod
+    def _coalesce_domain(domain_name: Optional[str], subsystem: Optional[str]) -> Optional[str]:
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        return domain_name or subsystem
+
+    @staticmethod
+    def _requested_domain(data: dict) -> str:
+        names = {
+            str(data.get(key) or "").strip()
+            for key in ("domain", "domain_name", "subsystem")
+            if str(data.get(key) or "").strip()
+        }
+        if len(names) > 1:
+            raise ValueError("domain aliases disagree")
+        return next(iter(names), "")

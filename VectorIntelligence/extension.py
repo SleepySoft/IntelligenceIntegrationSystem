@@ -44,18 +44,22 @@ class VectorIntelligenceExtension(HubPlugin):
             self,
             vector_client: Any,
             *,
-            default_subsystem: str,
+            default_domain: str = "",
+            default_subsystem: str = "",
             engine_factory: Callable[[Any], Any],
             record_factory: Callable[[Dict[str, Any]], Any],
             wait_for_translation: bool = True,
             retry_interval: float = 5.0,
     ):
-        if not default_subsystem:
-            raise ValueError("default_subsystem 不能为空。")
+        if default_domain and default_subsystem and default_domain != default_subsystem:
+            raise ValueError("default_domain and legacy default_subsystem disagree")
+        default_domain = default_domain or default_subsystem
+        if not default_domain:
+            raise ValueError("default_domain 不能为空。")
         if retry_interval <= 0:
             raise ValueError("retry_interval 必须大于 0。")
         self.vector_client = vector_client
-        self.default_subsystem = default_subsystem
+        self.default_domain = default_domain
         self.engine_factory = engine_factory
         self.record_factory = record_factory
         self.wait_for_translation = wait_for_translation
@@ -139,7 +143,7 @@ class VectorIntelligenceExtension(HubPlugin):
         return sorted(result, key=lambda item: item[1], reverse=True)[:top_n]
 
     def _on_archived(self, event: HubEvent, runtime: HubRuntime) -> None:
-        if event.subsystem != self.default_subsystem or not isinstance(event.payload, dict):
+        if event.domain_name != self.default_domain or not isinstance(event.payload, dict):
             return
         # 需要翻译的文档等待 translation.completed 再索引（子系统自判，不依赖翻译扩展对象）。
         if event.event_type == ARCHIVE_COMPLETED and self.wait_for_translation \

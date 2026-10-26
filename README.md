@@ -536,7 +536,7 @@ Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui
 #### 数据库存储
 
 + 情报存储（主要）
-  > MongoDB，默认数据库名：IntelligenceIntegrationSystem。默认 `news` 子系统使用
+  > MongoDB，默认数据库名：IntelligenceIntegrationSystem。默认 `news` 情报域使用
   > `intelligence_` 前缀，主要集合为：
   > + intelligence_cached：Collector提交的采集到的原始新闻数据。
   > + intelligence_v4_archived：Event V4 经过处理并归档的数据。
@@ -545,7 +545,7 @@ Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui
   > + intelligence_v4_outbox：归档后扩展使用的持久事件出口。
   > + intelligence_intake_rejected：入口校验或去重拒绝的审计记录，不进入 cache。
   >
-  > 其它情报子系统使用各自的集合前缀，不与 `news` 混写。`APPENDIX` 保存原文、运行状态、
+  > 其它情报域使用各自的集合前缀，不与 `news` 混写。`APPENDIX` 保存原文、领域名、运行状态、
   > 评分和扩展元数据，基本查询及前端列表默认裁剪该字段。
 
 + 实体名称与解析

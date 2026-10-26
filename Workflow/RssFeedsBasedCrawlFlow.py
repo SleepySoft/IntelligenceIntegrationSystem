@@ -36,9 +36,15 @@ def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> Cra
     governor = service_context.crawler_governor
     submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
     token = config.get('collector.default_token') or DEFAULT_COLLECTOR_TOKEN
-    # 子系统归属由 TaskManager 按"目录 -> 子系统"解析后放入 service_context.subsystem
-    subsystem = service_context.subsystem or config.get('collector.default_subsystem') or ''
-    crawl_context = CrawlContext(name, submit_ihub_url, token, governor, subsystem=subsystem)
+    # 情报域由 TaskManager 按目录映射解析后放入 service_context.domain_name。
+    domain_name = (
+        service_context.domain_name
+        or config.get('collector.default_domain')
+        or config.get('collector.default_subsystem')
+        or ''
+    )
+    crawl_context = CrawlContext(
+        name, submit_ihub_url, token, governor, domain_name=domain_name)
     return crawl_context
 
 

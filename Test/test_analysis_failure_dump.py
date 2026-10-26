@@ -29,7 +29,7 @@ def _record(recorder, attempt):
             "source": "crawler",
             "content": "must not be copied into failure metadata",
         },
-        subsystem="news",
+        domain_name="news",
         trace_id="trace-id",
         attempt=attempt,
         prompt_version=4,
@@ -52,6 +52,8 @@ def test_failure_recorder_persists_raw_response_and_structured_reason(tmp_path):
     assert document["raw_response"] == {"count": "invalid", "attempt": 1}
     assert document["error"]["type"] == "ValidationError"
     assert document["error"]["details"][0]["loc"] == ["count"]
+    assert document["domain_name"] == "news"
+    assert "subsystem" not in document
     assert "content" not in document["input"]
     assert len(document["prompt_sha256"]) == 64
 

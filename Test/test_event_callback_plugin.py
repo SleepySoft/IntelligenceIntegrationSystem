@@ -9,12 +9,12 @@ def test_callback_plugin_observes_event_without_mutating_payload():
     runtime.install(EventCallbackPlugin("archive.completed", [received.append]))
     runtime.start()
 
-    runtime.emit(HubEvent("archive.completed", payload, subsystem="custom"))
+    runtime.emit(HubEvent("archive.completed", payload, domain_name="custom"))
 
     assert runtime.wait_for_idle(timeout=1)
     runtime.stop()
     assert received[0].payload is payload
-    assert received[0].subsystem == "custom"
+    assert received[0].domain_name == "custom"
 
 
 def test_callback_plugin_validates_configuration():

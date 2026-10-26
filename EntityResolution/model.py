@@ -18,17 +18,26 @@ class ResolutionError(Exception):
         self.code = code
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class EntityRef:
     """Event V4 文章内实体的稳定引用。"""
 
-    subsystem: str
+    domain_name: str
     intelligence_uuid: str
     local_entity_id: str
 
+    def __init__(self, domain_name: str = "", intelligence_uuid: str = "",
+                 local_entity_id: str = "", *, subsystem: str = ""):
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ResolutionError("domain_name 与旧 subsystem 不一致")
+        object.__setattr__(self, "domain_name", str(domain_name or subsystem).strip())
+        object.__setattr__(self, "intelligence_uuid", str(intelligence_uuid).strip())
+        object.__setattr__(self, "local_entity_id", str(local_entity_id).strip())
+        self.__post_init__()
+
     def __post_init__(self) -> None:
-        if not self.subsystem.strip():
-            raise ResolutionError("subsystem 不能为空")
+        if not self.domain_name:
+            raise ResolutionError("domain_name 不能为空")
         if not self.intelligence_uuid.strip():
             raise ResolutionError("intelligence_uuid 不能为空")
         if not _LOCAL_ENTITY_ID.fullmatch(self.local_entity_id.strip()):
@@ -36,11 +45,15 @@ class EntityRef:
 
     @property
     def key(self) -> str:
-        return f"{self.subsystem.strip()}:{self.intelligence_uuid.strip()}:{self.local_entity_id.strip()}"
+        return f"{self.domain_name}:{self.intelligence_uuid}:{self.local_entity_id}"
+
+    @property
+    def subsystem(self) -> str:
+        return self.domain_name
 
     def to_dict(self) -> dict[str, str]:
         return {
-            "subsystem": self.subsystem.strip(),
+            "domain_name": self.domain_name,
             "intelligence_uuid": self.intelligence_uuid.strip(),
             "local_entity_id": self.local_entity_id.strip(),
         }
@@ -48,7 +61,9 @@ class EntityRef:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "EntityRef":
         return cls(
-            subsystem=str(value.get("subsystem") or "").strip(),
+            domain_name=str(
+                value.get("domain_name") or value.get("domain")
+                or value.get("subsystem") or "").strip(),
             intelligence_uuid=str(value.get("intelligence_uuid") or "").strip(),
             local_entity_id=str(value.get("local_entity_id") or "").strip(),
         )

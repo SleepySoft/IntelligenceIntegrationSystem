@@ -9,7 +9,7 @@ from Workflow import CollectorSubmission
 
 EXPECTED_FIELDS = [
     "UUID", "token", "source", "target", "prompt", "title", "authors",
-    "content", "pub_time", "collect_time", "informant", "subsystem", "temp_data",
+    "content", "pub_time", "collect_time", "informant", "domain", "temp_data",
 ]
 
 
@@ -36,7 +36,7 @@ def test_collected_data_keeps_the_original_input_contract():
     assert fields["authors"].default_factory is list
     assert fields["collect_time"].default_factory.__name__ == "_utc_now"
     assert fields["temp_data"].default_factory is dict
-    assert fields["subsystem"].default == ""
+    assert fields["domain"].default == ""
     assert CollectedData.model_config["extra"] == "ignore"
     assert _collected().collect_time.tzinfo == datetime.timezone.utc
 
@@ -44,6 +44,18 @@ def test_collected_data_keeps_the_original_input_contract():
 def test_collected_data_rejects_blank_informant():
     with pytest.raises(ValueError, match="informant/source URL cannot be empty"):
         _collected(informant="   ")
+
+
+def test_legacy_subsystem_input_is_emitted_only_as_canonical_domain():
+    payload = _collected(subsystem="finance").model_dump()
+
+    assert payload["domain"] == "finance"
+    assert "subsystem" not in payload
+
+
+def test_collected_data_rejects_conflicting_domain_aliases():
+    with pytest.raises(ValueError, match="domain aliases disagree"):
+        _collected(domain="news", subsystem="finance")
 
 
 def test_submission_serializes_rss_struct_time_as_iso8601(monkeypatch):

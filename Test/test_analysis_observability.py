@@ -29,23 +29,23 @@ def _fixture_data(tmp_path):
     _call(calls, "r3", elapsed=1000, cached=50)
 
     stats.record_attempt(
-        uuid="one", subsystem="news", shadow=False, prompt_version=50,
+        uuid="one", domain_name="news", shadow=False, prompt_version=50,
         ai_service="svc", ai_model="model-a", attempt_no=1, latency_ms=1000,
         error_class=None, request_id="r1", client_name="named-a")
     stats.record_outcome(
-        uuid="one", subsystem="news", shadow=False, prompt_version=50,
+        uuid="one", domain_name="news", shadow=False, prompt_version=50,
         ai_service="svc", ai_model="model-a", outcome=OUTCOME_SUCCESS,
         attempts_used=1)
     stats.record_attempt(
-        uuid="two", subsystem="news", shadow=False, prompt_version=50,
+        uuid="two", domain_name="news", shadow=False, prompt_version=50,
         ai_service="svc", ai_model="model-a", attempt_no=1, latency_ms=2000,
         error_class="schema_shape", request_id="r2", client_name="named-a")
     stats.record_attempt(
-        uuid="two", subsystem="news", shadow=False, prompt_version=50,
+        uuid="two", domain_name="news", shadow=False, prompt_version=50,
         ai_service="svc", ai_model="model-a", attempt_no=2, latency_ms=1000,
         error_class=None, request_id="r3", client_name="named-a")
     stats.record_outcome(
-        uuid="two", subsystem="news", shadow=False, prompt_version=50,
+        uuid="two", domain_name="news", shadow=False, prompt_version=50,
         ai_service="svc", ai_model="model-a", outcome=OUTCOME_SUCCESS,
         attempts_used=2)
     return stats_path, calls_path

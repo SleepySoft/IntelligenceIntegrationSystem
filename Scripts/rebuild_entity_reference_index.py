@@ -21,11 +21,12 @@ from pymongo import ReplaceOne  # noqa: E402
 from GlobalConfig import DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE  # noqa: E402
 from IISConfig import load_iis_config  # noqa: E402
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY  # noqa: E402
-from ServiceComponent.SubsystemRegistry import SubsystemRegistry  # noqa: E402
+from ServiceComponent.DomainResources import DomainResourceRegistry  # noqa: E402
 from ServiceComponent.event_v4_archive import ArchivedDataV4  # noqa: E402
 from ServiceComponent.event_v4_conversion import convert_event_extraction  # noqa: E402
 from ServiceComponent.intelligence_contracts import (  # noqa: E402
-    APPENDIX_SUBSYSTEM,
+    APPENDIX_DOMAIN_NAME,
+    APPENDIX_LEGACY_SUBSYSTEM,
     APPENDIX_TIME_ARCHIVED,
     APPENDIX_TIME_DONE,
 )
@@ -55,7 +56,7 @@ def _config():
 
 
 def _registry(config):
-    return SubsystemRegistry.build_from_config(
+    return DomainResourceRegistry.build_from_config(
         config,
         mongodb_params={
             "host": config.get("mongodb.host", "localhost"),
@@ -76,9 +77,9 @@ def _observed_at(record: ArchivedDataV4) -> datetime:
 
 def run(args) -> dict[str, Any]:
     registry = _registry(_config())
-    context = registry.get(args.subsystem) if args.subsystem else registry.default()
+    context = registry.get(args.domain) if args.domain else registry.default()
     if context is None or not context.enabled:
-        raise ValueError(f"子系统不存在或未启用：{args.subsystem!r}")
+        raise ValueError(f"情报域不存在或未启用：{args.domain!r}")
 
     archives = context.event_v4_intelligence_collection
     event_collection = context.event_v4_event_collection
@@ -89,7 +90,7 @@ def run(args) -> dict[str, Any]:
     if args.limit > 0:
         cursor = cursor.limit(args.limit)
     stats = {
-        "subsystem": context.name,
+        "domain_name": context.name,
         "mode": "apply" if args.apply else "dry-run",
         "scanned": 0,
         "already_ready": 0,
@@ -117,7 +118,11 @@ def run(args) -> dict[str, Any]:
                     observed_at=_observed_at(record),
                     metadata={
                         "informant": record.INFORMANT,
-                        "subsystem": record.APPENDIX.get(APPENDIX_SUBSYSTEM) or context.name,
+                        "domain_name": (
+                            record.APPENDIX.get(APPENDIX_DOMAIN_NAME)
+                            or record.APPENDIX.get(APPENDIX_LEGACY_SUBSYSTEM)
+                            or context.name
+                        ),
                     },
                 )
             except Exception as exc:
@@ -148,7 +153,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="重建携带 ENT ID 的 Event V4 派生事件索引")
     parser.add_argument("--apply", action="store_true", help="实际写入；默认仅检查")
     parser.add_argument("--all", action="store_true", help="强制重建全部扫描记录")
-    parser.add_argument("--subsystem", default="", help="默认使用主子系统")
+    parser.add_argument(
+        "--domain", "--subsystem", dest="domain", default="",
+        help="目标情报域；默认使用默认领域（--subsystem 为旧别名）",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=200)
     args = parser.parse_args()

@@ -14,8 +14,8 @@ class _Hub:
         self.document = document
         self.calls = []
 
-    def get_intelligence(self, intelligence_uuid, subsystem=None, profile=None):
-        self.calls.append((intelligence_uuid, subsystem, profile))
+    def get_intelligence(self, intelligence_uuid, domain_name=None, profile=None):
+        self.calls.append((intelligence_uuid, domain_name, profile))
         return self.document
 
 

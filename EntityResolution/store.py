@@ -20,7 +20,7 @@ def _clean(document: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class MongoResolutionStore:
-    """一个子系统的解析集合组。"""
+    """一个情报域的解析集合组。"""
 
     def __init__(self, *, global_resolutions, contextual_entities,
                  contextual_resolutions, audit):
@@ -147,4 +147,10 @@ class MongoResolutionStore:
         else:
             cursor = self.contextual_resolutions.find(
                 {"target_contextual_entity_id": target_id}, {"_id": 0}).limit(limit)
-        return [dict(item) for item in cursor]
+        result = []
+        for item in cursor:
+            document = dict(item)
+            if isinstance(document.get("ref"), dict):
+                document["ref"] = EntityRef.from_mapping(document["ref"]).to_dict()
+            result.append(document)
+        return result

@@ -28,7 +28,7 @@ SituationViews 查询接口不随之公开。
 
 情报列表直接加载原 `/intelligences` 页面，初始评分阈值为 6，进入列表后仍可使用原页面的
 筛选、排序和分页能力。地域、实体图和实体时间线子页面使用 `/situation/embed/map`、
-`/situation/embed/entities` 与 `/situation/embed/timeline`；三者的子系统、滚动时间窗口、
+`/situation/embed/entities` 与 `/situation/embed/timeline`；三者的情报域、滚动时间窗口、
 最低评分和图规模只从 `intelligence_hub_web_service.intelligence_views.situation` 配置读取，
 由组合根注入并在服务端 API 强制执行，不能用 URL 覆盖。旧的 `/situation/map`、
 `/situation/entities` 和 `/situation/` 发布入口不再提供。

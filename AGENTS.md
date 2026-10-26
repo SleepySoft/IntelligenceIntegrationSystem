@@ -115,14 +115,14 @@
   - `web.py`：`/entity-alias/` Blueprint（resolve/lookup/entities CRUD API）；登录用户通过 `/entity-alias/manage` 独立管理全局 `ent_*`、固定别名和主标准名，标准名切换保留旧名称；该页不管理 `ctx_*` 或 EntityRef 解析，删除也不级联清理解析引用
   - 设计/容量/改进文档：`doc/20261016_entity_alias_subsystem.md`
   - `data/`：git 管理的别名数据（JSONL）；`skill/SKILL.md`：AI 调用方指南
-  - 查询时展开：挂载后组合根把 `expand_names` 注入各子系统 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
+  - 查询时展开：挂载后组合根把 `expand_names` 注入各领域 `EventV4QueryEngine.alias_expander`，实体过滤（PEOPLE/LOCATION/ORGANIZATION）自动展开为全别名 `$in` 查询
   - 历史补录：`Scripts/entity_alias_backfill.py scan` 产出未注册实体工作清单 → AI 填写 `action` → `register` 执行
 
 - **`EntityResolution/`** — 与具体情报绑定的实体指称解析（非破坏性旁表）
-  - `EntityRef = subsystem + intelligence_uuid + local_entity_id`，以 Event V4 的 `ENT*` 为稳定锚点；不改写权威 `EVENT_EXTRACTION`
+  - `EntityRef = domain_name + intelligence_uuid + local_entity_id`，以 Event V4 的 `ENT*` 为稳定锚点；不改写权威 `EVENT_EXTRACTION`
   - `service.py`：把单条或多条情报实体引用批量指定到全局 `ent_*` 或语境 `ctx_*`，支持改派、清除、审计和撤销
   - `store.py`：MongoDB 分开保存全局解析、语境实体、语境解析和审计，避免泛称污染全局固定别名
-  - `iis_integration.py`：按子系统装配并注入态势实体图；模块失败时 IIS 主服务和只读图继续运行
+  - `iis_integration.py`：按情报域装配并注入态势实体图；模块失败时 IIS 主服务和只读图继续运行
   - `Scripts/rebuild_entity_reference_index.py`：从权威归档重建带 `local_entity_id` 的事件索引，默认 dry-run，`--apply` 写入
   - 实体图中未解析 ref 按“名称 + 类型 + 国家”临时连接（不持久化）；人工指定的 `ent_*`/`ctx_*` 优先，可把同名误合并 ref 拆到不同标准实体
   - 登录用户用 radio 选择目标录入全局 `ent_*` 或语境 `ctx_*` 表；登记和消歧是独立、可连续执行的动作，登记不接收情报 UUID，消歧可多选具体情报引用并指向刚登记或已有的目标
@@ -274,6 +274,10 @@ python VectorDB/VectorDBBService.py \
 - 所有子系统使用 `ServiceComponent.IntelligenceHubDefines_v4`、`event_v4_archive` 与 `event_engine.extraction`；不得复制事件字段或 Registry 规则
 - 跨组件共享的 schema 版本、状态码、集合后缀、内容时间来源和 UUIDv5 命名空间统一定义在 `ServiceComponent.intelligence_contracts`；不得在业务模块重复声明
 - `CollectedData`：独立于分析版本的采集端原始数据契约
+- 情报域路由的外部字段统一为 `domain`，服务内部统一为 `domain_name`；默认领域由
+  `hub.domains.default` 指定。新数据不得写 `subsystem`，该名称只允许出现在旧请求、旧配置、
+  历史 APPENDIX/SQLite 列和兼容导入边界。领域资源集中在 `_config/domains/<name>/`，由
+  `DomainResourceRegistry` 在启动时注册。
 - `informant`（通常为来源 URL）是来源去重键，不能为空；`UUID` 仅是内部主键，非法或缺失时在 intake 分配一次 `uuid4` 并写入 cache，不得根据 URL 派生 UUID
 - `AnalysisResultV4`：V2 顶层分析字段加 `EVENT_EXTRACTION`；以 `TAXONOMY == "NonIntelligence"` 区分低价值结果
 - `EVENT_EXTRACTION` 的存储契约始终是完整的 `event-extraction/1.0`；当前唯一 Prompt v48 面向 LLM 使用核心子集、RATE 等级词和结构化低价值原因。服务端通过 `event_engine.extraction.complete_core_extraction` 补齐完整契约，并按 `IntelligenceHubDefines_v4.RATE_LEVELS` 映射分数；历史演进见 `doc/20261013_event_v4_extraction_subset_design.md`
@@ -453,7 +457,7 @@ pytest Test/
 | `README.md` | 中文项目介绍、部署教程、已接入媒体列表 |
 | `doc/event_v4_integration_handoff.md` | Event V4 架构、存储契约与切换状态 |
 | `doc/hub_runtime_refactor.md` | 当前 HubRuntime、领域端口与外围扩展的边界、事件链和测试说明 |
-| `doc/20260817_subsystem_ui_plugin_rendering.md` | 子系统 UI 区块、整页和独立页面扩展协议 |
+| `doc/20260817_domain_ui_plugin_rendering.md` | 情报域 UI 区块、整页和独立页面扩展协议 |
 | `doc/20261013_event_v4_extraction_subset_design.md` | Event V4 抽取 Schema 核心子集协议（v42）设计、依据与灰度路径 |
 | `doc/20261017_role_topic_conflict_investigation.md` | 议题槽错位与角色名误用调查、topic 槽类型检测、prompt v45 与 news Registry 1.6 修复 |
 | `doc/20261025_web_interface_i18n_design.md` | Web 界面国际化边界、locale 契约、实施进度与 catalog 维护流程 |

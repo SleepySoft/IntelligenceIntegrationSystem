@@ -15,7 +15,7 @@ HubRuntime 不知道页面、模板或前端字段。页面扩展属于 Web adap
 ## 建议的情报域资源布局
 
 ```text
-_config/subsystems/{name}/
+_config/domains/{name}/
   schema.json        # 可选：领域输出/显示字段说明；当前仅为 UI 元数据
   ui_plugin.js       # 可选：浏览器端显示贡献
   page_detail.html   # 可选：独立详情页模板
@@ -45,7 +45,7 @@ _config/subsystems/{name}/
 Module，以便与现有服务端模板和静态资源加载方式兼容。
 
 ```javascript
-window.SubsystemUI.register({
+window.DomainUI.register({
   name: 'finance',
   blocks: {
     'card/meta/timestamp': (doc, helpers) => '...',
@@ -62,7 +62,7 @@ window.SubsystemUI.register({
 建议向插件提供受限的 helper/API，而不是暴露内部页面状态：
 
 ```javascript
-helpers = { base, subsystem, escapeHTML, formatLocalTime, isValidUrl,
+helpers = { base, domain, escapeHTML, formatLocalTime, isValidUrl,
             createRatingStars, showToast };
 api = { openModal, navigate, fetchArticle };
 ```
@@ -84,10 +84,11 @@ api = { openModal, navigate, fetchArticle };
 2. 验证默认情报域页面、无插件情报域和插件失效回退三种路径。
 3. 再实现详情页和独立页面；不得把页面对象传回 HubRuntime。
 4. 为静态资源路径、XSS 转义、权限、404 和异常脚本建立自动化测试。
-5. 在 `SubsystemRegistry` 中增加明确的插件元数据后再开放配置，而不是根据文件存在与否
+5. 在 `DomainResourceRegistry` 中增加明确的插件元数据后再开放配置，而不是根据文件存在与否
    隐式推断权限。
 
-当前已完成的 Event V4 同构情报域见 [subsystem_design.md](subsystem_design.md)，异构
+当前已完成的 Event V4 同构情报域见
+[intelligence_domain_design.md](intelligence_domain_design.md)，异构
 Schema 与视图能力的真实边界见
 [情报域扩展能力调查](20261016_intelligence_domain_extensibility_audit.md)；Hub 的插件边界见
 [hub_runtime_refactor.md](hub_runtime_refactor.md)。

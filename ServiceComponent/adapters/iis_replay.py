@@ -34,13 +34,13 @@ class IISUnarchivedReplayExtension(HubPlugin):
     因此这个适配器明确从 ``analysis.requested`` 续接，保持旧队列恢复语义。
     """
 
-    def __init__(self, subsystem_registry: Any, *, poll_interval: float = 30.0,
+    def __init__(self, domain_resources: Any, *, poll_interval: float = 30.0,
                  batch_size: int = 100, lease_duration: timedelta = timedelta(hours=6),
                  auto_replay: bool = True, replay_newest_first: bool = True,
                  max_analysis_age_hours: float = 0.0):
         if poll_interval <= 0 or batch_size < 1 or lease_duration.total_seconds() <= 0:
             raise ValueError("Retry poll/batch/lease 参数必须大于 0。")
-        self.subsystem_registry = subsystem_registry
+        self.domain_resources = domain_resources
         self.poll_interval = poll_interval
         self.batch_size = batch_size
         self.lease_duration = lease_duration
@@ -108,7 +108,7 @@ class IISUnarchivedReplayExtension(HubPlugin):
     def _migrate_legacy_errors(self) -> None:
         """旧 E 没有重试轮次；一次性迁为立即到期的 R1。"""
         now = datetime.now(timezone.utc)
-        for context in self.subsystem_registry.enabled_subsystems():
+        for context in self._enabled_domains():
             if self._stop.is_set() or not context.mongo_db_cache:
                 continue
             try:
@@ -128,7 +128,7 @@ class IISUnarchivedReplayExtension(HubPlugin):
                 )
                 self.migrated_legacy_errors += int(getattr(result, "modified_count", 0))
             except Exception:
-                logger.exception("Failed to migrate legacy E records for subsystem %s", context.name)
+                logger.exception("Failed to migrate legacy E records for domain %s", context.name)
 
     def _deprecate_stale(self, context: Any, records: list) -> set:
         """把超过分析年龄硬上限的记录批量标为弃用（X），返回被弃用的 _id 集合。"""
@@ -152,15 +152,15 @@ class IISUnarchivedReplayExtension(HubPlugin):
             )
             count = int(getattr(result, "modified_count", len(stale_ids)))
         except Exception:
-            logger.exception("Failed to deprecate stale records for subsystem %s", context.name)
+            logger.exception("Failed to deprecate stale records for domain %s", context.name)
             return set()
-        logger.info("Deprecated %d stale records (older than %.1fh) for subsystem %s",
+        logger.info("Deprecated %d stale records (older than %.1fh) for domain %s",
                     count, self.max_analysis_age_hours, context.name)
         return set(stale_ids)
 
     def _replay_unprocessed(self, runtime: HubRuntime) -> None:
         query = unarchived_cache_query()
-        for context in self.subsystem_registry.enabled_subsystems():
+        for context in self._enabled_domains():
             if self._stop.is_set() or not context.mongo_db_cache:
                 continue
             try:
@@ -176,13 +176,13 @@ class IISUnarchivedReplayExtension(HubPlugin):
                         return
                     self.replayed += 1
             except Exception:
-                logger.exception("Failed to replay unarchived cache for subsystem %s", context.name)
+                logger.exception("Failed to replay unarchived cache for domain %s", context.name)
 
     def _replay_due_retries(self, runtime: HubRuntime) -> None:
         now = datetime.now(timezone.utc)
         query = retry_cache_query(now)
         lease_until = now + self.lease_duration
-        for context in self.subsystem_registry.enabled_subsystems():
+        for context in self._enabled_domains():
             if self._stop.is_set() or not context.mongo_db_cache:
                 continue
             collection = context.mongo_db_cache.collection
@@ -211,7 +211,13 @@ class IISUnarchivedReplayExtension(HubPlugin):
                         return
                     self.retried += 1
             except Exception:
-                logger.exception("Failed to replay retry cache for subsystem %s", context.name)
+                logger.exception("Failed to replay retry cache for domain %s", context.name)
+
+    def _enabled_domains(self):
+        enabled = getattr(self.domain_resources, "enabled_domains", None)
+        if not callable(enabled):
+            enabled = self.domain_resources.enabled_subsystems
+        return enabled()
 
     @staticmethod
     def _emit_record(runtime: HubRuntime, context: Any, record: dict,

@@ -9,7 +9,7 @@ IIS 内向 `IntelligenceViews` 集成页提供三个嵌入组件：
 - `/situation/embed/entities`：实体关系。
 - `/situation/embed/timeline`：可多选实体的事件时间线。
 
-三个页面的子系统、滚动时间窗口上限、最低评分和图规模由服务端配置固定。地图与实体图可在
+三个页面的情报域、滚动时间窗口上限、最低评分和图规模由服务端配置固定。地图与实体图可在
 已加载窗口内用双端时间轴缩小显示范围；拖动时完全由浏览器隐藏/显示既有图元并更新聚合数字，
 不请求后端、不重建实体图布局。事件类别和实体类型仍可通过右上角可折叠悬浮图例进行筛选。
 旧的 `/situation/`、
@@ -24,7 +24,7 @@ python -m SituationViews.standalone
 然后访问 `http://127.0.0.1:5010/situation/embed/map`。
 
 IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，并复用主站的
-`SubsystemRegistry`，但不进入 Hub 事件链。当 `intelligence_views.public_access=true` 时，
+`DomainResourceRegistry`，但不进入 Hub 事件链。当 `intelligence_views.public_access=true` 时，
 仅嵌入页面和固定范围的 `/situation/api/scoped/*` 随 `/views` 公开；可自定义查询范围的
 非 scoped API 仍要求登录。可以在 `_config/iis.yaml` 中单独关闭整个
 模块或地名解析：
@@ -33,7 +33,7 @@ IIS 主站会把同一套只读组件挂载到 `/situation/embed/*`，并复用�
 optional_subsystems:
   situation:
     enabled: true
-    subsystem: news
+    domain: news
     window_days: 7
     min_score: 6
     geocoding: true

@@ -15,7 +15,7 @@
         "pub_time": "2026-10-10T08:00:00+08:00",
         "collect_time": "2026-10-10T08:05:00+08:00",
         "informant": "benchmark://non-intelligence-001",
-        "subsystem": "news"
+        "domain": "news"
       },
       "expected": {
         "route": "non_intelligence",
@@ -36,7 +36,7 @@
         "pub_time": "2026-10-09T06:00:00+00:00",
         "collect_time": "2026-10-09T06:05:00+00:00",
         "informant": "benchmark://attack-001",
-        "subsystem": "news"
+        "domain": "news"
       },
       "expected": {
         "route": "valuable",
@@ -58,7 +58,7 @@
         "pub_time": "2026-10-08T10:00:00+08:00",
         "collect_time": "2026-10-08T10:03:00+08:00",
         "informant": "benchmark://capacity-001",
-        "subsystem": "news"
+        "domain": "news"
       },
       "expected": {
         "route": "valuable",

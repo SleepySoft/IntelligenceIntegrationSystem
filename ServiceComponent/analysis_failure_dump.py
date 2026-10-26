@@ -31,7 +31,8 @@ class AnalysisFailureRecorder:
         self._lock = threading.Lock()
 
     def record(self, *, category: str, error: Any, raw_response: Any,
-               original_data: Mapping[str, Any], subsystem: str,
+               original_data: Mapping[str, Any], domain_name: str = "",
+               subsystem: str | None = None,
                trace_id: str, attempt: int, prompt_version: int,
                prompt: str, ai_service: str, ai_model: str,
                transient: bool) -> Path | None:
@@ -41,13 +42,16 @@ class AnalysisFailureRecorder:
             error_detail = self._error_detail(error)
             now = datetime.now(timezone.utc)
             source_uuid = str(original_data.get("UUID", "")).strip()
+            if domain_name and subsystem and domain_name != subsystem:
+                raise ValueError("domain_name and legacy subsystem disagree")
+            resolved_domain = domain_name or subsystem or ""
             document = {
                 "schema_version": 1,
                 "captured_at": now.isoformat(),
                 "category": str(category),
                 "trace_id": str(trace_id),
                 "source_uuid": source_uuid,
-                "subsystem": str(subsystem),
+                "domain_name": str(resolved_domain),
                 "attempt": int(attempt),
                 "prompt_version": int(prompt_version),
                 "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),

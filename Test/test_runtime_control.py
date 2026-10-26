@@ -34,9 +34,9 @@ class FakeHub:
 
     @property
     def statistics(self):
-        return {"runtime": {"emitted": 1, "processed": 1}, "analysis": {}, "subsystems": []}
+        return {"runtime": {"emitted": 1, "processed": 1}, "analysis": {}, "domains": []}
 
-    def get_prompt(self, subsystem=None, version=None):
+    def get_prompt(self, domain_name=None, version=None):
         from prompts_event_v4 import EVENT_V4_PROMPT_CATALOG
         if version is None:
             version = max(EVENT_V4_PROMPT_CATALOG.sampling_versions())
@@ -51,7 +51,7 @@ class FakeHub:
     def get_service(self, name, default=None):
         return default
 
-    def get_subsystems(self):
+    def get_domains(self):
         return []
 
 
@@ -78,15 +78,15 @@ class FakeCache:
         return matched, matched
 
 
-class FakeSubsystemRegistry:
+class FakeDomainResources:
     def __init__(self, contexts):
         self._contexts = contexts
 
-    def enabled_subsystems(self):
+    def enabled_domains(self):
         return self._contexts
 
 
-def _build_app(control: RuntimeControlState, subsystem_registry=None):
+def _build_app(control: RuntimeControlState, domain_resources=None):
     app = Flask(
         __name__,
         template_folder=str(Path(__file__).resolve().parent.parent / "templates"),
@@ -100,7 +100,7 @@ def _build_app(control: RuntimeControlState, subsystem_registry=None):
         intelligence_hub=FakeHub(),
         access_manager=access_manager,
         rss_publisher=FakeRSSPublisher(),
-        subsystem_registry=subsystem_registry,
+        domain_resources=domain_resources,
         control_state=control,
     )
     service.register_routers(app)
@@ -260,11 +260,11 @@ def test_discard_pending_marks_unanalyzed_cache_deprecated():
         {"UUID": "u3", "APPENDIX": {"__ARCHIVED__": "A"}},           # 已归档 → 不动
         {"UUID": "u4", "APPENDIX": {"__ARCHIVED__": "D"}},           # 已终态 → 不动
     ])
-    registry = FakeSubsystemRegistry([SimpleNamespace(
+    registry = FakeDomainResources([SimpleNamespace(
         name="news", mongo_db_cache=cache,
         url_prefix="/news", is_default=True, ui_plugin_enabled=False,
     )])
-    app = _build_app(RuntimeControlState(), subsystem_registry=registry)
+    app = _build_app(RuntimeControlState(), domain_resources=registry)
     client = _logged_in_client(app)
 
     resp = client.post("/api/control/discard_pending")
@@ -292,11 +292,11 @@ def test_discard_retry_marks_retry_records_deprecated():
         {"UUID": "u3", "APPENDIX": {"__ARCHIVED__": "R"}},           # 重试中 → 弃用
         {"UUID": "u4", "APPENDIX": {"__ARCHIVED__": "A"}},           # 已归档 → 不动
     ])
-    registry = FakeSubsystemRegistry([SimpleNamespace(
+    registry = FakeDomainResources([SimpleNamespace(
         name="news", mongo_db_cache=cache,
         url_prefix="/news", is_default=True, ui_plugin_enabled=False,
     )])
-    app = _build_app(RuntimeControlState(), subsystem_registry=registry)
+    app = _build_app(RuntimeControlState(), domain_resources=registry)
     client = _logged_in_client(app)
 
     resp = client.post("/api/control/discard_pending", json={"scope": "retry"})
@@ -338,7 +338,7 @@ def _build_app_with_replay(fake_service):
         intelligence_hub=FakeHubWithReplay(fake_service),
         access_manager=access_manager,
         rss_publisher=FakeRSSPublisher(),
-        subsystem_registry=FakeSubsystemRegistry([]),
+        domain_resources=FakeDomainResources([]),
         control_state=control,
     )
     service.register_routers(app)
@@ -393,7 +393,7 @@ def _build_app_with_shadow(recorder, document):
         intelligence_hub=FakeHubWithShadow(recorder, document),
         access_manager=access_manager,
         rss_publisher=FakeRSSPublisher(),
-        subsystem_registry=FakeSubsystemRegistry([]),
+        domain_resources=FakeDomainResources([]),
         control_state=control,
     )
     service.register_routers(app)
@@ -405,7 +405,7 @@ def test_shadow_endpoints_pairing_and_record(tmp_path):
 
     recorder = ShadowAnalysisRecorder(tmp_path, max_files=10)
     recorder.record(
-        original_data={"UUID": "u-9"}, subsystem="news",
+        original_data={"UUID": "u-9"}, domain_name="news",
         primary_prompt_version=44, shadow_prompt_version=45,
         analysis={"EVENT_TITLE": "影子版", "RATE": {"影响广度": 7}},
         ai_service="svc", ai_model="gemini",

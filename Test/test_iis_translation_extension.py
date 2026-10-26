@@ -26,7 +26,7 @@ def test_translation_extension_defers_translated_records_and_emits_completion_ev
         return holder["translator"]
 
     extension = IISAsyncTranslationExtension(
-        default_subsystem="news", translator_factory=factory,
+        default_domain="news", translator_factory=factory,
         needs_translation=lambda payload: payload.get("translate", False))
     runtime = HubRuntime()
     runtime.install(extension)
@@ -37,11 +37,11 @@ def test_translation_extension_defers_translated_records_and_emits_completion_ev
     source = HubEvent(
         ARCHIVE_COMPLETED,
         {"UUID": "one", "translate": True},
-        subsystem="news")
+        domain_name="news")
     assert extension.should_defer_index(source)
     runtime.emit(source)
     runtime.emit(HubEvent(
-        ARCHIVE_COMPLETED, {"UUID": "two"}, subsystem="news"))
+        ARCHIVE_COMPLETED, {"UUID": "two"}, domain_name="news"))
     assert runtime.wait_for_idle(timeout=1)
     assert holder["translator"].started
     assert holder["translator"].enqueued == [("one", "new_archived")]

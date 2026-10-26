@@ -1,18 +1,18 @@
-/* static/js/subsystem_render_protocol.js
+/* static/js/domain_render_protocol.js
  * ??? UI ????????? + ????? + ????????
- * ? doc/20260817_subsystem_ui_plugin_rendering.md
+ * 设计文档见 doc/20260817_domain_ui_plugin_rendering.md。
  *
  * ???
- *   - ???????????? _config/subsystems/{name}/?ui_plugin.js ??????
- *     ?? window.SubsystemUI.register({...}) ???
+ *   - 领域插件入口位于 _config/domains/{name}/ui_plugin.js
+ *     通过 window.DomainUI.register({...}) 注册。
  *   - ????? id??????defaults????????????????????????
- *   - ????? import subsystem/<block> or static/<block>?
+ *   - 插件可按领域组合详情块或静态资源。
  *         resolve(blockId) => plugin.blocks[blockId] || defaults[blockId]
  *   - ???? = ??????? renderCard/renderDetail = ?????/????
  *     ??? detailURL/onCardClick = ???????????????
  */
 (function () {
-    if (window.SubsystemUI) return;
+    if (window.DomainUI) return;
 
     const plugins = {};          // name -> plugin descriptor
 
@@ -20,16 +20,16 @@
 
     function register(plugin) {
         if (!plugin || !plugin.name) {
-            console.error('[SubsystemUI] plugin must provide `name`.');
+            console.error('[DomainUI] plugin must provide `name`.');
             return;
         }
         plugins[plugin.name] = plugin;
         // 配色类插件：提供 style 字符串即注入 <style> 标签，不改变卡片结构与行为
         if (plugin.style && typeof plugin.style === 'string') {
-            let styleTag = document && document.getElementById('subsystem-ui-style-' + plugin.name);
+            let styleTag = document && document.getElementById('domain-ui-style-' + plugin.name);
             if (!styleTag) {
                 styleTag = document.createElement('style');
-                styleTag.id = 'subsystem-ui-style-' + plugin.name;
+                styleTag.id = 'domain-ui-style-' + plugin.name;
                 (document.head || document.body).appendChild(styleTag);
             }
             styleTag.textContent = plugin.style;
@@ -235,7 +235,7 @@ function buildCard(plugin, doc, ctx, helpers) {
         return helpers;
     }
 
-    window.SubsystemUI = {
+    window.DomainUI = {
         register,
         getPlugin,
         hasPlugin,

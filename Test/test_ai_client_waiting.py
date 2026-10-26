@@ -23,7 +23,7 @@ class TimeoutThenAvailableManager:
 
 def build_ports(manager):
     return BasePipelinePorts(
-        subsystem_registry=object(),
+        domain_resources=object(),
         ai_client_manager=manager,
         analyzer=lambda *_: {},
         transient_analyzer=lambda *_: {},

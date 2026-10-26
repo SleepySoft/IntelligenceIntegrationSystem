@@ -24,14 +24,15 @@ selection, scoring and storage live in `EventV4PipelinePorts`; recovery, transla
 vector indexing, aggregation, graphing and scheduled maintenance are optional
 extensions assembled by `IntelligenceHubStartup.py`.
 
-All enabled subsystems use the Event V4 contract. Legacy V1/V2 code and data-model
+Enabled intelligence domains register their own prompt, validation, scoring, and storage
+implementations; the built-in domains currently use the Event V4 contract. Legacy V1/V2 code and data-model
 materials are retained only under `recycled/legacy_intelligence/` and are not loaded
 by the production runtime.
 
-This separation lets future subsystems use different data structures or custom
+This separation lets future intelligence domains use different analysis contracts or custom
 pages without changing the core runtime. See
 [the runtime refactor note](doc/hub_runtime_refactor.md) and
-[the subsystem design](doc/subsystem_design.md).
+[the intelligence-domain design](doc/intelligence_domain_design.md).
 
 ## Configuration
 

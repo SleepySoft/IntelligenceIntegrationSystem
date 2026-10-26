@@ -27,17 +27,17 @@ class AnalysisStatsRecorder:
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS attempts ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT,"
-        " ts TEXT NOT NULL, uuid TEXT, subsystem TEXT, shadow INTEGER DEFAULT 0,"
+        " ts TEXT NOT NULL, uuid TEXT, domain_name TEXT, shadow INTEGER DEFAULT 0,"
         " prompt_version INTEGER, ai_service TEXT, ai_model TEXT,"
         " attempt_no INTEGER, latency_ms INTEGER, error_class TEXT,"
         " request_id TEXT, client_name TEXT);"
         "CREATE TABLE IF NOT EXISTS outcomes ("
-        " uuid TEXT PRIMARY KEY, ts TEXT NOT NULL, subsystem TEXT, shadow INTEGER DEFAULT 0,"
+        " uuid TEXT PRIMARY KEY, ts TEXT NOT NULL, domain_name TEXT, shadow INTEGER DEFAULT 0,"
         " prompt_version INTEGER, ai_service TEXT, ai_model TEXT,"
         " outcome TEXT NOT NULL, attempts_used INTEGER);"
         "CREATE TABLE IF NOT EXISTS outcome_events ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, uuid TEXT,"
-        " subsystem TEXT, shadow INTEGER DEFAULT 0, prompt_version INTEGER,"
+        " domain_name TEXT, shadow INTEGER DEFAULT 0, prompt_version INTEGER,"
         " ai_service TEXT, ai_model TEXT, outcome TEXT NOT NULL,"
         " attempts_used INTEGER);"
         "CREATE INDEX IF NOT EXISTS idx_attempts_ts ON attempts(ts);"
@@ -62,6 +62,15 @@ class AnalysisStatsRecorder:
 
     def _initialize(self, conn: sqlite3.Connection) -> None:
         conn.executescript(self._SCHEMA)
+        for table in ("attempts", "outcomes", "outcome_events"):
+            table_columns = {
+                row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "domain_name" not in table_columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN domain_name TEXT")
+            if "subsystem" in table_columns:
+                conn.execute(
+                    f"UPDATE {table} SET domain_name = subsystem "
+                    "WHERE (domain_name IS NULL OR domain_name = '')")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
         for name, sql_type in (("request_id", "TEXT"), ("client_name", "TEXT")):
             if name not in columns:
@@ -71,14 +80,15 @@ class AnalysisStatsRecorder:
         # 旧 outcomes 是覆盖表；首次升级时复制为事件基线，之后新终态双写。
         if conn.execute("SELECT COUNT(*) FROM outcome_events").fetchone()[0] == 0:
             conn.execute(
-                "INSERT INTO outcome_events (ts, uuid, subsystem, shadow,"
+                "INSERT INTO outcome_events (ts, uuid, domain_name, shadow,"
                 " prompt_version, ai_service, ai_model, outcome, attempts_used)"
-                " SELECT ts, uuid, subsystem, shadow, prompt_version, ai_service,"
+                " SELECT ts, uuid, domain_name, shadow, prompt_version, ai_service,"
                 " ai_model, outcome, attempts_used FROM outcomes"
             )
 
     def record_attempt(
-            self, *, uuid: str, subsystem: str, shadow: bool,
+            self, *, uuid: str, domain_name: str = "",
+            subsystem: str | None = None, shadow: bool,
             prompt_version: int | None, ai_service: str, ai_model: str,
             attempt_no: int, latency_ms: int, error_class: str | None,
             request_id: str | None = None, client_name: str | None = None,
@@ -86,15 +96,16 @@ class AnalysisStatsRecorder:
         if not self.enabled:
             return
         try:
+            domain = self._resolve_domain(domain_name, subsystem)
             with self._lock, self._connect() as conn:
                 self._initialize(conn)
                 conn.execute(
-                    "INSERT INTO attempts (ts, uuid, subsystem, shadow,"
+                    "INSERT INTO attempts (ts, uuid, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, attempt_no, latency_ms,"
                     " error_class, request_id, client_name)"
                     " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
-                        datetime.now(timezone.utc).isoformat(), uuid, subsystem,
+                        datetime.now(timezone.utc).isoformat(), uuid, domain,
                         int(shadow), prompt_version, ai_service, ai_model,
                         attempt_no, int(latency_ms), error_class,
                         request_id, client_name,
@@ -104,28 +115,30 @@ class AnalysisStatsRecorder:
             logger.warning("analysis stats attempt write failed", exc_info=True)
 
     def record_outcome(
-            self, *, uuid: str, subsystem: str, shadow: bool,
+            self, *, uuid: str, domain_name: str = "",
+            subsystem: str | None = None, shadow: bool,
             prompt_version: int | None, ai_service: str, ai_model: str,
             outcome: str, attempts_used: int,
     ) -> None:
         if not self.enabled:
             return
         try:
+            domain = self._resolve_domain(domain_name, subsystem)
             now = datetime.now(timezone.utc).isoformat()
             values = (
-                uuid, now, subsystem, int(shadow), prompt_version,
+                uuid, now, domain, int(shadow), prompt_version,
                 ai_service, ai_model, outcome, int(attempts_used),
             )
             with self._lock, self._connect() as conn:
                 self._initialize(conn)
                 conn.execute(
-                    "INSERT OR REPLACE INTO outcomes (uuid, ts, subsystem, shadow,"
+                    "INSERT OR REPLACE INTO outcomes (uuid, ts, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, outcome, attempts_used)"
                     " VALUES (?,?,?,?,?,?,?,?,?)",
                     values,
                 )
                 conn.execute(
-                    "INSERT INTO outcome_events (uuid, ts, subsystem, shadow,"
+                    "INSERT INTO outcome_events (uuid, ts, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, outcome, attempts_used)"
                     " VALUES (?,?,?,?,?,?,?,?,?)",
                     values,
@@ -134,12 +147,14 @@ class AnalysisStatsRecorder:
             logger.warning("analysis stats outcome write failed", exc_info=True)
 
     def record_terminal_failure(
-            self, *, uuid: str, subsystem: str, shadow: bool = False,
+            self, *, uuid: str, domain_name: str = "",
+            subsystem: str | None = None, shadow: bool = False,
     ) -> None:
         """把已耗尽持久重试的任务改为失败，并保留上次模型归因字段。"""
         if not self.enabled:
             return
         try:
+            domain = self._resolve_domain(domain_name, subsystem)
             now = datetime.now(timezone.utc).isoformat()
             with self._lock, self._connect() as conn:
                 self._initialize(conn)
@@ -148,7 +163,7 @@ class AnalysisStatsRecorder:
                     " FROM outcomes WHERE uuid = ?", (uuid,),
                 ).fetchone()
                 values = (
-                    uuid, now, subsystem, int(shadow),
+                    uuid, now, domain, int(shadow),
                     previous[0] if previous else None,
                     previous[1] if previous else "",
                     previous[2] if previous else "",
@@ -156,15 +171,21 @@ class AnalysisStatsRecorder:
                     previous[3] if previous else 0,
                 )
                 conn.execute(
-                    "INSERT OR REPLACE INTO outcomes (uuid, ts, subsystem, shadow,"
+                    "INSERT OR REPLACE INTO outcomes (uuid, ts, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, outcome, attempts_used)"
                     " VALUES (?,?,?,?,?,?,?,?,?)", values)
                 conn.execute(
-                    "INSERT INTO outcome_events (uuid, ts, subsystem, shadow,"
+                    "INSERT INTO outcome_events (uuid, ts, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, outcome, attempts_used)"
                     " VALUES (?,?,?,?,?,?,?,?,?)", values)
         except Exception:
             logger.warning("analysis stats terminal outcome write failed", exc_info=True)
+
+    @staticmethod
+    def _resolve_domain(domain_name: str, subsystem: str | None) -> str:
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        return str(domain_name or subsystem or "").strip()
 
     def aggregate_by_model(self, *, days: int = 7) -> list[dict[str, Any]]:
         """兼容原离线报告：按模型与 Prompt 聚合基础结果。"""

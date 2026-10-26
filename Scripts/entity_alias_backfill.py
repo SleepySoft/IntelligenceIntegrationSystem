@@ -74,8 +74,8 @@ def _load_config():
 
 
 def _open_default_collection(config):
-    from ServiceComponent.SubsystemRegistry import SubsystemRegistry
-    registry = SubsystemRegistry.build_from_config(
+    from ServiceComponent.DomainResources import DomainResourceRegistry
+    registry = DomainResourceRegistry.build_from_config(
         config,
         mongodb_params={
             'host': config.get('mongodb.host', 'localhost'),

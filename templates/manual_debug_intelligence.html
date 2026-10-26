@@ -57,10 +57,10 @@
                                 </select>
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label" for="subsystem">子系统</label>
-                                <select class="form-select" id="subsystem">
-                                    {% for item in subsystems %}
-                                    <option value="{{ item.name }}" {% if item.name == default_subsystem %}selected{% endif %}>
+                                <label class="form-label" for="domain-name">情报域</label>
+                                <select class="form-select" id="domain-name">
+                                    {% for item in domains %}
+                                    <option value="{{ item.name }}" {% if item.name == default_domain %}selected{% endif %}>
                                         {{ item.display_name|default(item.name) }}
                                     </option>
                                     {% endfor %}
@@ -131,7 +131,7 @@
     const submitButton = document.getElementById('submit-button');
     const jobList = document.getElementById('job-list');
     const mechanismSelect = document.getElementById('mechanism');
-    const subsystemSelect = document.getElementById('subsystem');
+    const domainSelect = document.getElementById('domain-name');
     const promptVersionSelect = document.getElementById('prompt-version');
     const promptEditor = document.getElementById('prompt-editor');
     const promptOverride = document.getElementById('prompt-override');
@@ -180,7 +180,7 @@
                 button.innerHTML = `<div class="d-flex justify-content-between gap-2"><span class="text-truncate"></span><small><i class="status-dot status-${item.status}"></i> ${item.status}</small></div><small class="text-muted"></small>`;
                 button.querySelector('span').textContent = title;
                 const promptLabel = `Prompt v${item.prompt?.version ?? '?'}${item.prompt?.overridden ? ' · 已覆盖' : ''}`;
-                button.querySelector('.text-muted').textContent = `${item.mechanism} · ${item.subsystem} · ${promptLabel} · ${item.job_id}`;
+                button.querySelector('.text-muted').textContent = `${item.mechanism} · ${item.domain_name} · ${promptLabel} · ${item.job_id}`;
                 button.addEventListener('click', () => loadJob(item.job_id).catch(showError));
                 jobList.appendChild(button);
             });
@@ -207,7 +207,7 @@
         promptEditor.disabled = true;
         try {
             const catalog = await fetchPrompt({
-                subsystem: subsystemSelect.value,
+                domain_name: domainSelect.value,
                 mechanism: mechanismSelect.value,
             });
             promptVersionSelect.innerHTML = '';
@@ -230,14 +230,14 @@
 
     async function loadSelectedPrompt() {
         const selected = await fetchPrompt({
-            subsystem: subsystemSelect.value,
+            domain_name: domainSelect.value,
             mechanism: mechanismSelect.value,
             version: promptVersionSelect.value,
         });
         loadedPromptText = selected.content;
         promptEditor.value = loadedPromptText;
         promptOverride.checked = false;
-        promptMessage.textContent = `已载入 ${selected.mechanism} / ${selected.subsystem} / Prompt v${selected.version}。编辑文本会自动启用单次覆盖。`;
+        promptMessage.textContent = `已载入 ${selected.mechanism} / ${selected.domain_name} / Prompt v${selected.version}。编辑文本会自动启用单次覆盖。`;
         promptMessage.className = 'form-text';
     }
 
@@ -252,7 +252,7 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     title: document.getElementById('title').value,
-                    subsystem: document.getElementById('subsystem').value,
+                    domain_name: document.getElementById('domain-name').value,
                     mechanism: mechanismSelect.value,
                     content: document.getElementById('content').value,
                     prompt_version: Number(promptVersionSelect.value),
@@ -274,7 +274,7 @@
 
     document.getElementById('refresh-button').addEventListener('click', loadList);
     mechanismSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
-    subsystemSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
+    domainSelect.addEventListener('change', () => loadPromptCatalog().catch(showError));
     promptVersionSelect.addEventListener('change', () => loadSelectedPrompt().catch(showError));
     promptEditor.addEventListener('input', () => {
         promptOverride.checked = promptEditor.value !== loadedPromptText;

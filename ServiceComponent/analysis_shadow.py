@@ -38,7 +38,8 @@ class ShadowAnalysisRecorder:
         self._lock = threading.Lock()
         self._index_path = self.directory / "index.sqlite"
 
-    def record(self, *, original_data: Mapping[str, Any], subsystem: str,
+    def record(self, *, original_data: Mapping[str, Any], domain_name: str = "",
+               subsystem: str | None = None,
                primary_prompt_version: int, shadow_prompt_version: int,
                analysis: Any, ai_service: str, ai_model: str,
                extraction_quality: Any = None) -> Path | None:
@@ -47,11 +48,14 @@ class ShadowAnalysisRecorder:
         try:
             now = datetime.now(timezone.utc)
             source_uuid = str(original_data.get("UUID", "")).strip()
+            if domain_name and subsystem and domain_name != subsystem:
+                raise ValueError("domain_name and legacy subsystem disagree")
+            resolved_domain = domain_name or subsystem or ""
             document = {
                 "schema_version": 1,
                 "captured_at": now.isoformat(),
                 "source_uuid": source_uuid,
-                "subsystem": str(subsystem),
+                "domain_name": str(resolved_domain),
                 "primary_prompt_version": int(primary_prompt_version),
                 "shadow_prompt_version": int(shadow_prompt_version),
                 "ai_service": str(ai_service),

@@ -2,7 +2,7 @@
 
 设计约束（解耦）：
 - 不 import 任何 ServiceComponent 管线实现；只依赖窄接口（见模块尾部 Protocol 注释）：
-  * subsystem_registry：enabled_subsystems() 提供 cache 访问；
+  * domain_resources：enabled_domains() 提供 cache 访问；
   * outcome_port：prompt 目录 / 协议 / prepare_analysis_outcome / archive repository；
   * runtime：只用来发 ARCHIVE_REQUESTED。
 - 与实时主链的关系：只“借道”其领域机制（prompt/消息构造/校验/归档后段），
@@ -46,13 +46,13 @@ class BatchAnalysisService(HubPlugin):
         " job_id TEXT, uuid TEXT, status TEXT, PRIMARY KEY (job_id, uuid));"
     )
 
-    def __init__(self, subsystem_registry: Any, outcome_port: Any, *,
+    def __init__(self, domain_resources: Any, outcome_port: Any, *,
                  base_url: str, model: str, api_key: str,
                  db_path: str | Path, lookback_days: int = 7,
                  max_items: int = 500, poll_interval_sec: float = 300):
         if not api_key:
             raise ValueError("Batch 分析需要 api_key")
-        self.registry = subsystem_registry
+        self.domain_resources = domain_resources
         self.ports = outcome_port
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -126,7 +126,7 @@ class BatchAnalysisService(HubPlugin):
         cutoff = datetime.now(timezone.utc) - timedelta(days=lookback)
 
         items: list[tuple[Any, Any, int, str]] = []  # (ctx, record, version, prompt)
-        for ctx in self.registry.enabled_subsystems():
+        for ctx in self._enabled_domains():
             definition = self._definition(ctx)
             if definition.subsystems.batch is None:
                 continue
@@ -255,7 +255,7 @@ class BatchAnalysisService(HubPlugin):
                 continue
             domain_name, prompt_version, uuid = self._decode_item_key(
                 item_key, job_prompt_version)
-            ctx = self.registry.resolve(domain_name) if domain_name else None
+            ctx = self.domain_resources.resolve(domain_name) if domain_name else None
             if ctx is None:
                 ctx = self._find_context(uuid)
             if ctx is None or self._definition(ctx).subsystems.batch is None:
@@ -304,11 +304,17 @@ class BatchAnalysisService(HubPlugin):
         return None, int(fallback_version), item_key
 
     def _find_context(self, uuid: str) -> Any | None:
-        for ctx in self.registry.enabled_subsystems():
+        for ctx in self._enabled_domains():
             cache = getattr(ctx, "mongo_db_cache", None)
             if cache is not None and cache.collection.find_one({"UUID": uuid}):
                 return ctx
         return None
+
+    def _enabled_domains(self):
+        enabled = getattr(self.domain_resources, "enabled_domains", None)
+        if not callable(enabled):
+            enabled = self.domain_resources.enabled_subsystems
+        return enabled()
 
     @staticmethod
     def _protocol_for_batch(catalog: Any, prompt_version: int, *, job_id: str) -> Any:

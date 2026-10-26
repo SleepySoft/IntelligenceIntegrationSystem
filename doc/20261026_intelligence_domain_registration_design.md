@@ -2,7 +2,7 @@
 
 > 讨论日期：2026-10-26
 >
-> 状态：领域分析注册层已实施；采集字段归一仍待后续迁移。
+> 状态：领域分析注册层与领域路由语义迁移均已实施。
 >
 > 上游调查：[`20261016_intelligence_domain_extensibility_audit.md`](20261016_intelligence_domain_extensibility_audit.md)
 
@@ -27,8 +27,14 @@
 - `finance`、`industry` 在拥有独立实现前显式使用 `factory: news`，Pipeline 中没有领域名
   特判。
 
-尚未实施的是采集契约中 `subsystem` → `domain` 的字段归一。Runtime 的事件路由字段和
-部分历史类名也暂时保留；它们不再决定领域内分析实现。
+2026-10-27 已完成领域路由语义收口：
+
+- Collector 公共字段统一为 `domain`；Runtime 与服务内部统一为 `domain_name`。
+- `DomainResourceRegistry` / `DomainContext` 成为正式资源类型，领域配置目录迁至
+  `_config/domains/`，旧名称只保留在兼容导入与旧配置读取边界。
+- 新归档、观测记录、影子/失败记录、实体引用和 API 响应只写领域字段；历史
+  `__SUBSYSTEM__`、SQLite 列及旧请求字段继续只读兼容。
+- 页面依据 URL 路径绑定领域；无领域前缀时使用 `hub.domains.default`，不以查询参数选择集合。
 
 ## 1. 目标与范围
 
@@ -57,14 +63,14 @@ cache、URL 和查询资源已按域隔离，但分析主链仍共用全局 Prom
 
 以前置调查和当前代码为准：
 
-- MongoDB 集合、URL、cache 和 QueryEngine 已经按现有 `subsystem` 上下文隔离。
+- MongoDB 集合、URL、cache 和 QueryEngine 已经按领域上下文隔离。
 - Event Engine 已包含产业和金融谓词，不必仅为产业域另建事件引擎。
 - 详情页遍历 `RATE` 字典，没有写死六个维度。
 - Shadow 对比会动态合并左右两侧的 RATE 键。
 - 列表、搜索、向量和态势层的评分门槛主要消费 `total_score`。
 - 相关针对性测试在服务使用的 Python 3.12 环境中曾通过：`68 passed`。
 
-当前阻塞点：
+改造前的阻塞点（现已解除）：
 
 - `EventV4PipelinePorts` 只持有一份全局 `PromptCatalog`。
 - `AnalysisResultV4` 与 `map_rate_levels()` 强制新闻域的六维 RATE。
@@ -81,9 +87,9 @@ cache、URL 和查询资源已按域隔离，但分析主链仍共用全局 Prom
 `CollectedData` 增加 `domain` 字段。采集器提交后，Hub 在 intake 边界立即校验该域
 是否已注册；未知域应明确拒绝，不进入 cache。
 
-`domain` 与历史 `subsystem` 不能成为两个可分歧的事实源。实施时若需要
-短期迁移，可在入口把旧字段归一为 `domain`；归一后的主链、cache 恢复和重试
-只使用 `domain`。是否保留迁移期兼容待实施时最终决定。
+`domain` 与历史 `subsystem` 不能成为两个可分歧的事实源。入口会把旧字段归一为
+`domain`；归一后的主链、cache 恢复和重试只使用
+`domain` / `domain_name`。若新旧字段同时出现且值冲突，入口拒绝请求。
 
 ### 3.2 分析结果路由
 
@@ -287,13 +293,11 @@ class DomainSubsystems:
 8. Batch/Shadow 仅在域提供能力且配置启用时运行；不同域的 Batch 不混合。
 9. 新闻域在改造前后的归档、查询和页面行为保持一致。
 
-## 10. 待实施时确定的细节
+## 10. 已确定的实现选择与后续边界
 
-以下不影响当前方向，但需在编码前明确：
-
-- `subsystem` 到 `domain` 是否提供短期输入兼容，还是一次性切换。
-- `DomainStorage` 是一个对象协议，还是 `prepare/store` 函数组。
-- 领域工厂使用内置短名、`module:callable`，或同时支持两者。
-- `domain` 在最终归档文档中的顶层字段名与 APPENDIX 映射。
-- 现有类名 `SubsystemRegistry` / `SubsystemContext` / `EventV4QueryEngine` 的更名时机。
-- 未来存储结构分化后的 QueryProvider 和领域页面注册合同；本次不实施。
+- 旧 `subsystem` 请求、配置、APPENDIX 和数据库列提供读取兼容，但不再产生新的旧字段。
+- `DomainStorage` 采用 `prepare/store` 协议对象；领域定义集中注册相关实现。
+- 领域工厂同时支持内置短名和 `module:callable`。
+- 新归档在 APPENDIX 使用 `__DOMAIN_NAME__`；读取时回退历史 `__SUBSYSTEM__`。
+- 正式资源类为 `DomainResourceRegistry` / `DomainContext`；旧类名仅是导入兼容壳。
+- 存储结构分化后的 QueryProvider 和领域页面注册合同留待查询定制阶段。

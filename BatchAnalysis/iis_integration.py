@@ -32,7 +32,7 @@ def find_mimo_api_key(config_path: str | None = None) -> str:
     return ""
 
 
-def create_service(*, config, subsystem_registry, outcome_port,
+def create_service(*, config, domain_resources=None, subsystem_registry=None, outcome_port,
                    data_path: str) -> BatchAnalysisService | None:
     """创建批量分析服务（装配期，HubApplication 构造前调用）。未启用/缺 key 返回 None。"""
     settings = BatchAnalysisConfig(config.get("batch_analysis", {}))
@@ -43,7 +43,7 @@ def create_service(*, config, subsystem_registry, outcome_port,
         logger.warning("batch_analysis 已启用但 ai_clients.yaml 中没有 MiMo key，跳过。")
         return None
     return BatchAnalysisService(
-        subsystem_registry, outcome_port,
+        domain_resources or subsystem_registry, outcome_port,
         base_url=settings.base_url, model=settings.model,
         api_key=api_key,
         db_path=os.path.join(data_path, "analysis_batch.db"),

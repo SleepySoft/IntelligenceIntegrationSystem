@@ -11,7 +11,7 @@ from IISConfig import IISSettings
 
 # 修改 IISSettings 后必须审查完整编辑器和首次配置向导，再更新此指纹。
 # 运行时页面会报警告，测试也会失败，避免 schema 悄悄领先于界面。
-REVIEWED_IIS_SCHEMA_SHA256 = "f2aeb02e5d24328669f09cffe9c8ceea1053765e9e94b7aab44af343fa23d36d"
+REVIEWED_IIS_SCHEMA_SHA256 = "fecaa194c8dec368a1678d50c2c7fbb503cbc6e8f341ff679c09e2abc3a0b943"
 
 
 def schema_digest(schema: dict[str, Any] | None = None) -> str:

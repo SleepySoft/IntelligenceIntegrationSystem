@@ -42,7 +42,7 @@ class IntakePort(Protocol):
 
 class AnalysisPort(Protocol):
     def analyze(self, event: HubEvent) -> StageResult:
-        """按 subsystem 执行任意领域分析，不要求统一输出模型。"""
+        """按 domain_name 执行任意领域分析，不要求统一输出模型。"""
 
 
 class ArchivePort(Protocol):

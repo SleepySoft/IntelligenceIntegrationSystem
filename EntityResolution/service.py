@@ -27,14 +27,14 @@ class EntityResolutionService:
         self.entity_registry = entity_registry
         self._lock = threading.RLock()
 
-    def _scope(self, subsystem: str) -> ResolutionScope:
-        scope = self.scopes.get(str(subsystem or "").strip())
+    def _scope(self, domain_name: str) -> ResolutionScope:
+        scope = self.scopes.get(str(domain_name or "").strip())
         if scope is None:
-            raise ResolutionError(f"未知子系统：{subsystem}", "not_found")
+            raise ResolutionError(f"未知情报域：{domain_name}", "not_found")
         return scope
 
     def _load_reference(self, ref: EntityRef) -> dict[str, Any]:
-        value = self._scope(ref.subsystem).reference_loader(ref)
+        value = self._scope(ref.domain_name).reference_loader(ref)
         if value is None:
             raise ResolutionError("情报实体引用不存在或已过期", "not_found")
         return value
@@ -48,10 +48,10 @@ class EntityResolutionService:
         refs = [EntityRef.from_mapping(item) for item in requests]
         by_scope: dict[str, list[EntityRef]] = {}
         for ref in refs:
-            by_scope.setdefault(ref.subsystem, []).append(ref)
+            by_scope.setdefault(ref.domain_name, []).append(ref)
         resolved: dict[str, dict[str, Any]] = {}
-        for subsystem, items in by_scope.items():
-            resolved.update(self._scope(subsystem).store.resolve_many(items))
+        for domain_name, items in by_scope.items():
+            resolved.update(self._scope(domain_name).store.resolve_many(items))
 
         for request, ref in zip(requests, refs):
             hit = resolved.get(ref.key)
@@ -88,7 +88,7 @@ class EntityResolutionService:
 
     def assign_contextual(self, ref: EntityRef, contextual_entity_id: str, *,
                           actor: str, reason: str = "") -> dict[str, Any]:
-        scope = self._scope(ref.subsystem)
+        scope = self._scope(ref.domain_name)
         if scope.store.get_contextual(contextual_entity_id) is None:
             raise ResolutionError(f"上下文实体不存在：{contextual_entity_id}", "not_found")
         return self._assign(
@@ -105,8 +105,8 @@ class EntityResolutionService:
             if self._global_entity(target_id) is None:
                 raise ResolutionError(f"全局实体不存在：{target_id}", "not_found")
         elif target_kind == "contextual":
-            for subsystem in {ref.subsystem for ref in items}:
-                if self._scope(subsystem).store.get_contextual(target_id) is None:
+            for domain_name in {ref.domain_name for ref in items}:
+                if self._scope(domain_name).store.get_contextual(target_id) is None:
                     raise ResolutionError(f"上下文实体不存在：{target_id}", "not_found")
         else:
             raise ResolutionError("target_kind 必须是 global 或 contextual")
@@ -126,7 +126,7 @@ class EntityResolutionService:
     def _assign(self, ref: EntityRef, kind: str, target_id: str, *,
                 actor: str, reason: str) -> dict[str, Any]:
         source = self._load_reference(ref)
-        store = self._scope(ref.subsystem).store
+        store = self._scope(ref.domain_name).store
         with self._lock:
             before = store.get_assignment(ref)
             if before and before.get("kind") == kind and before.get("target_id") == target_id:
@@ -157,7 +157,7 @@ class EntityResolutionService:
 
     def unassign(self, ref: EntityRef, *, actor: str, reason: str = "") -> dict[str, Any]:
         self._load_reference(ref)
-        store = self._scope(ref.subsystem).store
+        store = self._scope(ref.domain_name).store
         with self._lock:
             before = store.get_assignment(ref)
             if before is None:
@@ -188,8 +188,8 @@ class EntityResolutionService:
             "results": results,
         }
 
-    def undo(self, subsystem: str, decision_id: str, *, actor: str) -> dict[str, Any]:
-        store = self._scope(subsystem).store
+    def undo(self, domain_name: str, decision_id: str, *, actor: str) -> dict[str, Any]:
+        store = self._scope(domain_name).store
         with self._lock:
             audit = store.get_audit(decision_id)
             if audit is None:
@@ -217,7 +217,7 @@ class EntityResolutionService:
         return {"changed": True, "decision_id": decision_id,
                 "assignment": before}
 
-    def create_contextual(self, subsystem: str, name: str, *, actor: str,
+    def create_contextual(self, domain_name: str, name: str, *, actor: str,
                           optional_fields: dict[str, Any] | None = None) -> dict[str, Any]:
         name = str(name or "").strip()
         if not name:
@@ -235,13 +235,13 @@ class EntityResolutionService:
             value = (optional_fields or {}).get(field)
             if value not in (None, "", [], {}):
                 document[field] = value
-        return self._scope(subsystem).store.create_contextual(document)
+        return self._scope(domain_name).store.create_contextual(document)
 
-    def search_contextual(self, subsystem: str, query: str, *, limit: int = 20):
-        return self._scope(subsystem).store.search_contextual(query, limit=limit)
+    def search_contextual(self, domain_name: str, query: str, *, limit: int = 20):
+        return self._scope(domain_name).store.search_contextual(query, limit=limit)
 
-    def list_references(self, subsystem: str, target_id: str, *, limit: int = 200):
-        return self._scope(subsystem).store.list_references(target_id, limit=limit)
+    def list_references(self, domain_name: str, target_id: str, *, limit: int = 200):
+        return self._scope(domain_name).store.list_references(target_id, limit=limit)
 
     def _global_entity(self, entity_id: str) -> dict[str, Any] | None:
         if self.entity_registry is None:

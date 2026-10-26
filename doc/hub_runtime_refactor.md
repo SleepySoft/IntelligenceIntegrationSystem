@@ -14,7 +14,8 @@ IntelligenceHubStartup
 ```
 
 运行时不理解 MongoDB、AIClientCenter、VectorDB、Flask、Prompt 或任何情报域的
-数据结构。事件的 `payload` 保持不透明，历史字段 `subsystem` 仅作为情报域路由标签。
+数据结构。事件的 `payload` 保持不透明，`domain_name` 是唯一情报域路由标签；历史
+`subsystem` 只在构造边界兼容读取。
 
 ## 非目标
 

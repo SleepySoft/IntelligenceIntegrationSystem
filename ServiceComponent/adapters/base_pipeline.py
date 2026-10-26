@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class BasePipelinePorts:
-    """AI client, prompt-debug and subsystem plumbing without a data schema."""
+    """AI client、Prompt 调试和领域路由的公共基础设施。"""
 
     def __init__(
         self,
-        subsystem_registry: Any,
+        domain_resources: Any,
         ai_client_manager: Any,
         *,
         analyzer: Optional[Callable[[Any, str, dict], dict]] = None,
@@ -32,7 +32,7 @@ class BasePipelinePorts:
             raise ValueError("client_wait_timeout 必须大于 0。")
         if analysis_worker_count < 1:
             raise ValueError("analysis_worker_count 必须大于 0。")
-        self._registry = subsystem_registry
+        self._domain_resources = domain_resources
         self._ai_client_manager = ai_client_manager
         self._analyzer = analyzer or self._load_default_analyzer()
         self._transient_analyzer = (
@@ -185,9 +185,9 @@ class BasePipelinePorts:
                 )
 
     def _resolve_context(self, event: Any) -> Any:
-        ctx = self._registry.resolve(event.subsystem)
+        ctx = self._domain_resources.resolve(event.domain_name)
         if ctx is None:
-            raise ValueError(f"unknown_subsystem:{event.subsystem!r}")
+            raise ValueError(f"unknown_domain:{event.domain_name!r}")
         return ctx
 
     @staticmethod

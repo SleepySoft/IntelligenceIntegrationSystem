@@ -1,9 +1,9 @@
 # IIS 情报域扩展能力调查与重构建议
 
 > 调查日期：2026-10-16
-> 状态：调查记录，尚未完成本文所述的异构情报域改造。
+> 状态：历史调查记录；本文所列分析注册阻塞已于 2026-10-26/27 完成改造。
 >
-> 2026-10-26 后续讨论已将实施方向收敛为“`domain` 路由 + 领域注册”，见
+> 2026-10-26 后续讨论已将实施方向收敛并落地为“`domain` 路由 + 领域注册”，当前实现见
 > [`20261026_intelligence_domain_registration_design.md`](20261026_intelligence_domain_registration_design.md)。
 
 ## 1. 术语决定
@@ -15,9 +15,10 @@
 | **情报域（intelligence domain）** | 一类情报的采集输入、Prompt、输出契约、评分、归档和展示规则 | `news`、`finance`、`industry` |
 | **可选子系统（optional subsystem）** | 可整体启停、通过编排挂入 IIS 的外围能力 | `translation`、`vector`、`situation`、`intelligence_views` |
 
-现有注册表类名仍使用 `SubsystemRegistry` 和 `SubsystemContext`，但正式配置入口
-已改为 `hub.domains`；旧 `hub.subsystems` 仅作输入兼容别名。这些历史类名不代表它们与
-`optional_subsystems` 是同一层概念。后续重构的目标命名为：
+调查时注册表类名仍使用 `SubsystemRegistry` 和 `SubsystemContext`；当前正式类型已改为
+`DomainResourceRegistry` 和 `DomainContext`，旧名仅作导入兼容。配置入口为
+`hub.domains`；旧 `hub.subsystems` 仅作输入兼容别名。它们与 `optional_subsystems`
+不是同一层概念：
 
 ```yaml
 hub:
@@ -65,7 +66,8 @@ optional_subsystems:    # translation / vector / situation / ...
 
 ### 3.2 Schema 元数据没有进入主链
 
-`_config/subsystems/<name>/schema.json` 当前只加载到 `schema_meta`，不参与输入校验、LLM
+调查时 `_config/subsystems/<name>/schema.json` 只加载到 `schema_meta`；当前目录已迁至
+`_config/domains/<name>/`，而 `schema.json` 仍不直接参与输入校验、LLM
 结果校验、归档或查询。生产主链固定执行：
 
 ```text

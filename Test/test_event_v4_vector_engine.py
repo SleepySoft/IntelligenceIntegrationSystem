@@ -30,7 +30,7 @@ def _archive():
     now = datetime(2026, 10, 9, 8, 30, tzinfo=timezone.utc)
     identifier = UUID("30eb0459-998d-486f-8eac-470b9dfd98ec")
     appendix = build_archive_appendix(
-        {"content": "原始全文", "pub_time": now}, subsystem="news",
+        {"content": "原始全文", "pub_time": now}, domain_name="news",
         ai_service="fake://ai", ai_model="fake-v4", prompt_version=40,
         processed_at=now, archived_at=now, total_score=6.5)
     return ArchivedDataV4(**analysis.model_dump(mode="python"), UUID=str(identifier),
@@ -48,6 +48,8 @@ def test_vector_engine_consumes_v4_archive_fields():
     assert stored["metadata"]["total_score"] == 6.5
     assert stored["metadata"]["schema_version"] == "iis-intelligence/4.0"
     assert stored["metadata"]["content_time_source"] == "published"
+    assert stored["metadata"]["domain_name"] == "news"
+    assert "subsystem" not in stored["metadata"]
 
 
 def test_vector_search_text_reads_v2_style_top_level_message():

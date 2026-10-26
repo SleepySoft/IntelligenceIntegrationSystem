@@ -42,7 +42,7 @@ def do_vector_search(p: Dict[str, Any], *,
     elif p['search_mode'] == 'vector_similar':
         if ref_uuids := p.get('reference', ''):
             intelligence = get_intelligence(
-                ref_uuids, subsystem=domain_name,
+                ref_uuids, domain_name=domain_name,
                 profile=IntelligenceProjectionProfile.CARD)
             if intelligence:
                 text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
@@ -82,7 +82,7 @@ def do_vector_search(p: Dict[str, Any], *,
         uuids.append(doc_id)
         score_map[doc_id] = score
     articles = get_intelligence(
-        uuids, subsystem=domain_name,
+        uuids, domain_name=domain_name,
         profile=IntelligenceProjectionProfile.CARD)
 
     articles = [

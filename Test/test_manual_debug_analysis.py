@@ -23,8 +23,8 @@ class TransientPort:
         self.events.append(event)
         return StageResult.allow({"echo": event.payload["content"]})
 
-    def get_transient_prompt_table(self, subsystem):
-        assert subsystem == "news"
+    def get_transient_prompt_table(self, domain_name):
+        assert domain_name == "news"
         return {1: "Prompt v1", 2: "Prompt v2"}
 
 
@@ -70,10 +70,10 @@ def test_manual_debug_service_selects_and_overrides_prompt_for_one_job():
     runtime.start()
     try:
         assert service.prompt_catalog("news") == {
-            "subsystem": "news", "mechanism": "event_v4",
+            "domain_name": "news", "mechanism": "event_v4",
             "versions": [1, 2], "default_version": 2,
         }
-        assert service.get_prompt(subsystem="news", version=1)["content"] == "Prompt v1"
+        assert service.get_prompt(domain_name="news", version=1)["content"] == "Prompt v1"
         submitted = service.submit(
             content="这是一段长度足够的 Prompt 对比测试正文。",
             prompt_version=1,
@@ -89,7 +89,7 @@ def test_manual_debug_service_selects_and_overrides_prompt_for_one_job():
 
 def test_manual_debug_service_exposes_only_event_v4_mechanism():
     v4_port = TransientPort()
-    v4_port.get_transient_prompt_table = lambda subsystem: {40: "Event V4 Prompt"}
+    v4_port.get_transient_prompt_table = lambda domain_name: {40: "Event V4 Prompt"}
     service = ManualDebugAnalysisService(v4_port, Registry())
     runtime = HubRuntime()
     runtime.install(service)
@@ -114,7 +114,7 @@ def test_manual_debug_service_exposes_only_event_v4_mechanism():
         runtime.stop()
 
 
-def test_manual_debug_service_rejects_short_content_and_unknown_subsystem():
+def test_manual_debug_service_rejects_short_content_and_unknown_domain():
     service = ManualDebugAnalysisService(TransientPort(), Registry())
     runtime = HubRuntime()
     runtime.install(service)
@@ -128,10 +128,10 @@ def test_manual_debug_service_rejects_short_content_and_unknown_subsystem():
             raise AssertionError("short content should be rejected")
 
         try:
-            service.submit(content="这是一段长度足够的正文内容。", subsystem="missing")
+            service.submit(content="这是一段长度足够的正文内容。", domain_name="missing")
         except ValueError as exc:
-            assert "未知子系统" in str(exc)
+            assert "未知情报域" in str(exc)
         else:
-            raise AssertionError("unknown subsystem should be rejected")
+            raise AssertionError("unknown domain should be rejected")
     finally:
         runtime.stop()

@@ -186,13 +186,13 @@ window.IIS_I18N_MESSAGES = Object.assign(window.IIS_I18N_MESSAGES || {}, {
 {% include '_article_i18n.html' %}
 <script src="/static/js/iis_i18n.js"></script>
 <script src="/static/js/intelligence_contracts.js"></script>
-<script src="/static/js/subsystem_render_protocol.js"></script>
+<script src="/static/js/domain_render_protocol.js"></script>
 <script src="/static/js/article_detail_renderer.js"></script>
 <script src="/static/js/article_modal_manager.js"></script>
 <script src="/static/js/situation_article_modal.js"></script>
 <script src="../assets/d3.min.js"></script>
 <script>
-const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, SUBSYSTEMS={{ subsystems|tojson }}, CATEGORIES={{ categories|tojson }};
+const API_PREFIX={{ api_prefix|tojson }}, DETAIL_ORIGIN={{ detail_origin|tojson }}, PROFILE={{ dashboard_profile|tojson }}, DOMAINS={{ domains|tojson }}, CATEGORIES={{ categories|tojson }};
 const tr=(key,params={})=>window.IIS_I18N.t(key,params);
 const $=id=>document.getElementById(id); let data=null, selected=[], mode='union', orientation='horizontal', timeBasis='event_time', searchTimer=0, fitted=false, currentLayout=null;
 const initial=new URL(location.href), MAX_ENTITIES=Number(PROFILE.timeline_max_entities)||8; mode=initial.searchParams.get('mode')==='lanes'?'lanes':'union'; orientation=initial.searchParams.get('orientation')==='vertical'?'vertical':'horizontal'; timeBasis=['event_time','content_time','archived_at'].includes(initial.searchParams.get('sort_by'))?initial.searchParams.get('sort_by'):'event_time'; selected=[...new Set(initial.searchParams.getAll('entity').filter(Boolean))].slice(0,MAX_ENTITIES);
@@ -201,7 +201,7 @@ const zoom=d3.zoom().scaleExtent([.18,5]).on('zoom',event=>root.attr('transform'
 const TYPE_COLORS={person:'#f06f78',organization:'#4f7cff',country:'#2baa82',location:'#25a5b7',animal:'#ad7c55',commodity:'#d19827',other:'#8290a3',uncertain:'#9b75cf'};
 const CATEGORY_COLORS={war:'#d84949',terror:'#8d50c9',security:'#df7b31',politics:'#4f7cff',hazard:'#27a98b',economy:'#bea329',industry:'#6e8d45',other:'#7d8898'};
 function escapeHtml(value){const el=document.createElement('span');el.textContent=String(value??'');return el.innerHTML}
-function detailUrl(uuid){const subsystem=SUBSYSTEMS.find(item=>item.name===PROFILE.subsystem);const prefix=String(subsystem?.url_prefix||'').replace(/\/$/,'');return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`}
+function detailUrl(uuid){const domain=DOMAINS.find(item=>item.name===PROFILE.domain_name);const prefix=String(domain?.url_prefix||'').replace(/\/$/,'');return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`}
 function dateLabel(seconds,compact=false){return new Date(seconds*1000).toLocaleString(window.IIS_I18N.locale,compact?{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}:{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function isCoarseTime(item){return ['year','month'].includes(String(item?.time?.precision||'').toLowerCase())}
 function contentTimestamp(item){const value=Date.parse(item?.content_time||'')/1000;return Number.isFinite(value)?value:Number(item?.time?.timestamp||0)}
@@ -328,7 +328,7 @@ document.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{mode=el.dat
 $('time-basis').onchange=()=>{timeBasis=$('time-basis').value;syncUrl();$('detail').hidden=true;render()};
 $('zoom-in').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1.3);$('zoom-out').onclick=()=>svg.transition().duration(150).call(zoom.scaleBy,1/1.3);$('zoom-fit').onclick=fitGraph;$('zoom-reset').onclick=resetGraph;
 $('search-button').onclick=searchEntities;$('entity-search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(searchEntities,250)};$('entity-search').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();searchEntities()}};
-document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});SituationArticleModal.init({domains:SUBSYSTEMS,domainName:PROFILE.subsystem,detailOrigin:DETAIL_ORIGIN});updateButtons();renderChips();loadTimeline();
+document.addEventListener('click',event=>{if(!event.target.closest('.search'))$('search-results').hidden=true});window.addEventListener('popstate',()=>location.reload());window.addEventListener('resize',()=>{if(fitted)fitGraph()});SituationArticleModal.init({domains:DOMAINS,domainName:PROFILE.domain_name,detailOrigin:DETAIL_ORIGIN});updateButtons();renderChips();loadTimeline();
 </script>
 </body>
 </html>

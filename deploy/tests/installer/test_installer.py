@@ -74,6 +74,10 @@ def test_sandbox_unattended_install_writes_complete_layout(tmp_path):
     assert stat.S_IMODE(installed_config.stat().st_mode) == 0o600
     assert stat.S_IMODE(environment.stat().st_mode) == 0o600
     assert collector["collector"]["default_token"] == "collector-secret"
+    assert collector["collector"]["default_domain"] == "news"
+    assert "default_subsystem" not in collector["collector"]
+    assert "domain_task_dirs" in collector["collector"]
+    assert "task_dirs" not in collector["collector"]
     environment_text = environment.read_text(encoding="utf-8")
     assert f"IIS_RUNTIME_ROOT={installation}" in environment_text
     assert f"IIS_CONFIG={installation / '_config/iis.yaml'}" in environment_text

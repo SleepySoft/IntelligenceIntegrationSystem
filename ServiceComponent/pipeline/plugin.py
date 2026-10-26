@@ -28,7 +28,7 @@ from ServiceComponent.runtime import EventPriority, HubEvent, HubPlugin, HubRunt
 class EventPipelinePlugin(HubPlugin):
     """主链路编排器。
 
-    三个端口可按 subsystem 代理到不同领域实现。插件不导入、也不假设它们的
+    三个端口可按 domain_name 代理到不同领域实现。插件不导入、也不假设它们的
     payload 结构；只有 ``StageResult.accepted`` 决定事件是否进入下一阶段。
     """
 

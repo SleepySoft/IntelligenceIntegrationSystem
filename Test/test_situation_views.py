@@ -332,7 +332,7 @@ def test_entity_graph_temporarily_merges_unresolved_same_surface_refs():
     engine = SituationViewEngine(
         FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
         FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
-        subsystem="news",
+        domain_name="news",
     )
 
     result = engine.entity_graph(
@@ -369,7 +369,7 @@ def test_entity_graph_manual_assignment_splits_ref_from_surface_group():
     engine = SituationViewEngine(
         FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
         FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
-        subsystem="news", entity_resolver=Resolver(),
+        domain_name="news", entity_resolver=Resolver(),
     )
 
     result = engine.entity_graph(
@@ -413,7 +413,7 @@ def test_entity_graph_naturally_merges_refs_assigned_to_same_targets():
     engine = SituationViewEngine(
         FakeCollection([_archive("a", now, 7), _archive("b", now, 8)]),
         FakeCollection([first, second]), DEFAULT_EVENT_REGISTRY,
-        subsystem="news", entity_resolver=Resolver(),
+        domain_name="news", entity_resolver=Resolver(),
     )
     query = ViewQuery(now - timedelta(days=1), now + timedelta(days=1))
 
@@ -598,7 +598,7 @@ def test_web_service_serves_both_views_with_injected_collections():
             return context if not name or name == "news" else None
 
         @staticmethod
-        def describe():
+        def describe_domains():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
     class Geocoder:
@@ -614,14 +614,14 @@ def test_web_service_serves_both_views_with_injected_collections():
     SituationViewsService(
         Registry(), geocoder=Geocoder(),
         dashboard={
-            "subsystem": "news", "window_days": 7, "public_window_days": 3,
+            "domain_name": "news", "window_days": 7, "public_window_days": 3,
             "min_score": 6, "public_timeline_max_entities": 1,
         },
     ).mount_to_app(
         app, url_prefix="/situation", public_scoped=True)
     client = app.test_client()
     params = {
-        "subsystem": "news",
+        "domain_name": "news",
         "start": (now - timedelta(days=7)).isoformat(),
         "end": (now + timedelta(minutes=1)).isoformat(),
         "min_score": "6",
@@ -631,7 +631,7 @@ def test_web_service_serves_both_views_with_injected_collections():
     map_page = client.get("/situation/map")
     entity_page = client.get("/situation/entities")
     embedded_map = client.get("/situation/embed/map", query_string={
-        "subsystem": "missing",
+        "domain_name": "missing",
         "start": "bad",
         "end": "bad",
         "min_score": "9",
@@ -640,7 +640,7 @@ def test_web_service_serves_both_views_with_injected_collections():
         "entity": "organization|RU|行动方",
     })
     scoped_map = client.get("/situation/api/scoped/map", query_string={
-        "subsystem": "missing", "start": "bad", "min_score": "9",
+        "domain_name": "missing", "start": "bad", "min_score": "9",
     })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
@@ -971,8 +971,8 @@ def test_entity_resolution_routes_batch_refs_and_keep_fixed_alias_global():
         user_session["username"] = "alice"
 
     refs = [
-        {"subsystem": "news", "intelligence_uuid": "article-a", "local_entity_id": "ENT1"},
-        {"subsystem": "news", "intelligence_uuid": "article-b", "local_entity_id": "ENT2"},
+        {"domain_name": "news", "intelligence_uuid": "article-a", "local_entity_id": "ENT1"},
+        {"domain_name": "news", "intelligence_uuid": "article-b", "local_entity_id": "ENT2"},
     ]
     assigned = client.post("/situation/api/entity-resolution/assign", json={
         "refs": refs, "target_kind": "global", "target_id": "ent_us",
@@ -1008,7 +1008,7 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
 
     class Registry:
         @staticmethod
-        def describe():
+        def describe_domains():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
     def require_login(func):
@@ -1021,7 +1021,7 @@ def test_iis_integration_mounts_routes_behind_supplied_auth_wrapper(tmp_path):
     service = mount_to_iis(
         app,
         config=Config(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
         wrapper=require_login,
         data_path=tmp_path,
         dashboard={"window_days": 14, "min_score": 7.5},
@@ -1055,7 +1055,7 @@ def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):
 
     class Registry:
         @staticmethod
-        def describe():
+        def describe_domains():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
         @staticmethod
@@ -1072,7 +1072,7 @@ def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):
     service = mount_to_iis(
         app,
         config=Config(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
         wrapper=require_login,
         data_path=tmp_path,
         public_scoped=True,
@@ -1082,7 +1082,7 @@ def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):
     client = app.test_client()
     assert client.get("/situation/embed/map").status_code == 200
     # The scoped route reaches its handler (400 here because this minimal
-    # registry deliberately has no backing subsystem) instead of auth (401).
+    # registry deliberately has no backing domain) instead of auth (401).
     assert client.get("/situation/api/scoped/map").status_code == 400
     assert client.get("/situation/api/map").status_code == 401
     assert client.post("/situation/api/scoped/map/locations", json={}).status_code == 200
@@ -1103,7 +1103,7 @@ def test_iis_integration_can_be_disabled_without_registering_routes(tmp_path):
     service = mount_to_iis(
         app,
         config=Config(),
-        subsystem_registry=object(),
+        domain_resources=object(),
         wrapper=None,
         data_path=tmp_path,
     )
@@ -1131,14 +1131,14 @@ def test_iis_integration_keeps_views_when_geocoder_initialization_fails(tmp_path
 
     class Registry:
         @staticmethod
-        def describe():
+        def describe_domains():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
     app = Flask(__name__)
     service = mount_to_iis(
         app,
         config=Config(),
-        subsystem_registry=Registry(),
+        domain_resources=Registry(),
         wrapper=None,
         data_path=tmp_path,
     )

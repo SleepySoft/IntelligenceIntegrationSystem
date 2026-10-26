@@ -12,7 +12,8 @@ from .web import SituationViewsService
 logger = logging.getLogger(__name__)
 
 
-def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path,
+def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
+                 wrapper, data_path,
                  dashboard=None, public_scoped=False,
                  entity_resolution_service=None, entity_alias_service=None):
     """将态势视图挂到 IIS；实体编辑能力可选，任何失败都不阻断主服务。"""
@@ -28,7 +29,7 @@ def mount_to_iis(app, *, config, subsystem_registry, wrapper, data_path,
     try:
         geocoder = _build_geocoder(settings, data_path)
         service = SituationViewsService(
-            subsystem_registry,
+            domain_resources or subsystem_registry,
             detail_origin="",
             geocoder=geocoder,
             dashboard=dashboard if dashboard is not None else settings.get("dashboard"),

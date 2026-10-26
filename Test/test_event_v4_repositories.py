@@ -76,9 +76,11 @@ def _archive_and_events():
     now = datetime(2026, 10, 8, 10, tzinfo=timezone.utc)
     conversion = convert_event_extraction(analysis.EVENT_EXTRACTION, intelligence_uuid=source_uuid,
                                           registry=DEFAULT_EVENT_REGISTRY, observed_at=now)
-    appendix = build_archive_appendix({"content": "raw"}, subsystem="news", ai_service="fake://ai",
+    appendix = build_archive_appendix({"content": "raw"}, domain_name="news", ai_service="fake://ai",
                                       ai_model="fake-v4", prompt_version=40, processed_at=now,
                                       archived_at=now, total_score=6.5)
+    assert appendix["__DOMAIN_NAME__"] == "news"
+    assert "__SUBSYSTEM__" not in appendix
     archive = ArchivedDataV4(**analysis.model_dump(mode="python"), UUID=str(source_uuid),
                              INFORMANT="https://example.test/v4", APPENDIX=appendix)
     return archive, conversion.events

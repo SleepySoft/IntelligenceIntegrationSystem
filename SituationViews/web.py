@@ -90,10 +90,11 @@ def _load_frontend_asset(asset_name: str) -> bytes:
 
 
 class SituationViewsService:
-    def __init__(self, subsystem_registry, registry=None, *, detail_origin="", geocoder=None,
+    def __init__(self, domain_resources=None, registry=None, *, subsystem_registry=None,
+                 detail_origin="", geocoder=None,
                  dashboard=None, entity_resolution_service=None,
                  entity_alias_service=None):
-        self.subsystem_registry = subsystem_registry
+        self.domain_resources = domain_resources or subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
         self.geocoder = geocoder
@@ -424,9 +425,11 @@ class SituationViewsService:
             if self.entity_resolution_service is None:
                 return jsonify({"error": "实体解析服务未启用"}), 503
             try:
-                subsystem = str(request.args.get("subsystem") or "").strip()
+                domain_name = str(
+                    request.args.get("domain_name")
+                    or request.args.get("subsystem") or "").strip()
                 items = self.entity_resolution_service.search_contextual(
-                    subsystem, str(request.args.get("q") or "").strip(), limit=20)
+                    domain_name, str(request.args.get("q") or "").strip(), limit=20)
                 return jsonify({"items": items})
             except ResolutionError as exc:
                 return self._resolution_error(exc)
@@ -439,7 +442,7 @@ class SituationViewsService:
             data = request.get_json(silent=True) or {}
             try:
                 entity = self.entity_resolution_service.create_contextual(
-                    str(data.get("subsystem") or "").strip(),
+                    str(data.get("domain_name") or data.get("subsystem") or "").strip(),
                     str(data.get("name") or "").strip(),
                     actor=str(session.get("username") or "unknown"),
                     optional_fields={key: data.get(key) for key in (
@@ -510,7 +513,7 @@ class SituationViewsService:
             data = request.get_json(silent=True) or {}
             try:
                 result = self.entity_resolution_service.undo(
-                    str(data.get("subsystem") or "").strip(),
+                    str(data.get("domain_name") or data.get("subsystem") or "").strip(),
                     str(data.get("decision_id") or "").strip(),
                     actor=str(session.get("username") or "unknown"),
                 )
@@ -531,7 +534,7 @@ class SituationViewsService:
                 str(predicate_id): str(spec.label or predicate_id)
                 for predicate_id, spec in self.registry.items()
             },
-            subsystems=self.subsystem_registry.describe(),
+            domains=self._domain_descriptions(),
             detail_origin=self.detail_origin,
             dashboard_view=view,
             dashboard_profile=profile or self.dashboard,
@@ -554,7 +557,7 @@ class SituationViewsService:
         return render_template(
             "entity_timeline.html",
             categories={key: str(label) for key, label in _CATEGORY_UI_LABELS.items()},
-            subsystems=self.subsystem_registry.describe(),
+            domains=self._domain_descriptions(),
             detail_origin=self.detail_origin,
             dashboard_profile=profile or self.dashboard,
             embedded=embedded,
@@ -566,22 +569,23 @@ class SituationViewsService:
 
     def _dashboard_profile(self, raw):
         values = dict(raw or {}) if isinstance(raw, dict) else {}
-        descriptions = self.subsystem_registry.describe()
+        descriptions = self._domain_descriptions()
         default = next(
             (item.get("name") for item in descriptions if item.get("is_default")),
             descriptions[0].get("name") if descriptions else "",
         )
-        subsystem = str(values.get("subsystem") or default).strip()
-        if not any(item.get("name") == subsystem for item in descriptions):
-            subsystem = default
+        domain_name = str(
+            values.get("domain_name") or values.get("subsystem") or default).strip()
+        if not any(item.get("name") == domain_name for item in descriptions):
+            domain_name = default
         selected = next(
-            (item for item in descriptions if item.get("name") == subsystem), {})
+            (item for item in descriptions if item.get("name") == domain_name), {})
         window_days = self._coerce_number(values.get("window_days"), 7, 1, 365, int)
         public_window_days = self._coerce_number(
             values.get("public_window_days"), window_days, 1, window_days, int)
         return {
-            "subsystem": subsystem,
-            "subsystem_display_name": selected.get("display_name") or subsystem,
+            "domain_name": domain_name,
+            "domain_display_name": selected.get("display_name") or domain_name,
             "window_days": window_days,
             "public_window_days": public_window_days,
             "timeline_max_entities": self._coerce_number(
@@ -630,11 +634,18 @@ class SituationViewsService:
             return value
         return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
+    def _domain_descriptions(self):
+        describe = getattr(self.domain_resources, "describe_domains", None)
+        if not callable(describe):
+            describe = self.domain_resources.describe
+        return describe()
+
     def _request_context(self, *, fixed=False):
-        subsystem = self.dashboard["subsystem"] if fixed else request.args.get("subsystem")
-        ctx = self.subsystem_registry.resolve(subsystem)
+        domain_name = (self.dashboard["domain_name"] if fixed else
+                       request.args.get("domain_name", request.args.get("subsystem")))
+        ctx = self.domain_resources.resolve(domain_name)
         if ctx is None:
-            raise ValueError(f"未知子系统: {subsystem}")
+            raise ValueError(f"未知情报域: {domain_name}")
         now = dt.datetime.now(dt.timezone.utc)
         if fixed:
             end = now
@@ -681,7 +692,7 @@ class SituationViewsService:
                 ctx.event_v4_intelligence_collection,
                 ctx.event_v4_event_collection,
                 self.registry,
-                subsystem=ctx.name,
+                domain_name=ctx.name,
                 entity_resolver=self.entity_resolution_service,
                 entity_registry=self.entity_alias_service,
             )

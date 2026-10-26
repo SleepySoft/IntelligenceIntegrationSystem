@@ -52,22 +52,23 @@ def load_collector_config(config_path: Optional[str] = None) -> EasyConfig:
         f"{COLLECTOR_ALTER_CONFIG_FILE}")
 
 
-def resolve_task_dirs(config: EasyConfig) -> Dict[str, str]:
+def resolve_domain_task_dirs(config: EasyConfig) -> Dict[str, str]:
     """
-    解析"子系统 -> 任务目录"映射（collector.task_dirs）。
+    解析"情报域 -> 任务目录"映射（collector.domain_task_dirs）。
     目录可以是绝对路径，或相对 collector 配置文件所在目录 / 项目根 / _config 目录，
     便于采集器作为独立仓库部署（配置文件与任务目录在同一仓库内）。
     """
-    raw = config.get('collector.task_dirs') or {}
+    raw = (config.get('collector.domain_task_dirs')
+           or config.get('collector.task_dirs') or {})
     result: Dict[str, str] = {}
     config_dir = None
     config_file = getattr(config, 'config_file', None)
     if config_file:
         config_dir = os.path.dirname(os.path.abspath(str(config_file)))
-    for subsystem, directory in raw.items():
-        subsystem = str(subsystem).strip()
+    for domain_name, directory in raw.items():
+        domain_name = str(domain_name).strip()
         path = str(directory)
-        if not subsystem or not path:
+        if not domain_name or not path:
             continue
         if not os.path.isabs(path):
             candidates = []
@@ -78,7 +79,7 @@ def resolve_task_dirs(config: EasyConfig) -> Dict[str, str]:
             existing = [c for c in candidates if os.path.isdir(c)]
             # 存在则取第一个；都不存在时回退到项目根下的规范位置（由 scan 自动创建）
             path = existing[0] if existing else os.path.join(project_root, path)
-        result[subsystem] = os.path.normpath(path)
+        result[domain_name] = os.path.normpath(path)
     return result
 
 
@@ -105,14 +106,21 @@ class ServiceContext:
             module_logger: Optional[logging.Logger] = None,
             module_config: Optional[EasyConfig] = None,
             crawler_governor: GovernanceManager = None,
-            subsystem: Optional[str] = None
+            domain_name: Optional[str] = None,
+            subsystem: Optional[str] = None,
     ):
         self.sys = sys
         self.logger = module_logger or logger
         self.config = module_config or EasyConfig()
         self.crawler_governor = crawler_governor
-        self.subsystem = subsystem
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        self.domain_name = domain_name or subsystem
         self.project_root = project_root
+
+    @property
+    def subsystem(self):
+        return self.domain_name
 
     def solve_import_path(self):
         import sys              # Import sys here because we must use the same sys with plugin.
@@ -152,16 +160,18 @@ class TaskManager:
 
         # 采集器独立配置（不依赖 IIS 的 iis.yaml）
         self.config = load_collector_config(collector_config_path)
-        self.default_subsystem = str(
-            self.config.get('collector.default_subsystem') or 'news').strip() or 'news'
-        self.task_dirs: Dict[str, str] = resolve_task_dirs(self.config)
-        if self.task_dirs:
-            logger.info(f"Collector task dirs: {self.task_dirs}")
-            logger.info(f"Collector default subsystem: {self.default_subsystem}")
+        self.default_domain = str(
+            self.config.get('collector.default_domain')
+            or self.config.get('collector.default_subsystem')
+            or 'news').strip() or 'news'
+        self.domain_task_dirs: Dict[str, str] = resolve_domain_task_dirs(self.config)
+        if self.domain_task_dirs:
+            logger.info(f"Collector domain task dirs: {self.domain_task_dirs}")
+            logger.info(f"Collector default domain: {self.default_domain}")
         else:
             logger.warning(
-                f"No 'collector.task_dirs' configured; scan flat '{self.watch_dir}' "
-                f"as subsystem '{self.default_subsystem}' (legacy layout).")
+                f"No 'collector.domain_task_dirs' configured; scan flat '{self.watch_dir}' "
+                f"as domain '{self.default_domain}' (legacy layout).")
 
         self.crawler_governance = GovernanceManager(
             db_path=os.path.join(DATA_PATH, 'spider_governance.db'),
@@ -193,7 +203,7 @@ class TaskManager:
         self._mgr_thread = threading.Thread(target=self._manager_loop, name="TaskManagerThread", daemon=True)
         self._mgr_thread.start()
 
-        self._validate_subsystems_against_ihub()
+        self._validate_domains_against_ihub()
         self.scan_existing_files()
 
     # ---------------- public APIs: NON-BLOCKING ----------------
@@ -355,13 +365,13 @@ class TaskManager:
 
     def scan_existing_files(self):
         try:
-            targets = self.task_dirs or {self.default_subsystem: self.watch_dir}
+            targets = self.domain_task_dirs or {self.default_domain: self.watch_dir}
             files = []
-            for subsystem, directory in targets.items():
+            for domain_name, directory in targets.items():
                 os.makedirs(directory, exist_ok=True)
                 for path in self._list_task_files(directory):
                     files.append(path)
-                    logger.info(f"[Scan] subsystem='{subsystem}' file={path}")
+                    logger.info(f"[Scan] domain='{domain_name}' file={path}")
             # use submit_reload to unify behavior (serialize through manager)
             for p in files:
                 self.submit_reload(p, 'scan')
@@ -386,47 +396,51 @@ class TaskManager:
             sys.path.insert(0, dirname)
         return self.plugin_manager.add_plugin(file_path)
 
-    def _resolve_subsystem(self, module_path: str) -> str:
-        """按 '目录 -> 子系统' 映射解析任务归属；未匹配时回退 default_subsystem。"""
+    def _resolve_domain(self, module_path: str) -> str:
+        """按目录映射解析任务所属情报域。"""
         abs_path = os.path.normpath(os.path.abspath(module_path))
-        for subsystem, directory in self.task_dirs.items():
+        for domain_name, directory in self.domain_task_dirs.items():
             try:
                 base = os.path.normpath(os.path.abspath(directory))
                 if os.path.commonpath([abs_path, base]) == base:
-                    return subsystem
+                    return domain_name
             except ValueError:
                 continue
-        return self.default_subsystem
+        return self.default_domain
 
-    def _validate_subsystems_against_ihub(self):
-        """拉取 IIS /api/subsystems，校验本采集器声明的子系统是否与 IIS 对上。"""
+    def _resolve_subsystem(self, module_path: str) -> str:
+        """历史兼容别名。"""
+        return self._resolve_domain(module_path)
+
+    def _validate_domains_against_ihub(self):
+        """拉取 IIS /api/domains，校验采集器声明的情报域。"""
         ihub_url = str(self.config.get('collector.submit_ihub_url') or '').rstrip('/')
         if not ihub_url:
             return
         try:
             import requests
-            resp = requests.get(f'{ihub_url}/api/subsystems', timeout=3)
+            resp = requests.get(f'{ihub_url}/api/domains', timeout=3)
             if resp.status_code != 200:
                 logger.warning(
-                    f"Subsystem validation skipped: IIS /api/subsystems returned {resp.status_code}.")
+                    f"Domain validation skipped: IIS /api/domains returned {resp.status_code}.")
                 return
             data = resp.json()
-            known = {str(s.get('name')) for s in data.get('subsystems', [])}
+            known = {str(s.get('name')) for s in data.get('domains', [])}
             remote_default = data.get('default')
         except Exception as e:
-            logger.warning(f"Subsystem validation skipped: {e}")
+            logger.warning(f"Domain validation skipped: {e}")
             return
 
-        declared = list(self.task_dirs.keys())
+        declared = list(self.domain_task_dirs.keys())
         if not declared:
-            declared = [self.default_subsystem]
-        for subsystem in declared:
-            if subsystem in known:
-                logger.info(f"Collector subsystem '{subsystem}' aligned with IIS "
+            declared = [self.default_domain]
+        for domain_name in declared:
+            if domain_name in known:
+                logger.info(f"Collector domain '{domain_name}' aligned with IIS "
                             f"(default={remote_default}).")
             else:
                 logger.warning(
-                    f"Collector subsystem '{subsystem}' NOT found in IIS subsystems {sorted(known)}; "
+                    f"Collector domain '{domain_name}' NOT found in IIS domains {sorted(known)}; "
                     f"/collect will reject its submissions.")
 
     def on_model_enter(self, plugin: PluginWrapper):
@@ -440,14 +454,14 @@ class TaskManager:
 
         module_logger = logging.getLogger(plugin.plugin_name)
         old_logger = set_tls_logger(module_logger)
-        subsystem = self._resolve_subsystem(plugin.module_path)
+        domain_name = self._resolve_domain(plugin.module_path)
 
         try:
             plugin.module_init(ServiceContext(
                 module_logger=module_logger,
                 module_config=self.config,
                 crawler_governor=self.crawler_governance,
-                subsystem=subsystem
+                domain_name=domain_name
             ))
 
             # 约定：start_task 应该“短阻塞/一次迭代”，并检查 stop_event

@@ -9,18 +9,18 @@ from ServiceComponent.runtime import (
 )
 
 
-def test_runtime_routes_opaque_payload_and_preserves_subsystem():
+def test_runtime_routes_opaque_payload_and_preserves_domain_name():
     runtime = HubRuntime()
     received = []
     runtime.subscribe("collected", lambda event, _: received.append(event))
 
     runtime.start()
-    runtime.emit(HubEvent("collected", payload={"ticker": ["ABC"]}, subsystem="finance"))
+    runtime.emit(HubEvent("collected", payload={"ticker": ["ABC"]}, domain_name="finance"))
 
     assert runtime.wait_for_idle(timeout=1)
     runtime.stop()
     assert received[0].payload == {"ticker": ["ABC"]}
-    assert received[0].subsystem == "finance"
+    assert received[0].domain_name == "finance"
     assert runtime.stats["pending_events"] == 0
     assert runtime.stats["active_handlers"] == 0
 
@@ -35,7 +35,7 @@ def test_runtime_allows_handlers_to_publish_the_next_stage():
     runtime.subscribe("analysis_requested", analyze)
     runtime.subscribe("archived", lambda event, _: archived.append(event.payload))
     runtime.start()
-    runtime.emit(HubEvent("analysis_requested", payload={"free_form": True}, subsystem="industry"))
+    runtime.emit(HubEvent("analysis_requested", payload={"free_form": True}, domain_name="industry"))
 
     assert runtime.wait_for_idle(timeout=1)
     runtime.stop()

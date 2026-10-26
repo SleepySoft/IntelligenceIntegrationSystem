@@ -19,7 +19,7 @@ from ServiceComponent.intelligence_contracts import (
     APPENDIX_PROMPT_VERSION,
     APPENDIX_RAW_DATA,
     APPENDIX_SCHEMA_VERSION,
-    APPENDIX_SUBSYSTEM,
+    APPENDIX_DOMAIN_NAME,
     APPENDIX_TIME_ARCHIVED,
     APPENDIX_TIME_DONE,
     APPENDIX_TIME_GOT,
@@ -78,7 +78,8 @@ def sanitize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
     """生成可长期保存的采集快照，排除凭据、路由和临时控制字段。"""
 
     excluded = {
-        "token", "prompt", "temp_data", "UUID", "informant", "subsystem",
+        "token", "prompt", "temp_data", "UUID", "informant",
+        "domain", "domain_name", "subsystem",
         APPENDIX_FIELD,
     }
     return {key: value for key, value in data.items() if key not in excluded}
@@ -87,7 +88,8 @@ def sanitize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
 def build_archive_appendix(
     original_data: dict[str, Any],
     *,
-    subsystem: str,
+    domain_name: str | None = None,
+    subsystem: str | None = None,
     ai_service: str,
     ai_model: str,
     prompt_version: int,
@@ -95,7 +97,11 @@ def build_archive_appendix(
     archived_at: datetime,
     total_score: float | None = None,
 ) -> dict[str, Any]:
-    """集中构造归档 APPENDIX；业务代码不得自行散写这些键。"""
+    """集中构造归档 APPENDIX；``subsystem`` 仅兼容旧调用。"""
+
+    if domain_name and subsystem and domain_name != subsystem:
+        raise ValueError("domain_name and legacy subsystem disagree")
+    resolved_domain = str(domain_name or subsystem or "").strip()
 
     raw_data = sanitize_raw_data(original_data)
     content_time, content_time_source = resolve_content_time(raw_data, archived_at)
@@ -107,7 +113,7 @@ def build_archive_appendix(
         APPENDIX_TIME_ARCHIVED: archived_at,
         APPENDIX_CONTENT_TIME: content_time,
         APPENDIX_CONTENT_TIME_SOURCE: content_time_source,
-        APPENDIX_SUBSYSTEM: subsystem,
+        APPENDIX_DOMAIN_NAME: resolved_domain,
         APPENDIX_PROMPT_VERSION: prompt_version,
         APPENDIX_AI_SERVICE: ai_service,
         APPENDIX_AI_MODEL: ai_model,

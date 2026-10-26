@@ -32,7 +32,7 @@ class TestShadowRecorderIndex:
         recorder = ShadowAnalysisRecorder(tmp_path, max_files=10)
         target = recorder.record(
             original_data={"UUID": "u-1", "title": "t", "informant": "i", "source": "s"},
-            subsystem="news",
+            domain_name="news",
             primary_prompt_version=44,
             shadow_prompt_version=45,
             analysis={"EVENT_TITLE": "t"},
@@ -52,6 +52,8 @@ class TestShadowRecorderIndex:
 
         full = recorder.read_record(rows[0]["file_name"])
         assert full["shadow_prompt_version"] == 45
+        assert full["domain_name"] == "news"
+        assert "subsystem" not in full
         # 目录穿越被拒绝
         assert recorder.read_record("../etc/passwd") is None
         assert recorder.read_record("missing.json") is None
@@ -74,7 +76,7 @@ class TestShadowRecorderIndex:
         for i in range(3):
             recorder.record(
                 original_data={"UUID": f"u-{i}"},
-                subsystem="news", primary_prompt_version=44, shadow_prompt_version=45,
+                domain_name="news", primary_prompt_version=44, shadow_prompt_version=45,
                 analysis={}, ai_service="svc", ai_model="m",
             )
         # 只保留最新 1 个文件，索引同步只剩 1 条

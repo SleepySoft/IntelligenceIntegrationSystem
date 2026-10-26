@@ -2,9 +2,9 @@
 
 import datetime
 import time
-from typing import Any
+from typing import Any, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ServiceComponent.intelligence_time import normalize_intelligence_datetime
 
@@ -27,8 +27,22 @@ class CollectedData(BaseModel):
     pub_time: Any | None = None
     collect_time: datetime.datetime | None = Field(default_factory=_utc_now)
     informant: str = Field(..., min_length=1)
-    subsystem: str = ""
+    domain: str = Field(
+        "", validation_alias=AliasChoices("domain", "domain_name", "subsystem"))
     temp_data: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_conflicting_domain_aliases(cls, value):
+        if isinstance(value, Mapping):
+            names = {
+                str(value.get(key) or "").strip()
+                for key in ("domain", "domain_name", "subsystem")
+                if str(value.get(key) or "").strip()
+            }
+            if len(names) > 1:
+                raise ValueError("domain aliases disagree")
+        return value
 
     @field_validator("pub_time", mode="before")
     @classmethod
@@ -64,3 +78,17 @@ class CollectedData(BaseModel):
         if not normalized:
             raise ValueError("informant/source URL cannot be empty")
         return normalized
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def normalize_domain(cls, value):
+        return str(value or "").strip()
+
+    @property
+    def subsystem(self) -> str:
+        """旧 Collector 代码的兼容只读别名。"""
+        return self.domain
+
+    @subsystem.setter
+    def subsystem(self, value: str) -> None:
+        self.domain = str(value or "").strip()

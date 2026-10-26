@@ -55,7 +55,7 @@ class NewsStorage:
         processed_at = datetime.now(timezone.utc)
         appendix = build_archive_appendix(
             original_data,
-            subsystem=ctx.name,
+            domain_name=ctx.name,
             ai_service=ai_service,
             ai_model=ai_model,
             prompt_version=prompt_version,
@@ -84,7 +84,7 @@ class NewsStorage:
             intelligence_uuid=intelligence_uuid,
             registry=self.event_registry,
             observed_at=processed_at,
-            metadata={"informant": informant, "subsystem": ctx.name},
+            metadata={"informant": informant, "domain_name": ctx.name},
         )
         output["events"] = [dict(item) for item in conversion.events]
         return DomainPreparedResult(

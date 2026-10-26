@@ -177,6 +177,7 @@ class IntelligenceHubWebService:
                  post_settings: Optional[Dict[str, Any]] = None,
                  post_manager: Optional[PostManager] = None,
                  monitor_api=None,
+                 domain_resources=None,
                  subsystem_registry=None,
                  control_state=None):
 
@@ -190,7 +191,11 @@ class IntelligenceHubWebService:
         self.rss_publisher = rss_publisher
         self.wsgi_app = None
         self.monitor_api = monitor_api
-        self.subsystem_registry = subsystem_registry
+        if domain_resources is not None and subsystem_registry is not None:
+            if domain_resources is not subsystem_registry:
+                raise ValueError("domain_resources and legacy subsystem_registry disagree")
+        self.domain_resources = domain_resources or subsystem_registry
+        self.subsystem_registry = self.domain_resources  # 历史兼容别名
         self.control_state = control_state
 
         settings = dict(post_settings or {})
@@ -277,6 +282,22 @@ class IntelligenceHubWebService:
             return obj.isoformat()
         return obj
 
+    def _enabled_domains(self):
+        if self.domain_resources is None:
+            return []
+        enabled = getattr(self.domain_resources, "enabled_domains", None)
+        if not callable(enabled):
+            enabled = getattr(self.domain_resources, "enabled_subsystems", None)
+        return list(enabled() if callable(enabled) else [])
+
+    def _describe_domains(self):
+        if self.domain_resources is None:
+            return []
+        describe = getattr(self.domain_resources, "describe_domains", None)
+        if not callable(describe):
+            describe = getattr(self.domain_resources, "describe", None)
+        return list(describe() if callable(describe) else [])
+
     def set_vector_search_handler(self, handler) -> None:
         """注入向量搜索实现（由 VectorIntelligence.iis_integration.mount_to_iis 调用）。"""
         self._vector_search_handler = handler
@@ -291,7 +312,7 @@ class IntelligenceHubWebService:
         """DETAIL：返回可 JSON 序列化的单篇详情，包括权威事件抽取。"""
         try:
             intelligence = self.intelligence_hub.get_intelligence(
-                intelligence_uuid, subsystem=domain_name,
+                intelligence_uuid, domain_name=domain_name,
                 profile=IntelligenceProjectionProfile.DETAIL)
             if not intelligence:
                 return jsonify({"error": "Intelligence not found"}), 404
@@ -473,7 +494,7 @@ class IntelligenceHubWebService:
         skip = (p['page'] - 1) * p['per_page']
         return self.intelligence_hub.query_intelligence(
             skip=skip, limit=p['per_page'], sort_by=p['sort_by'],
-            subsystem=domain_name, **query)
+            domain_name=domain_name, **query)
 
     def _do_vector_search(self, p: dict, domain_name: Optional[str] = None) -> Tuple[List[dict], int]:
         """走向量召回 + 内存分页（向量检索当前仅默认领域启用）"""
@@ -490,7 +511,7 @@ class IntelligenceHubWebService:
         elif p['search_mode'] == 'vector_similar':
             if ref_uuids := p.get('reference', ''):
                 intelligence = self.intelligence_hub.get_intelligence(
-                    ref_uuids, subsystem=domain_name,
+                    ref_uuids, domain_name=domain_name,
                     profile=IntelligenceProjectionProfile.CARD)
                 if intelligence:
                     text = IntelligenceVectorDBEngine.build_search_text(intelligence, 'summary')
@@ -530,7 +551,7 @@ class IntelligenceHubWebService:
             uuids.append(doc_id)
             score_map[doc_id] = score
         articles = self.intelligence_hub.get_intelligence(
-            uuids, subsystem=domain_name,
+            uuids, domain_name=domain_name,
             profile=IntelligenceProjectionProfile.CARD)
 
         articles = [
@@ -909,8 +930,8 @@ class IntelligenceHubWebService:
                 "default": "event_v4", "items": []}
             return render_template(
                 'manual_debug_intelligence.html',
-                subsystems=self.intelligence_hub.get_subsystems(),
-                default_subsystem=self.intelligence_hub.default_domain_name,
+                domains=self.intelligence_hub.get_domains(),
+                default_domain=self.intelligence_hub.default_domain_name,
                 mechanisms=mechanism_catalog["items"],
                 default_mechanism=mechanism_catalog["default"],
             )
@@ -935,6 +956,7 @@ class IntelligenceHubWebService:
                 record = service.submit(
                     content=data.get("content", ""),
                     title=data.get("title", ""),
+                    domain_name=data.get("domain_name", ""),
                     subsystem=data.get("subsystem", ""),
                     mechanism=data.get("mechanism", ""),
                     prompt_version=data.get("prompt_version"),
@@ -958,15 +980,15 @@ class IntelligenceHubWebService:
             service = self.intelligence_hub.get_service("manual_debug_analysis")
             if service is None:
                 return jsonify({"error": "人工调试分析服务未启用"}), 503
-            subsystem = request.args.get("subsystem", "")
+            domain_name = request.args.get("domain_name", request.args.get("subsystem", ""))
             mechanism = request.args.get("mechanism", "")
             version = request.args.get("version")
             try:
                 data = (
                     service.get_prompt(
-                        subsystem=subsystem, mechanism=mechanism, version=version)
+                        domain_name=domain_name, mechanism=mechanism, version=version)
                     if version not in (None, "")
-                    else service.prompt_catalog(subsystem, mechanism)
+                    else service.prompt_catalog(domain_name, mechanism)
                 )
                 return jsonify({"success": True, "data": data})
             except (TypeError, ValueError) as exc:
@@ -1023,21 +1045,21 @@ class IntelligenceHubWebService:
         @app.get('/api/domains')
         def api_domains():
             """返回情报域注册表，供前端导航/切换使用。"""
-            if self.subsystem_registry is None:
+            if self.domain_resources is None:
                 return jsonify({"domains": [], "default": None})
             return jsonify({
-                "domains": self.subsystem_registry.describe(),
-                "default": self.subsystem_registry.default_name,
+                "domains": self._describe_domains(),
+                "default": self.domain_resources.default_name,
             })
 
         @app.get('/api/subsystems')
         def api_subsystems_legacy():
             """历史采集器校验端点；新调用方应使用 /api/domains。"""
-            if self.subsystem_registry is None:
+            if self.domain_resources is None:
                 return jsonify({"subsystems": [], "default": None})
             return jsonify({
-                "subsystems": self.subsystem_registry.describe(),
-                "default": self.subsystem_registry.default_name,
+                "subsystems": self._describe_domains(),
+                "default": self.domain_resources.default_name,
             })
 
         @app.route('/api/intelligence/<string:intelligence_uuid>', methods=['GET'])
@@ -1053,10 +1075,10 @@ class IntelligenceHubWebService:
                 data = request.get_json()
                 _uuid = data.get('uuid')
                 ratings = data.get('ratings')
-                subsystem = data.get('subsystem')
+                domain_name = data.get('domain_name') or data.get('subsystem')
 
                 self.intelligence_hub.submit_intelligence_manual_rating(
-                    _uuid, ratings, subsystem=subsystem)
+                    _uuid, ratings, domain_name=domain_name)
 
                 return jsonify({'status': 'success', 'message': 'Ratings saved'})
             except Exception as e:
@@ -1332,7 +1354,7 @@ class IntelligenceHubWebService:
             - all：两者都弃用。
             内存队列中的在途事件不受影响，恢复后仍会继续分析。
             """
-            if self.subsystem_registry is None:
+            if self.domain_resources is None:
                 return jsonify({"error": "子系统注册表未启用"}), 503
             scope = str((request.get_json(silent=True) or {}).get('scope') or 'pending')
             if scope not in ('pending', 'retry', 'all'):
@@ -1346,7 +1368,7 @@ class IntelligenceHubWebService:
             operator = session.get("username", "")
             details = {}
             total = 0
-            for ctx in self.subsystem_registry.enabled_subsystems():
+            for ctx in self._enabled_domains():
                 cache = getattr(ctx, "mongo_db_cache", None)
                 if cache is None:
                     continue
@@ -2129,9 +2151,9 @@ class IntelligenceHubWebService:
 
         # 具名领域注册到各自 URL 前缀；默认领域额外挂载具名前缀（如 /news），
         # 根路径仍由上方原有路由提供，保证向前兼容。
-        if self.subsystem_registry is not None:
+        if self.domain_resources is not None:
             registered_prefixes = set()
-            for ctx in self.subsystem_registry.enabled_subsystems():
+            for ctx in self._enabled_domains():
                 prefix = ctx.url_prefix or f'/{ctx.name}'
                 if ctx.is_default:
                     prefix = f'/{ctx.name}'

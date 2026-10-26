@@ -21,10 +21,10 @@ TIMELINE_QUERY_NAMES = ("mode", "orientation")
 class IntelligenceViewsService:
     """只编排既有子页面，不访问数据库或导入其业务实现。"""
 
-    def __init__(self, subsystems, *, settings=None, situation_prefix="/situation"):
-        self.subsystems = tuple(dict(item) for item in (subsystems or ()))
-        if not self.subsystems:
-            raise ValueError("情报视图至少需要一个可用子系统。")
+    def __init__(self, domains, *, settings=None, situation_prefix="/situation"):
+        self.domains = tuple(dict(item) for item in (domains or ()))
+        if not self.domains:
+            raise ValueError("情报视图至少需要一个可用情报域。")
         self.settings = dict(settings or {}) if isinstance(settings, dict) else {}
         self.public_access = bool(self.settings.get("public_access", True))
         self.situation_prefix = "/" + str(situation_prefix or "situation").strip("/")
@@ -50,27 +50,28 @@ class IntelligenceViewsService:
 
     def _situation_profile(self, raw):
         values = dict(raw or {}) if isinstance(raw, dict) else {}
-        default_subsystem = next(
-            (item for item in self.subsystems if item.get("is_default")),
-            self.subsystems[0],
+        default_domain = next(
+            (item for item in self.domains if item.get("is_default")),
+            self.domains[0],
         )
-        requested_subsystem = str(
-            values.get("subsystem") or default_subsystem.get("name") or ""
+        requested_domain = str(
+            values.get("domain_name") or values.get("subsystem")
+            or default_domain.get("name") or ""
         ).strip()
-        subsystem = next(
-            (item for item in self.subsystems
-             if str(item.get("name") or "") == requested_subsystem),
+        domain = next(
+            (item for item in self.domains
+             if str(item.get("name") or "") == requested_domain),
             None,
         )
-        if subsystem is None:
-            subsystem = default_subsystem
+        if domain is None:
+            domain = default_domain
         window_days = self._bounded_int(values, "window_days", 7, 1, 365)
         public_window_days = self._bounded_int(
             values, "public_window_days", window_days, 1, window_days)
         return {
-            "subsystem": str(subsystem.get("name") or ""),
-            "subsystem_display_name": str(
-                subsystem.get("display_name") or subsystem.get("name") or ""),
+            "domain_name": str(domain.get("name") or ""),
+            "domain_display_name": str(
+                domain.get("display_name") or domain.get("name") or ""),
             "window_days": window_days,
             "public_window_days": public_window_days,
             "timeline_max_entities": self._bounded_int(

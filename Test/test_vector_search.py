@@ -25,8 +25,8 @@ def _params(**overrides):
 def test_vector_result_backfill_uses_card_profile():
     calls = []
 
-    def get_intelligence(identifiers, *, subsystem=None, profile=None):
-        calls.append((identifiers, subsystem, profile))
+    def get_intelligence(identifiers, *, domain_name=None, profile=None):
+        calls.append((identifiers, domain_name, profile))
         return [{"UUID": identifier, "EVENT_TITLE": identifier}
                 for identifier in identifiers]
 

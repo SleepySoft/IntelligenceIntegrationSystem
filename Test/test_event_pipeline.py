@@ -52,7 +52,7 @@ def test_pipeline_keeps_domain_payload_opaque_between_stages():
 
     assert runtime.wait_for_idle(timeout=1)
     runtime.stop()
-    assert accepted[0].subsystem == "finance"
+    assert accepted[0].domain_name == "finance"
     assert accepted[0].metadata == {"source": "fake"}
     assert analyzed[0].metadata == {"model": "fake"}
     assert archived[0].payload["stored"]["domain_specific"]["raw"]["ticker"] == ["ABC"]

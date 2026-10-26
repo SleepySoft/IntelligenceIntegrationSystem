@@ -17,7 +17,7 @@ hub:
   workers: 1
   domains:
     default: news
-    # 键是稳定的情报域名，值是界面显示名；详细设置暂从 subsystems/<名称>.json 加载。
+    # 键是稳定的情报域名，值是界面显示名；详细设置从 domains/<名称>.json 加载。
     enabled:
       news: 国际新闻
       finance: 财经情报
@@ -41,7 +41,7 @@ optional_subsystems:
     model: BAAI/bge-m3
   situation:
     enabled: true
-    subsystem: news
+    domain: news
     window_days: 7
     min_score: 6
     # min_support: 2            # 实体图：关系最少独立事件数（调低到 1 会显示全部关系，图更密更噪）

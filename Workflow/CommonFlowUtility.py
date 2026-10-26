@@ -91,6 +91,7 @@ class CrawlContext:
                  collector_token: str,
                  crawler_governor: GovernanceManager,
                  error_threshold: int = DEFAULT_CRAWL_ERROR_THRESHOLD,
+                 domain_name: Optional[str] = None,
                  subsystem: Optional[str] = None,
                  logger: Logger = None
                  ):
@@ -98,13 +99,20 @@ class CrawlContext:
         self.i_hub_url = i_hub_url
         self.crawler_governor = crawler_governor
         self.collector_token = collector_token or DEFAULT_COLLECTOR_TOKEN
-        self.subsystem = subsystem
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        self.domain_name = domain_name or subsystem
         self.error_threshold = error_threshold
         self.logger = PrefixLogger(logger or
                                    get_tls_logger(__name__) or
                                    logging.getLogger(__name__), f'[{flow_name}]:')
         self.crawl_cache = CrawlCache()
         self._submit_collected_data = post_collected_intelligence
+
+    @property
+    def subsystem(self):
+        """历史兼容别名。"""
+        return self.domain_name
 
     def is_url_in_cache(self, url: str):
         return self.crawl_cache.is_in_cache(url)
@@ -119,8 +127,8 @@ class CrawlContext:
             cache_on_error: bool = True
     ):
         collected_data.token = self.collector_token
-        if self.subsystem and not getattr(collected_data, 'subsystem', ''):
-            collected_data.subsystem = self.subsystem
+        if self.domain_name and not getattr(collected_data, 'domain', ''):
+            collected_data.domain = self.domain_name
 
         if self._submit_collected_data:
             self.logger.info(f"Submit collected data to: {self.i_hub_url}")

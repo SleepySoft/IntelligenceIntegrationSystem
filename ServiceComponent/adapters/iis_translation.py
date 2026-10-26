@@ -20,11 +20,14 @@ class IISAsyncTranslationExtension(HubPlugin):
     def __init__(
             self,
             *,
-            default_subsystem: str,
+            default_domain: str = "",
+            default_subsystem: str = "",
             translator_factory: Callable[[threading.Event, Callable[[Dict[str, Any]], None]], Any],
             needs_translation: Callable[[Dict[str, Any]], bool],
     ):
-        self.default_subsystem = default_subsystem
+        if default_domain and default_subsystem and default_domain != default_subsystem:
+            raise ValueError("default_domain and legacy default_subsystem disagree")
+        self.default_domain = default_domain or default_subsystem
         self.translator_factory = translator_factory
         self.needs_translation = needs_translation
         self._shutdown = threading.Event()
@@ -44,7 +47,7 @@ class IISAsyncTranslationExtension(HubPlugin):
 
     def should_defer_index(self, event: HubEvent) -> bool:
         """供索引扩展判断：待翻译记录不应先按原文入索引。"""
-        return (event.subsystem == self.default_subsystem and
+        return (event.domain_name == self.default_domain and
                 isinstance(event.payload, dict) and self.needs_translation(event.payload))
 
     def _on_archived(self, event: HubEvent, runtime: HubRuntime) -> None:
@@ -62,6 +65,6 @@ class IISAsyncTranslationExtension(HubPlugin):
             return
         try:
             runtime.emit(HubEvent(
-                TRANSLATION_COMPLETED, dict(payload), subsystem=self.default_subsystem))
+                TRANSLATION_COMPLETED, dict(payload), domain_name=self.default_domain))
         except RuntimeError:
             logger.debug("Translation completed during Hub shutdown; index event ignored.")

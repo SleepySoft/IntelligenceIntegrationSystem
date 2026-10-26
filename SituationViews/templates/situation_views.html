@@ -223,7 +223,7 @@
     <header>
         <div>
             <h1>{{ _('Geopolitical situation') if dashboard_view == 'map' else _('Entity relationships') }}</h1>
-            <p>{{ _('Situation insight') }} · {{ dashboard_profile.subsystem_display_name }} · {{ _('Last {days} days · Score ≥ {score}').format(days=dashboard_profile.window_days, score=dashboard_profile.min_score) }}</p>
+            <p>{{ _('Situation insight') }} · {{ dashboard_profile.domain_display_name }} · {{ _('Last {days} days · Score ≥ {score}').format(days=dashboard_profile.window_days, score=dashboard_profile.min_score) }}</p>
         </div>
         <div class="header-actions">
             <nav class="dashboard-nav" aria-label="{{ _('Situation insight dashboard') }}">
@@ -241,9 +241,9 @@
 
     <section class="filters" aria-label="{{ _('Shared filters') }}" hidden>
         <label>{{ _('Subsystem') }}
-            <select id="subsystem">
-                {% for subsystem in subsystems %}
-                <option value="{{ subsystem.name }}"{% if subsystem.name == dashboard_profile.subsystem %} selected{% endif %}>{{ subsystem.display_name }}</option>
+            <select id="domain-name">
+                {% for domain in domains %}
+                <option value="{{ domain.name }}"{% if domain.name == dashboard_profile.domain_name %} selected{% endif %}>{{ domain.display_name }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -627,7 +627,7 @@ window.IIS_I18N_MESSAGES = Object.assign(window.IIS_I18N_MESSAGES || {}, {
 </script>
 <script src="/static/js/iis_i18n.js"></script>
 <script src="/static/js/intelligence_contracts.js"></script>
-<script src="/static/js/subsystem_render_protocol.js"></script>
+<script src="/static/js/domain_render_protocol.js"></script>
 <script src="/static/js/article_detail_renderer.js"></script>
 <script src="/static/js/article_modal_manager.js"></script>
 <script src="/static/js/situation_article_modal.js"></script>
@@ -656,7 +656,7 @@ const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
 const selectedEntityTypes = new Set(ALL_ENTITY_TYPES);
-const SUBSYSTEMS = {{ subsystems|tojson }};
+const DOMAINS = {{ domains|tojson }};
 const DETAIL_ORIGIN = {{ detail_origin|tojson }};
 const WORLD_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries-110m.json')|tojson }};
 const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='countries.json')|tojson }};
@@ -679,7 +679,7 @@ const localInputValue = date => {
     return shifted.toISOString().slice(0, 16);
 };
 const now = new Date();
-$('subsystem').value = DASHBOARD_PROFILE.subsystem;
+$('domain-name').value = DASHBOARD_PROFILE.domain_name;
 $('end').value = localInputValue(now);
 $('start').value = localInputValue(new Date(now.getTime() - DASHBOARD_PROFILE.window_days * 86400000));
 $('min-score').value = DASHBOARD_PROFILE.min_score;
@@ -691,7 +691,7 @@ function queryParams(extra = {}) {
     const categoryValue = selectedCategories.size === ALL_CATEGORY_KEYS.length
         ? '' : (selectedCategories.size ? [...selectedCategories].join(',') : '__none__');
     const params = new URLSearchParams({
-        subsystem: $('subsystem').value,
+        domain_name: $('domain-name').value,
         start: new Date($('start').value).toISOString(),
         end: new Date($('end').value).toISOString(),
         min_score: $('min-score').value,
@@ -1333,8 +1333,8 @@ async function loadMapIntelligences(countryCode, locationName = null) {
 }
 
 function intelligenceDetailUrl(uuid) {
-    const subsystem = SUBSYSTEMS.find(item => item.name === $('subsystem').value);
-    const prefix = String(subsystem?.url_prefix || '').replace(/\/$/, '');
+    const domain = DOMAINS.find(item => item.name === $('domain-name').value);
+    const prefix = String(domain?.url_prefix || '').replace(/\/$/, '');
     return `${DETAIL_ORIGIN}${prefix}/intelligence/${encodeURIComponent(uuid)}`;
 }
 
@@ -2055,7 +2055,7 @@ function editorStatus(message, warning = false) {
     element.classList.toggle('warning', warning);
 }
 function editingRefKey(ref) {
-    return `${ref?.subsystem || ''}\u0000${ref?.intelligence_uuid || ''}\u0000${ref?.local_entity_id || ''}`;
+    return `${ref?.domain_name || ''}\u0000${ref?.intelligence_uuid || ''}\u0000${ref?.local_entity_id || ''}`;
 }
 function currentEditingRefs() {
     return editingReferences.filter(item => selectedEditingRefKeys.has(editingRefKey(item.ref)));
@@ -2180,7 +2180,7 @@ async function searchContextualEntities() {
     const query = $('entity-contextual-query').value.trim();
     editorStatus(tr('searching_contextual_entities'));
     try {
-        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/contextual-search?subsystem=${encodeURIComponent($('subsystem').value)}&q=${encodeURIComponent(query)}`);
+        const data = await loadJson(`${EDIT_API_PREFIX}/entity-resolution/contextual-search?domain_name=${encodeURIComponent($('domain-name').value)}&q=${encodeURIComponent(query)}`);
         renderTargetResults('entity-contextual-results', data.items || []);
         editorStatus('');
     } catch (error) { editorStatus(tr('search_failed', {message: error.message}), true); }
@@ -2208,7 +2208,7 @@ async function createContextualEntity() {
     try {
         const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/contextual-entities`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({subsystem:$('subsystem').value, name, type:current?.type || 'other',
+            body: JSON.stringify({domain_name:$('domain-name').value, name, type:current?.type || 'other',
                 countries:current?.country_code ? [current.country_code] : []})
         });
         const data = await response.json();
@@ -2283,7 +2283,7 @@ async function undoEntityAssignment() {
     try {
         const response = await fetch(`${EDIT_API_PREFIX}/entity-resolution/undo`, {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({subsystem:current.ref.subsystem, decision_id:current.decision_id})
+            body:JSON.stringify({domain_name:current.ref.domain_name, decision_id:current.decision_id})
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -2351,7 +2351,7 @@ document.querySelectorAll('.side-toggle').forEach(button => button.addEventListe
     button.textContent = collapsed ? tr('expand_legend') : tr('collapse_legend');
 }));
 window.addEventListener('resize', () => activeView === 'map' ? mapData && renderMap() : graphData && renderGraph());
-SituationArticleModal.init({domains: SUBSYSTEMS, domainName: DASHBOARD_PROFILE.subsystem, detailOrigin: DETAIL_ORIGIN});
+SituationArticleModal.init({domains: DOMAINS, domainName: DASHBOARD_PROFILE.domain_name, detailOrigin: DETAIL_ORIGIN});
 if (typeof d3 === 'undefined' || typeof topojson === 'undefined') {
     const dependency = typeof d3 === 'undefined' ? 'D3' : 'TopoJSON';
     const status = DASHBOARD_VIEW === 'graph' ? $('graph-status') : $('map-status');

@@ -13,7 +13,7 @@ PEOPLE/LOCATION/ORGANIZATION 速查字段、outbox 和 v4_events。
   python Scripts/entity_alias_archive_backfill.py
   python Scripts/entity_alias_archive_backfill.py --limit 100
   python Scripts/entity_alias_archive_backfill.py --apply
-  python Scripts/entity_alias_archive_backfill.py --subsystem dry_run --apply
+  python Scripts/entity_alias_archive_backfill.py --domain dry_run --apply
 """
 
 from __future__ import annotations
@@ -41,11 +41,12 @@ from GlobalConfig import (  # noqa: E402
 )
 from IISConfig import load_iis_config  # noqa: E402
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY  # noqa: E402
-from ServiceComponent.SubsystemRegistry import SubsystemRegistry  # noqa: E402
+from ServiceComponent.DomainResources import DomainResourceRegistry  # noqa: E402
 from ServiceComponent.event_v4_archive import ArchivedDataV4  # noqa: E402
 from ServiceComponent.event_v4_conversion import convert_event_extraction  # noqa: E402
 from ServiceComponent.intelligence_contracts import (  # noqa: E402
-    APPENDIX_SUBSYSTEM,
+    APPENDIX_DOMAIN_NAME,
+    APPENDIX_LEGACY_SUBSYSTEM,
     APPENDIX_TIME_ARCHIVED,
     APPENDIX_TIME_DONE,
 )
@@ -124,7 +125,7 @@ def _load_config():
 
 
 def _build_registry(config):
-    return SubsystemRegistry.build_from_config(
+    return DomainResourceRegistry.build_from_config(
         config,
         mongodb_params={
             "host": config.get("mongodb.host", "localhost"),
@@ -160,22 +161,22 @@ def _observed_at(record: ArchivedDataV4) -> datetime:
     return value
 
 
-def _default_backup_path(subsystem: str) -> str:
+def _default_backup_path(domain_name: str) -> str:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return os.path.join(
         EXPORT_PATH,
-        f"entity_alias_archive_backfill_{subsystem}_{stamp}.jsonl",
+        f"entity_alias_archive_backfill_{domain_name}_{stamp}.jsonl",
     )
 
 
 def run(args) -> dict[str, Any]:
     config = _load_config()
     registry = _build_registry(config)
-    context = registry.get(args.subsystem) if args.subsystem else registry.default()
+    context = registry.get(args.domain) if args.domain else registry.default()
     if context is None or not context.enabled:
-        raise ValueError(f"子系统不存在或未启用：{args.subsystem!r}")
+        raise ValueError(f"情报域不存在或未启用：{args.domain!r}")
     if context.event_v4_archive_repository is None:
-        raise RuntimeError(f"子系统 {context.name!r} 未配置 Event V4 归档仓库")
+        raise RuntimeError(f"情报域 {context.name!r} 未配置 Event V4 归档仓库")
 
     service = _alias_service(config, args.data_dir)
     resolver = _canonical_resolver(service)
@@ -191,7 +192,7 @@ def run(args) -> dict[str, Any]:
     backup_file = None
     unmatched_counter: Counter = Counter()
     stats: dict[str, Any] = {
-        "subsystem": context.name,
+        "domain_name": context.name,
         "mode": "apply" if args.apply else "dry-run",
         "scanned": 0,
         "changed_documents": 0,
@@ -247,8 +248,11 @@ def run(args) -> dict[str, Any]:
                 observed_at=_observed_at(plan.record),
                 metadata={
                     "informant": plan.record.INFORMANT,
-                    "subsystem": plan.record.APPENDIX.get(APPENDIX_SUBSYSTEM)
-                                 or context.name,
+                    "domain_name": (
+                        plan.record.APPENDIX.get(APPENDIX_DOMAIN_NAME)
+                        or plan.record.APPENDIX.get(APPENDIX_LEGACY_SUBSYSTEM)
+                        or context.name
+                    ),
                 },
             )
             repository.commit(plan.record, conversion.events)
@@ -289,8 +293,10 @@ def main():
         description="用 EntityAlias 标准名回填 Event V4 历史归档与事件索引")
     parser.add_argument("--apply", action="store_true",
                         help="实际写入 MongoDB；默认仅预览")
-    parser.add_argument("--subsystem", default="",
-                        help="目标子系统名；默认使用配置中的默认子系统")
+    parser.add_argument(
+        "--domain", "--subsystem", dest="domain", default="",
+        help="目标情报域；默认使用默认领域（--subsystem 为旧别名）",
+    )
     parser.add_argument("--data-dir", default=None,
                         help="EntityAlias JSONL 目录；默认读取 IIS 配置")
     parser.add_argument("--limit", type=int, default=0,

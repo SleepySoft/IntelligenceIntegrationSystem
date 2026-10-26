@@ -87,8 +87,8 @@
         <div class="cards hub-today-row" id="hub-today-cards"></div>
         <div class="subtitle" style="margin-bottom:6px">本次启动后的运行结果</div>
         <div class="cards hub-result-row" id="hub-result-cards"></div>
-        <div class="subtitle" style="margin-bottom:6px">子系统结果（本次进程生命周期）</div>
-        <table id="subsystem-table"></table>
+        <div class="subtitle" style="margin-bottom:6px">情报域结果（本次进程生命周期）</div>
+        <table id="domain-table"></table>
         <div class="error" id="hub-error" style="display:none"></div>
     </div>
 
@@ -206,10 +206,10 @@ async function loadHub() {
             metricCard('AI 错误', (analysis.call_errors ?? 0) + (analysis.api_errors ?? 0)),
             metricCard('影子分析 记录/失败', `${shadow.recorded ?? 0} / ${shadow.failed ?? 0}`),
         ].join('');
-        const subs = data.hub?.subsystems || [];
-        document.getElementById('subsystem-table').innerHTML =
-            '<tr><th>子系统</th><th>归档</th><th>丢弃</th><th>错误</th></tr>' +
-            subs.map(s => {
+        const domains = data.hub?.domains || [];
+        document.getElementById('domain-table').innerHTML =
+            '<tr><th>情报域</th><th>归档</th><th>丢弃</th><th>错误</th></tr>' +
+            domains.map(s => {
                 const stats = s.stats || {};
                 return `<tr><td>${esc(s.display_name || s.name)}</td><td>${stats.archived ?? 0}</td>` +
                        `<td>${stats.dropped ?? 0}</td>` +

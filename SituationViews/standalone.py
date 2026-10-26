@@ -9,16 +9,16 @@ from flask import Flask, redirect
 
 from GlobalConfig import DATA_PATH, DEFAULT_ALTER_CONFIG_FILE, DEFAULT_CONFIG_FILE
 from IISConfig import load_iis_config
-from ServiceComponent.SubsystemRegistry import SubsystemRegistry
+from ServiceComponent.DomainResources import DomainResourceRegistry
 from SituationViews.web import SituationViewsService
 from SituationViews.geocoding import CachedNominatimGeocoder
 
 
-def create_app(config=None, *, subsystem_registry=None) -> Flask:
+def create_app(config=None, *, domain_resources=None, subsystem_registry=None) -> Flask:
     """创建只读视图服务；正式入口始终从配置连接真实 MongoDB。"""
     config = config or load_iis_config(
         DEFAULT_CONFIG_FILE, fallback_file=DEFAULT_ALTER_CONFIG_FILE)
-    registry = subsystem_registry or SubsystemRegistry.build_from_config(
+    registry = domain_resources or subsystem_registry or DomainResourceRegistry.build_from_config(
         config,
         mongodb_params={
             "host": config.get("mongodb.host", "localhost"),

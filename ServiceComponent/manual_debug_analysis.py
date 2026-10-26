@@ -31,7 +31,7 @@ class ManualDebugAnalysisService(HubPlugin):
     archive、low_value，亦不会触发翻译、向量等归档订阅者。
     """
 
-    def __init__(self, analysis_port: Any, subsystem_registry: Any, *,
+    def __init__(self, analysis_port: Any, domain_resources: Any, *,
                  analysis_ports: Mapping[str, Any] | None = None,
                  max_results: int = 50, worker_count: int = 1):
         if max_results < 1:
@@ -46,7 +46,7 @@ class ManualDebugAnalysisService(HubPlugin):
             if not callable(getattr(port, "get_transient_prompt_table", None)):
                 raise TypeError(f"分析机制 {mechanism} 必须实现 get_transient_prompt_table()")
         self._analysis_ports = ports
-        self._registry = subsystem_registry
+        self._domain_resources = domain_resources
         self._max_results = max_results
         self._worker_count = worker_count
         self._records: OrderedDict[str, dict[str, Any]] = OrderedDict()
@@ -85,38 +85,43 @@ class ManualDebugAnalysisService(HubPlugin):
             ],
         }
 
-    def prompt_catalog(self, subsystem: str = "", mechanism: str = "") -> dict[str, Any]:
-        subsystem = str(subsystem or "").strip() or self._registry.default_name
-        if self._registry.resolve(subsystem) is None:
-            raise ValueError(f"未知子系统: {subsystem}")
+    def prompt_catalog(self, domain_name: str = "", mechanism: str = "") -> dict[str, Any]:
+        domain_name = str(domain_name or "").strip() or self._domain_resources.default_name
+        if self._domain_resources.resolve(domain_name) is None:
+            raise ValueError(f"未知情报域: {domain_name}")
         mechanism, analysis_port = self._resolve_analysis_port(mechanism)
-        table = analysis_port.get_transient_prompt_table(subsystem)
+        table = analysis_port.get_transient_prompt_table(domain_name)
         if not table:
-            raise ValueError(f"子系统 {subsystem} 没有可用 Prompt")
+            raise ValueError(f"情报域 {domain_name} 没有可用 Prompt")
         versions = sorted(int(version) for version in table)
         return {
-            "subsystem": subsystem,
+            "domain_name": domain_name,
             "mechanism": mechanism,
             "versions": versions,
             "default_version": versions[-1],
         }
 
-    def get_prompt(self, *, subsystem: str = "", mechanism: str = "",
+    def get_prompt(self, *, domain_name: str = "", subsystem: str = "",
+                   mechanism: str = "",
                    version: int | str) -> dict[str, Any]:
-        catalog = self.prompt_catalog(subsystem, mechanism)
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        domain_name = domain_name or subsystem
+        catalog = self.prompt_catalog(domain_name, mechanism)
         version = int(version)
         _, analysis_port = self._resolve_analysis_port(catalog["mechanism"])
-        table = analysis_port.get_transient_prompt_table(catalog["subsystem"])
+        table = analysis_port.get_transient_prompt_table(catalog["domain_name"])
         if version not in table:
             raise ValueError(f"Prompt v{version} 未配置")
         return {
-            "subsystem": catalog["subsystem"],
+            "domain_name": catalog["domain_name"],
             "mechanism": catalog["mechanism"],
             "version": version,
             "content": table[version],
         }
 
-    def submit(self, *, content: str, title: str = "", subsystem: str = "",
+    def submit(self, *, content: str, title: str = "", domain_name: str = "",
+               subsystem: str = "",
                mechanism: str = "",
                prompt_version: int | str | None = None,
                prompt_override: str | None = None) -> dict[str, Any]:
@@ -125,11 +130,13 @@ class ManualDebugAnalysisService(HubPlugin):
             raise ValueError("正文至少需要 10 个字符")
         if len(content) > 200_000:
             raise ValueError("正文不能超过 200000 个字符")
-        subsystem = str(subsystem or "").strip() or self._registry.default_name
-        if self._registry.resolve(subsystem) is None:
-            raise ValueError(f"未知子系统: {subsystem}")
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        domain_name = str(domain_name or subsystem or "").strip() or self._domain_resources.default_name
+        if self._domain_resources.resolve(domain_name) is None:
+            raise ValueError(f"未知情报域: {domain_name}")
         mechanism, _ = self._resolve_analysis_port(mechanism)
-        catalog = self.prompt_catalog(subsystem, mechanism)
+        catalog = self.prompt_catalog(domain_name, mechanism)
         if prompt_version in (None, ""):
             prompt_version = catalog["default_version"]
         prompt_version = int(prompt_version)
@@ -156,7 +163,7 @@ class ManualDebugAnalysisService(HubPlugin):
             pub_time=now,
             collect_time=now,
             informant=f"test://manual/{job_id}",
-            subsystem=subsystem,
+            domain=domain_name,
             temp_data={
                 "transient": True,
                 "manual_debug": {
@@ -171,7 +178,7 @@ class ManualDebugAnalysisService(HubPlugin):
             "submitted_at": now,
             "started_at": None,
             "finished_at": None,
-            "subsystem": subsystem,
+            "domain_name": domain_name,
             "mechanism": mechanism,
             "prompt": {
                 "version": prompt_version,
@@ -210,11 +217,11 @@ class ManualDebugAnalysisService(HubPlugin):
             record["status"] = "running"
             record["started_at"] = datetime.now(timezone.utc)
             payload = dict(record["input"])
-            subsystem = record["subsystem"]
+            domain_name = record["domain_name"]
             analysis_port = self._analysis_ports[record["mechanism"]]
         try:
             result = analysis_port.analyze_transient(
-                HubEvent("debug.analysis.requested", payload, subsystem)
+                HubEvent("debug.analysis.requested", payload, domain_name)
             )
             if not isinstance(result, StageResult):
                 raise TypeError("analyze_transient() 必须返回 StageResult")
@@ -257,7 +264,7 @@ class ManualDebugAnalysisService(HubPlugin):
             "submitted_at": record["submitted_at"],
             "started_at": record["started_at"],
             "finished_at": record["finished_at"],
-            "subsystem": record["subsystem"],
+            "domain_name": record["domain_name"],
             "mechanism": record["mechanism"],
             "prompt": dict(record["prompt"]),
             "input": {

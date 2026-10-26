@@ -41,7 +41,7 @@ def _statistics(*, emitted=1, domain_name="news"):
             "last_call_ms": 35000,
             "call_ms_total": 90000,
         },
-        "subsystems": [{"name": domain_name}],
+        "domains": [{"name": domain_name}],
     }
 
 
@@ -56,7 +56,7 @@ def test_status_is_a_single_line_with_pipeline_stage_counts():
     assert "latency_ms(last=35000/avg=30000)" in line
     assert "errors(call=0/api=0/validation=2)" in line
     assert "done [intake=3/analysis=0" in line
-    assert "subsystems" not in line
+    assert "domains" not in line
 
 
 def test_status_gate_logs_changes_and_one_minute_heartbeat_only():
@@ -69,7 +69,7 @@ def test_status_gate_logs_changes_and_one_minute_heartbeat_only():
     assert gate.should_log(_statistics(emitted=2), now=161) is True
 
 
-def test_status_gate_ignores_non_numeric_subsystem_metadata_changes():
+def test_status_gate_ignores_non_numeric_domain_metadata_changes():
     gate = HubStatusLogGate(unchanged_log_interval=60)
 
     assert gate.should_log(_statistics(domain_name="news"), now=100) is True

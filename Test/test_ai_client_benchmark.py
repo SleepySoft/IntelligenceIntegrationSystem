@@ -79,7 +79,7 @@ def _write_suite(path):
                 "UUID": "benchmark-1", "token": "local", "source": "benchmark",
                 "target": "benchmark", "title": "测试袭击", "authors": [],
                 "content": "A军今天袭击了B设施，B方确认设施受损但没有人员伤亡。",
-                "informant": "benchmark://1", "subsystem": "news",
+                "informant": "benchmark://1", "domain": "news",
             },
             "expected": {
                 "route": "valuable", "required_event_predicates": ["attack"],

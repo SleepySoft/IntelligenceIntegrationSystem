@@ -252,7 +252,8 @@ def _build_series(
 def _public_attempt(row: dict[str, Any]) -> dict[str, Any]:
     call = row.get("call") or {}
     return {
-        "ts": row["ts"], "uuid": row["uuid"], "subsystem": row["subsystem"],
+        "ts": row["ts"], "uuid": row["uuid"],
+        "domain_name": row["domain_name"],
         "prompt_version": row["prompt_version"], "attempt_no": row["attempt_no"],
         "model": call.get("model") or row.get("ai_model"),
         "client_name": call.get("client_name") or row.get("client_name"),

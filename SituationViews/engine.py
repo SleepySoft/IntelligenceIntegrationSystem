@@ -106,11 +106,14 @@ class SituationViewEngine:
     """把归档文章与派生事件索引投影为地图和实体图响应。"""
 
     def __init__(self, intelligence_collection: Any, event_collection: Any, registry: Any,
-                 *, subsystem: str = "", entity_resolver=None, entity_registry=None):
+                 *, domain_name: str = "", subsystem: str = "",
+                 entity_resolver=None, entity_registry=None):
         self.intelligence_collection = intelligence_collection
         self.event_collection = event_collection
         self.registry = registry
-        self.subsystem = str(subsystem or "").strip()
+        if domain_name and subsystem and domain_name != subsystem:
+            raise ValueError("domain_name and legacy subsystem disagree")
+        self.domain_name = str(domain_name or subsystem or "").strip()
         self.entity_resolver = entity_resolver
         self.entity_registry = entity_registry
 
@@ -1057,11 +1060,11 @@ class SituationViewEngine:
                     if not re.fullmatch(r"ENT[1-9][0-9]*", local_id):
                         continue
                     ref = {
-                        "subsystem": self.subsystem,
+                        "domain_name": self.domain_name,
                         "intelligence_uuid": article_uuid,
                         "local_entity_id": local_id,
                     }
-                    ref_key = f"{self.subsystem}:{article_uuid}:{local_id}"
+                    ref_key = f"{self.domain_name}:{article_uuid}:{local_id}"
                     entity["_entity_ref"] = ref
                     entity["_entity_ref_key"] = ref_key
                     entities_by_ref[ref_key].append(entity)
@@ -1086,7 +1089,7 @@ class SituationViewEngine:
                 except Exception:
                     exact = None
                 if exact:
-                    key = (f"{request['subsystem']}:{request['intelligence_uuid']}:"
+                    key = (f"{request['domain_name']}:{request['intelligence_uuid']}:"
                            f"{request['local_entity_id']}")
                     resolved[key] = {
                         "kind": "global", "target_id": exact["entity_id"],
