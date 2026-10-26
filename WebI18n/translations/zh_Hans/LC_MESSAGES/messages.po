@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-26 08:04+0800\n"
+"POT-Creation-Date: 2026-10-26 12:14+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -162,7 +162,7 @@ msgstr "当前配置"
 
 #: AIClientCenter/templates/ai_client_config.html:43
 #: IISConfiguration/templates/iis_configuration.html:25
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid "selected by"
 msgstr "选择来源"
 
@@ -171,6 +171,62 @@ msgid ""
 "The AI client configuration contract changed and the configuration page "
 "has not been reviewed yet."
 msgstr "AI 客户端配置契约已变化，但配置页面尚未完成兼容性审查。"
+
+#: IISConfiguration/web.py:46
+msgid ""
+"Administrator username must be 3-50 characters using letters, numbers, "
+"underscores, or hyphens."
+msgstr "管理员用户名须为 3-50 个字符，只能使用字母、数字、下划线或连字符。"
+
+#: IISConfiguration/web.py:48
+msgid "Administrator password is required."
+msgstr "请输入管理员密码。"
+
+#: IISConfiguration/templates/iis_setup.html:82 IISConfiguration/web.py:50
+msgid "The administrator passwords do not match."
+msgstr "两次输入的管理员密码不一致。"
+
+#: IISConfiguration/web.py:52
+msgid "Administrator password must be 12-1024 characters."
+msgstr "管理员密码长度须为 12-1024 个字符。"
+
+#: IISConfiguration/web.py:54
+msgid "Administrator password must be a single line."
+msgstr "管理员密码只能包含一行。"
+
+#: IISConfiguration/web.py:56
+msgid "Administrator secret directory is invalid."
+msgstr "管理员秘密文件目录无效。"
+
+#: IISConfiguration/web.py:58
+msgid "Administrator secret directory is owned by another user."
+msgstr "管理员秘密文件目录属于其他用户。"
+
+#: IISConfiguration/web.py:60
+msgid "Administrator secret directory permissions must be 0700."
+msgstr "管理员秘密文件目录权限必须为 0700。"
+
+#: IISConfiguration/web.py:62
+msgid ""
+"An authentication database already exists; use the administrator "
+"management command instead."
+msgstr "认证数据库已存在，请改用管理员管理命令。"
+
+#: IISConfiguration/web.py:66
+msgid "Could not prepare the administrator credential."
+msgstr "无法准备管理员凭据。"
+
+#: IISConfiguration/web.py:94
+msgid ""
+"Configuration and the temporary administrator credential are ready. "
+"Configure AI clients, then run the unattended installation command below."
+msgstr "配置和临时管理员凭据已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
+
+#: IISConfiguration/web.py:98
+msgid ""
+"Configuration is ready. Configure AI clients, then run the unattended "
+"installation command below."
+msgstr "配置已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
 
 #: IISConfiguration/templates/iis_configuration.html:5
 #: IISConfiguration/templates/iis_configuration.html:17
@@ -207,7 +263,7 @@ msgid "This field must contain valid JSON."
 msgstr "此字段必须包含有效 JSON。"
 
 #: IISConfiguration/templates/iis_configuration.html:25
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid ""
 "The IIS configuration schema changed and the configuration pages have not"
 " been reviewed yet."
@@ -356,52 +412,66 @@ msgid "Review and save"
 msgstr "确认并保存"
 
 #: IISConfiguration/templates/iis_setup.html:64
-msgid ""
-"Before installation, store the administrator password in a 0600 file and "
-"replace the placeholder path in the generated command."
-msgstr "安装前请把管理员密码保存到权限为 0600 的文件中，并替换生成命令里的占位路径。"
+msgid "Initial administrator"
+msgstr "初始管理员"
 
-#: IISConfiguration/templates/iis_setup.html:68
+#: IISConfiguration/templates/iis_setup.html:65
+msgid ""
+"The password is written only to a temporary 0600 installation file. It is"
+" not stored in YAML or returned by the server."
+msgstr "密码只会写入临时的 0600 安装文件，不会保存到 YAML，也不会由服务器返回。"
+
+#: IISConfiguration/templates/iis_setup.html:67
+msgid "Administrator username"
+msgstr "管理员用户名"
+
+#: IISConfiguration/templates/iis_setup.html:69
+msgid "Administrator password"
+msgstr "管理员密码"
+
+#: IISConfiguration/templates/iis_setup.html:70
+msgid "Confirm administrator password"
+msgstr "确认管理员密码"
+
+#: IISConfiguration/templates/iis_setup.html:77
 msgid "Back"
 msgstr "上一步"
 
-#: IISConfiguration/templates/iis_setup.html:68
+#: IISConfiguration/templates/iis_setup.html:77
 msgid "Advanced configuration"
 msgstr "高级配置"
 
-#: IISConfiguration/templates/iis_setup.html:68 templates/_article_i18n.html:28
+#: IISConfiguration/templates/iis_setup.html:77 templates/_article_i18n.html:28
 msgid "Next"
 msgstr "下一页"
 
-#: IISConfiguration/templates/iis_setup.html:68
+#: IISConfiguration/templates/iis_setup.html:77
 msgid "Validate and save"
 msgstr "校验并保存"
 
-#: IISConfiguration/templates/iis_setup.html:73
-msgid "Validating…"
-msgstr "正在校验…"
+#: IISConfiguration/templates/iis_setup.html:82
+msgid "Validating configuration and preparing installation artifacts…"
+msgstr "正在校验配置并准备安装产物……"
 
-#: IISConfiguration/templates/iis_setup.html:73
-msgid ""
-"IIS configuration is ready. Configure AI clients, then run the unattended"
-" installation command below."
-msgstr "IIS 配置已准备好。请先配置 AI 客户端，再运行下方的无人值守安装命令。"
-
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid "Configure AI clients"
 msgstr "配置 AI 客户端"
 
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid "Open full configuration"
 msgstr "打开完整配置"
 
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid "Configuration target"
 msgstr "配置写入位置"
 
-#: IISConfiguration/templates/iis_setup.html:73
+#: IISConfiguration/templates/iis_setup.html:82
 msgid "Loaded defaults from"
 msgstr "默认值来源"
+
+#: IISConfiguration/templates/iis_setup.html:82
+msgid "Enter an administrator username and password."
+msgstr "请输入管理员用户名和密码。"
 
 #: IntelligenceViews/templates/intelligence_views.html:6
 msgid "Intelligence views"
@@ -2168,3 +2238,13 @@ msgstr "排序："
 #~ " create an administrator before exposing"
 #~ " IIS to other machines."
 #~ msgstr "保存后请先配置 AI 客户端并创建管理员，再将 IIS 开放给其他机器访问。"
+
+#~ msgid ""
+#~ "Before installation, store the administrator"
+#~ " password in a 0600 file and "
+#~ "replace the placeholder path in the "
+#~ "generated command."
+#~ msgstr "安装前请把管理员密码保存到权限为 0600 的文件中，并替换生成命令里的占位路径。"
+
+#~ msgid "Validating…"
+#~ msgstr "正在校验…"

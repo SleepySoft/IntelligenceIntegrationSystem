@@ -91,6 +91,7 @@ class InstallRequest:
     force_config: bool = False
     admin_user: str | None = None
     admin_password_file: Path | None = None
+    consume_admin_password_file: bool = False
     skip_admin: bool = False
 
 
@@ -390,29 +391,64 @@ def _initialize_authentication(request: InstallRequest) -> list[str]:
         _install_binary_file(existing, target)
         return []
     if request.admin_user and request.admin_password_file:
-        if not request.admin_password_file.is_file():
-            raise InstallError(
-                f"管理员密码文件不存在: {request.admin_password_file}")
-        mode = stat.S_IMODE(request.admin_password_file.stat().st_mode)
-        if mode & (stat.S_IRWXG | stat.S_IRWXO):
-            raise InstallError("管理员密码文件权限过宽；请设置为 0600。")
-        password = request.admin_password_file.read_text(encoding="utf-8").rstrip("\r\n")
-        if not password:
-            raise InstallError("管理员密码文件为空。")
+        password = _read_admin_password(request.admin_password_file)
         from ServiceComponent.UserManager import UserManager
         manager = UserManager(str(target))
         user_id, message = manager.create_user(request.admin_user, password, [])
         if user_id == UserManager.INVALID_USER_ID:
             raise InstallError(f"创建管理员失败: {message}")
         os.chmod(target, 0o600)
+        if request.consume_admin_password_file:
+            try:
+                request.admin_password_file.unlink()
+            except OSError as exc:
+                raise InstallError(
+                    f"管理员已创建，但临时密码文件删除失败: {exc}") from exc
         return []
     if request.admin_user or request.admin_password_file:
         raise InstallError("--admin-user 与 --admin-password-file 必须同时提供。")
     if request.skip_admin:
+        if request.consume_admin_password_file:
+            raise InstallError(
+                "--consume-admin-password-file 不能与 --skip-admin 同时使用。")
         return ["按显式 --skip-admin 跳过管理员初始化；登录前必须另行创建用户。"]
     raise InstallError(
         "缺少管理员初始化信息；提供 --admin-user 和 --admin-password-file，"
         "或显式使用 --skip-admin。")
+
+
+def _read_admin_password(path: Path) -> str:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise InstallError(f"无法打开管理员密码文件 {path}: {exc}") from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise InstallError("管理员密码文件必须是普通文件。")
+        if stat.S_IMODE(info.st_mode) & (stat.S_IRWXG | stat.S_IRWXO):
+            raise InstallError("管理员密码文件权限过宽；请设置为 0600。")
+        content = os.read(descriptor, 4098)
+        if len(content) > 4097:
+            raise InstallError("管理员密码文件过大。")
+    finally:
+        os.close(descriptor)
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise InstallError("管理员密码文件必须使用 UTF-8 编码。") from exc
+    if text.endswith("\r\n"):
+        text = text[:-2]
+    elif text.endswith("\n"):
+        text = text[:-1]
+    if not text:
+        raise InstallError("管理员密码文件为空。")
+    if "\x00" in text or "\n" in text or "\r" in text:
+        raise InstallError("管理员密码文件必须只包含一行密码。")
+    return text
 
 
 def _state(layout: InstallLayout, phase: str, **extra: Any) -> Path:

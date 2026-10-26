@@ -26,8 +26,10 @@ IIS 正常运行后，配置页自动以 Blueprint 挂载到 `/admin/config/`，
 SSH 端口转发。
 
 正式配置不存在时，根页面会自动进入五步向导：环境说明、Web/MongoDB、访问令牌、可选
-功能、确认保存。向导只收集常用落地参数，最后仍通过完整 `IISSettings` 校验；完成后会
-引导到 AIClientCenter 自己的配置页。配置已经存在时也可从完整配置页重新打开向导。
+功能、确认保存。向导只收集常用落地参数，最后仍通过完整 `IISSettings` 校验；确认页还会
+收集初始管理员密码，在本机运行目录生成临时 `0600` 单行 password-file，并把文件路径写入
+无人值守安装命令。密码不进入 YAML、Session 或 HTTP 响应。完成后会引导到 AIClientCenter
+自己的配置页。配置已经存在时也可从完整配置页重新打开向导。
 
 ## 保存语义
 
@@ -38,15 +40,21 @@ SSH 端口转发。
 - 旧版本保存在配置目录下 `.config-history/iis/`，默认保留 30 份。
 - 密码与 Token 返回浏览器前会替换为保留标记；未改动标记时保存会恢复旧值。
 - IIS 配置保存后需要重启服务生效，页面不会擅自重启生产进程。
-- 页面只生成配置并显示无人值守安装命令；不会安装依赖、调用 sudo 或操作 systemd。
+- 页面只生成配置、临时管理员安装秘密并显示无人值守安装命令；不会创建用户数据库、安装
+  依赖、调用 sudo 或操作 systemd。
+- 管理员秘密默认位于 `/run/user/<uid>/iis-bootstrap/admin-password-<随机值>`；若该用户运行目录不可用，
+  回退到所有者私有的临时目录。目录权限为 `0700`，文件为 `0600`。
+- 安装命令带 `--consume-admin-password-file`；installer 成功创建管理员后删除临时秘密，失败
+  时保留以便重试。
 
 `IISSettings` 的规范化 JSON Schema 带有一个已审查指纹。schema 发生变化后，如果开发者
 尚未审查完整编辑器和首次配置向导，页面会显示兼容性警告，配置页面测试也会失败。
 
 ## 模块边界
 
-`service.py` 不依赖 Flask，可由安装器、CLI 或测试直接复用。`web.py` 只包装 HTTP 与
-CSRF，并可挂到任意 Flask 应用。`__main__.py` 是不依赖 IIS 业务启动的独立外壳。
+`service.py` 不依赖 Flask，可由安装器、CLI 或测试直接复用。`admin_secret.py` 只负责临时
+安装秘密的格式、权限和原子写入，不创建管理员。`web.py` 只包装 HTTP 与 CSRF，并可挂到
+任意 Flask 应用。`__main__.py` 是不依赖 IIS 业务启动的独立外壳。
 
 AI Client 的对应页面由 `AIClientCenter.configuration` 和
 `AIClientCenter.web.configuration` 提供：独立启动 `python -m AIClientCenter` 后访问

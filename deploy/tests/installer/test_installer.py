@@ -41,7 +41,7 @@ def _request(tmp_path: Path, config: Path, ai: Path, *, force=False):
         ai_config_path=ai,
         collector_config_path=None,
         layout=InstallLayout.build(
-            Path(__file__).resolve().parents[2], Path("/opt/iis"), tmp_path / "root"),
+            Path(__file__).resolve().parents[3], Path("/opt/iis"), tmp_path / "root"),
         service_user="iis-test-user",
         install_dependencies=False,
         install_browser=False,
@@ -137,6 +137,52 @@ def test_unattended_install_can_create_administrator_from_password_file(tmp_path
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
     assert UserManager(str(database)).authenticate(
         "admin", "correct horse battery staple", "127.0.0.1")[0] is True
+
+
+def test_installer_consumes_web_generated_admin_password_file(tmp_path):
+    config, ai = _inputs(tmp_path)
+    password_file = tmp_path / "admin-password"
+    password_file.write_text("temporary admin password  \n", encoding="utf-8")
+    password_file.chmod(0o600)
+    request = replace(
+        _request(tmp_path, config, ai),
+        skip_admin=False,
+        admin_user="admin",
+        admin_password_file=password_file,
+        consume_admin_password_file=True,
+    )
+
+    install(request)
+
+    from ServiceComponent.UserManager import UserManager
+    database = tmp_path / "root/opt/iis/_config/Authentication.db"
+    assert not password_file.exists()
+    assert UserManager(str(database)).authenticate(
+        "admin", "temporary admin password  ", "127.0.0.1")[0] is True
+
+
+@pytest.mark.parametrize("content", [
+    "first line\nsecond line\n",
+    "contains-null\x00value\n",
+    "\n",
+])
+def test_installer_rejects_invalid_admin_password_file(tmp_path, content):
+    config, ai = _inputs(tmp_path)
+    password_file = tmp_path / "admin-password"
+    password_file.write_text(content, encoding="utf-8")
+    password_file.chmod(0o600)
+    request = replace(
+        _request(tmp_path, config, ai),
+        skip_admin=False,
+        admin_user="admin",
+        admin_password_file=password_file,
+        consume_admin_password_file=True,
+    )
+
+    with pytest.raises(InstallError, match="密码文件"):
+        install(request)
+
+    assert password_file.exists()
 
 
 def test_installer_api_uses_selected_requirement_files(tmp_path, monkeypatch):

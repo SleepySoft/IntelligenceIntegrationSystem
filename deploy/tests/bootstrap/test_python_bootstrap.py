@@ -7,7 +7,7 @@ import tarfile
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 BOOTSTRAP = ROOT / "deploy/python_bootstrap.sh"
 
 
@@ -143,4 +143,5 @@ def test_install_help_does_not_require_runtime_bootstrap():
 
     assert result.returncode == 0, result.stderr
     assert "--profile" in result.stdout
+    assert "--consume-admin-password-file" in result.stdout
     assert "下载 CPython" not in result.stderr

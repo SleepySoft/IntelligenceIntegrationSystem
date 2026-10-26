@@ -161,15 +161,16 @@ API Key 仍只写入权限 `0600` 的 EnvironmentFile，不写进 YAML、命令�
 
 - 生成相互匹配的 `iis.yaml`、`collector.json` 与 AI Client 配置。
 - 使用 `secrets` 生成 Collector/RPC/Session Secret。
-- 增加非交互管理员创建命令，密码从 TTY 或权限文件/stdin 读取。
+- 配置网页生成临时权限文件供非交互安装消费；后续管理员维护命令从 TTY 安全读取密码。
 - 以最终运行用户检查配置引用的外部 CLI；API Client 检查所需环境变量存在。
 - 已存在配置默认不覆盖；支持 `--force` 时也必须先备份。
 
 验收：初始化结果权限正确、preflight 通过，日志和终端不出现秘密值。
 
-状态：**主体已完成。** 配置网页只生成并校验配置；无人值守安装器负责匹配的 collector
-骨架、持久 Session Secret、管理员密码文件、0600 权限、覆盖前备份和重复执行。外部 AI
-CLI 的可执行性检查仍需补充到 runtime doctor。
+状态：**主体已完成。** 配置网页生成并校验配置，同时在用户运行目录原子生成临时 `0600`
+管理员 password-file；无人值守安装器消费并在成功创建管理员后删除它，同时负责匹配的
+collector 骨架、持久 Session Secret、覆盖前备份和重复执行。外部 AI CLI 的可执行性检查
+仍需补充到 runtime doctor。
 
 ### M4：单命令安装与服务生命周期
 

@@ -10,17 +10,21 @@ from flask import (
     Blueprint, Flask, jsonify, redirect, render_template, request, session,
     url_for,
 )
+from flask_babel import gettext
 
 from WebI18n import ensure_web_i18n
 
+from .admin_secret import AdminSecretError, AdminSecretService
 from .service import IISConfigurationService
 
 
 class IISConfigurationWeb:
     def __init__(self, service: IISConfigurationService, *,
-                 setup_ai_url: str | None = None):
+                 setup_ai_url: str | None = None,
+                 admin_secret_service: AdminSecretService | None = None):
         self.service = service
         self.setup_ai_url = setup_ai_url
+        self.admin_secret_service = admin_secret_service or AdminSecretService()
         self._registered_apps: set[int] = set()
 
     def create_blueprint(self, wrapper: Optional[Callable] = None) -> Blueprint:
@@ -35,6 +39,31 @@ class IISConfigurationWeb:
             if not expected or not secrets.compare_digest(expected, supplied or ""):
                 return jsonify({"error": "Invalid or missing CSRF token."}), 403
             return None
+
+        def admin_secret_error(code: str) -> str:
+            messages = {
+                "invalid_username": gettext(
+                    "Administrator username must be 3-50 characters using letters, "
+                    "numbers, underscores, or hyphens."),
+                "password_required": gettext("Administrator password is required."),
+                "password_mismatch": gettext(
+                    "The administrator passwords do not match."),
+                "password_length": gettext(
+                    "Administrator password must be 12-1024 characters."),
+                "password_multiline": gettext(
+                    "Administrator password must be a single line."),
+                "invalid_secret_directory": gettext(
+                    "Administrator secret directory is invalid."),
+                "secret_directory_owner": gettext(
+                    "Administrator secret directory is owned by another user."),
+                "secret_directory_permissions": gettext(
+                    "Administrator secret directory permissions must be 0700."),
+                "authentication_exists": gettext(
+                    "An authentication database already exists; use the administrator "
+                    "management command instead."),
+            }
+            return messages.get(code, gettext(
+                "Could not prepare the administrator credential."))
 
         @bp.get("/")
         @protected
@@ -51,20 +80,33 @@ class IISConfigurationWeb:
         def setup_page():
             token = secrets.token_urlsafe(32)
             session["iis_config_csrf"] = token
+            initial_admin_required = not self.service.config_path.with_name(
+                "Authentication.db").is_file()
             return render_template(
                 "iis_setup.html",
                 csrf_token=token,
                 configuration_url=url_for("iis_configuration.page", advanced=1),
                 ai_configuration_url=self.setup_ai_url,
                 first_run=not self.service.config_path.is_file(),
+                initial_admin_required=initial_admin_required,
+                completion_message=(
+                    gettext(
+                        "Configuration and the temporary administrator credential "
+                        "are ready. Configure AI clients, then run the unattended "
+                        "installation command below.")
+                    if initial_admin_required else gettext(
+                        "Configuration is ready. Configure AI clients, then run the "
+                        "unattended installation command below.")),
                 config_api_url=url_for("iis_configuration.get_config"),
                 validate_api_url=url_for("iis_configuration.validate"),
                 save_api_url=url_for("iis_configuration.save"),
+                admin_secret_api_url=url_for(
+                    "iis_configuration.create_admin_secret"),
                 install_command=(
                     "sudo deploy/iisctl install --non-interactive "
+                    "--profile core,crawler "
                     f"--config {shlex.quote(str(self.service.config_path))} "
-                    f"--ai-config {shlex.quote(str(self.service.config_path.with_name('ai_clients.yaml')))} "
-                    "--admin-user admin --admin-password-file /path/to/admin-password"
+                    f"--ai-config {shlex.quote(str(self.service.config_path.with_name('ai_clients.yaml')))}"
                 ),
             )
 
@@ -108,6 +150,44 @@ class IISConfigurationWeb:
                 return jsonify(result)
             except (KeyError, OSError, TypeError, ValueError) as exc:
                 return jsonify({"saved": False, "error": str(exc)}), 400
+
+        @bp.post("/api/admin-secret")
+        @protected
+        def create_admin_secret():
+            denied = require_csrf()
+            if denied:
+                return denied
+            try:
+                body = request.get_json(silent=True) or {}
+                if self.service.config_path.with_name("Authentication.db").is_file():
+                    raise AdminSecretError("authentication_exists")
+                result = self.admin_secret_service.create(
+                    body.get("username", ""),
+                    body.get("password", ""),
+                    body.get("confirmation", ""),
+                )
+                arguments = (
+                    f"--admin-user {shlex.quote(result['username'])} "
+                    f"--admin-password-file "
+                    f"{shlex.quote(result['password_file'])} "
+                    "--consume-admin-password-file"
+                )
+                return jsonify({
+                    **result, "created": True,
+                    "install_arguments": arguments,
+                })
+            except AdminSecretError as exc:
+                return jsonify({
+                    "created": False,
+                    "error": admin_secret_error(exc.code),
+                    "error_code": exc.code,
+                }), 400
+            except OSError:
+                return jsonify({
+                    "created": False,
+                    "error": admin_secret_error("io_error"),
+                    "error_code": "io_error",
+                }), 400
 
         @bp.post("/api/restore")
         @protected

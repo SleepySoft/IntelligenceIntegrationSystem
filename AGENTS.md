@@ -161,6 +161,7 @@
 - **`deploy/`** — Linux 单命令部署工程（与业务代码隔离）
   - `iisctl` / `iis_deploy.py`：统一部署控制入口；当前 M0 提供零第三方依赖的只读 `doctor`
   - `dependency_profiles.yaml`：声明 `core`/`crawler`/`vector`/`gui`/`dev`/`full` 的组合、服务与浏览器能力；具体 pip 包仍位于 `deploy/requirements/*.txt`
+  - 部署测试严格分为 `deploy/tests/web/`、`bootstrap/`、`installer/`；网页只验证配置/临时管理员秘密等产物，bootstrap 只准备 Python，installer 只消费预制输入
   - `AUDIT_AND_ROADMAP.md`：落地阻塞项、部署身份模式、阶段计划和逐阶段验收标准
   - 首版目标为 Ubuntu 22.04/24.04、Debian 12 x86_64 的 `core` profile；VectorDB 后置
 
@@ -228,7 +229,8 @@ pip install -r requirements_freeze.txt
    - 公开搜索限制位于 `web.public_search`；未登录用户仅允许按内容主时间搜索
 2. **AI 服务配置**：复制 `_config/ai_clients_example.yaml` → `_config/ai_clients.yaml`
    - 每项公共字段为 `factory`、`name`、`group`、`enable`（默认 `true`，设为 `false` 可保留但禁用条目），其余参数直接传入工厂；组并发统一配置在顶层 `group_limits`。本机 harness 可使用 `AIClientCenter/config/config.yaml` 独立验证。
-3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
+3. **用户数据库**：手工运行时可用 `python Scripts/UserManagerConsole.py` 创建管理员；部署
+   配置页会生成临时 `0600` password-file，由无人值守 installer 创建初始管理员并成功后删除
 
 ### 4.4 启动服务
 

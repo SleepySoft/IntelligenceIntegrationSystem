@@ -297,6 +297,9 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--force-config", action="store_true")
     install.add_argument("--admin-user")
     install.add_argument("--admin-password-file", type=Path)
+    install.add_argument(
+        "--consume-admin-password-file", action="store_true",
+        help="管理员创建成功后删除临时密码文件")
     install.add_argument("--skip-admin", action="store_true")
     install.add_argument("--json", action="store_true")
     return parser
@@ -475,6 +478,7 @@ def run_install(args) -> int:
             admin_user=args.admin_user,
             admin_password_file=(args.admin_password_file.expanduser().resolve()
                                  if args.admin_password_file else None),
+            consume_admin_password_file=args.consume_admin_password_file,
             skip_admin=args.skip_admin,
         )
         result = install(request)

@@ -9,7 +9,7 @@ from deploy.dependency_profiles import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 CATALOG = ROOT / "deploy/dependency_profiles.yaml"
 
 

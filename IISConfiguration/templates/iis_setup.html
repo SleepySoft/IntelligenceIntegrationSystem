@@ -60,8 +60,17 @@
   <section class="panel page hidden" data-page="4">
     <h2>{{ _('Review and save') }}</h2>
     <div id="review" class="review" translate="no"></div>
+    {% if initial_admin_required %}
+      <h2>{{ _('Initial administrator') }}</h2>
+      <p class="muted">{{ _('The password is written only to a temporary 0600 installation file. It is not stored in YAML or returned by the server.') }}</p>
+      <div class="grid">
+        <label>{{ _('Administrator username') }}<input id="adminUsername" value="admin" autocomplete="username" translate="no"></label>
+        <span></span>
+        <label>{{ _('Administrator password') }}<input id="adminPassword" type="password" autocomplete="new-password" translate="no"></label>
+        <label>{{ _('Confirm administrator password') }}<input id="adminConfirmation" type="password" autocomplete="new-password" translate="no"></label>
+      </div>
+    {% endif %}
     <div id="result" class="hidden"></div>
-    <p class="muted">{{ _('Before installation, store the administrator password in a 0600 file and replace the placeholder path in the generated command.') }}</p>
   </section>
 
   <section class="panel">
@@ -69,8 +78,8 @@
   </section>
 </main>
 <script>
-const csrf={{ csrf_token|tojson }}, urls={config:{{ config_api_url|tojson }},validate:{{ validate_api_url|tojson }},save:{{ save_api_url|tojson }},full:{{ configuration_url|tojson }},ai:{{ ai_configuration_url|tojson }}},installCommand={{ install_command|tojson }};
-const text={validating:{{ _('Validating…')|tojson }},saved:{{ _('IIS configuration is ready. Configure AI clients, then run the unattended installation command below.')|tojson }},openAI:{{ _('Configure AI clients')|tojson }},full:{{ _('Open full configuration')|tojson }},path:{{ _('Configuration target')|tojson }},source:{{ _('Loaded defaults from')|tojson }},selectedBy:{{ _('selected by')|tojson }},schemaWarning:{{ _('The IIS configuration schema changed and the configuration pages have not been reviewed yet.')|tojson }}};
+const csrf={{ csrf_token|tojson }}, initialAdminRequired={{ initial_admin_required|tojson }}, urls={config:{{ config_api_url|tojson }},validate:{{ validate_api_url|tojson }},save:{{ save_api_url|tojson }},adminSecret:{{ admin_secret_api_url|tojson }},full:{{ configuration_url|tojson }},ai:{{ ai_configuration_url|tojson }}},installCommand={{ install_command|tojson }};
+const text={validating:{{ _('Validating configuration and preparing installation artifacts…')|tojson }},saved:{{ completion_message|tojson }},openAI:{{ _('Configure AI clients')|tojson }},full:{{ _('Open full configuration')|tojson }},path:{{ _('Configuration target')|tojson }},source:{{ _('Loaded defaults from')|tojson }},selectedBy:{{ _('selected by')|tojson }},schemaWarning:{{ _('The IIS configuration schema changed and the configuration pages have not been reviewed yet.')|tojson }},adminRequired:{{ _('Enter an administrator username and password.')|tojson }},adminMismatch:{{ _('The administrator passwords do not match.')|tojson }}};
 let payload=null,current=0;const $=id=>document.getElementById(id),pages=[...document.querySelectorAll('.page')],steps=[...document.querySelectorAll('.step')];
 async function api(url,options={}){options.headers={...(options.headers||{}),'Content-Type':'application/json','X-Config-CSRF':csrf};let r=await fetch(url,options),j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j}
 function lines(values){return (values||[]).join('\n')}function values(id){return $(id).value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean)}
@@ -80,6 +89,6 @@ function collect(){let d=payload.data;d.server.host=$('serverHost').value.trim()
 function summary(){let d=payload.data;return {server:d.server,database:{...d.database,password:d.database.password?'********':''},access:{collector_tokens:d.access.collector_tokens.map(()=>"********"),rpc_tokens:d.access.rpc_tokens.map(()=>"********")},optional_subsystems:{translation:d.optional_subsystems.translation,vector:{enabled:d.optional_subsystems.vector.enabled},situation:{enabled:d.optional_subsystems.situation.enabled},entity_alias:{enabled:d.optional_subsystems.entity_alias.enabled}}}}
 function randomToken(){let bytes=new Uint8Array(32);crypto.getRandomValues(bytes);return [...bytes].map(x=>x.toString(16).padStart(2,'0')).join('')}
 document.querySelectorAll('[data-generate]').forEach(b=>b.onclick=()=>{let el=$(b.dataset.generate),items=values(b.dataset.generate);items.push(randomToken());el.value=items.join('\n')});$('back').onclick=()=>setPage(current-1);$('next').onclick=()=>setPage(current+1);
-$('save').onclick=async()=>{let result=$('result');try{collect();result.className='good';result.textContent=text.validating;await api(urls.validate,{method:'POST',body:JSON.stringify({data:payload.data})});await api(urls.save,{method:'POST',body:JSON.stringify({data:payload.data})});result.innerHTML='';let p=document.createElement('p');p.textContent=text.saved;result.appendChild(p);let command=document.createElement('pre');command.textContent=installCommand;result.appendChild(command);if(urls.ai){let a=document.createElement('a');a.className='button';a.href=urls.ai;a.textContent=text.openAI;result.appendChild(a);result.append(' ')}let full=document.createElement('a');full.className='button secondary';full.href=urls.full;full.textContent=text.full;result.appendChild(full)}catch(e){result.className='bad';result.textContent=e.message}};
+$('save').onclick=async()=>{let result=$('result');try{collect();let username='',password='',confirmation='';if(initialAdminRequired){username=$('adminUsername').value.trim();password=$('adminPassword').value;confirmation=$('adminConfirmation').value;if(!username||!password)throw new Error(text.adminRequired);if(password!==confirmation)throw new Error(text.adminMismatch)}result.className='good';result.textContent=text.validating;await api(urls.validate,{method:'POST',body:JSON.stringify({data:payload.data})});await api(urls.save,{method:'POST',body:JSON.stringify({data:payload.data})});let adminArguments='';if(initialAdminRequired){let admin=await api(urls.adminSecret,{method:'POST',body:JSON.stringify({username:username,password:password,confirmation:confirmation})});$('adminPassword').value='';$('adminConfirmation').value='';adminArguments=` ${admin.install_arguments}`}result.innerHTML='';let p=document.createElement('p');p.textContent=text.saved;result.appendChild(p);let command=document.createElement('pre');command.textContent=`${installCommand}${adminArguments}`;result.appendChild(command);if(urls.ai){let a=document.createElement('a');a.className='button';a.href=urls.ai;a.textContent=text.openAI;result.appendChild(a);result.append(' ')}let full=document.createElement('a');full.className='button secondary';full.href=urls.full;full.textContent=text.full;result.appendChild(full)}catch(e){result.className='bad';result.textContent=e.message}};
 api(urls.config).then(j=>{payload=j;loadForm();let c=j.schema_ui_contract||{};if(c.compatible===false){let r=$('result');r.className='bad';r.textContent=text.schemaWarning;setPage(4);$('save').disabled=true}}).catch(e=>{let r=$('result');r.className='bad';r.textContent=e.message;setPage(4)});
 </script></body></html>

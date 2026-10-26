@@ -267,8 +267,9 @@ python CrawlerServiceEngine.py
 > 引导编辑、真实 schema 校验、密钥遮蔽、原子保存和历史恢复；AI Client 还可直接热重载，
 > IIS 主配置则在保存后重启服务生效。设计边界与独立运行方式见
 > [IIS 配置中心说明](IISConfiguration/README.md)。
-> 首次配置完成后，页面只输出 `deploy/iisctl install --non-interactive ...` 命令；真正的
-> 目录初始化、依赖安装、管理员创建和 systemd 操作统一由无人值守安装器完成。
+> 首次配置完成后，页面生成临时 `0600` 管理员 password-file，并输出完整的
+> `deploy/iisctl install --non-interactive ...` 命令；真正的目录初始化、依赖安装、管理员
+> 创建和 systemd 操作统一由无人值守安装器完成，管理员创建成功后临时文件自动删除。
 > 
 
 + 重要：运行 [UserManagerConsole.py](Scripts/UserManagerConsole.py) ，按提示增加一个用户并设置密码，否则后台无法登录。

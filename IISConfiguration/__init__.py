@@ -2,5 +2,6 @@
 
 from .service import IISConfigurationService
 from .web import IISConfigurationWeb
+from .admin_secret import AdminSecretService
 
-__all__ = ["IISConfigurationService", "IISConfigurationWeb"]
+__all__ = ["AdminSecretService", "IISConfigurationService", "IISConfigurationWeb"]

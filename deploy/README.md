@@ -115,8 +115,8 @@ MongoDB、访问令牌和可选功能；保存后再前往 AIClientCenter 自己
 deploy/iisctl configure --config /opt/iis/_config/iis.yaml --port 5070
 ```
 
-配置网页的职责到此结束：它不会安装依赖、调用 sudo、操作 systemd 或启动业务进程。完成
-IIS 与 AI Client 配置后，使用无人值守安装器：
+配置网页的职责到此结束：它生成 IIS 配置和临时管理员 password-file，但不会创建用户库、
+安装依赖、调用 sudo、操作 systemd 或启动业务进程。页面会给出完整无人值守安装命令，形如：
 
 ```bash
 sudo deploy/iisctl install --non-interactive \
@@ -124,11 +124,15 @@ sudo deploy/iisctl install --non-interactive \
   --config ./_config/iis.yaml \
   --ai-config ./_config/ai_clients.yaml \
   --admin-user admin \
-  --admin-password-file /run/secrets/iis-admin-password
+  --admin-password-file /run/user/1000/iis-bootstrap/admin-password-AbCd1234 \
+  --consume-admin-password-file
 ```
 
-密码只从权限受控文件读取，不进入命令参数值、配置 YAML 或安装日志。Crawler 配置未显式
-提供时，安装器会从 IIS 的监听端口、默认子系统和第一个 collector token 生成安全骨架。
+password-file 是 UTF-8 单行纯文本，末尾允许一个 LF/CRLF；不得包含 NUL 或内嵌换行，组和
+其他用户权限必须为零。密码只从该文件读取，不进入命令参数值、配置 YAML、响应或安装日志。
+`--consume-admin-password-file` 仅在管理员成功写入 bcrypt 数据库后删除文件；此前失败会保留
+以便重试。Crawler 配置未显式提供时，安装器会从 IIS 的监听端口、默认子系统和第一个
+collector token 生成安全骨架。
 安装器默认以 `/opt/iis` 为根创建 `_config`、`_data`、`_log`、`_export`、`_products`、
 `_models`、`runtime` 和虚拟环境，并生成无本机硬编码的 systemd 单元；只有 systemd 单元本身进入
 `/etc/systemd/system`。已有不同配置默认拒绝覆盖，`--force-config` 会先备份到
@@ -152,20 +156,22 @@ deploy/iisctl install --non-interactive \
   --skip-dependencies --skip-browser --no-systemd --no-start --skip-admin
 ```
 
-测试刻意分开：
+测试严格分成三块，不用网页测试间接证明 installer，也不用 installer 测试替代 bootstrap：
 
 ```bash
-# 配置页面后端、schema/UI 契约和保存行为
-PYTHONPATH=. pytest -q Test/test_configuration_pages.py
+# 1. 网页：浏览器交互以及 iis.yaml/password-file/安装命令产物
+PYTHONPATH=. pytest -q Test/test_configuration_pages.py deploy/tests/web
 
-# 无人值守安装器、幂等性、权限和网页配置交接契约
-pytest -q deploy/tests --ignore=deploy/tests/web
+# 2. Shell bootstrap：解释器选择、固定、下载、摘要和沙箱路径
+PYTHONPATH=. pytest -q deploy/tests/bootstrap
 
-# 真实浏览器只验证网页交互，不执行安装
-pip install -r deploy/requirements-test.txt
-playwright install chromium
-PYTHONPATH=. pytest -q deploy/tests/web
+# 3. Python installer：profile、配置消费、目录、管理员、状态和 unit
+PYTHONPATH=. pytest -q deploy/tests/installer
 ```
+
+网页块的真实浏览器用例需要先执行 `pip install -r deploy/requirements-test.txt` 和
+`playwright install chromium`。网页块不会执行安装；installer 块消费测试自己准备的文件，
+不会启动配置网页；bootstrap 块不导入业务安装后端。
 
 `IISSettings` 和 AI Client 公共配置契约都保存了已审查的 UI schema 指纹。schema 变化而
 页面未重新确认时，页面会显示警告，对应自动化测试也会失败。
@@ -185,7 +191,7 @@ sudo deploy/iisctl rollback
 sudo deploy/iisctl backup
 ```
 
-首版正式支持目标为 Ubuntu 22.04/24.04、Debian 12、x86_64。基础 `core` profile 只安装
-IIS Web、Crawler、Python 环境和爬虫所需 Chromium，默认关闭 VectorDB。MongoDB 以及
+首版正式支持目标为 Ubuntu 22.04/24.04、Debian 12、x86_64。`core` 只安装 IIS Web；默认
+组合 `core,crawler` 额外安装 Crawler 和 Chromium，并关闭 VectorDB。MongoDB 以及
 Codex/Kimi/Ollama 等 AI 程序均视为外部能力：安装器只检查连接或可执行性，不负责安装、
 登录、升级或备份。首版服务直接以发起安装的普通用户运行。
