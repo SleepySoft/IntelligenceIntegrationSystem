@@ -186,7 +186,11 @@ def test_ai_configuration_blueprint_renders_standalone(tmp_path):
 
     response = app.test_client().get("/config/?lang=en")
     assert response.status_code == 200
-    assert "AI client configuration" in response.get_data(as_text=True)
+    html = response.get_data(as_text=True)
+    assert "AI client configuration" in html
+    assert 'id="clientSearch"' in html
+    assert 'data-section="limits"' in html
+    assert 'id="factoryOptions"' in html
     payload = app.test_client().get("/config/api/config").get_json()
     metadata = payload["configuration_metadata"]
     assert metadata["version"] == 1
