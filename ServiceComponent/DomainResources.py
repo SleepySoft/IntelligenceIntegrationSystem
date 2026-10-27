@@ -128,6 +128,8 @@ class DomainContext:
     event_v4_event_collection: Any = None
     event_v4_outbox_collection: Any = None
     event_v4_query_engine: Optional[EventV4QueryEngine] = None
+    # 由组合根在领域实现注册后绑定，供态势展示解释该领域的谓词角色。
+    event_registry: Any = None
 
     ai_client_group: Optional[str] = None
     scoring_config: Optional[Dict[str, Any]] = None

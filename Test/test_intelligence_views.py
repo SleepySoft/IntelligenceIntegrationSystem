@@ -18,10 +18,10 @@ DOMAINS = [
         "enabled": True,
     },
     {
-        "name": "finance",
-        "display_name": "财经情报",
+        "name": "industry",
+        "display_name": "行业情报",
         "is_default": False,
-        "url_prefix": "/finance",
+        "url_prefix": "/industry",
         "enabled": True,
     },
 ]
@@ -37,7 +37,7 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     app = Flask(__name__)
     service = IntelligenceViewsService(DOMAINS, settings={
         "situation": {
-            "domain_name": "finance",
+            "domain_name": "industry",
             "window_days": 14,
             "min_score": 7.5,
         },
@@ -61,8 +61,8 @@ def test_integration_page_limits_only_situation_views_from_configuration():
     assert "实体时间线" in html
     assert 'let activeView = "map"' in html
     assert service.situation == {
-        "domain_name": "finance",
-        "domain_display_name": "财经情报",
+        "domain_name": "news",
+        "domain_display_name": "国际新闻",
         "window_days": 14,
         "public_window_days": 14,
         "timeline_max_entities": 8,
@@ -75,11 +75,40 @@ def test_integration_page_limits_only_situation_views_from_configuration():
 
     urls = _frame_urls(html)
     assert urls["list"] == "/intelligences?threshold=6"
-    assert urls["map"] == "/situation/embed/map"
-    assert urls["entities"] == "/situation/embed/entities"
-    assert urls["timeline"] == "/situation/embed/timeline"
+    assert urls["map"] == "/news/situation/embed/map"
+    assert urls["entities"] == "/news/situation/embed/entities"
+    assert urls["timeline"] == "/news/situation/embed/timeline"
     assert not urlparse(urls["map"]).query
     assert not urlparse(urls["entities"]).query
+
+
+def test_named_domain_views_bind_every_frame_to_the_domain_prefix():
+    app = Flask(__name__)
+    IntelligenceViewsService(DOMAINS).mount_to_app(app, url_prefix="/views")
+    client = app.test_client()
+
+    news_html = client.get("/news/views/").get_data(as_text=True)
+    industry_html = client.get("/industry/views/").get_data(as_text=True)
+
+    assert _frame_urls(news_html) == {
+        "list": "/news/intelligences?threshold=6",
+        "map": "/news/situation/embed/map",
+        "entities": "/news/situation/embed/entities",
+        "timeline": "/news/situation/embed/timeline",
+    }
+    assert _frame_urls(industry_html) == {
+        "list": "/industry/intelligences?threshold=6",
+        "map": "/industry/situation/embed/map",
+        "entities": "/industry/situation/embed/entities",
+        "timeline": "/industry/situation/embed/timeline",
+    }
+    assert "国际新闻" in news_html
+    assert "行业情报" in industry_html
+    assert '<option value="/news/views/">国际新闻</option>' in industry_html
+    assert '<option value="/industry/views/" selected>行业情报</option>' in industry_html
+    assert "target.search = current.search" in industry_html
+    assert "const LIST_FRAME_PATH = new URL(FRAME_URLS.list" in industry_html
+    assert "FRAME_URLS.list = `${LIST_FRAME_PATH}" in industry_html
 
 
 def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
@@ -97,7 +126,7 @@ def test_timeline_query_is_allowlisted_and_repeated_entities_are_preserved():
     html = response.get_data(as_text=True)
     urls = _frame_urls(html)
     timeline = urlparse(urls["timeline"])
-    assert timeline.path == "/situation/embed/timeline"
+    assert timeline.path == "/news/situation/embed/timeline"
     assert "entity=ent_us" in timeline.query
     assert "entity=organization%7CUS%7Cwhite+house" in timeline.query
     assert "mode=lanes" in timeline.query
@@ -220,6 +249,8 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     assert service is not None
     assert app.config["INTELLIGENCE_VIEWS_ENABLED"] is True
     assert app.test_client().get("/insight/").status_code == 401
+    assert app.test_client().get("/news/insight/").status_code == 401
+    assert app.test_client().get("/industry/insight/").status_code == 401
 
     class PublicConfig:
         @staticmethod
@@ -241,6 +272,8 @@ def test_iis_mount_is_optional_and_uses_supplied_auth_wrapper():
     )
     assert service is not None
     assert public_app.test_client().get("/public-insight/").status_code == 200
+    assert public_app.test_client().get("/news/public-insight/").status_code == 200
+    assert public_app.test_client().get("/industry/public-insight/").status_code == 200
 
     class DisabledConfig:
         @staticmethod

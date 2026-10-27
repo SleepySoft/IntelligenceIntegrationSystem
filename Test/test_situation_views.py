@@ -1089,6 +1089,107 @@ def test_iis_integration_can_publish_only_fixed_scope_routes(tmp_path):
     assert client.post("/situation/api/map/locations", json={}).status_code == 401
 
 
+def test_iis_integration_mounts_domain_locked_named_situation_views(tmp_path):
+    from flask import Flask
+
+    class Config:
+        @staticmethod
+        def get(key, default=None):
+            if key == "intelligence_hub_web_service.situation_views":
+                return {
+                    "enabled": True,
+                    "geocoding": {"enabled": False},
+                }
+            return default
+
+    class Context:
+        def __init__(self, name):
+            self.name = name
+            self.event_registry = DEFAULT_EVENT_REGISTRY
+
+    contexts = {name: Context(name) for name in ("news", "industry")}
+
+    class Registry:
+        @staticmethod
+        def describe_domains():
+            return [
+                {"name": "news", "display_name": "国际新闻",
+                 "is_default": True, "url_prefix": ""},
+                {"name": "industry", "display_name": "行业情报",
+                 "is_default": False, "url_prefix": "/industry"},
+            ]
+
+        @staticmethod
+        def resolve(name=None):
+            return contexts.get(name or "news")
+
+    app = Flask(__name__)
+    service = mount_to_iis(
+        app,
+        config=Config(),
+        domain_resources=Registry(),
+        wrapper=None,
+        data_path=tmp_path,
+        public_scoped=True,
+    )
+
+    assert service is not None
+    assert app.test_client().get("/situation/embed/map").status_code == 200
+    assert app.test_client().get("/news/situation/embed/map").status_code == 200
+    assert app.test_client().get("/industry/situation/embed/map").status_code == 200
+    services = app.extensions["situation_views_by_domain"]
+    assert set(services) == {"news", "industry"}
+    assert services["news"].dashboard["domain_name"] == "news"
+    assert services["industry"].dashboard["domain_name"] == "industry"
+    assert services["industry"].domain_locked is True
+
+
+def test_named_situation_view_ignores_query_domain_and_uses_context_registry():
+    from flask import Flask
+
+    news_registry = object()
+    industry_registry = object()
+
+    class Context:
+        def __init__(self, name, event_registry):
+            self.name = name
+            self.event_registry = event_registry
+            self.event_v4_intelligence_collection = FakeCollection([])
+            self.event_v4_event_collection = FakeCollection([])
+
+    contexts = {
+        "news": Context("news", news_registry),
+        "industry": Context("industry", industry_registry),
+    }
+
+    class Registry:
+        @staticmethod
+        def describe_domains():
+            return [
+                {"name": "news", "display_name": "国际新闻", "is_default": True},
+                {"name": "industry", "display_name": "行业情报", "is_default": False},
+            ]
+
+        @staticmethod
+        def resolve(name=None):
+            return contexts.get(name or "news")
+
+    service = SituationViewsService(
+        Registry(),
+        registry=news_registry,
+        dashboard={"domain_name": "industry"},
+        domain_locked=True,
+    )
+    app = Flask(__name__)
+    with app.test_request_context(
+        "/industry/situation/api/map?domain_name=news"
+    ):
+        engine, _query = service._request_context(fixed=False)
+
+    assert engine.domain_name == "industry"
+    assert engine.registry is industry_registry
+
+
 def test_iis_integration_can_be_disabled_without_registering_routes(tmp_path):
     from flask import Flask
 

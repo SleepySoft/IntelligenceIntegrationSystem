@@ -26,8 +26,10 @@
         .viewer-session { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
         .viewer-session a { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
         .language-picker { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-        .language-picker select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); font: inherit; }
+        .domain-picker { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .language-picker select, .domain-picker select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); font: inherit; }
         .scope-note { color: var(--muted); font-size: 12px; white-space: nowrap; }
+        .domain-label { color: var(--text); font-weight: 700; white-space: nowrap; }
         .scope-note[hidden] { display: none; }
         .frames { position: relative; min-height: 0; }
         iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); display: none; }
@@ -53,7 +55,16 @@
             <button class="tab" type="button" data-view="entities">{{ _('Entity view') }}</button>
             <button class="tab" type="button" data-view="timeline">{{ _('Entity timeline') }}</button>
         </nav>
+        <span class="domain-label" translate="no">{{ profile.domain_display_name }}</span>
         <span class="scope-note" id="scope-note" hidden></span>
+        <label class="domain-picker">
+            <span>{{ _('Intelligence domain') }}</span>
+            <select id="domain-select" aria-label="{{ _('Intelligence domain') }}">
+                {% for domain in profile.domain_options %}
+                <option value="{{ domain.views_url }}"{% if domain.name == profile.domain_name %} selected{% endif %}>{{ domain.display_name }}</option>
+                {% endfor %}
+            </select>
+        </label>
         <label class="language-picker">
             <span>{{ _('Language') }}</span>
             <select id="language-select" aria-label="{{ _('Interface language') }}">
@@ -88,6 +99,7 @@ window.IIS_I18N_MESSAGES = {
 <script src="/static/js/iis_i18n.js"></script>
 <script>
 const FRAME_URLS = {{ frame_urls|tojson }};
+const LIST_FRAME_PATH = new URL(FRAME_URLS.list, window.location.origin).pathname;
 const SITUATION = {{ profile.situation|tojson }};
 let activeView = {{ profile.active_view|tojson }};
 const LIST_QUERY_NAMES = ['page', 'per_page', 'threshold', 'sort_by', 'search_mode', 'reference', 'score_threshold'];
@@ -120,7 +132,7 @@ function syncOuterListState(state, historyMode = 'replace') {
     const frameParams = new URLSearchParams(
         LIST_QUERY_NAMES.filter(name => url.searchParams.has(name))
             .map(name => [name, url.searchParams.get(name)]));
-    FRAME_URLS.list = `/intelligences${frameParams.size ? `?${frameParams}` : ''}`;
+    FRAME_URLS.list = `${LIST_FRAME_PATH}${frameParams.size ? `?${frameParams}` : ''}`;
     if (activeView === 'list') document.getElementById('open-view').href = FRAME_URLS.list;
 }
 
@@ -253,6 +265,12 @@ document.getElementById('language-select').addEventListener('change', event => {
     const url = new URL(window.location.href);
     url.searchParams.set('lang', event.target.value);
     window.location.assign(url);
+});
+document.getElementById('domain-select').addEventListener('change', event => {
+    const current = new URL(window.location.href);
+    const target = new URL(event.target.value, window.location.origin);
+    target.search = current.search;
+    window.location.assign(target);
 });
 activate(activeView, false);
 </script>

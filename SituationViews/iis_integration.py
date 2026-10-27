@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from .geocoding import CachedNominatimGeocoder
@@ -28,11 +29,32 @@ def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
 
     try:
         geocoder = _build_geocoder(settings, data_path)
+        resources = domain_resources or subsystem_registry
+        descriptions = list(resources.describe_domains())
+        default_domain = next(
+            (item for item in descriptions if item.get("is_default")),
+            descriptions[0] if descriptions else {},
+        )
+        default_name = str(default_domain.get("name") or "").strip()
+        base_dashboard = dict(
+            dashboard if dashboard is not None else settings.get("dashboard") or {})
+        root_domain_name = str(
+            base_dashboard.get("domain_name")
+            or base_dashboard.get("subsystem")
+            or default_name
+        ).strip()
+
+        resolve_context = getattr(resources, "resolve", None)
+        default_ctx = (
+            resolve_context(root_domain_name)
+            if root_domain_name and callable(resolve_context) else None
+        )
         service = SituationViewsService(
-            domain_resources or subsystem_registry,
+            resources,
+            registry=getattr(default_ctx, "event_registry", None),
             detail_origin="",
             geocoder=geocoder,
-            dashboard=dashboard if dashboard is not None else settings.get("dashboard"),
+            dashboard=base_dashboard,
             entity_resolution_service=entity_resolution_service,
             entity_alias_service=entity_alias_service,
         )
@@ -41,9 +63,46 @@ def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
             wrapper=wrapper,
             url_prefix="/situation",
             public_scoped=public_scoped,
+            blueprint_name="situation_views",
         )
+
+        services = {}
+        for domain in descriptions:
+            name = str(domain.get("name") or "").strip()
+            if not name:
+                continue
+            prefix = str(domain.get("url_prefix") or "").strip().rstrip("/")
+            prefix = prefix or f"/{name}"
+            named_dashboard = dict(base_dashboard)
+            named_dashboard["domain_name"] = name
+            ctx = resolve_context(name) if callable(resolve_context) else None
+            named_service = SituationViewsService(
+                resources,
+                registry=getattr(ctx, "event_registry", None),
+                detail_origin="",
+                geocoder=geocoder,
+                dashboard=named_dashboard,
+                entity_resolution_service=entity_resolution_service,
+                entity_alias_service=entity_alias_service,
+                domain_locked=True,
+            )
+            endpoint_name = re.sub(r"[^A-Za-z0-9_]", "_", name)
+            named_service.mount_to_app(
+                app,
+                wrapper=wrapper,
+                url_prefix=f"{prefix}/situation",
+                public_scoped=public_scoped,
+                blueprint_name=f"situation_views_{endpoint_name}",
+            )
+            services[name] = named_service
+
+        app.extensions["situation_views_by_domain"] = services
+        app.extensions["situation_views_default"] = service
         app.config["SITUATION_VIEWS_ENABLED"] = True
-        logger.info("SituationViews components mounted at '/situation/embed/*'.")
+        logger.info(
+            "SituationViews mounted for domains %s; default alias is '/situation'.",
+            sorted(services),
+        )
         return service
     except Exception:
         logger.exception("态势视图初始化失败，IIS 主服务继续运行。")

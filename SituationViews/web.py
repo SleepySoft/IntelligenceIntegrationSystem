@@ -93,21 +93,22 @@ class SituationViewsService:
     def __init__(self, domain_resources=None, registry=None, *, subsystem_registry=None,
                  detail_origin="", geocoder=None,
                  dashboard=None, entity_resolution_service=None,
-                 entity_alias_service=None):
+                 entity_alias_service=None, domain_locked=False):
         self.domain_resources = domain_resources or subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
         self.geocoder = geocoder
         self.dashboard = self._dashboard_profile(dashboard)
+        self.domain_locked = bool(domain_locked)
         self.entity_resolution_service = entity_resolution_service
         self.entity_alias_service = entity_alias_service
         self._engines = {}
 
     def mount_to_app(self, app, *, wrapper=None, url_prefix="/situation",
-                     public_scoped=False):
+                     public_scoped=False, blueprint_name="situation_views"):
         ensure_web_i18n(app)
         template_folder = str(Path(__file__).with_name("templates"))
-        bp = Blueprint("situation_views", __name__, template_folder=template_folder)
+        bp = Blueprint(blueprint_name, __name__, template_folder=template_folder)
         protect = wrapper or (lambda func: func)
         embed_protect = (lambda func: func) if public_scoped else protect
 
@@ -641,7 +642,7 @@ class SituationViewsService:
         return describe()
 
     def _request_context(self, *, fixed=False):
-        domain_name = (self.dashboard["domain_name"] if fixed else
+        domain_name = (self.dashboard["domain_name"] if fixed or self.domain_locked else
                        request.args.get("domain_name", request.args.get("subsystem")))
         ctx = self.domain_resources.resolve(domain_name)
         if ctx is None:
@@ -688,10 +689,11 @@ class SituationViewsService:
         key = ctx.name
         engine = self._engines.get(key)
         if engine is None:
+            event_registry = getattr(ctx, "event_registry", None) or self.registry
             engine = SituationViewEngine(
                 ctx.event_v4_intelligence_collection,
                 ctx.event_v4_event_collection,
-                self.registry,
+                event_registry,
                 domain_name=ctx.name,
                 entity_resolver=self.entity_resolution_service,
                 entity_registry=self.entity_alias_service,

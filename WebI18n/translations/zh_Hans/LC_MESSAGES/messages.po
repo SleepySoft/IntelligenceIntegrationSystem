@@ -1122,7 +1122,11 @@ msgstr "实体视图"
 msgid "Entity timeline"
 msgstr "实体时间线"
 
-#: IntelligenceViews/templates/intelligence_views.html:65
+#: IntelligenceViews/templates/intelligence_views.html:61
+msgid "Intelligence domain"
+msgstr "情报域"
+
+#: IntelligenceViews/templates/intelligence_views.html:76
 msgid "Open separately"
 msgstr "单独打开"
 

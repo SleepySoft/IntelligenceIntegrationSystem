@@ -165,6 +165,9 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         domain_resources.enabled_domains(),
         default_name=domain_resources.default_name,
     )
+    for domain_ctx in domain_resources.enabled_domains():
+        domain_ctx.event_registry = domain_registry.require(
+            domain_ctx.name).event_registry
     services = {"domain_registry": domain_registry}
 
     scheduling_capacity = client_manager.get_scheduling_capacity()

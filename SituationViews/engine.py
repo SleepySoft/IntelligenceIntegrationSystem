@@ -1196,6 +1196,8 @@ class SituationViewEngine:
             return "terror"
         if "crime" in tags:
             return "security"
+        if "industry" in tags or "company_action" in tags:
+            return "industry"
         for category, predicates in PREDICATE_CATEGORIES.items():
             if predicate in predicates:
                 return category
