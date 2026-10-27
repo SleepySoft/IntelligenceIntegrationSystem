@@ -7,6 +7,8 @@ from typing import Callable
 
 from flask import Blueprint, jsonify, render_template, request
 
+from WebI18n import ensure_web_i18n
+
 from .report import AnalysisReportService, DIMENSIONS
 
 
@@ -17,6 +19,10 @@ def create_blueprint(
     """创建无 IIS 依赖的 Blueprint；wrapper 可注入宿主认证装饰器。"""
     blueprint = Blueprint(name, __name__, template_folder="templates")
     service = AnalysisReportService(analysis_db_path, call_db_path)
+
+    @blueprint.record_once
+    def install_i18n(state):
+        ensure_web_i18n(state.app)
 
     def protected(func):
         return wrapper(func) if wrapper else func
@@ -32,7 +38,7 @@ def create_blueprint(
     def api_report():
         try:
             hours = int(request.args.get("hours", "24"))
-            dimension = request.args.get("dimension", "model")
+            dimension = request.args.get("dimension", "service_model_prompt")
             include_shadow = request.args.get("include_shadow", "0") == "1"
             if dimension not in DIMENSIONS:
                 raise ValueError("无效的 dimension")

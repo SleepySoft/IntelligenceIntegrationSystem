@@ -19,7 +19,10 @@ from .store import (
 
 RESULT_ERRORS = {"json_syntax", "schema_shape", "semantic_rule"}
 SERVICE_ERRORS = {"network", "rate_limit", "provider_fatal", "unknown"}
-DIMENSIONS = {"model", "client", "service", "prompt", "model_prompt"}
+DIMENSIONS = {
+    "model", "client", "service", "domain", "prompt", "model_prompt",
+    "service_model_prompt",
+}
 
 
 class AnalysisReportService:
@@ -31,7 +34,7 @@ class AnalysisReportService:
         AnalysisStatsRecorder(self.analysis_db_path)
 
     def report(
-        self, *, hours: int = 24, dimension: str = "model",
+        self, *, hours: int = 24, dimension: str = "service_model_prompt",
         include_shadow: bool = False,
     ) -> dict[str, Any]:
         if not 1 <= int(hours) <= 24 * 90:
@@ -174,7 +177,13 @@ def _summarize(
     input_tokens = sum(_input_tokens(row) for row in attempts)
     output_tokens = sum(_output_tokens(row) for row in attempts)
     cached_tokens = sum(_call_int(row, "cached_input_tokens") for row in attempts)
+    uncached_tokens = sum(_call_int(row, "uncached_input_tokens") for row in attempts)
     reasoning_tokens = sum(_call_int(row, "reasoning_output_tokens") for row in attempts)
+    linked_calls = sum(bool(row.get("call")) for row in attempts)
+    cache_observed = [row for row in attempts if _cache_observed(row)]
+    cold_starts = sum(_cache_status(row) == "cold" for row in cache_observed)
+    cache_hits = sum(_cache_status(row) == "hit" for row in cache_observed)
+    cache_observed_input = sum(_input_tokens(row) for row in cache_observed)
     reported_calls = sum(
         bool(row.get("call") and row["call"].get("token_source") == "reported")
         for row in attempts)
@@ -207,8 +216,18 @@ def _summarize(
         "latency_p95_ms": _percentile(latencies, 0.95),
         "input_tokens": input_tokens, "output_tokens": output_tokens,
         "total_tokens": total_tokens, "cached_input_tokens": cached_tokens,
+        "uncached_input_tokens": uncached_tokens,
         "reasoning_output_tokens": reasoning_tokens,
-        "cache_token_rate": _ratio(cached_tokens, input_tokens),
+        "cache_observed_calls": len(cache_observed),
+        "cache_unreported_calls": linked_calls - len(cache_observed),
+        "cache_observation_coverage": _ratio(len(cache_observed), linked_calls),
+        "cold_start_calls": cold_starts,
+        "cold_start_rate": _ratio(cold_starts, len(cache_observed)),
+        "cache_hit_calls": cache_hits,
+        "cache_hit_call_rate": _ratio(cache_hits, len(cache_observed)),
+        # 只在供应商明确返回缓存字段的调用中计算，避免把“未报告”误当未命中。
+        "cache_token_rate": _ratio(cached_tokens, cache_observed_input),
+        "average_cached_tokens_per_hit": _ratio(cached_tokens, cache_hits),
         "tokens_per_success": _ratio(total_tokens, successes),
         "retry_token_rate": _ratio(retry_tokens, total_tokens),
         "reported_token_coverage": _ratio(reported_calls, len(attempts)),
@@ -224,8 +243,16 @@ def _dimension_value(row: dict[str, Any], dimension: str) -> str:
         return str(call.get("client_name") or row.get("client_name") or "未关联")
     if dimension == "service":
         return str(call.get("provider") or row.get("ai_service") or "未标记")
+    if dimension == "domain":
+        return str(row.get("domain_name") or "未标记")
     prompt = f"v{row.get('prompt_version')}" if row.get("prompt_version") is not None else "未标记"
-    return prompt if dimension == "prompt" else f"{model} · {prompt}"
+    if dimension == "prompt":
+        return prompt
+    if dimension == "model_prompt":
+        return f"{model} · {prompt}"
+    service = str(call.get("provider") or row.get("ai_service") or "未标记")
+    domain = str(row.get("domain_name") or "未标记")
+    return f"{service} · {model} · {domain} · {prompt}"
 
 
 def _build_series(
@@ -236,15 +263,28 @@ def _build_series(
     for row in attempts:
         dt = _parse_iso(row["ts"])
         key = dt.strftime("%Y-%m-%d" if daily else "%m-%d %H:00")
-        bucket = buckets.setdefault(key, {"bucket": key, "calls": 0, "success_items": 0, "tokens": 0})
+        bucket = buckets.setdefault(key, {
+            "bucket": key, "calls": 0, "success_items": 0, "tokens": 0,
+            "cache_observed_calls": 0, "cold_start_calls": 0,
+            "cache_hit_calls": 0,
+        })
         bucket["calls"] += 1
         bucket["tokens"] += _input_tokens(row) + _output_tokens(row)
+        cache_status = _cache_status(row)
+        if cache_status != "unreported":
+            bucket["cache_observed_calls"] += 1
+            bucket[f"cache_{cache_status}_calls" if cache_status == "hit"
+                   else "cold_start_calls"] += 1
     for row in outcomes.values():
         if row["outcome"] != OUTCOME_SUCCESS:
             continue
         dt = _parse_iso(row["ts"])
         key = dt.strftime("%Y-%m-%d" if daily else "%m-%d %H:00")
-        bucket = buckets.setdefault(key, {"bucket": key, "calls": 0, "success_items": 0, "tokens": 0})
+        bucket = buckets.setdefault(key, {
+            "bucket": key, "calls": 0, "success_items": 0, "tokens": 0,
+            "cache_observed_calls": 0, "cold_start_calls": 0,
+            "cache_hit_calls": 0,
+        })
         bucket["success_items"] += 1
     return [buckets[key] for key in sorted(buckets)]
 
@@ -260,6 +300,9 @@ def _public_attempt(row: dict[str, Any]) -> dict[str, Any]:
         "success": not bool(row.get("error_class")),
         "error_class": row.get("error_class"), "latency_ms": _latency(row),
         "tokens": _input_tokens(row) + _output_tokens(row), "linked": bool(call),
+        "cached_input_tokens": call.get("cached_input_tokens"),
+        "uncached_input_tokens": call.get("uncached_input_tokens"),
+        "cache_status": _cache_status(row),
     }
 
 
@@ -277,6 +320,18 @@ def _output_tokens(row: dict[str, Any]) -> int:
 
 def _call_int(row: dict[str, Any], field: str) -> int:
     return int((row.get("call") or {}).get(field) or 0)
+
+
+def _cache_observed(row: dict[str, Any]) -> bool:
+    """只有供应商明确返回缓存字段时，才进入冷启动分母。"""
+    call = row.get("call") or {}
+    return call.get("cached_input_tokens") is not None
+
+
+def _cache_status(row: dict[str, Any]) -> str:
+    if not _cache_observed(row):
+        return "unreported"
+    return "hit" if _call_int(row, "cached_input_tokens") > 0 else "cold"
 
 
 def _latency(row: dict[str, Any]) -> float | None:

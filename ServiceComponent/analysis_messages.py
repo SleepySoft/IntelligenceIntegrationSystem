@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 logger = logging.getLogger(__name__)
 
 ANALYSIS_MAX_OUTPUT_TOKENS = 8192
+DYNAMIC_PROMPT_PLACEHOLDERS = ("{{CURRENT_DATE}}", "{{SIMILAR_MESSAGES}}")
 
 
 class AIMessage(BaseModel):
@@ -52,6 +53,16 @@ def build_analyze_message(
         context: Optional[List[Dict[str, str]]] = None) -> list[dict[str, str]]:
     """使用与生产分析完全相同的占位符和消息角色规则构造请求。"""
     has_content_placeholder = "{{CONTENT}}" in prompt
+    if not has_content_placeholder:
+        dynamic_in_system = [
+            placeholder for placeholder in DYNAMIC_PROMPT_PLACEHOLDERS
+            if placeholder in prompt
+        ]
+        if dynamic_in_system:
+            raise ValueError(
+                "dynamic placeholders are forbidden in system prompt: "
+                + ", ".join(dynamic_in_system)
+            )
     try:
         user_message = build_analyze_user_message(structured_data)
     except ValidationError as exc:

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from AIClientCenter.core.manager import BaseAIClient
 from Scripts import benchmark_ai_clients as benchmark_cli
 from ServiceComponent.ai_client_benchmark import (
@@ -124,6 +126,19 @@ def test_v48_keeps_system_prefix_stable_and_dynamic_data_in_user_message():
     assert "## 当前参考时间" in messages_a[1]["content"]
     assert "正文甲" in messages_a[1]["content"]
     assert messages_a[1] != messages_b[1]
+
+
+@pytest.mark.parametrize("placeholder", ["{{CURRENT_DATE}}", "{{SIMILAR_MESSAGES}}"])
+def test_system_layout_rejects_dynamic_prompt_placeholders(placeholder):
+    with pytest.raises(ValueError, match="dynamic placeholders are forbidden"):
+        build_analyze_message(
+            f"Static protocol\n{placeholder}",
+            {
+                "UUID": "cache-contract",
+                "content": "正文",
+                "informant": "test://cache/contract",
+            },
+        )
 
 
 def test_cli_preview_never_calls_client(tmp_path, monkeypatch, capsys):

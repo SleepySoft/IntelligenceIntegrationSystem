@@ -85,7 +85,6 @@ def build_industry_prompt(registry=DEFAULT_EVENT_REGISTRY) -> str:
 允许保留具有商业意义的故事性信息，例如大规模裁员、核心高管突然离任、工厂关闭、项目取消、
 战略反转和内部重组；不得收录与经营无关的猎奇内容。
 
-当前参考时间：{{{{CURRENT_DATE}}}}
 输出语言：简体中文
 
 # 输出总则

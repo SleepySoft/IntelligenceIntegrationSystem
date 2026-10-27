@@ -18,6 +18,7 @@ from IntelligenceDomains.industry.storage import (
 )
 from IntelligenceDomains.news.schema import DEFAULT_EVENT_REGISTRY as NEWS_EVENT_REGISTRY
 from IntelligenceDomains.registry import build_domain_registry
+from ServiceComponent.analysis_messages import build_analyze_message
 
 
 def _rate_levels(**overrides):
@@ -213,3 +214,34 @@ def test_industry_prompt_forbids_company_and_supply_chain_guessing():
     assert "不得推断正文没有说明的产业链、供应链依赖" in prompt
     assert "shift_business_focus" in prompt
     assert "close_facility" in prompt
+
+
+def test_industry_prompt_keeps_system_prefix_static_and_dynamic_data_in_user():
+    prompt = create_domain().prompt_catalog.text_for(INDUSTRY_PROMPT_VERSION)
+    first = {
+        "UUID": "industry-cache-1",
+        "title": "第一篇行业情报",
+        "content": "正文甲",
+        "informant": "test://industry/cache/1",
+    }
+    second = {
+        "UUID": "industry-cache-2",
+        "title": "第二篇行业情报",
+        "content": "正文乙",
+        "informant": "test://industry/cache/2",
+    }
+
+    assert "{{CURRENT_DATE}}" not in prompt
+    assert "{{CONTENT}}" not in prompt
+
+    messages_a = build_analyze_message(prompt, first)
+    messages_b = build_analyze_message(prompt, second)
+
+    assert [item["role"] for item in messages_a] == ["system", "user"]
+    assert messages_a[0] == messages_b[0]
+    assert "industry-cache-1" not in messages_a[0]["content"]
+    assert "正文甲" not in messages_a[0]["content"]
+    assert "## 当前参考时间" in messages_a[1]["content"]
+    assert "industry-cache-1" in messages_a[1]["content"]
+    assert "正文甲" in messages_a[1]["content"]
+    assert messages_a[1] != messages_b[1]

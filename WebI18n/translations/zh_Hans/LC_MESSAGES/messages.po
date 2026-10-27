@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version:  IIS\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-10-26 15:37+0800\n"
+"POT-Creation-Date: 2026-10-27 18:27+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: zh_Hans\n"
@@ -58,15 +58,15 @@ msgstr ""
 
 #: IISConfig.py:68
 msgid ""
-"Name of the intelligence subsystem used when a request does not specify "
-"one."
-msgstr ""
+"Name of the intelligence domain used when a URL does not include a domain"
+" prefix."
+msgstr "URL 未包含领域前缀时使用的默认情报域。"
 
 #: IISConfig.py:71
 msgid ""
-"Mapping of enabled subsystem identifiers to their display names. The "
-"default subsystem must be present."
-msgstr ""
+"Mapping of enabled domain identifiers to their display names. The default"
+" domain must be present."
+msgstr "已启用情报域标识到显示名称的映射；必须包含默认领域。"
 
 #: IISConfig.py:96
 msgid "Enable asynchronous provider batch analysis for eligible backlog items."
@@ -158,283 +158,283 @@ msgstr ""
 msgid "Process newer unfinished cached items before older ones during replay."
 msgstr ""
 
-#: IISConfig.py:144
+#: IISConfig.py:146
 msgid "Defines the enabled intelligence domains and the default domain."
 msgstr ""
 
-#: IISConfig.py:149
+#: IISConfig.py:152
 msgid ""
 "Enable vector indexing, semantic search, aggregation, and graph features "
 "that depend on VectorDB."
 msgstr ""
 
-#: IISConfig.py:151
+#: IISConfig.py:154
 msgid "HTTP endpoint of the external VectorDB service."
 msgstr ""
 
-#: IISConfig.py:153
+#: IISConfig.py:156
 msgid "Logical VectorDB database or collection namespace used by IIS."
 msgstr ""
 
-#: IISConfig.py:155
+#: IISConfig.py:158
 msgid "Embedding model identifier expected by the VectorDB service."
 msgstr ""
 
-#: IISConfig.py:174
+#: IISConfig.py:177
 msgid ""
 "Enable asynchronous translation for intelligence that requires a Chinese "
 "revision."
 msgstr ""
 
-#: IISConfig.py:176
+#: IISConfig.py:179
 msgid "AI client group from ai_clients.yaml used for translation jobs."
 msgstr "用于翻译任务的 ai_clients.yaml 客户端分组。"
 
-#: IISConfig.py:188
+#: IISConfig.py:191
 msgid "Enable geographic, entity relationship, and timeline situation views."
 msgstr ""
 
-#: IISConfig.py:190
+#: IISConfig.py:194
 msgid ""
-"Intelligence subsystem used by situation views. Leave empty to use the "
-"default subsystem."
-msgstr ""
+"Intelligence domain used by situation views. Leave empty to use the "
+"default domain."
+msgstr "态势视图使用的情报域；留空则使用默认领域。"
 
-#: IISConfig.py:192
+#: IISConfig.py:196
 msgid "Number of recent days included in authenticated situation views."
 msgstr ""
 
-#: IISConfig.py:194
+#: IISConfig.py:198
 msgid "Minimum intelligence score included in situation calculations."
 msgstr ""
 
-#: IISConfig.py:196
+#: IISConfig.py:200
 msgid "Enable location geocoding required by geographic views."
 msgstr ""
 
-#: IISConfig.py:199
+#: IISConfig.py:203
 msgid ""
 "Minimum number of independent events required to display an entity "
 "relationship."
 msgstr ""
 
-#: IISConfig.py:201
+#: IISConfig.py:205
 msgid "Maximum entity nodes returned by one relationship graph calculation."
 msgstr ""
 
-#: IISConfig.py:203
+#: IISConfig.py:207
 msgid "Maximum relationship edges returned by one graph calculation."
 msgstr ""
 
-#: IISConfig.py:205
+#: IISConfig.py:209
 msgid "Maximum intelligence articles scanned by one situation calculation."
 msgstr ""
 
-#: IISConfig.py:207
+#: IISConfig.py:211
 msgid "Build relationship graphs from primary events only."
 msgstr ""
 
-#: IISConfig.py:209
+#: IISConfig.py:213
 msgid ""
 "Keep high-scoring relationships even when they have only one supporting "
 "event."
 msgstr ""
 
-#: IISConfig.py:214
+#: IISConfig.py:218
 msgid "Enable this optional subsystem."
 msgstr ""
 
-#: IISConfig.py:221
+#: IISConfig.py:225
 msgid ""
 "Allow unauthenticated access to the fixed-scope read-only /views "
 "interface."
 msgstr ""
 
-#: IISConfig.py:224
+#: IISConfig.py:228
 msgid ""
 "Recent-day window used for public situation views. Leave empty to use the"
 " authenticated window."
 msgstr ""
 
-#: IISConfig.py:227
+#: IISConfig.py:231
 msgid "Maximum number of entities accepted by a public timeline request."
 msgstr ""
 
-#: IISConfig.py:233
+#: IISConfig.py:237
 msgid "Enable Wikidata suggestions when an entity name is not found locally."
 msgstr ""
 
-#: IISConfig.py:235
+#: IISConfig.py:239
 msgid ""
 "Descriptive HTTP User-Agent for Wikidata requests. Leave empty to use the"
 " built-in value."
 msgstr ""
 
-#: IISConfig.py:237
+#: IISConfig.py:241
 msgid ""
 "Proxy URL for Wikidata requests. Leave empty to use the project default "
 "proxy."
 msgstr ""
 
-#: IISConfig.py:239
+#: IISConfig.py:243
 msgid "Minimum delay in seconds between Wikidata requests."
 msgstr ""
 
-#: IISConfig.py:241
+#: IISConfig.py:245
 msgid "Timeout in seconds for one Wikidata request."
 msgstr ""
 
-#: IISConfig.py:243
+#: IISConfig.py:247
 msgid "Comma-separated language codes fetched when prefilling entity names."
 msgstr ""
 
-#: IISConfig.py:248
+#: IISConfig.py:252
 msgid "Enable entity alias resolution and its management interface."
 msgstr ""
 
-#: IISConfig.py:250
+#: IISConfig.py:254
 msgid "URL prefix used to mount the entity alias subsystem."
 msgstr ""
 
-#: IISConfig.py:252
+#: IISConfig.py:256
 msgid ""
 "Directory containing entity alias JSONL data. Leave empty to use "
 "EntityAlias/data."
 msgstr ""
 
-#: IISConfig.py:254
+#: IISConfig.py:258
 msgid "Use the VectorDB service for semantic recall of similar entity names."
 msgstr ""
 
-#: IISConfig.py:257
+#: IISConfig.py:261
 msgid "Settings for the optional Wikidata suggestion source."
 msgstr ""
 
-#: IISConfig.py:270
+#: IISConfig.py:274
 msgid "Asynchronous intelligence translation settings."
 msgstr ""
 
-#: IISConfig.py:272
+#: IISConfig.py:276
 msgid "Vector intelligence integration settings."
 msgstr "向量情报集成设置。"
 
-#: IISConfig.py:274
+#: IISConfig.py:278
 msgid "Situation view and graph calculation settings."
 msgstr ""
 
-#: IISConfig.py:277
+#: IISConfig.py:281
 msgid "Unified intelligence view shell and public access settings."
 msgstr ""
 
-#: IISConfig.py:279
+#: IISConfig.py:283
 msgid "Entity alias resolution settings."
 msgstr "实体别名解析设置。"
 
-#: IISConfig.py:281
+#: IISConfig.py:285
 msgid "Provider Batch API backlog analysis settings."
 msgstr ""
 
-#: IISConfig.py:286
+#: IISConfig.py:290
 msgid "Tokens accepted by the privileged RPC API. Use independent random values."
 msgstr ""
 
-#: IISConfig.py:288
+#: IISConfig.py:292
 msgid ""
 "Tokens accepted by the /collect endpoint. Each crawler must use one "
 "configured value."
 msgstr ""
 
-#: IISConfig.py:298
+#: IISConfig.py:302
 msgid "Maximum records returned per public MongoDB search page."
 msgstr ""
 
-#: IISConfig.py:300
+#: IISConfig.py:304
 msgid "Maximum page number available to unauthenticated search users."
 msgstr ""
 
-#: IISConfig.py:302
+#: IISConfig.py:306
 msgid "Maximum content-time window in days available to public search."
 msgstr ""
 
-#: IISConfig.py:304
+#: IISConfig.py:308
 msgid "Per-client public search request limit per minute."
 msgstr ""
 
-#: IISConfig.py:306
+#: IISConfig.py:310
 msgid "Allow unauthenticated users to run vector search."
 msgstr ""
 
-#: IISConfig.py:308
+#: IISConfig.py:312
 msgid "Maximum records returned per public vector search page."
 msgstr ""
 
-#: IISConfig.py:310
+#: IISConfig.py:314
 msgid "Maximum vector candidates recalled before public result pagination."
 msgstr ""
 
-#: IISConfig.py:315
+#: IISConfig.py:319
 msgid ""
 "Watch repository Markdown posts and publish changes without restarting "
 "IIS."
 msgstr ""
 
-#: IISConfig.py:319
+#: IISConfig.py:323
 msgid "Quiet period in milliseconds before recompiling a changed Markdown post."
 msgstr ""
 
-#: IISConfig.py:322
+#: IISConfig.py:326
 msgid "Maximum milliseconds to postpone publication while edits continue."
 msgstr ""
 
-#: IISConfig.py:335
+#: IISConfig.py:339
 msgid ""
 "Enable interface language selection from URL, session, and browser "
 "preferences."
 msgstr ""
 
-#: IISConfig.py:337
+#: IISConfig.py:341
 msgid ""
 "Default BCP 47 interface language used when no valid preference is "
 "available."
 msgstr ""
 
-#: IISConfig.py:342
+#: IISConfig.py:346
 msgid "Mapping of public BCP 47 language tags to gettext catalog directory names."
 msgstr ""
 
-#: IISConfig.py:381
+#: IISConfig.py:385
 msgid "Web interface internationalization settings."
 msgstr ""
 
-#: IISConfig.py:383
+#: IISConfig.py:387
 msgid "Limits applied to unauthenticated intelligence search."
 msgstr ""
 
-#: IISConfig.py:385
+#: IISConfig.py:389
 msgid "Markdown post hot-reload settings."
 msgstr ""
 
-#: IISConfig.py:390
+#: IISConfig.py:394
 msgid "IIS web server listener and public address settings."
 msgstr ""
 
-#: IISConfig.py:392
+#: IISConfig.py:396
 msgid "Connection settings for the external MongoDB service."
 msgstr ""
 
-#: IISConfig.py:394
+#: IISConfig.py:398
 msgid "Core intelligence processing pipeline settings."
 msgstr ""
 
-#: IISConfig.py:396
+#: IISConfig.py:400
 msgid "Machine-to-machine access tokens."
 msgstr "机器间访问令牌。"
 
-#: IISConfig.py:399
+#: IISConfig.py:403
 msgid "Settings for independently switchable optional subsystems."
 msgstr ""
 
-#: IISConfig.py:401
+#: IISConfig.py:405
 msgid "Web interface behavior and public access limits."
 msgstr ""
 
@@ -453,7 +453,7 @@ msgstr "在此编辑客户端，使用真实工厂完成校验，然后保存并
 #: AIClientCenter/templates/ai_client_config.html:23
 #: IISConfiguration/templates/iis_configuration.html:26
 #: IISConfiguration/templates/iis_setup.html:16
-#: IntelligenceViews/templates/intelligence_views.html:68
+#: IntelligenceViews/templates/intelligence_views.html:79
 #: SituationViews/templates/entity_timeline.html:99
 #: SituationViews/templates/situation_views.html:235 templates/post.html:59
 msgid "Signed in"
@@ -462,7 +462,7 @@ msgstr "已登录"
 #: AIClientCenter/templates/ai_client_config.html:23
 #: IISConfiguration/templates/iis_configuration.html:26
 #: IISConfiguration/templates/iis_setup.html:16
-#: IntelligenceViews/templates/intelligence_views.html:69
+#: IntelligenceViews/templates/intelligence_views.html:80
 #: SituationViews/templates/entity_timeline.html:100
 #: SituationViews/templates/situation_views.html:236 templates/post.html:60
 msgid "Sign out"
@@ -722,6 +722,117 @@ msgstr "并发数"
 msgid "No saved versions yet."
 msgstr "暂无已保存版本。"
 
+#: AnalysisObservability/templates/analysis_observability.html:23
+msgid "Provider × model × domain × Prompt"
+msgstr "服务商 × 模型 × 领域 × Prompt"
+
+#: AnalysisObservability/templates/analysis_observability.html:23
+#: IntelligenceViews/templates/intelligence_views.html:61
+#: IntelligenceViews/templates/intelligence_views.html:62
+msgid "Intelligence domain"
+msgstr "情报域"
+
+#: AnalysisObservability/templates/analysis_observability.html:28
+msgid "Efficiency, cache, and cost"
+msgstr "效率、缓存与成本"
+
+#: AnalysisObservability/templates/analysis_observability.html:28
+msgid ""
+"A cold start is counted only when the provider reports cache fields and "
+"cached tokens are zero. Calls without cache fields are not counted as "
+"cold starts."
+msgstr "只有供应商明确报告缓存字段且缓存 Token 为 0 时才计为冷启动；未报告缓存字段的调用不计入冷启动。"
+
+#: AnalysisObservability/templates/analysis_observability.html:41
+msgid "Cache hit"
+msgstr "缓存命中"
+
+#: AnalysisObservability/templates/analysis_observability.html:42
+msgid "Cold start"
+msgstr "冷启动"
+
+#: AnalysisObservability/templates/analysis_observability.html:43
+msgid "Not reported"
+msgstr "未报告"
+
+#: AnalysisObservability/templates/analysis_observability.html:44
+msgid "Cold starts"
+msgstr "冷启动次数"
+
+#: AnalysisObservability/templates/analysis_observability.html:45
+msgid "Calls where cache fields are reported and cached_input_tokens equals zero"
+msgstr "已报告缓存字段且 cached_input_tokens 等于 0 的调用"
+
+#: AnalysisObservability/templates/analysis_observability.html:46
+msgid "Cold-start rate"
+msgstr "冷启动比例"
+
+#: AnalysisObservability/templates/analysis_observability.html:47
+msgid "Cold starts divided by calls reporting cache fields"
+msgstr "冷启动次数 ÷ 已报告缓存字段的调用数"
+
+#: AnalysisObservability/templates/analysis_observability.html:48
+msgid "Cache-hit call rate"
+msgstr "缓存命中调用率"
+
+#: AnalysisObservability/templates/analysis_observability.html:49
+msgid ""
+"Calls with cached_input_tokens above zero divided by cache-observable "
+"calls"
+msgstr "cached_input_tokens 大于 0 的调用 ÷ 缓存可观测调用"
+
+#: AnalysisObservability/templates/analysis_observability.html:50
+msgid "Cache observation coverage"
+msgstr "缓存观测覆盖率"
+
+#: AnalysisObservability/templates/analysis_observability.html:51
+msgid "Calls reporting cache fields divided by linked calls"
+msgstr "已报告缓存字段的调用 ÷ 已关联调用"
+
+#: AnalysisObservability/templates/analysis_observability.html:52
+msgid "Cache fields not reported"
+msgstr "缓存字段未报告"
+
+#: AnalysisObservability/templates/analysis_observability.html:53
+msgid "Provider responses without cache hit data"
+msgstr "供应商响应中没有缓存命中数据"
+
+#: AnalysisObservability/templates/analysis_observability.html:54
+msgid "Cached-token rate"
+msgstr "缓存 Token 比例"
+
+#: AnalysisObservability/templates/analysis_observability.html:55
+msgid "Calculated only across calls reporting cache fields"
+msgstr "仅在已报告缓存字段的调用中计算"
+
+#: AnalysisObservability/templates/analysis_observability.html:56
+msgid "Average cached tokens per hit"
+msgstr "平均缓存 Token / 命中"
+
+#: AnalysisObservability/templates/analysis_observability.html:57
+msgid "Provider / model / domain / Prompt"
+msgstr "服务商 / 模型 / 领域 / Prompt"
+
+#: AnalysisObservability/templates/analysis_observability.html:58
+msgid "Cache observation"
+msgstr "缓存观测"
+
+#: AnalysisObservability/templates/analysis_observability.html:59
+msgid "Cold"
+msgstr "冷启动"
+
+#: AnalysisObservability/templates/analysis_observability.html:60
+msgid "Hit"
+msgstr "命中"
+
+#: AnalysisObservability/templates/analysis_observability.html:61
+msgid "Cache status"
+msgstr "缓存状态"
+
+#: AnalysisObservability/templates/analysis_observability.html:62
+msgid "Cached / uncached tokens"
+msgstr "缓存 / 未缓存 Token"
+
 #: IISConfiguration/web.py:66
 msgid ""
 "Administrator username must be 3-50 characters using letters, numbers, "
@@ -792,13 +903,13 @@ msgstr "使用引导表单修改 IIS 设置。校验使用与服务启动相同�
 
 #: IISConfiguration/templates/iis_configuration.html:26
 #: IISConfiguration/templates/iis_setup.html:16
-#: IntelligenceViews/templates/intelligence_views.html:58
+#: IntelligenceViews/templates/intelligence_views.html:69
 msgid "Language"
 msgstr "语言"
 
 #: IISConfiguration/templates/iis_configuration.html:26
 #: IISConfiguration/templates/iis_setup.html:16
-#: IntelligenceViews/templates/intelligence_views.html:59
+#: IntelligenceViews/templates/intelligence_views.html:70
 msgid "Interface language"
 msgstr "界面语言"
 
@@ -1099,63 +1210,59 @@ msgstr "请输入管理员用户名和密码。"
 msgid "Intelligence views"
 msgstr "情报视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:50
+#: IntelligenceViews/templates/intelligence_views.html:52
 msgid "Intelligence display mode"
 msgstr "情报展示方式"
 
-#: IntelligenceViews/templates/intelligence_views.html:51
+#: IntelligenceViews/templates/intelligence_views.html:53
 #: templates/intelligence_list.html:57
 msgid "Intelligence list"
 msgstr "情报列表"
 
-#: IntelligenceViews/templates/intelligence_views.html:52
+#: IntelligenceViews/templates/intelligence_views.html:54
 #: SituationViews/templates/situation_views.html:263
 msgid "Map view"
 msgstr "地域视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:53
+#: IntelligenceViews/templates/intelligence_views.html:55
 msgid "Entity view"
 msgstr "实体视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:54
+#: IntelligenceViews/templates/intelligence_views.html:56
 #: SituationViews/templates/entity_timeline.html:90
 msgid "Entity timeline"
 msgstr "实体时间线"
-
-#: IntelligenceViews/templates/intelligence_views.html:61
-msgid "Intelligence domain"
-msgstr "情报域"
 
 #: IntelligenceViews/templates/intelligence_views.html:76
 msgid "Open separately"
 msgstr "单独打开"
 
-#: IntelligenceViews/templates/intelligence_views.html:74
+#: IntelligenceViews/templates/intelligence_views.html:85
 msgid "Loading view…"
 msgstr "正在加载视图…"
 
-#: IntelligenceViews/templates/intelligence_views.html:75
+#: IntelligenceViews/templates/intelligence_views.html:86
 msgid "Intelligence list view"
 msgstr "情报列表视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:76
+#: IntelligenceViews/templates/intelligence_views.html:87
 msgid "Geographic situation view"
 msgstr "地域态势视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:77
+#: IntelligenceViews/templates/intelligence_views.html:88
 msgid "Entity relationship view"
 msgstr "实体关系视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:78
+#: IntelligenceViews/templates/intelligence_views.html:89
 msgid "Entity timeline view"
 msgstr "实体时间线视图"
 
-#: IntelligenceViews/templates/intelligence_views.html:84
+#: IntelligenceViews/templates/intelligence_views.html:95
 #, python-brace-format
 msgid "Last {days} days · score ≥ {score}"
 msgstr "最近 {days} 天 · 评分 ≥ {score}"
 
-#: IntelligenceViews/templates/intelligence_views.html:85
+#: IntelligenceViews/templates/intelligence_views.html:96
 #, python-brace-format
 msgid " · relationships require {count} corroborating reports"
 msgstr " · 关系需 {count} 起印证"
@@ -2856,8 +2963,27 @@ msgstr "排序："
 
 #~ msgid "Validating…"
 #~ msgstr "正在校验…"
+
 #~ msgid "Save"
 #~ msgstr "保存"
 
 #~ msgid "Additional factory parameter"
 #~ msgstr "额外工厂参数"
+
+#~ msgid ""
+#~ "Name of the intelligence subsystem used"
+#~ " when a request does not specify "
+#~ "one."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Mapping of enabled subsystem identifiers "
+#~ "to their display names. The default "
+#~ "subsystem must be present."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Intelligence subsystem used by situation "
+#~ "views. Leave empty to use the "
+#~ "default subsystem."
+#~ msgstr ""
