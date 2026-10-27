@@ -101,7 +101,9 @@ class CrawlContext:
         self.collector_token = collector_token or DEFAULT_COLLECTOR_TOKEN
         if domain_name and subsystem and domain_name != subsystem:
             raise ValueError("domain_name and legacy subsystem disagree")
-        self.domain_name = domain_name or subsystem
+        self.domain_name = str(domain_name or subsystem or "").strip()
+        if not self.domain_name:
+            raise ValueError("collector domain_name is required")
         self.error_threshold = error_threshold
         self.logger = PrefixLogger(logger or
                                    get_tls_logger(__name__) or
@@ -127,8 +129,13 @@ class CrawlContext:
             cache_on_error: bool = True
     ):
         collected_data.token = self.collector_token
-        if self.domain_name and not getattr(collected_data, 'domain', ''):
-            collected_data.domain = self.domain_name
+        payload_domain = str(getattr(collected_data, 'domain', '') or '').strip()
+        if payload_domain and payload_domain != self.domain_name:
+            raise ValueError(
+                f"collected data domain {payload_domain!r} disagrees with "
+                f"configured collector domain {self.domain_name!r}")
+        # 配置是采集任务领域归属的唯一事实源；每次提交（含 cache 重放）都显式写入。
+        collected_data.domain = self.domain_name
 
         if self._submit_collected_data:
             self.logger.info(f"Submit collected data to: {self.i_hub_url}")

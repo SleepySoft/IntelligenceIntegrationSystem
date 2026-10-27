@@ -1,7 +1,13 @@
 import threading
 from types import SimpleNamespace
 
-from CrawlerServiceEngine import TaskManager, is_task_plugin_path
+import pytest
+
+from CrawlerServiceEngine import (
+    TaskManager,
+    is_task_plugin_path,
+    resolve_domain_task_dirs,
+)
 
 
 def test_task_discovery_only_selects_production_plugins(tmp_path):
@@ -15,6 +21,32 @@ def test_task_discovery_only_selects_production_plugins(tmp_path):
     assert is_task_plugin_path("task_crawl_news.py")
     assert not is_task_plugin_path("task_example.py")
     assert not is_task_plugin_path("crawler_config_news.py")
+
+
+def test_task_domain_is_resolved_from_configured_domain_directory(tmp_path):
+    news_dir = tmp_path / "news"
+    finance_dir = tmp_path / "finance"
+    news_dir.mkdir()
+    finance_dir.mkdir()
+    manager = TaskManager.__new__(TaskManager)
+    manager.default_domain = "news"
+    manager.domain_task_dirs = {
+        "news": str(news_dir),
+        "finance": str(finance_dir),
+    }
+
+    assert manager._resolve_domain(str(finance_dir / "task_crawl_market.py")) == "finance"
+    assert manager._resolve_domain(str(news_dir / "task_crawl_world.py")) == "news"
+
+
+def test_domain_task_directories_must_not_overlap(tmp_path):
+    with pytest.raises(ValueError, match="must not overlap"):
+        resolve_domain_task_dirs({
+            "collector.domain_task_dirs": {
+                "news": str(tmp_path),
+                "finance": str(tmp_path / "finance"),
+            },
+        })
 
 
 def test_shutdown_notifies_all_plugins_before_waiting_for_any_thread():

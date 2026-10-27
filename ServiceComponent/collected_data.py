@@ -42,6 +42,12 @@ class CollectedData(BaseModel):
             }
             if len(names) > 1:
                 raise ValueError("domain aliases disagree")
+            if names:
+                normalized = dict(value)
+                normalized["domain"] = next(iter(names))
+                normalized.pop("domain_name", None)
+                normalized.pop("subsystem", None)
+                return normalized
         return value
 
     @field_validator("pub_time", mode="before")

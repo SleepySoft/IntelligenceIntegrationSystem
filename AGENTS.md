@@ -320,6 +320,9 @@ python VectorDB/VectorDBBService.py \
 ### 5.5 插件/爬虫加载与开关
 - `CrawlerServiceEngine.py` 的 `TaskManager` 在启动时扫描 `CrawlTasks/` 加载任务；watchdog 文件监控目前在代码中被注释，**新增/修改任务需重启服务生效**（重载管线 `submit_reload` 存在，恢复 observer 即可热重载）
 - 任务级开关：`_config/collector.json` 的 `collector.disabled_tasks`（插件名列表，如 `task_crawl_investing`）在加载前拦截并停掉同名运行中任务，重启生效
+- 采集领域归属由 `collector.domain_task_dirs` 的“领域名 → 任务目录”映射确定；单领域旧布局才
+  回退 `collector.default_domain`。`TaskManager` 必须把该领域注入 `ServiceContext.domain_name`，
+  Collector 的每个 `/collect` 载荷必须包含同值 `domain`，任务代码不得覆盖配置归属。
 - 每个插件需暴露 `module_init(ctx)` 和 `start_task(stop_event)` 两个钩子
 - `stop_event` 为 `threading.Event`，插件应在每次迭代中检查其状态以实现优雅退出
 - **最高优先级配置契约**：同一份 `CRAWLER_CONFIG` 在 CrawlerPlayground、生成配置和 CrawlPipeline 中必须保持字段与运行语义一致；Playground 不可编辑的未知字段、嵌套扩展参数和 callable hook 必须无损透传。具体规则与回归测试要求见 `IntelligenceCrawler/AGENTS.md`。

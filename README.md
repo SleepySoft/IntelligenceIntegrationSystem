@@ -261,6 +261,9 @@ python CrawlerServiceEngine.py
 >
 > AI Client 使用独立的 `ai_clients.yaml`；采集器使用独立的 `collector.json`，外网代理
 > 也配置在采集器文件中。`access.collector_tokens` 必须与采集器的 `default_token` 对应。
+> `collector.domain_task_dirs` 以“情报域名 → CrawlTasks 目录”明确声明每批任务的领域归属，
+> `collector.default_domain` 只用于未配置目录映射的单领域旧布局。Crawler 会把配置得到的
+> `domain` 写入每个 `/collect` 请求；缺失领域或任务数据试图覆盖配置领域时会拒绝提交。
 >
 > 不想手改 YAML 时，可运行 `deploy/iisctl configure`（或 `Scripts/iis_configure.sh`）打开
 > 仅监听本机的首次配置向导；正式配置不存在时会自动进入五步初始化流程。
@@ -398,7 +401,8 @@ Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui
 程序中由[CrawlerServiceEngine.py](CrawlerServiceEngine.py)驱动[CrawlTasks](CrawlTasks)目录下的抓取模块。
 > 
 > 框架保留了任务重载管线，但当前文件监控 observer 未启用；新增或修改抓取任务后需要重启
-> Crawler 服务才能生效。任务可通过 `_config/collector.json` 的 `disabled_tasks` 禁用。
+> Crawler 服务才能生效。任务可通过 `_config/collector.json` 的 `disabled_tasks` 禁用；
+> 领域归属由同文件的 `domain_task_dirs` 决定，而不是由任务代码自行选择。
 > 
 
 抓取模块事实上基于两个框架：

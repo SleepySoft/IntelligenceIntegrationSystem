@@ -65,11 +65,13 @@ def resolve_domain_task_dirs(config: EasyConfig) -> Dict[str, str]:
     config_file = getattr(config, 'config_file', None)
     if config_file:
         config_dir = os.path.dirname(os.path.abspath(str(config_file)))
+    if not isinstance(raw, dict):
+        raise ValueError("collector.domain_task_dirs must be an object")
     for domain_name, directory in raw.items():
         domain_name = str(domain_name).strip()
         path = str(directory)
         if not domain_name or not path:
-            continue
+            raise ValueError("collector.domain_task_dirs requires non-empty domain names and paths")
         if not os.path.isabs(path):
             candidates = []
             if config_dir:
@@ -80,6 +82,19 @@ def resolve_domain_task_dirs(config: EasyConfig) -> Dict[str, str]:
             # 存在则取第一个；都不存在时回退到项目根下的规范位置（由 scan 自动创建）
             path = existing[0] if existing else os.path.join(project_root, path)
         result[domain_name] = os.path.normpath(path)
+    entries = list(result.items())
+    for index, (left_domain, left_path) in enumerate(entries):
+        left = os.path.abspath(left_path)
+        for right_domain, right_path in entries[index + 1:]:
+            right = os.path.abspath(right_path)
+            try:
+                overlap = os.path.commonpath([left, right]) in {left, right}
+            except ValueError:
+                overlap = False
+            if overlap:
+                raise ValueError(
+                    "collector.domain_task_dirs paths must not overlap: "
+                    f"{left_domain!r}={left_path!r}, {right_domain!r}={right_path!r}")
     return result
 
 
@@ -115,7 +130,9 @@ class ServiceContext:
         self.crawler_governor = crawler_governor
         if domain_name and subsystem and domain_name != subsystem:
             raise ValueError("domain_name and legacy subsystem disagree")
-        self.domain_name = domain_name or subsystem
+        self.domain_name = str(domain_name or subsystem or "").strip()
+        if not self.domain_name:
+            raise ValueError("collector task domain_name is required")
         self.project_root = project_root
 
     @property
@@ -166,6 +183,10 @@ class TaskManager:
             or 'news').strip() or 'news'
         self.domain_task_dirs: Dict[str, str] = resolve_domain_task_dirs(self.config)
         if self.domain_task_dirs:
+            if self.default_domain not in self.domain_task_dirs:
+                raise ValueError(
+                    "collector.default_domain must be present in "
+                    "collector.domain_task_dirs")
             logger.info(f"Collector domain task dirs: {self.domain_task_dirs}")
             logger.info(f"Collector default domain: {self.default_domain}")
         else:

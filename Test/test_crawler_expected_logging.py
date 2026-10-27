@@ -26,6 +26,7 @@ def test_hub_rejection_is_a_summarized_skip_without_traceback(caplog):
     logger = logging.getLogger('test.crawler.expected')
     context = CrawlContext(
         'test', 'http://127.0.0.1:5000', 'token', None, logger=logger,
+        domain_name='news',
     )
     context._submit_collected_data = lambda *_args: {
         'resp': 'rejected', 'reason': 'stale_content',

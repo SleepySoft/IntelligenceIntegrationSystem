@@ -115,9 +115,11 @@
 
 ### 3.4 与 IIS 子系统的对应（建议，可按配置调整）
 
-- `industry` 子系统：OFweek、集微网、北极星、CPIA、CSIA、中汽协、赛迪、前瞻、GGII、信通院、工信部、国家统计局（制造业部分）、Supply Chain Dive / Manufacturing Dive / IndustryWeek / SemiEngineering。
-- `finance` 子系统：财联社电报、科创板日报、36氪（财经科技类目）、艾瑞、亿欧、TrendForce（部分）。
-- 各站点任务的 `subsystem` 归属通过 `_config/collector.json` 的 `task_dirs` 目录映射配置，无需改代码；建议 `CrawlTasks/industry/` 与 `CrawlTasks/finance/` 分目录维护。
+- `industry` 情报域：OFweek、集微网、北极星、CPIA、CSIA、中汽协、赛迪、前瞻、GGII、信通院、工信部、国家统计局（制造业部分）、Supply Chain Dive / Manufacturing Dive / IndustryWeek / SemiEngineering。
+- `finance` 情报域：财联社电报、科创板日报、36氪（财经科技类目）、艾瑞、亿欧、TrendForce（部分）。
+- 各站点任务的 `domain` 归属通过 `_config/collector.json` 的 `domain_task_dirs` 目录映射配置，
+  无需在任务代码中选择；建议 `CrawlTasks/industry/` 与 `CrawlTasks/finance/` 分目录维护。
+  提交到 `/collect` 时，Crawler 会把映射得到的领域写入载荷的 `domain` 字段。
 
 ## 四、附录
 

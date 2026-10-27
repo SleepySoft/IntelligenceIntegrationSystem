@@ -239,6 +239,11 @@ def build_default_collector(config, source_dir: Path) -> dict[str, Any]:
             domain_task_dirs[domain_name] = str(candidate)
     if not domain_task_dirs:
         domain_task_dirs[settings.hub.domains.default] = str(source_dir / "CrawlTasks")
+    else:
+        domain_task_dirs.setdefault(
+            settings.hub.domains.default,
+            str(source_dir / "CrawlTasks" / settings.hub.domains.default),
+        )
     return {
         "collector": {
             "name": "main",

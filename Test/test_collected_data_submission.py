@@ -4,6 +4,7 @@ import time
 import pytest
 
 from ServiceComponent.IntelligenceHubDefines_v4 import CollectedData
+from Workflow.CommonFlowUtility import CrawlContext
 from Workflow import CollectorSubmission
 
 
@@ -20,6 +21,7 @@ def _collected(**overrides) -> CollectedData:
         "title": "Test article",
         "content": "Long enough article content.",
         "informant": "https://example.test/article",
+        "domain": "news",
     }
     values.update(overrides)
     return CollectedData(**values)
@@ -47,7 +49,10 @@ def test_collected_data_rejects_blank_informant():
 
 
 def test_legacy_subsystem_input_is_emitted_only_as_canonical_domain():
-    payload = _collected(subsystem="finance").model_dump()
+    legacy = _collected().model_dump()
+    legacy.pop("domain")
+    legacy["subsystem"] = "finance"
+    payload = CollectedData(**legacy).model_dump()
 
     assert payload["domain"] == "finance"
     assert "subsystem" not in payload
@@ -56,6 +61,48 @@ def test_legacy_subsystem_input_is_emitted_only_as_canonical_domain():
 def test_collected_data_rejects_conflicting_domain_aliases():
     with pytest.raises(ValueError, match="domain aliases disagree"):
         _collected(domain="news", subsystem="finance")
+
+
+def test_collector_submission_rejects_missing_domain():
+    result = CollectorSubmission.post_collected_intelligence(
+        "http://127.0.0.1:5000", _collected(domain=""),
+    )
+
+    assert result == {
+        "status": "error",
+        "reason": "Collector submission requires a configured domain.",
+    }
+
+
+def test_crawl_context_attaches_configured_domain_to_http_submission():
+    captured = {}
+    context = CrawlContext(
+        "test", "http://127.0.0.1:5000", "collector-token", None,
+        domain_name="finance",
+    )
+    context._submit_collected_data = lambda url, data, timeout: (
+        captured.update(
+            url=url,
+            payload=CollectorSubmission.build_collected_payload(data),
+            timeout=timeout,
+        ) or {"resp": "queued"}
+    )
+    collected = _collected(domain="")
+
+    context.submit_collected_data("finance/feed", collected)
+
+    assert collected.domain == "finance"
+    assert captured["payload"]["domain"] == "finance"
+
+
+def test_crawl_context_rejects_payload_domain_that_disagrees_with_config():
+    context = CrawlContext(
+        "test", "http://127.0.0.1:5000", "collector-token", None,
+        domain_name="finance",
+    )
+
+    with pytest.raises(ValueError, match="configured collector domain"):
+        context.submit_collected_data("finance/feed", _collected(domain="news"))
 
 
 def test_submission_serializes_rss_struct_time_as_iso8601(monkeypatch):
