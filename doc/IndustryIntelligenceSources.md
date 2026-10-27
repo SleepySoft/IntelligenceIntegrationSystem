@@ -4,6 +4,31 @@
 >
 > 验证方法：对每个候选源执行真实 HTTP 请求（20–30s 超时，Chrome UA）。页面检查 HTTP 状态、服务端渲染出的链接数量、是否命中 WAF 验证页；RSS/Atom 用 feedparser 解析，记录条目数与最新条目日期。所有结果同时存于 `_export/intel_source_verified.json`（43 条记录），本报告为其汇总。
 
+## 生产已接入（更新于 2026-10-27）
+
+本节是 `industry` 领域当前生产数据源的事实清单；下文 2026-08-02 的内容是候选源历史调研，
+不能据此判断某个来源已经接入或仍然可用。
+
+| 媒体 | 国家/地区 | 实际采集入口 | 发现方式 | 当前范围与过滤 | 任务 | 状态 |
+|---|---|---|---|---|---|---|
+| Manufacturing Dive | 美国 | `https://www.manufacturingdive.com/feeds/news/` | RSS + Requests；正文用 Playwright + Trafilatura | RSS 约 10 条滚动窗口；只收 `/news/`，排除 sponsored 与 press release | `manufacturingdive` | 生产运行中 |
+| 界面新闻 | 中国 | `https://www.jiemian.com/lists/2.html`（商业） | 静态列表 + Requests + Trafilatura | 每轮约 20 张文章卡片；聚焦公司战略、管理层、产品和组织变化，以中国商业报道为主并包含国际公司 | `jiemian_business` | 生产运行中 |
+| 界面新闻 | 中国 | `https://www.jiemian.com/lists/28.html`（工业） | 静态列表 + Requests + Trafilatura | 每轮约 30 张文章卡片；覆盖扩产、基地、并购、定增、产能和产业链动态，以中国产业视角为主并包含国际产业事件 | `jiemian_business` | 生产运行中 |
+
+生产首轮验证结果：Manufacturing Dive 初次取得 8 条非赞助有效文章；界面新闻两个入口共发现
+并成功提取 50 条，其中 30 条通过当前 7 天内容年龄上限进入 `industry` 分析队列，20 条过旧
+记录按既有协议标记为 `stale_content`。界面新闻两个入口属于同一媒体、同一任务，在 Pipeline
+内统一去重。
+
+对应配置：
+
+- `CrawlTasks/industry/crawler_config_manufacturingdive.py`
+- `CrawlTasks/industry/crawler_config_jiemian_business.py`
+
+候选源复核时还发现：经济观察网“公司产业”RSS 内容冻结在 2011 年；36氪官方 RSS 地址在
+2026-10-27 实测返回 HTML 而非 Feed；中国新闻网财经 RSS 已由 `news` 领域任务采集，当前爬虫
+治理按 URL 全局去重，不能作为 `industry` 的独立增量入口。因此三者本轮均未加入产业任务。
+
 ## 一、结论速览
 
 **第一梯队（可直接接入，更新稳定）**

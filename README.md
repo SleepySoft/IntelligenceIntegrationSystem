@@ -65,6 +65,7 @@ v2版本的最终数据会在我续费度盘后上传（蹲打折）。
 |---|---|---|---|:---:|:---:|
 | 全球 | 国际 | 英为财情（Investing.com） | `investing.com` | 🌍 | 是 |
 | 东亚 | 中国 | 中国新闻网 | `chinanews.com.cn` | 🇨🇳 | 是 |
+| 东亚 | 中国 | 界面新闻（产业域：商业、工业频道） | `jiemian.com` | 🇨🇳 | 是 |
 | 东亚 | 中国 | 新华网 | `news.cn` | 🇨🇳 | 是 |
 | 东亚 | 日本 | 日本广播协会（NHK） | `nhk.or.jp` | 🇯🇵 | 是 |
 | 东亚 | 韩国 | 韩联社（Yonhap） | `yna.co.kr` | 🇰🇷 | 未核验 |
@@ -87,6 +88,7 @@ v2版本的最终数据会在我续费度盘后上传（蹲打折）。
 | 欧洲 | 泛欧洲 | 欧洲新闻台（Euronews） | `euronews.com` | 🇪🇺 | 未核验 |
 | 非洲 | 泛非洲 | 非洲新闻台（Africanews） | `africanews.com` | 🌍 | 未核验 |
 | 北美洲 | 加拿大 | 加拿大广播公司（CBC） | `cbc.ca` | 🇨🇦 | 否 |
+| 北美洲 | 美国 | Manufacturing Dive（产业域） | `manufacturingdive.com` | 🇺🇸 | 未核验 |
 | 北美洲 | 美国 | 美国之音（VOA） | `voanews.com` | 🇺🇸 | 否 |
 | 南美洲 | 巴西 | 巴西通讯社（Agência Brasil） | `agenciabrasil.ebc.com.br` | 🇧🇷 | 未核验 |
 | 南美洲 | 乌拉圭 | MercoPress | `en.mercopress.com` | 🇺🇾 | 未核验 |
