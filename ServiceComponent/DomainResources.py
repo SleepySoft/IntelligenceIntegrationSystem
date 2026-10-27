@@ -45,11 +45,6 @@ logger.setLevel(logging.INFO)
 # 默认（news）领域沿用既有命名空间前缀。
 LEGACY_COLLECTION_PREFIX = 'intelligence_'
 
-# 内置测试领域名：未显式配置时自动登记。测试数据经统一 /collect 流程进入
-# （沿用 collector token 鉴权），归档到独立集合（dry_run_intelligence_*），
-# 与正式数据完全隔离，可直接清空集合复位。
-DRY_RUN_DOMAIN_NAME = 'dry_run'
-
 def _resolve_path(path: str, config_root: Optional[str] = None) -> str:
     """解析相对路径：依次尝试 原样 / 项目 _config 目录 / 项目根目录。"""
     if os.path.isabs(path):
@@ -233,10 +228,6 @@ class DomainResourceRegistry:
         elif not default_entry.get('enabled', True):
             logger.warning(f"Default domain '{default_name}' disabled by config, force enabled.")
             default_entry['enabled'] = True
-
-        # 内置 dry_run 测试领域：未显式配置时自动登记（显式配置可覆盖/禁用）
-        if not any(str(e.get('name') or '').strip() == DRY_RUN_DOMAIN_NAME for e in entries):
-            entries.append({'name': DRY_RUN_DOMAIN_NAME, 'display_name': '干跑测试'})
 
         registry = cls(default_name=default_name)
 
