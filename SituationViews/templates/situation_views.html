@@ -1350,6 +1350,7 @@ async function refreshGraph() {
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
         })}`);
+        adaptInitialComponentSize();
         temporalRanges.graph = null;
         renderGraph();
         $('graph-notice').hidden = true;
@@ -1364,6 +1365,37 @@ async function refreshGraph() {
 // 印证下限 = 配置值（DASHBOARD_PROFILE.min_support），默认 2 且不得低于配置值；
 // 网络规模下限 = componentMinSize（只显示规模达到该值的连通网络）。
 let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
+let graphFilterCustomized = false;
+
+function adaptInitialComponentSize() {
+    if (graphFilterCustomized || !graphData?.nodes?.length || !graphData?.edges?.length) return;
+    const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+    const nodes = graphData.nodes.map(item => item.id);
+    const parent = new Map(nodes.map(id => [id, id]));
+    const find = id => {
+        while (parent.get(id) !== id) {
+            parent.set(id, parent.get(parent.get(id)));
+            id = parent.get(id);
+        }
+        return id;
+    };
+    const connected = new Set();
+    for (const edge of graphData.edges.filter(item => item.support >= supportMin)) {
+        if (!parent.has(edge.source) || !parent.has(edge.target)) continue;
+        connected.add(edge.source); connected.add(edge.target);
+        const source = find(edge.source), target = find(edge.target);
+        if (source !== target) parent.set(source, target);
+    }
+    const sizes = new Map();
+    connected.forEach(id => sizes.set(find(id), (sizes.get(find(id)) || 0) + 1));
+    const largest = Math.max(0, ...sizes.values());
+    // 新领域早期数据通常是若干 2～4 节点的小网络。默认阈值 5 若把全部
+    // 关系过滤为空，就降到当前最大连通分量；用户手工设置后不再自动改写。
+    if (largest > 0 && largest < componentMinSize) {
+        componentMinSize = largest;
+        $('component-min-size').value = componentMinSize;
+    }
+}
 
 function filterGraphData() {
     const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
@@ -1954,6 +1986,7 @@ document.querySelectorAll('[data-drawer-close]').forEach(button => button.addEve
 // 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
 $('component-min-size').value = componentMinSize;
 $('component-min-size').addEventListener('change', e => {
+    graphFilterCustomized = true;
     componentMinSize = Math.max(1, parseInt(e.target.value) || 1);
     renderGraph();
 });
@@ -1961,6 +1994,7 @@ const _supportInput = $('graph-support-min');
 _supportInput.min = DASHBOARD_PROFILE.min_support || 1;
 _supportInput.value = graphSupportMin;
 _supportInput.addEventListener('change', e => {
+    graphFilterCustomized = true;
     const floor = DASHBOARD_PROFILE.min_support || 1;
     graphSupportMin = Math.max(floor, parseInt(e.target.value) || floor);
     e.target.value = graphSupportMin;

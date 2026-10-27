@@ -1,4 +1,6 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from ServiceComponent.IntelligenceHubDefines_v4 import DEFAULT_EVENT_REGISTRY
 from ServiceComponent.intelligence_contracts import (
@@ -850,8 +852,10 @@ def test_frontend_assets_are_same_origin_cached_and_allowlisted(monkeypatch):
         def describe():
             return [{"name": "news", "display_name": "国际新闻", "is_default": True}]
 
-    monkeypatch.setattr(web_module, "_load_frontend_asset",
-                        lambda asset_name: f"asset:{asset_name}".encode())
+    monkeypatch.setattr(
+        web_module, "_load_frontend_asset",
+        lambda asset_name, cache_dir="": f"asset:{asset_name}".encode(),
+    )
     app = Flask(__name__)
     SituationViewsService(Registry()).mount_to_app(app, url_prefix="/situation")
     client = app.test_client()
@@ -862,6 +866,74 @@ def test_frontend_assets_are_same_origin_cached_and_allowlisted(monkeypatch):
     assert response.headers["Cache-Control"] == "public, max-age=604800"
     assert response.headers["Content-Type"] == "application/javascript; charset=utf-8"
     assert client.get("/situation/assets/not-allowed.js").status_code == 404
+
+
+def test_sparse_entity_graph_adapts_initial_component_filter():
+    template = Path("SituationViews/templates/situation_views.html").read_text(
+        encoding="utf-8")
+
+    assert "adaptInitialComponentSize();" in template
+    assert "largest > 0 && largest < componentMinSize" in template
+    assert "graphFilterCustomized = true" in template
+
+
+def test_frontend_asset_uses_verified_persistent_cache_when_upstream_is_down(
+        monkeypatch, tmp_path):
+    import SituationViews.web as web_module
+
+    asset_name = "d3.min.js"
+    expected = b"cached-d3"
+    digest = hashlib.sha256(expected).hexdigest()
+    monkeypatch.setitem(web_module._FRONTEND_ASSETS, asset_name, (
+        ("https://primary.invalid/d3", "https://fallback.invalid/d3"),
+        "application/javascript; charset=utf-8", digest, 100,
+    ))
+    monkeypatch.setattr(
+        web_module.urlrequest, "urlopen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline")),
+    )
+    cache_dir = tmp_path / "assets"
+    cache_dir.mkdir()
+    (cache_dir / asset_name).write_bytes(expected)
+    web_module._load_frontend_asset.cache_clear()
+
+    assert web_module._load_frontend_asset(asset_name, str(cache_dir)) == expected
+
+
+def test_frontend_asset_falls_back_and_persists_verified_payload(
+        monkeypatch, tmp_path):
+    import SituationViews.web as web_module
+
+    asset_name = "d3.min.js"
+    expected = b"downloaded-d3"
+    digest = hashlib.sha256(expected).hexdigest()
+    monkeypatch.setitem(web_module._FRONTEND_ASSETS, asset_name, (
+        ("https://primary.invalid/d3", "https://fallback.invalid/d3"),
+        "application/javascript; charset=utf-8", digest, 100,
+    ))
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read(_maximum):
+            return expected
+
+    def fake_urlopen(request, **_kwargs):
+        if request.full_url.startswith("https://primary.invalid"):
+            raise OSError("primary offline")
+        return Response()
+
+    monkeypatch.setattr(web_module.urlrequest, "urlopen", fake_urlopen)
+    cache_dir = tmp_path / "assets"
+    web_module._load_frontend_asset.cache_clear()
+
+    assert web_module._load_frontend_asset(asset_name, str(cache_dir)) == expected
+    assert (cache_dir / asset_name).read_bytes() == expected
 
 
 def test_entity_editor_is_enabled_only_for_logged_in_user():

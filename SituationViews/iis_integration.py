@@ -43,6 +43,8 @@ def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
             or base_dashboard.get("subsystem")
             or default_name
         ).strip()
+        frontend_asset_cache_dir = (
+            Path(data_path) / "SituationViews" / "frontend_assets")
 
         resolve_context = getattr(resources, "resolve", None)
         default_ctx = (
@@ -57,6 +59,7 @@ def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
             dashboard=base_dashboard,
             entity_resolution_service=entity_resolution_service,
             entity_alias_service=entity_alias_service,
+            frontend_asset_cache_dir=frontend_asset_cache_dir,
         )
         service.mount_to_app(
             app,
@@ -85,6 +88,7 @@ def mount_to_iis(app, *, config, domain_resources=None, subsystem_registry=None,
                 entity_resolution_service=entity_resolution_service,
                 entity_alias_service=entity_alias_service,
                 domain_locked=True,
+                frontend_asset_cache_dir=frontend_asset_cache_dir,
             )
             endpoint_name = re.sub(r"[^A-Za-z0-9_]", "_", name)
             named_service.mount_to_app(

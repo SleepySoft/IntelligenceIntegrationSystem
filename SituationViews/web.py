@@ -5,7 +5,9 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
+import os
 import re
+import threading
 from functools import lru_cache, wraps
 from pathlib import Path
 from urllib import request as urlrequest
@@ -43,44 +45,53 @@ GRAPH_MAX_EDGES = 20000
 
 # 浏览器不直接连接公共 CDN：移动网络、DNS 或代理策略经常只让这些请求失败，
 # 随后的内联代码就会表现为 ``d3 is not defined``。IIS 只代理固定版本、固定摘要
-# 的只读前端资源，并在进程内缓存；客户端仍可使用普通 HTTP 缓存。
+# 的只读前端资源，校验后持久缓存；客户端仍可使用普通 HTTP 缓存。
 _FRONTEND_ASSETS = {
     "d3.min.js": (
-        "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+        (
+            "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+            "https://unpkg.com/d3@7.9.0/dist/d3.min.js",
+        ),
         "application/javascript; charset=utf-8",
         "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539",
         300_000,
     ),
     "topojson-client.min.js": (
-        "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+        (
+            "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+            "https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js",
+        ),
         "application/javascript; charset=utf-8",
         "25cd02ae486cc5063e0215a4e4cfb15de83700c87ac48bac4d57dc6aaf3ebb89",
         20_000,
     ),
     "countries-110m.json": (
-        "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json",
+        (
+            "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json",
+            "https://unpkg.com/world-atlas@2.0.2/countries-110m.json",
+        ),
         "application/json; charset=utf-8",
         "2516c915867c7baf18ddec727aec46c315541a07cfb3d79a6559b05d5e94eee8",
         150_000,
     ),
     "countries.json": (
-        "https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json",
+        (
+            "https://cdn.jsdelivr.net/npm/world-countries@5.1.0/countries.json",
+            "https://unpkg.com/world-countries@5.1.0/countries.json",
+        ),
         "application/json; charset=utf-8",
         "359431fb9475666dfad1ea5e72e53521cef40520f65eecd08e02ba569eb8491b",
         1_600_000,
     ),
 }
+_FRONTEND_ASSET_LOCKS = {
+    name: threading.Lock() for name in _FRONTEND_ASSETS
+}
 
 
-@lru_cache(maxsize=len(_FRONTEND_ASSETS))
-def _load_frontend_asset(asset_name: str) -> bytes:
-    url, _content_type, expected_sha256, maximum_size = _FRONTEND_ASSETS[asset_name]
-    upstream_request = urlrequest.Request(
-        url,
-        headers={"User-Agent": "IIS-SituationViews/1.0"},
-    )
-    with urlrequest.urlopen(upstream_request, timeout=20) as response:
-        payload = response.read(maximum_size + 1)
+def _verified_frontend_asset(asset_name: str, payload: bytes) -> bytes:
+    _urls, _content_type, expected_sha256, maximum_size = \
+        _FRONTEND_ASSETS[asset_name]
     if len(payload) > maximum_size:
         raise ValueError(f"frontend asset too large: {asset_name}")
     digest = hashlib.sha256(payload).hexdigest()
@@ -89,17 +100,86 @@ def _load_frontend_asset(asset_name: str) -> bytes:
     return payload
 
 
+def _read_cached_frontend_asset(asset_name: str, cache_dir: Path) -> bytes | None:
+    cache_file = cache_dir / asset_name
+    try:
+        return _verified_frontend_asset(asset_name, cache_file.read_bytes())
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        # 损坏或旧版本缓存不能继续提供；删除失败也不影响重新下载。
+        logger.warning("忽略无效态势视图资源缓存 %s：%s", cache_file, exc)
+        try:
+            cache_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+
+def _persist_frontend_asset(asset_name: str, payload: bytes, cache_dir: Path) -> None:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / asset_name
+    temporary = cache_dir / (
+        f".{asset_name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        temporary.write_bytes(payload)
+        temporary.replace(cache_file)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+@lru_cache(maxsize=len(_FRONTEND_ASSETS) * 4)
+def _load_frontend_asset(asset_name: str, cache_dir: str = "") -> bytes:
+    urls, _content_type, _expected_sha256, maximum_size = \
+        _FRONTEND_ASSETS[asset_name]
+    cache_path = Path(cache_dir) if cache_dir else None
+    if cache_path is not None:
+        cached = _read_cached_frontend_asset(asset_name, cache_path)
+        if cached is not None:
+            return cached
+
+    # 同一进程中多个页面会并发请求相同资源；锁内再次检查磁盘，避免重复下载。
+    with _FRONTEND_ASSET_LOCKS[asset_name]:
+        if cache_path is not None:
+            cached = _read_cached_frontend_asset(asset_name, cache_path)
+            if cached is not None:
+                return cached
+        errors = []
+        for url in urls:
+            try:
+                upstream_request = urlrequest.Request(
+                    url,
+                    headers={"User-Agent": "IIS-SituationViews/1.0"},
+                )
+                with urlrequest.urlopen(upstream_request, timeout=12) as response:
+                    payload = response.read(maximum_size + 1)
+                payload = _verified_frontend_asset(asset_name, payload)
+                if cache_path is not None:
+                    _persist_frontend_asset(asset_name, payload, cache_path)
+                return payload
+            except Exception as exc:
+                errors.append(f"{url}: {exc}")
+        raise RuntimeError(
+            f"all frontend asset upstreams failed for {asset_name}: "
+            + "; ".join(errors))
+
+
 class SituationViewsService:
     def __init__(self, domain_resources=None, registry=None, *, subsystem_registry=None,
                  detail_origin="", geocoder=None,
                  dashboard=None, entity_resolution_service=None,
-                 entity_alias_service=None, domain_locked=False):
+                 entity_alias_service=None, domain_locked=False,
+                 frontend_asset_cache_dir=None):
         self.domain_resources = domain_resources or subsystem_registry
         self.registry = registry or DEFAULT_EVENT_REGISTRY
         self.detail_origin = str(detail_origin or "").rstrip("/")
         self.geocoder = geocoder
         self.dashboard = self._dashboard_profile(dashboard)
         self.domain_locked = bool(domain_locked)
+        self.frontend_asset_cache_dir = str(frontend_asset_cache_dir or "")
         self.entity_resolution_service = entity_resolution_service
         self.entity_alias_service = entity_alias_service
         self._engines = {}
@@ -129,9 +209,12 @@ class SituationViewsService:
             if spec is None:
                 abort(404)
             try:
-                payload = _load_frontend_asset(asset_name)
-            except Exception:
-                logger.exception("态势视图前端资源加载失败：%s", asset_name)
+                payload = _load_frontend_asset(
+                    asset_name, self.frontend_asset_cache_dir)
+            except Exception as exc:
+                # 上游暂时不可用是可预期的外部故障，不为每个浏览器请求打印整段堆栈。
+                logger.warning(
+                    "态势视图前端资源不可用 %s：%s", asset_name, exc)
                 return Response("frontend asset unavailable", status=502,
                                 content_type="text/plain; charset=utf-8")
             response = Response(payload, content_type=spec[1])
