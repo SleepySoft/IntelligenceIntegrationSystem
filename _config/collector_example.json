@@ -11,7 +11,8 @@
     "cn_site_proxy": {},
     "domain_task_dirs": {
       "news": "CrawlTasks/news",
-      "finance": "CrawlTasks/finance"
+      "finance": "CrawlTasks/finance",
+      "industry": "CrawlTasks/industry"
     },
     "disabled_tasks": []
   }

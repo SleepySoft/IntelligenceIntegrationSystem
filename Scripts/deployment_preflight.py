@@ -71,6 +71,16 @@ def load_collector(path: Path) -> dict:
     return collector
 
 
+def resolve_collector_task_dirs(collector: dict) -> dict:
+    """读取当前领域目录契约，并兼容尚未迁移的旧配置。"""
+    task_dirs = collector.get("domain_task_dirs")
+    if task_dirs is None:
+        task_dirs = collector.get("task_dirs")
+    if not isinstance(task_dirs, dict) or not task_dirs:
+        fail("collector.domain_task_dirs must contain at least one task directory")
+    return task_dirs
+
+
 def validate_crawler() -> None:
     path = Path(resolve_collector_config_file())
     if not path.is_file():
@@ -80,9 +90,7 @@ def validate_crawler() -> None:
         fail("collector.submit_ihub_url is required")
     if not str(collector.get("default_token") or "").strip():
         fail("collector.default_token is required")
-    task_dirs = collector.get("task_dirs")
-    if not isinstance(task_dirs, dict) or not task_dirs:
-        fail("collector.task_dirs must contain at least one task directory")
+    task_dirs = resolve_collector_task_dirs(collector)
     missing = []
     for value in task_dirs.values():
         task_path = Path(value)
