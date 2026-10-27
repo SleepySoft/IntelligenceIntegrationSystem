@@ -8,16 +8,16 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from event_engine.domains import registry_for
 from event_engine.extraction import (
     EventExtractionResult,
     event_extraction_json_schema,
     validate_event_extraction,
 )
 from ServiceComponent.intelligence_contracts import NonIntelligenceReason
+from IntelligenceDomains.news.event_registry import build_news_v48_registry
 
 
-DEFAULT_EVENT_REGISTRY = registry_for("news", "industry", "financial")
+DEFAULT_EVENT_REGISTRY = build_news_v48_registry()
 NON_INTELLIGENCE_TAXONOMY = "NonIntelligence"
 TAXONOMY_SUBCATEGORIES = {
     "政治与安全": {"国际博弈", "国内政局", "国防军事", "法律与合规", "战略认知", "重大犯罪与恐怖主义"},

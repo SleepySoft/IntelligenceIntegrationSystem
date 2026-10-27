@@ -114,7 +114,7 @@ class DomainContext:
     enabled: bool = True
     url_prefix: str = ''                     # '' 表示挂载在根路径（默认领域）
     collection_prefix: str = LEGACY_COLLECTION_PREFIX
-    # 领域实现工厂：内置短名（news）或 ``module:callable``。
+    # 领域实现工厂：内置短名（news/industry）或 ``module:callable``。
     domain_factory: str = 'news'
 
     mongo_db_cache: Optional[MongoDBStorage] = None

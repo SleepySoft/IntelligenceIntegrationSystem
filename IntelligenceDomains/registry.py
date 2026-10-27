@@ -46,6 +46,9 @@ def _load_factory(spec: str) -> DomainFactory:
     if normalized == "news":
         from IntelligenceDomains.news import create_domain
         return create_domain
+    if normalized == "industry":
+        from IntelligenceDomains.industry import create_domain
+        return create_domain
     if ":" not in normalized:
         raise ValueError(f"unknown domain factory: {normalized!r}")
     module_name, callable_name = normalized.split(":", 1)

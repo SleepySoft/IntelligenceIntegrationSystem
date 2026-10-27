@@ -21,7 +21,6 @@ from ServiceComponent.analysis_messages import (
     extract_pure_response,
 )
 from ServiceComponent.IntelligenceHubDefines_v4 import (
-    AnalysisResultV4,
     CollectedData,
     validate_analysis_result_v4,
 )
@@ -266,8 +265,9 @@ def evaluate_expected(validated: Any, expected: Mapping[str, Any]) -> list[dict[
     required = {str(item) for item in expected.get("required_event_predicates", [])}
     if required:
         actual_predicates = set()
-        if isinstance(validated, AnalysisResultV4) and validated.EVENT_EXTRACTION:
-            for event in validated.EVENT_EXTRACTION.events:
+        extraction = getattr(validated, "EVENT_EXTRACTION", None)
+        if extraction:
+            for event in extraction.events:
                 predicate_id = event.core.predicate.id
                 if predicate_id:
                     actual_predicates.add(str(predicate_id))

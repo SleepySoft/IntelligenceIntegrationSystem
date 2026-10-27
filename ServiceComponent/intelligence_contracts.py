@@ -81,6 +81,8 @@ class NonIntelligenceReason(StrEnum):
     ROUTINE_OR_NO_INFORMATION_GAIN = "routine_or_no_information_gain"
     ACADEMIC_WITHOUT_CURRENT_RELEVANCE = "academic_without_current_relevance"
     DUPLICATE_OR_RECAP = "duplicate_or_recap"
+    NO_COMPANY_ACTION = "no_company_action"
+    UNSUPPORTED_RUMOR = "unsupported_rumor"
     OTHER_NON_INTELLIGENCE = "other_non_intelligence"
     UNSPECIFIED = "unspecified"  # 兼容 v46 之前没有结构化原因的历史数据
 
