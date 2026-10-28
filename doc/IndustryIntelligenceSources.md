@@ -14,6 +14,8 @@
 | Manufacturing Dive | 美国 | `https://www.manufacturingdive.com/feeds/news/` | RSS + Requests；正文用 Playwright + Trafilatura | RSS 约 10 条滚动窗口；只收 `/news/`，排除 sponsored 与 press release | `manufacturingdive` | 生产运行中 |
 | 界面新闻 | 中国 | `https://www.jiemian.com/lists/2.html`（商业） | 静态列表 + Requests + Trafilatura | 每轮约 20 张文章卡片；聚焦公司战略、管理层、产品和组织变化，以中国商业报道为主并包含国际公司 | `jiemian_business` | 生产运行中 |
 | 界面新闻 | 中国 | `https://www.jiemian.com/lists/28.html`（工业） | 静态列表 + Requests + Trafilatura | 每轮约 30 张文章卡片；覆盖扩产、基地、并购、定增、产能和产业链动态，以中国产业视角为主并包含国际产业事件 | `jiemian_business` | 生产运行中 |
+| 科创板日报 | 中国 | `https://www.chinastarmarket.cn/` | 静态首页 + Requests + Trafilatura | 只收 `/detail/`；覆盖科技公司、半导体、AI、硬科技融资与经营动作，排除电报、话题和活动页 | `chinastarmarket` | 已接入，待重启采集服务生效 |
+| 爱集微 | 中国/全球 | `https://www.laoyaoba.com/` | 静态首页 + Requests + Trafilatura | 只取最新资讯和焦点区的 `/n/` 正文；覆盖半导体、ICT、AI 硬件及科技公司组织动作，排除视频、活动、专题和 API | `ijiwei` | 已接入，待重启采集服务生效 |
 
 生产首轮验证结果：Manufacturing Dive 初次取得 8 条非赞助有效文章；界面新闻两个入口共发现
 并成功提取 50 条，其中 30 条通过当前 7 天内容年龄上限进入 `industry` 分析队列，20 条过旧
@@ -24,17 +26,40 @@
 
 - `CrawlTasks/industry/crawler_config_manufacturingdive.py`
 - `CrawlTasks/industry/crawler_config_jiemian_business.py`
+- `CrawlTasks/industry/crawler_config_chinastarmarket.py`
+- `CrawlTasks/industry/crawler_config_ijiwei.py`
 
 候选源复核时还发现：经济观察网“公司产业”RSS 内容冻结在 2011 年；36氪官方 RSS 地址在
 2026-10-27 实测返回 HTML 而非 Feed；中国新闻网财经 RSS 已由 `news` 领域任务采集，当前爬虫
 治理按 URL 全局去重，不能作为 `industry` 的独立增量入口。因此三者本轮均未加入产业任务。
 
+## 后续候选池（更新于 2026-10-28）
+
+已接入科创板日报和爱集微后，以下来源继续保留为候选，不代表已在生产运行：
+
+| 优先级 | 候选源 | 主要补充 | 当前接入判断 |
+|---|---|---|---|
+| P1 | OFweek 半导体、电子工程、机器人频道 | 中国高科技制造、机器人、电子与半导体公司行动 | 页面可静态抓取；需按频道限制并评估软文/企业宣传比例 |
+| P1 | SemiEngineering RSS | 国际半导体设计、制造、EDA、先进封装 | RSS 成本低；深度分析较多，需由产业协议过滤非公司行动文章 |
+| P2 | IndustryWeek RSS | 国际制造企业、工厂、自动化和管理变化 | RSS 可用；与 Manufacturing Dive 有部分主题重叠，需先测增量率 |
+| P2 | TrendForce / 集邦咨询 | 半导体、存储、面板、LED、新能源研究 | 页面可达；报告/市场分析多，需验证具体公司行动密度 |
+| P2 | C&EN 商业与能源栏目 | 化工、材料、能源公司的并购、产能和产品变化 | 无 RSS，需栏目页抓取；可补化工材料国际视角 |
+| P3 | 北极星储能、光伏、电力 | 中国新能源、电力、储能企业项目与产能 | 储能页可达，其他频道存在间歇 WAF，需要重试与浏览器兜底 |
+| P3 | 中汽协、CPIA 等协会 | 产销数据、行业政策和协会口径 | 权威但公司行动密度低，适合作为行业背景或未来增强数据 |
+| 暂缓 | 36氪 | 中国科技创业、融资、组织变化 | 官方 Feed 当前不是稳定 RSS；需要重新设计列表页入口并控制软文 |
+| 暂缓 | 财联社电报 | 高频公司公告与资本动作 | API 需要签名或浏览器，且噪声与重复率高；暂以科创板日报替代 |
+| 暂缓 | 信通院、亿欧、GGII、CSIA | 白皮书、研究、硬科技产业信息 | 存在 WAF、JS 数据或连接问题，优先寻找官方静态入口或可靠转载 |
+
+候选接入顺序以“新增公司行动密度 / 与现有来源重复率 / 抓取稳定性 / AI 成本”为共同评价，
+不能只按站点知名度排序。
+
 ## 一、结论速览
 
-**第一梯队（可直接接入，更新稳定）**
+**当前接入与下一梯队**
 
-- RSS 类：36氪 `https://36kr.com/feed`（30 条，最新 2026-08-02）、Supply Chain Dive、Manufacturing Dive、IndustryWeek、SemiEngineering
-- 页面类：科创板日报 `chinastarmarket.cn`、OFweek 各频道、集微网首页、CPIA 首页（`chinapv.org.cn`）、中汽协、国家统计局、前瞻产业研究院、艾瑞报告中心、TrendForce、北极星储能频道
+- 已接入：Manufacturing Dive、界面新闻商业/工业、科创板日报、爱集微（集微网）。
+- 下一梯队：OFweek 半导体/电子工程/机器人、SemiEngineering RSS；其余按上方候选池复核。
+- 36氪 Feed 在 2026-10-27 已不再返回稳定 RSS，不能沿用 2026-08-02 的可用结论。
 
 **需要特殊处理（反爬/JS 渲染/云建站）**
 
@@ -122,7 +147,7 @@
 
 ### 3.1 RSS 优先接入（成本最低）
 
-可直接用现有 `RssFeedsBasedCrawlFlow`：36氪、Supply Chain Dive、Manufacturing Dive、IndustryWeek、SemiEngineering。C&EN 无 RSS，用栏目页 + `fetch_content`。
+可直接用现有 `RssFeedsBasedCrawlFlow`：Supply Chain Dive、Manufacturing Dive、IndustryWeek、SemiEngineering。36氪需重新寻找稳定入口；C&EN 无 RSS，用栏目页 + `fetch_content`。
 
 ### 3.2 页面接入优先级（按稳定性排序）
 
@@ -140,8 +165,8 @@
 
 ### 3.4 与 IIS 子系统的对应（建议，可按配置调整）
 
-- `industry` 情报域：OFweek、集微网、北极星、CPIA、CSIA、中汽协、赛迪、前瞻、GGII、信通院、工信部、国家统计局（制造业部分）、Supply Chain Dive / Manufacturing Dive / IndustryWeek / SemiEngineering。
-- `finance` 情报域：财联社电报、科创板日报、36氪（财经科技类目）、艾瑞、亿欧、TrendForce（部分）。
+- `industry` 情报域：科创板日报、爱集微（集微网）、OFweek、北极星、CPIA、CSIA、中汽协、赛迪、前瞻、GGII、信通院、工信部、国家统计局（制造业部分）、Supply Chain Dive / Manufacturing Dive / IndustryWeek / SemiEngineering。
+- `finance` 情报域：财联社电报、36氪（财经科技类目）、艾瑞、亿欧、TrendForce（部分）。
 - 各站点任务的 `domain` 归属通过 `_config/collector.json` 的 `domain_task_dirs` 目录映射配置，
   无需在任务代码中选择；建议 `CrawlTasks/industry/` 与 `CrawlTasks/finance/` 分目录维护。
   提交到 `/collect` 时，Crawler 会把映射得到的领域写入载荷的 `domain` 字段。
