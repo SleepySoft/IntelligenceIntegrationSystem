@@ -66,6 +66,7 @@ v2版本的最终数据会在我续费度盘后上传（蹲打折）。
 | 全球 | 国际 | 英为财情（Investing.com） | `investing.com` | 🌍 | 是 |
 | 东亚 | 中国 | 中国新闻网 | `chinanews.com.cn` | 🇨🇳 | 是 |
 | 东亚 | 中国 | 界面新闻（产业域：商业、工业频道） | `jiemian.com` | 🇨🇳 | 是 |
+| 东亚 | 中国 | OFweek（产业域：半导体、电子工程、机器人频道） | `ofweek.com` | 🇨🇳 | 是 |
 | 东亚 | 中国 | 新华网 | `news.cn` | 🇨🇳 | 是 |
 | 东亚 | 日本 | 日本广播协会（NHK） | `nhk.or.jp` | 🇯🇵 | 是 |
 | 东亚 | 韩国 | 韩联社（Yonhap） | `yna.co.kr` | 🇰🇷 | 未核验 |
@@ -89,6 +90,8 @@ v2版本的最终数据会在我续费度盘后上传（蹲打折）。
 | 非洲 | 泛非洲 | 非洲新闻台（Africanews） | `africanews.com` | 🌍 | 未核验 |
 | 北美洲 | 加拿大 | 加拿大广播公司（CBC） | `cbc.ca` | 🇨🇦 | 否 |
 | 北美洲 | 美国 | Manufacturing Dive（产业域） | `manufacturingdive.com` | 🇺🇸 | 未核验 |
+| 北美洲 | 美国 | IndustryWeek（产业域） | `industryweek.com` | 🇺🇸 | 是 |
+| 北美洲 | 美国 | TechCrunch（产业域：Startups） | `techcrunch.com` | 🇺🇸 | 是 |
 | 北美洲 | 美国 | 美国之音（VOA） | `voanews.com` | 🇺🇸 | 否 |
 | 南美洲 | 巴西 | 巴西通讯社（Agência Brasil） | `agenciabrasil.ebc.com.br` | 🇧🇷 | 未核验 |
 | 南美洲 | 乌拉圭 | MercoPress | `en.mercopress.com` | 🇺🇾 | 未核验 |
@@ -364,20 +367,76 @@ Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui
 诊断工具、当前落地阻塞项和各阶段验收标准见
 [Linux 部署目录](deploy/README.md)与[审计及路线图](deploy/AUDIT_AND_ROADMAP.md)。
 
-#### 使用
+#### 网页端点
 
-+ 打开 [localhost:5000/login](localhost:5000/login) 输入刚才配置的账号密码进入后台页面。
+以下路径均相对于核心 Web 服务（默认 `http://localhost:5000`）。`<domain>` 是情报域的
+URL 前缀，例如 `news`、`industry`；不带领域前缀的路径始终使用 `hub.domains.default`
+指定的默认领域。领域由路径而不是查询参数选择，因此新闻和产业页面分别是
+`/news/views/` 与 `/industry/views/`，而 `/views/` 是默认领域的兼容入口。
 
-+ 打开 [localhost:8001](localhost:8001) 进入向量数据库的管理页面。
+公开内容页面：
 
-+ 打开 [localhost:5000](localhost:5000) 则是无密码的公开页面。
+| 路径 | 用途 | 说明 |
+|---|---|---|
+| `/` | 站点首页 | 未登录显示公开说明；已登录跳转到 `/post/index` |
+| `/views/` | 默认领域统一情报视图 | 在列表、地域、实体关系和实体时间线之间切换；是否允许游客访问由 `optional_subsystems.intelligence_views.public_access` 决定 |
+| `/<domain>/views/` | 指定领域统一情报视图 | 页面内也可切换已注册领域 |
+| `/intelligences`、`/<domain>/intelligences` | 情报列表 | 无前缀版本读取默认领域 |
+| `/intelligences/search`、`/<domain>/intelligences/search` | 情报搜索 | 游客受 `web.public_search` 的时间窗、分页和限流约束 |
+| `/intelligence/<uuid>`、`/<domain>/intelligence/<uuid>` | 情报详情 | UUID 深链；具名路径从对应领域数据库读取 |
+| `/intelligences/clusters` | 默认领域聚合结果 | 依赖聚合扩展 |
+| `/statistics/entity_frequency/page` | 默认领域实体频率 | 游客固定查看受限时间窗，登录后可调整范围 |
+| `/entity-alias/` | 实体别名子系统状态 | 依赖实体别名子系统 |
+| `/vector/` | 向量子系统状态 | 依赖 `optional_subsystems.vector` |
+| `/vector/search` | 向量搜索 | 向量子系统页面；搜索能力当前只用于默认领域 |
+| `/vector/clusters` | 向量聚类 | 依赖向量和聚类服务 |
 
-+ 登录后台后可打开 [localhost:5000/debug/intelligence](http://localhost:5000/debug/intelligence)
-  人工粘贴正文并调试 AI 分析。该入口自动补齐 `CollectedData` 元数据，将 `source` 固定为
-  `__IIS_MANUAL_TEST__`，结果仅保存在当前进程的有界内存列表中，不写入 cache、archive、
-  low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可分别选择情报域与
-  Event V4 分析机制，再选择对应的 Prompt 版本；Prompt 可编辑并仅对本次任务覆盖，
-  日期、正文等占位符仍由正式分析消息构造器拼接。
+登录后管理页面：
+
+| 路径 | 用途 |
+|---|---|
+| `/login`、`/logout` | 登录与退出；登录成功后进入 `/post/index` 管理入口页 |
+| `/statistics/overview` | 评分分布、情报分布和按情报域分组的数据源统计 |
+| `/monitor/runtime` | Hub、队列、线程和伴随进程运行状态 |
+| `/control` | 暂停/恢复 intake 或 analysis、回放及弃用积压 |
+| `/analysis-observability/` | 按模型、Prompt 版本和情报域查看分析成功率、冷启动、缓存及错误分布 |
+| `/monitor/ai-client-dashboard/` | AI Client 状态与额度总览 |
+| `/monitor/ai-client-dashboard/observations` | AI 调用次数、Token、延迟和缓存观测 |
+| `/monitor/ai-client-dashboard/timeline` | AI Client 状态时间线 |
+| `/monitor/ai-client-dashboard/playground` | 指定 Client 的人工调用测试 |
+| `/monitor/ai-client-dashboard/config/` | AI Client 配置、校验、历史恢复和热重载 |
+| `/admin/config/` | IIS 主配置编辑器；保存后需重启服务生效 |
+| `/admin/config/setup/` | 首次部署配置向导 |
+| `/debug/intelligence` | 无持久化的人工情报分析调试 |
+| `/logger/log_viewer`、`/logger/logger_config` | 主服务日志查看与日志级别管理 |
+| `/maintenance/export_mongodb.html` | MongoDB 数据导出 |
+| `/entity-alias/manage` | 全局实体与固定别名管理 |
+| `/intelligence/graph/view` | 默认领域兼容图谱页 |
+| `/vector/graph` | 向量子系统图谱页 |
+| `/shadow/compare/<uuid>` | 有影子记录时，从情报详情进入主链/灰度结果对比 |
+
+`/situation/embed/map`、`/situation/embed/entities` 和 `/situation/embed/timeline` 是统一视图
+内部使用的默认领域子页面；指定领域对应 `/<domain>/situation/embed/...`。它们可以单独打开，
+但不是主导航入口。`/statistics/score_distribution.html` 和
+`/statistics/intelligence_statistics.html` 只是指向 `/statistics/overview` 相应区块的兼容重定向。
+
+独立进程或部署层页面：
+
+| 默认地址 | 用途 | 备注 |
+|---|---|---|
+| `http://localhost:8002/` | Crawler 治理面板 | 生产 Nginx 通常代理为 `/crawl_monitor/` |
+| `http://localhost:18000/logger/log_viewer` | Crawler 日志查看器 | 由 `CrawlerServiceEngine.py` 同时启动 |
+| `http://localhost:8001/` | VectorDB 管理页 | 可选独立服务；生产 Nginx 通常代理为 `/vectordb/` |
+| `/ops/traffic/`、`/ops/traffic/raw/` | 网站访问统计 | 仅在安装对应 Nginx/GoAccess 配置后存在，不是 Flask 路由 |
+
+常用的非页面服务端点为：`GET /maintenance/ping`（存活检查）、`GET /auth_check`
+（反向代理登录检查）、`POST /collect`（Collector 提交）、`POST /api`（登录保护的 RPC）和
+`GET /api/domains`（情报域注册表）。其余 JSON API 是上述页面的内部接口，按所属页面前缀组织。
+
+人工分析调试页 `/debug/intelligence` 会自动补齐 `CollectedData` 元数据，将 `source` 固定为
+`__IIS_MANUAL_TEST__`；结果只保存在当前进程的有界内存列表中，不写入 cache、archive、
+low_value 或 conversation 存储，也不触发翻译或向量归档扩展。页面可分别选择情报域、
+Event V4 分析机制及对应 Prompt 版本，Prompt 覆盖只对本次任务生效。
 
 
 ## 其它工具
@@ -509,8 +568,9 @@ Python。依赖可通过 `--profile core,crawler` 分层选择；`vector`、`gui
     > 
     > [intelligence_graph.html](templates/intelligence_graph.html)：情报态势追踪页。
     > 
-    > `/views` 提供地域、实体、印证和实体时间线等统一情报视图；`/situation` 提供态势视图
-    > 子系统页面；`/entity-alias/manage` 提供登录用户使用的全局实体与固定别名管理页面。
+    > `/views/` 提供列表、地域、实体关系和实体时间线等统一情报视图；其内部子页面位于
+    > `/situation/embed/map`、`/situation/embed/entities` 和 `/situation/embed/timeline`。
+    > `/entity-alias/manage` 提供登录用户使用的全局实体与固定别名管理页面。
     > 这些子系统由各自 Blueprint 挂载，关闭或装配失败不会影响核心只读页面。
     > 
 

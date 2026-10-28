@@ -6,11 +6,13 @@
 
 #### Intelligence
 
-+ [Intelligence List](/views)
++ [Intelligence List](/views/)
 
 + [Aggregated Intelligence](/intelligences/clusters)
 
 + [Intelligence Search](/intelligences/search)
+
++ [Entity Statistics](/statistics/entity_frequency/page)
 
 + [Intelligence Graph](/intelligence/graph/view)
 
@@ -22,11 +24,13 @@
 
 + [Statistics Overview](/statistics/overview)
 
++ [Analysis Observability](/analysis-observability/)
+
++ [AI Call Observations](/monitor/ai-client-dashboard/observations)
+
 + [Website Traffic](/ops/traffic/)
 
 + [Website Traffic (Raw GoAccess)](/ops/traffic/raw/)
-
-+ [Entity Statistics (Full)](/statistics/entity_frequency/page)
 
 -----------------------------------------------
 
@@ -36,7 +40,11 @@
 
 + [Logger Config](/logger/logger_config)
 
-+ [Client Manager](/monitor/ai-client-dashboard)
++ [Client Manager](/monitor/ai-client-dashboard/)
+
++ [AI Client Timeline](/monitor/ai-client-dashboard/timeline)
+
++ [AI Client Playground](/monitor/ai-client-dashboard/playground)
 
 + [IIS Configuration](/admin/config/)
 
@@ -48,15 +56,25 @@
 
 + [MongoDB Export](/maintenance/export_mongodb.html)
 
++ [Entity Alias Status](/entity-alias/)
+
 + [Alias management](/entity-alias/manage)
 
 #### Vector DB
 
-+ [Vector DB Manager](/vectordb)
++ [Vector Subsystem Status (Optional)](/vector/)
+
++ [Vector Search (Optional)](/vector/search)
+
++ [Vector Clusters (Optional)](/vector/clusters)
+
++ [Vector Graph (Optional)](/vector/graph)
+
++ [Vector DB Manager (Optional)](/vectordb/)
 
 #### Crawler Monitor
 
-+ [Crawler Monitor](/crawl_monitor)
++ [Crawler Monitor](/crawl_monitor/)
 
 -----------------------------------------------
 
