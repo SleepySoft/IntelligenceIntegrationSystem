@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import hashlib
 
 import pytest
 from pydantic import ValidationError
@@ -6,8 +7,11 @@ from event_engine.domains import registry_for
 
 from IntelligenceDomains.industry import create_domain
 from IntelligenceDomains.industry.prompt import (
+    INDUSTRY_BASELINE_PROMPT_VERSION,
     INDUSTRY_DISAMBIGUATION,
     INDUSTRY_PROMPT_VERSION,
+    build_industry_prompt,
+    build_industry_prompt_v2,
     validate_industry_core_result,
 )
 from IntelligenceDomains.industry.schema import RATE_DIMENSIONS
@@ -73,7 +77,10 @@ def test_industry_factory_registers_own_prompt_schema_scorer_and_no_news_subsyst
     domain = create_domain()
 
     assert domain.name == "industry"
-    assert domain.prompt_catalog.sampling_versions() == [INDUSTRY_PROMPT_VERSION]
+    assert domain.prompt_catalog.sampling_versions() == [
+        INDUSTRY_BASELINE_PROMPT_VERSION,
+        INDUSTRY_PROMPT_VERSION,
+    ]
     assert domain.subsystems.batch is None
     assert domain.subsystems.shadow is None
     assert domain.event_registry.get("layoff").label == "裁员"
@@ -103,7 +110,7 @@ def test_builtin_industry_factory_is_resolved_from_domain_config_name():
 
     registry = build_domain_registry(contexts, default_name="news")
 
-    assert registry.require("industry").prompt_catalog.sampling_versions() == [1]
+    assert registry.require("industry").prompt_catalog.sampling_versions() == [1, 2]
     assert registry.require("industry").storage.__class__.__name__ == "IndustryStorage"
 
 
@@ -208,12 +215,39 @@ def test_industry_storage_uses_independent_archive_schema():
 
 
 def test_industry_prompt_forbids_company_and_supply_chain_guessing():
-    prompt = create_domain().prompt_catalog.text_for(1)
+    prompt = create_domain().prompt_catalog.text_for(INDUSTRY_PROMPT_VERSION)
 
     assert "不得根据公司名称或知名度推断公司重要性" in prompt
     assert "不得推断正文没有说明的产业链、供应链依赖" in prompt
     assert "shift_business_focus" in prompt
     assert "close_facility" in prompt
+
+
+def test_industry_v1_baseline_text_is_frozen_for_attributable_gray_test():
+    prompt = build_industry_prompt()
+
+    assert len(prompt) == 23903
+    assert hashlib.sha256(prompt.encode()).hexdigest() == (
+        "a85f028de8c0c6adfbe51b3733a55a71546d03f42db00529a00dbea021b73e8f"
+    )
+
+
+def test_industry_v2_adds_cross_type_evidence_calibration_only_in_gray_prompt():
+    baseline = build_industry_prompt()
+    gray = build_industry_prompt_v2()
+
+    assert baseline != gray
+    assert "公司行动、经营状态冲击、经营相关冲突还是产业政策" in gray
+    assert "它可以因故事性进入情报" in gray
+    assert "正文未提供基线时用 unknown，不得擅自判为 expected" in gray
+    assert "不得把“有趣”或“有代表性”写成投资价值" in gray
+    assert "单一品牌遭冒名招募、删评索费并报警" in gray
+    assert "财报揭示利润历史低点" in gray
+    assert "公司行动、经营状态冲击、经营相关冲突还是产业政策" not in baseline
+
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(1) is catalog.protocol_for(2)
+    assert catalog.sampling_versions() == [1, 2]
 
 
 def test_industry_prompt_keeps_system_prefix_static_and_dynamic_data_in_user():

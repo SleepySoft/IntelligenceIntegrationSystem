@@ -43,3 +43,4 @@ pytest -q Test/test_prompt_exports.py Test/test_prompt_protocols.py
 - [v53 完整度优先的收敛设计](reports/20261024_prompt_v53_converged_design.md)
 - [v48 / v53 生产灰度首检查点](reports/20261024_prompt_v48_v53_first_checkpoint.md)
 - [DeepSeek 单阶段与召回—编码两阶段离线实验](reports/20261025_deepseek_recall_two_stage_experiment.md)
+- [Industry v2 跨类型价值校准灰度](reports/20261028_industry_prompt_v2_gray_design.md)
