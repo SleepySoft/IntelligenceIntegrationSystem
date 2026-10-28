@@ -35,6 +35,12 @@
         .card .value { font-size: 24px; font-weight: 700; }
         .card .label { color: var(--muted); font-size: 12px; }
         .chart { width: 100%; height: 300px; }
+        .domain-groups { display: grid; gap: 16px; }
+        .domain-group { background: #111c30; border: 1px solid var(--card-border);
+                        border-radius: 10px; padding: 14px; }
+        .domain-heading { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+        .domain-heading h3 { margin: 0; font-size: 16px; color: var(--text); }
+        .domain-code { color: var(--muted); font-size: 12px; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--card-border); }
         th { color: var(--muted); font-weight: 500; }
@@ -96,13 +102,8 @@
     <div class="section" id="source-submissions">
         <h2>网站来源提交趋势</h2>
         <div class="subtitle" style="margin-bottom:12px">最近 24 小时，按采集提交时间统计并展示全部网站来源，便于发现提交量偏低的数据源。</div>
-        <div class="cards">
-            <div class="card"><div class="value" id="source-total">-</div><div class="label">提交总量</div></div>
-            <div class="card"><div class="value" id="source-count">-</div><div class="label">网站来源数</div></div>
-        </div>
-        <div class="chart" id="source-chart"></div>
         <div class="error" id="source-error" style="display:none"></div>
-        <table id="source-ranking" style="margin-top:12px"></table>
+        <div class="domain-groups" id="source-domain-groups"></div>
     </div>
 
     <!-- 来源状态评估 -->
@@ -117,15 +118,8 @@
         <div class="subtitle" style="margin-bottom:12px">
             以已接受提交为分母，综合归档、低价值、抓取内容缺陷、重试/失败等终态；少于 5 条标记为样本不足。低价值原因由 AI 结构化分类，历史记录显示为“未分类”。
         </div>
-        <div class="cards">
-            <div class="card"><div class="value" id="quality-sources">-</div><div class="label">来源数</div></div>
-            <div class="card"><div class="value" id="quality-accepted">-</div><div class="label">接受提交</div></div>
-            <div class="card"><div class="value" id="quality-archived">-</div><div class="label">成功归档</div></div>
-            <div class="card"><div class="value" id="quality-low-value">-</div><div class="label">低价值</div></div>
-            <div class="card"><div class="value" id="quality-defects">-</div><div class="label">抓取内容缺陷</div></div>
-        </div>
         <div class="error" id="quality-error" style="display:none"></div>
-        <div class="table-wrap"><table id="quality-table"></table></div>
+        <div class="domain-groups" id="quality-domain-groups"></div>
     </div>
 
     <!-- 评分分布 -->
@@ -247,30 +241,44 @@ async function loadSourceSubmissions() {
     try {
         const data = await fetchJson(
             `/statistics/api/source_submissions?start_time=${start}&end_time=${end}`);
-        const sources = data.sources || [];
-        const series = data.series || {};
-        document.getElementById('source-total').textContent = data.total_count ?? '-';
-        document.getElementById('source-count').textContent = data.source_count ?? '-';
-        const totals = data.totals || {};
-        chart('source-chart').setOption({
-            backgroundColor: 'transparent',
-            tooltip: {trigger: 'axis'},
-            legend: {type: 'scroll', data: sources, bottom: 0},
-            xAxis: {type: 'category', boundaryGap: false, data: data.slots || [],
-                    axisLabel: {formatter: value => value.slice(5)}},
-            yAxis: {type: 'value', minInterval: 1},
-            series: sources.map(source => ({
-                name: source, type: 'line', smooth: true,
-                symbol: 'none', areaStyle: {opacity: 0.12}, data: series[source] || [],
-            })),
-            grid: {left: 50, right: 20, top: 20, bottom: 70},
-        }, true);
-        document.getElementById('source-ranking').innerHTML =
-            '<tr><th>网站来源（提交量从少到多）</th><th>近24小时提交量</th></tr>' +
-            Object.entries(totals)
-                .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
-                .map(([source, count]) => `<tr><td>${source}</td><td>${count}</td></tr>`)
-                .join('');
+        const groups = data.domains || [];
+        const container = document.getElementById('source-domain-groups');
+        container.innerHTML = groups.map((group, index) => {
+            const stats = group.statistics || {};
+            const totals = stats.totals || {};
+            return `<div class="domain-group" data-domain="${escapeHtml(group.domain_name)}">` +
+                `<div class="domain-heading"><h3>${escapeHtml(group.display_name)}</h3>` +
+                `<span class="domain-code notranslate" translate="no">${escapeHtml(group.domain_name)}</span></div>` +
+                '<div class="cards">' +
+                `<div class="card"><div class="value">${stats.total_count ?? '-'}</div><div class="label">提交总量</div></div>` +
+                `<div class="card"><div class="value">${stats.source_count ?? '-'}</div><div class="label">网站来源数</div></div>` +
+                '</div>' +
+                `<div class="chart" id="source-chart-${index}"></div>` +
+                '<div class="table-wrap"><table style="margin-top:12px">' +
+                '<tr><th>网站来源（提交量从少到多）</th><th>近24小时提交量</th></tr>' +
+                Object.entries(totals)
+                    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+                    .map(([source, count]) => `<tr><td>${escapeHtml(source)}</td><td>${count}</td></tr>`)
+                    .join('') + '</table></div></div>';
+        }).join('');
+        groups.forEach((group, index) => {
+            const stats = group.statistics || {};
+            const sources = stats.sources || [];
+            const series = stats.series || {};
+            chart(`source-chart-${index}`).setOption({
+                backgroundColor: 'transparent',
+                tooltip: {trigger: 'axis'},
+                legend: {type: 'scroll', data: sources, bottom: 0},
+                xAxis: {type: 'category', boundaryGap: false, data: stats.slots || [],
+                        axisLabel: {formatter: value => value.slice(5)}},
+                yAxis: {type: 'value', minInterval: 1},
+                series: sources.map(source => ({
+                    name: source, type: 'line', smooth: true,
+                    symbol: 'none', areaStyle: {opacity: 0.12}, data: series[source] || [],
+                })),
+                grid: {left: 50, right: 20, top: 20, bottom: 70},
+            }, true);
+        });
         showError('source-error', null);
     } catch (e) { showError('source-error', `加载失败: ${e.message}`); }
 }
@@ -301,18 +309,12 @@ async function loadSourceQuality(days) {
     try {
         const data = await fetchJson(
             `/statistics/api/source_quality?start_time=${start}&end_time=${end}`);
-        const rows = data.sources || [];
-        const sum = key => rows.reduce((total, row) => total + (row[key] || 0), 0);
-        document.getElementById('quality-sources').textContent = data.source_count ?? '-';
-        document.getElementById('quality-accepted').textContent = sum('accepted');
-        document.getElementById('quality-archived').textContent = sum('archived');
-        document.getElementById('quality-low-value').textContent = sum('low_value');
-        document.getElementById('quality-defects').textContent = sum('content_defect');
-        document.getElementById('quality-table').innerHTML =
-            '<tr><th>来源（接受量从少到多）</th><th>状态</th><th>接受</th><th>入口拒绝</th>' +
-            '<th>归档</th><th>低价值</th><th>内容缺陷</th><th>重试</th><th>失败/敏感</th>' +
-            '<th>待处理</th><th>归档率</th><th>低价值原因</th><th>最后提交</th></tr>' +
-            rows.map(row => {
+        const groups = data.domains || [];
+        document.getElementById('quality-domain-groups').innerHTML = groups.map(group => {
+            const stats = group.statistics || {};
+            const rows = stats.sources || [];
+            const sum = key => rows.reduce((total, row) => total + (row[key] || 0), 0);
+            const body = rows.map(row => {
                 const reasons = Object.entries(row.low_value_reasons || {})
                     .sort((a, b) => b[1] - a[1])
                     .map(([reason, count]) => `${reasonLabels[reason] || reason} ${count}`)
@@ -327,6 +329,21 @@ async function loadSourceQuality(days) {
                     `<td>${percent(row.archive_rate)}</td><td>${escapeHtml(reasons)}</td>` +
                     `<td>${escapeHtml(row.last_submission || '-')}</td></tr>`;
             }).join('');
+            return `<div class="domain-group" data-domain="${escapeHtml(group.domain_name)}">` +
+                `<div class="domain-heading"><h3>${escapeHtml(group.display_name)}</h3>` +
+                `<span class="domain-code notranslate" translate="no">${escapeHtml(group.domain_name)}</span></div>` +
+                '<div class="cards">' +
+                `<div class="card"><div class="value">${stats.source_count ?? '-'}</div><div class="label">来源数</div></div>` +
+                `<div class="card"><div class="value">${sum('accepted')}</div><div class="label">接受提交</div></div>` +
+                `<div class="card"><div class="value">${sum('archived')}</div><div class="label">成功归档</div></div>` +
+                `<div class="card"><div class="value">${sum('low_value')}</div><div class="label">低价值</div></div>` +
+                `<div class="card"><div class="value">${sum('content_defect')}</div><div class="label">抓取内容缺陷</div></div>` +
+                '</div><div class="table-wrap"><table>' +
+                '<tr><th>来源（接受量从少到多）</th><th>状态</th><th>接受</th><th>入口拒绝</th>' +
+                '<th>归档</th><th>低价值</th><th>内容缺陷</th><th>重试</th><th>失败/敏感</th>' +
+                '<th>待处理</th><th>归档率</th><th>低价值原因</th><th>最后提交</th></tr>' +
+                body + '</table></div></div>';
+        }).join('');
         showError('quality-error', null);
     } catch (e) { showError('quality-error', `加载失败: ${e.message}`); }
 }

@@ -298,6 +298,31 @@ class IntelligenceHubWebService:
             describe = getattr(self.domain_resources, "describe", None)
         return list(describe() if callable(describe) else [])
 
+    def _group_source_statistics(
+            self, method_name: str, start_time: datetime.datetime,
+            end_time: datetime.datetime, **kwargs) -> dict:
+        """逐情报域执行来源统计，禁止把不同域的数据源合并成同一结果集。"""
+        groups = []
+        for context in self._enabled_domains():
+            engine = getattr(context, "statistics_engine", None)
+            if engine is None:
+                continue
+            method = getattr(engine, method_name)
+            groups.append({
+                "domain_name": context.name,
+                "display_name": context.display_name or context.name,
+                "is_default": bool(getattr(context, "is_default", False)),
+                "statistics": method(start_time, end_time, **kwargs),
+            })
+        return {
+            "time_range": {
+                "start": ensure_timezone_aware(start_time).isoformat(),
+                "end": ensure_timezone_aware(end_time).isoformat(),
+            },
+            "domain_count": len(groups),
+            "domains": groups,
+        }
+
     def set_vector_search_handler(self, handler) -> None:
         """注入向量搜索实现（由 VectorIntelligence.iis_integration.mount_to_iis 调用）。"""
         self._vector_search_handler = handler
@@ -1596,9 +1621,12 @@ class IntelligenceHubWebService:
                 top_n = max(1, int(top_n_value)) if top_n_value else None
                 if end_time - start_time > datetime.timedelta(days=31):
                     return jsonify({"error": "小时统计范围不能超过31天"}), 400
-                stat_engine = self.intelligence_hub.get_statistics_engine()
-                return jsonify(stat_engine.get_hourly_source_submissions(
-                    start_time, end_time, top_n=top_n))
+                return jsonify(self._group_source_statistics(
+                    "get_hourly_source_submissions",
+                    start_time,
+                    end_time,
+                    top_n=top_n,
+                ))
             except (TypeError, ValueError) as exc:
                 return jsonify({"error": str(exc)}), 400
             except Exception as exc:
@@ -1614,8 +1642,8 @@ class IntelligenceHubWebService:
                 start_time, end_time = self.get_time_range_params()
                 if end_time - start_time > datetime.timedelta(days=90):
                     return jsonify({"error": "来源状态统计范围不能超过90天"}), 400
-                stat_engine = self.intelligence_hub.get_statistics_engine()
-                return jsonify(stat_engine.get_source_quality(start_time, end_time))
+                return jsonify(self._group_source_statistics(
+                    "get_source_quality", start_time, end_time))
             except (TypeError, ValueError) as exc:
                 return jsonify({"error": str(exc)}), 400
             except Exception as exc:
