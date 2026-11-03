@@ -108,14 +108,34 @@ class HubApplication:
         self.runtime.stop(timeout=timeout, drain=True)
 
     @property
-    def statistics(self) -> Dict[str, Any]:
-        """运行时通用统计；领域/运维扩展可在 services 中提供额外统计。"""
+    def runtime_state(self) -> Dict[str, Any]:
+        """不查询 Mongo 的轻量运行寄存器，供探活、维护协调与高频轮询。"""
         with self._submission_lock:
             in_flight = len(self._active_submissions)
+            intake_in_flight = len(self._submission_waiters)
         return {
-            "runtime": {**self.runtime.stats, "in_flight_submissions": in_flight},
+            **self.runtime.stats,
+            "started": self._started.is_set(),
+            "in_flight_submissions": in_flight,
+            "intake_in_flight": intake_in_flight,
+        }
+
+    @property
+    def status_registers(self) -> Dict[str, Any]:
+        """无需访问数据库的领域处理寄存器。"""
+        return {
             "analysis": dict(getattr(self._pipeline_ports, "statistics", {}) or {}),
             "shadow": dict(getattr(self._pipeline_ports, "shadow_statistics", {}) or {}),
+            "installed_services": sorted(self.services),
+        }
+
+    @property
+    def statistics(self) -> Dict[str, Any]:
+        """运行时通用统计；领域/运维扩展可在 services 中提供额外统计。"""
+        return {
+            "runtime": self.runtime_state,
+            "analysis": self.status_registers["analysis"],
+            "shadow": self.status_registers["shadow"],
             "domains": self._describe_domains(),
             "workflow_outcomes": self._workflow_outcomes(),
             "today_flow": self._today_flow(),

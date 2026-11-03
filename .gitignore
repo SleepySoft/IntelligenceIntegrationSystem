@@ -204,6 +204,7 @@ _config/*
 !_config/ai_clients_recommended_example.yaml
 !_config/ai_clients_gemini_80_example.yaml
 !_config/ai_benchmark_suite_example.json
+!_config/backup_example.yaml
 !_config/subsystems/
 !_config/subsystems/**
 

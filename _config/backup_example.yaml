@@ -1,0 +1,14 @@
+# 备份由独立的 iis-backup.timer 触发；IIS 主进程只提供维护租约和状态接口。
+# 生产文件复制为 _config/backup.yaml（已被 git 忽略）。
+destination: /mnt/iis-backups
+service_url: http://127.0.0.1:5000
+
+# 配置只引用环境变量名，不保存维护 Token 本身。
+maintenance_token_env: IIS_MAINTENANCE_TOKEN
+# 环境变量未设置时读取此 0600 文件；相对路径以本配置所在目录为基准。
+maintenance_token_file: maintenance.token
+
+# Mongo 写入静默的最长时间；mongodump 超时会中止并解锁。
+lease_ttl_seconds: 900
+# 只等待已经跨过 /collect 闸门的请求，不等待分析队列清空。
+barrier_timeout_seconds: 60

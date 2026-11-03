@@ -263,7 +263,7 @@ def _quoted(value: Path | str) -> str:
 
 
 def _render_environment(request: InstallRequest, python_path: Path,
-                        session_secret: str) -> str:
+                        session_secret: str, maintenance_token: str) -> str:
     layout = request.layout
     try:
         service_home = Path(pwd.getpwnam(request.service_user).pw_dir)
@@ -277,6 +277,7 @@ def _render_environment(request: InstallRequest, python_path: Path,
         "AI_CLIENT_CONFIG": layout.config_dir / "ai_clients.yaml",
         "IIS_COLLECTOR_CONFIG": layout.config_dir / "collector.json",
         "IIS_SESSION_SECRET": session_secret,
+        "IIS_MAINTENANCE_TOKEN": maintenance_token,
         "IIS_PYTHON": python_path,
         "PATH": (
             f"{service_home / '.local/bin'}:/usr/local/sbin:/usr/local/bin:"
@@ -346,6 +347,39 @@ Wants={wants}
 
 [Install]
 WantedBy=multi-user.target
+"""
+    units["iis-backup.service"] = f"""[Unit]
+Description=Intelligence Integration System - Verified Backup
+After=network-online.target iis-web.service
+Wants=network-online.target iis-web.service
+ConditionPathExists={_quoted(request.layout.config_dir / 'backup.yaml')}
+
+[Service]
+Type=oneshot
+User={request.service_user}
+WorkingDirectory={_quoted(source)}
+EnvironmentFile={_quoted(environment_file)}
+ExecStart={_quoted(python_path)} {_quoted(source / 'Scripts/iis_backup.py')} backup --config {_quoted(request.layout.config_dir / 'backup.yaml')}
+TimeoutStartSec=1h
+TimeoutStopSec=30
+KillMode=process
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal
+"""
+    units["iis-backup.timer"] = """[Unit]
+Description=Intelligence Integration System - Daily Backup Schedule
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=iis-backup.service
+
+[Install]
+WantedBy=timers.target
 """
     return units
 
@@ -561,8 +595,12 @@ def install(request: InstallRequest) -> InstallResult:
     )
     env_path = request.layout.config_dir / "iis.env"
     session_secret = _read_env_value(env_path, "IIS_SESSION_SECRET") or secrets.token_urlsafe(48)
+    maintenance_token = (
+        _read_env_value(env_path, "IIS_MAINTENANCE_TOKEN") or secrets.token_urlsafe(48))
     _atomic_write(
-        env_path, _render_environment(request, python_path, session_secret), 0o600)
+        env_path,
+        _render_environment(request, python_path, session_secret, maintenance_token),
+        0o600)
 
     units = render_units(request, python_path, env_path)
     for name, content in units.items():

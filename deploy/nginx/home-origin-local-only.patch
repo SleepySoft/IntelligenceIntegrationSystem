@@ -1,0 +1,7 @@
+--- /etc/nginx/nginx.conf
++++ /etc/nginx/nginx.conf
+@@ -84,3 +84,4 @@
+         # 主服务：/ -> 127.0.0.1:5000
+         # -------------------------
++        include /etc/nginx/snippets/iis-local-only-locations.conf;
+         location / {

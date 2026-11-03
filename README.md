@@ -429,9 +429,12 @@ URL 前缀，例如 `news`、`industry`；不带领域前缀的路径始终使�
 | `http://localhost:8001/` | VectorDB 管理页 | 可选独立服务；生产 Nginx 通常代理为 `/vectordb/` |
 | `/ops/traffic/`、`/ops/traffic/raw/` | 网站访问统计 | 仅在安装对应 Nginx/GoAccess 配置后存在，不是 Flask 路由 |
 
-常用的非页面服务端点为：`GET /maintenance/ping`（存活检查）、`GET /auth_check`
+常用的非页面服务端点为：`GET /maintenance/ping`（仅本机存活检查）、
+`GET /api/runtime/state`（仅本机只读运行寄存器）、`GET /auth_check`
 （反向代理登录检查）、`POST /collect`（Collector 提交）、`POST /api`（登录保护的 RPC）和
 `GET /api/domains`（情报域注册表）。其余 JSON API 是上述页面的内部接口，按所属页面前缀组织。
+反向代理必须对两个仅本机 GET 端点及 `/api/maintenance/backup/*` 返回 404；参考
+`deploy/nginx/iis-local-only-locations.conf`。
 
 人工分析调试页 `/debug/intelligence` 会自动补齐 `CollectedData` 元数据，将 `source` 固定为
 `__IIS_MANUAL_TEST__`；结果只保存在当前进程的有界内存列表中，不写入 cache、archive、

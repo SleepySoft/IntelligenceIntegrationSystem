@@ -1,0 +1,12 @@
+[Unit]
+Description=Intelligence Integration System - Daily Backup Schedule
+
+[Timer]
+# 调度属于操作系统，不属于 IIS 主程序。生产差异用 systemctl edit iis-backup.timer 覆盖。
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=iis-backup.service
+
+[Install]
+WantedBy=timers.target

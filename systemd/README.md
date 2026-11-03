@@ -10,6 +10,7 @@
 | `iis-vectordb.service` | 向量数据库服务（VectorDBBService） |
 | `iis-web.service` | Web 核心服务（IntelligenceHubLauncher） |
 | `iis-crawler.service` | 爬虫引擎服务（CrawlerServiceEngine） |
+| `iis-backup.service` / `iis-backup.timer` | 进程外一致性备份及每日 systemd 调度 |
 | `iis.target` | 拉起当前启用的 Web 与爬虫服务（VectorDB 默认关闭） |
 | `iis-dashboard.service` | 开机创建 IIS 日志与系统监控 tmux 仪表盘 |
 
@@ -69,6 +70,23 @@ sudo journalctl -u iis-web -f
 sudo systemctl show iis-web --property=WatchdogTimestamp
 ```
 
+备份不由 IIS/APScheduler 触发。复制 `_config/backup_example.yaml` 为
+`_config/backup.yaml`、配置独立目标磁盘并设置 `IIS_MAINTENANCE_TOKEN` 后，再安装和启用 timer：
+
+```bash
+sudo ln -s /home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis-backup.service /etc/systemd/system/
+sudo ln -s /home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now iis-backup.timer
+
+# 不等定时器，立即演练一次
+sudo systemctl start iis-backup.service
+sudo journalctl -u iis-backup.service -n 100 --no-pager
+```
+
+默认每日 03:30，随机延迟不超过30分钟，错过计划会在下次开机补跑。修改计划使用
+`systemctl edit iis-backup.timer` 覆盖 `OnCalendar`，无需修改 IIS 主配置或重启 IIS。
+
 ## systemd watchdog
 
 `iis-web.service` 已启用 `WatchdogSec=30`。IIS 主进程启动后会启动一个守护线程，
@@ -77,6 +95,14 @@ systemd 将在 30 秒后自动重启 `iis-web`。
 
 watchdog 当前由主配置的运行时默认值启用；在 Windows 或非 systemd 环境下自动变为
 no-op。systemd 单元的 `WatchdogSec=30` 必须大于程序的 10 秒通知间隔。
+
+## 本机运行与维护接口
+
+`/maintenance/ping`、`/api/runtime/state` 和 `/api/maintenance/backup/*` 只允许从 IIS
+主机本地访问。应用直接收到非 loopback 请求时返回 403；生产 Nginx 还必须在通用
+`location /` 之前加载 `deploy/nginx/iis-local-only-locations.conf`，使公网请求直接返回 404。
+不要依赖 `X-Forwarded-For` 判断这些控制接口，因为本机反向代理会让上游连接的
+`remote_addr` 呈现为 loopback。
 
 ## 迁移说明
 

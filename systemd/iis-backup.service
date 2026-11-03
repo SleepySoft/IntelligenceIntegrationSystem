@@ -1,0 +1,26 @@
+[Unit]
+Description=Intelligence Integration System - Verified Backup
+After=network-online.target iis-web.service
+Wants=network-online.target iis-web.service
+ConditionPathExists=/home/sleepy/Documents/IntelligenceIntegrationSystem/_config/backup.yaml
+
+[Service]
+Type=oneshot
+User=sleepy
+Group=sleepy
+WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
+EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
+EnvironmentFile=-/home/sleepy/.config/iis/web.env
+Environment="PATH=/home/sleepy/anaconda3/envs/iis/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python Scripts/iis_backup.py backup --config _config/backup.yaml
+
+# 数据库静默租约最多一小时；脚本自己的 lease_ttl 通常更短。
+TimeoutStartSec=1h
+TimeoutStopSec=30
+# 父进程被强杀时保留独立 Mongo 解锁 guard，guard 到租约期会自行退出。
+KillMode=process
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal

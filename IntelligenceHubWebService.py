@@ -1,6 +1,7 @@
 # IntelligenceHubWebService.py
 
 import atexit
+import hmac
 import os
 import re
 import json
@@ -10,7 +11,8 @@ import time
 import dateutil
 import threading
 import traceback
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 from functools import wraps
 from typing import List, Tuple, Any, Dict, Optional
 from bson import ObjectId
@@ -197,6 +199,9 @@ class IntelligenceHubWebService:
         self.domain_resources = domain_resources or subsystem_registry
         self.subsystem_registry = self.domain_resources  # 历史兼容别名
         self.control_state = control_state
+        self._process_instance_id = uuid4().hex
+        self._process_started_at = datetime.datetime.now(datetime.timezone.utc)
+        self._process_started_monotonic = time.monotonic()
 
         settings = dict(post_settings or {})
         self.post_manager = post_manager or PostManager(
@@ -265,6 +270,110 @@ class IntelligenceHubWebService:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"success": True, "status": self.control_state.status()})
+
+    def _backup_control_response(self, action: str):
+        """仅供本机外部备份协调器使用的短租约控制面。"""
+        expected = os.environ.get("IIS_MAINTENANCE_TOKEN", "")
+        if not expected:
+            try:
+                token_path = Path(CONFIG_PATH) / "maintenance.token"
+                if token_path.stat().st_mode & 0o077:
+                    logger.error("维护 Token 文件权限过宽，拒绝启用: %s", token_path)
+                else:
+                    expected = token_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                expected = ""
+        supplied = request.headers.get("Authorization", "")
+        if supplied.lower().startswith("bearer "):
+            supplied = supplied[7:].strip()
+        if not expected or not hmac.compare_digest(supplied, expected):
+            return jsonify({"error": "maintenance authentication failed"}), 401
+        if request.remote_addr not in {"127.0.0.1", "::1"}:
+            return jsonify({"error": "maintenance endpoint is loopback-only"}), 403
+        if self.control_state is None:
+            return jsonify({"error": "控制状态未启用"}), 503
+
+        data = request.get_json(silent=True) or {}
+        try:
+            if action == "acquire":
+                lease = self.control_state.acquire_backup_lease(
+                    data.get("ttl_seconds", 900), operator="external-backup")
+            elif action == "renew":
+                lease = self.control_state.renew_backup_lease(
+                    str(data.get("lease_id", "")), data.get("ttl_seconds", 900))
+            elif action == "release":
+                self.control_state.release_backup_lease(str(data.get("lease_id", "")))
+                lease = None
+            else:
+                return jsonify({"error": "unknown backup maintenance action"}), 404
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 409
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 404
+
+        control_status = self.control_state.status()
+        in_flight = int(control_status.get("active_intake", 0) or 0)
+        return jsonify({
+            "success": True,
+            "lease": lease,
+            "active_intake": in_flight,
+            "ready_for_snapshot": bool(lease) and in_flight == 0,
+        })
+
+    @staticmethod
+    def _is_loopback_request() -> bool:
+        return request.remote_addr in {"127.0.0.1", "::1"}
+
+    def _runtime_state_payload(self) -> dict[str, Any]:
+        """统一的轻量运行状态；不执行 Mongo 聚合，不返回配置与凭据。"""
+        control = self.control_state.status() if self.control_state is not None else {
+            "maintenance": False,
+            "scopes": {},
+            "explicitly_paused": [],
+            "backup_lease": None,
+            "active_intake": 0,
+            "revision": 0,
+        }
+        runtime_state = getattr(self.intelligence_hub, "runtime_state", None)
+        if callable(runtime_state):
+            runtime_state = runtime_state()
+        if not isinstance(runtime_state, dict):
+            statistics = getattr(self.intelligence_hub, "statistics", {}) or {}
+            runtime_state = dict(statistics.get("runtime", {}) or {})
+        registers = getattr(self.intelligence_hub, "status_registers", {}) or {}
+        if callable(registers):
+            registers = registers()
+        if not isinstance(registers, dict):
+            registers = {}
+        started = bool(runtime_state.get("started", True))
+        intake_paused = bool((control.get("scopes") or {}).get("intake"))
+        if not started:
+            reason = "runtime_not_started"
+        elif intake_paused:
+            reason = "intake_paused"
+        else:
+            reason = ""
+        return {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "instance": {
+                "instance_id": self._process_instance_id,
+                "pid": os.getpid(),
+                "started_at": self._process_started_at.isoformat(),
+                "uptime_sec": round(
+                    max(0.0, time.monotonic() - self._process_started_monotonic), 3),
+            },
+            "health": {
+                "live": True,
+                "read_ready": started,
+                "write_ready": started and not intake_paused,
+                "reason": reason,
+            },
+            "control": control,
+            "runtime": runtime_state,
+            "registers": registers,
+        }
 
     @staticmethod
     def _serialize_for_json(obj):
@@ -836,8 +945,27 @@ class IntelligenceHubWebService:
 
         @app.route('/maintenance/ping', methods=['GET'])
         def maintenance_ping():
-            """Unauthenticated liveness probe used by the service launcher."""
-            response = jsonify({'status': 'ok'})
+            """供本机 launcher/systemd 使用的无登录轻量 liveness。"""
+            if not self._is_loopback_request():
+                return jsonify({"error": "liveness endpoint is loopback-only"}), 403
+            state = self._runtime_state_payload()
+            response = jsonify({
+                "status": "ok",
+                "instance_id": state["instance"]["instance_id"],
+                "started_at": state["instance"]["started_at"],
+                "uptime_sec": state["instance"]["uptime_sec"],
+                "read_ready": state["health"]["read_ready"],
+                "write_ready": state["health"]["write_ready"],
+            })
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+
+        @app.route('/api/runtime/state', methods=['GET'])
+        def runtime_state_api():
+            """无需登录的本机只读运行寄存器，供备份和服务监督使用。"""
+            if not self._is_loopback_request():
+                return jsonify({"error": "runtime state endpoint is loopback-only"}), 403
+            response = jsonify(self._runtime_state_payload())
             response.headers['Cache-Control'] = 'no-store'
             return response
 
@@ -922,8 +1050,11 @@ class IntelligenceHubWebService:
         def collect_api():
             # 应答契约：resp = queued | rejected | error；rejected 必带 reason，
             # 供采集端区分“可重试的传输错误”与“服务端明确拒绝”（重复/校验失败等）。
+            entered_intake = False
             try:
-                if self.control_state is not None and self.control_state.is_paused('intake'):
+                if self.control_state is not None:
+                    entered_intake = self.control_state.try_enter_intake()
+                if self.control_state is not None and not entered_intake:
                     return jsonify({'resp': 'maintenance', 'uuid': '',
                                     'message': 'intake paused by operator'}), 503
                 data = dict(request.json)
@@ -945,6 +1076,9 @@ class IntelligenceHubWebService:
             except Exception as e:
                 logger.error(f'collect_api() fail: {str(e)}')
                 return jsonify({'resp': 'error', 'uuid': '', 'reason': str(e)[:200]})
+            finally:
+                if entered_intake:
+                    self.control_state.leave_intake()
 
         @app.route('/debug/intelligence', methods=['GET'])
         @WebServiceAccessManager.login_required
@@ -1368,6 +1502,11 @@ class IntelligenceHubWebService:
         def control_resume_api():
             return self._control_set_scope(request, pause=False)
 
+        @app.route('/api/maintenance/backup/<string:action>', methods=['POST'])
+        def backup_maintenance_api(action: str):
+            """本机备份协调端点；独立 Token、短租约、无需 Web 登录会话。"""
+            return self._backup_control_response(action)
+
         @app.route('/api/control/discard_pending', methods=['POST'])
         @WebServiceAccessManager.login_required
         def control_discard_pending_api():
@@ -1723,8 +1862,10 @@ class IntelligenceHubWebService:
             """运行监控页的实时状态：hub 统计 + 影子分析 + 控制台状态原文。"""
             try:
                 hub_stats = self.intelligence_hub.statistics
+                state = self._runtime_state_payload()
                 return jsonify({
-                    "timestamp": get_aware_time().isoformat(),
+                    "timestamp": state["timestamp"],
+                    "state": state,
                     "hub": hub_stats,
                     "status_text": format_hub_status(hub_stats),
                 })
