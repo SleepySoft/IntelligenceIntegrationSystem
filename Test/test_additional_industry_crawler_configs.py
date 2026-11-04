@@ -28,8 +28,10 @@ def test_new_industry_sources_use_narrow_public_entries():
     assert "founder-summit" in TECHCRUNCH_CONFIG["url_filter"]["path_excludes"]
     assert OFWEEK_CONFIG["discoverer_init_param"]["scope_selector"] == (
         'a.swiper-slide[href*="/ART-"], '
-        '.deep_read_cont_title a[href*="/ART-"]'
+        '.deep_read_cont_title a[href*="/ART-"], '
+        '.newsListContentUl a[href*="/ART-"]'
     )
+    assert OFWEEK_CONFIG["extractor_kwargs"] == {"input_encoding": "gbk"}
 
 
 def test_new_industry_source_filters_and_handlers_are_safe():

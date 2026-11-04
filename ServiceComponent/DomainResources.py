@@ -128,6 +128,7 @@ class DomainContext:
 
     ai_client_group: Optional[str] = None
     scoring_config: Optional[Dict[str, Any]] = None
+    subsystem_config: Dict[str, Any] = field(default_factory=dict)
 
     # ---------- UI 插件 / schema 元数据（本版仅用于插件加载与验证） ----------
     config_dir: Optional[str] = None              # 领域配置目录（已解析的绝对路径）
@@ -264,6 +265,10 @@ class DomainResourceRegistry:
                 domain_factory=str(detail.get('factory') or 'news').strip() or 'news',
                 ai_client_group=detail.get('ai_client_group'),
                 scoring_config=detail.get('scoring'),
+                subsystem_config=(
+                    dict(detail.get('subsystems') or {})
+                    if isinstance(detail.get('subsystems'), dict) else {}
+                ),
                 config_dir=config_dir,
                 plugin_files=plugin_files,
                 ui_plugin_enabled=ui_plugin_enabled,

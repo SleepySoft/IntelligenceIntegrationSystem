@@ -143,15 +143,22 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._prompt_catalog = self._domain_registry.default().prompt_catalog
         self._prompt_table = self._prompt_catalog.sampling_table()
         self._selectable_prompts = self._prompt_catalog.selectable_table()
-        # 影子链路：与主链并行执行同构分析，结果只落盘对比，不归档、不影响主链。
+        # 生产路径从领域定义读取 shadow 设置。以下三个构造参数只保留给旧扩展/单元测试；
+        # 组合根显式注入 domain_registry 后，不会启用这条兼容路径。
         self._shadow_versions = [int(version) for version in (shadow_versions or ())]
-        unknown_shadow = [
-            (name, version)
-            for name in self._domain_registry.names()
-            for version in self._shadow_versions
-            if self._domain_registry.require(name).subsystems.shadow is not None
-            and not self._domain_registry.require(name).prompt_catalog.has(version)
-        ]
+        self._legacy_shadow_compat = domain_registry is None and bool(self._shadow_versions)
+        unknown_shadow = []
+        for name in self._domain_registry.names():
+            definition = self._domain_registry.require(name)
+            settings = definition.subsystems.shadow
+            versions = tuple(getattr(settings, "versions", ()) or ())
+            if not versions and self._legacy_shadow_compat:
+                versions = tuple(self._shadow_versions)
+            if getattr(settings, "enabled", False) or versions:
+                unknown_shadow.extend(
+                    (name, version) for version in versions
+                    if not definition.prompt_catalog.has(version)
+                )
         if unknown_shadow:
             raise ValueError(f"shadow prompt versions not configured: {unknown_shadow}")
         self._shadow_recorder = shadow_recorder
@@ -575,6 +582,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self, ctx: Any, event: HubEvent, original_data: dict, *, analyzer=None,
         prompt_version: int | None = None, prompt_override: str | None = None,
         client_group: str | None = None,
+        preferred_client_name: str | None = None,
         avoid_client_names: set[str] | None = None,
         avoid_model: str | None = None,
         shadow: bool = False,
@@ -600,7 +608,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # avoid_client_names：跨分析避让（如影子链路避开主链所用客户端，保证模型不同）
         failed_client_names: set[str] = set(avoid_client_names or ())
         # 差异化重试：结构/语义校验错误优先同模型带反馈纠错一次，而非跨模型乱跳
-        prefer_client_name: str | None = None
+        prefer_client_name: str | None = preferred_client_name
         same_model_retried = False
         # 敏感拒绝兑底：优先换 low_sensitivity 标签的客户端再试一次（有的话）
         sensitive_fallback_tried = False
@@ -855,32 +863,81 @@ class EventV4PipelinePorts(BasePipelinePorts):
                              primary_version: int, persist: bool,
                              primary_client_name: str = "",
                              primary_model: str = "") -> None:
-        """主链分析成功后并行执行影子链路，结果仅落盘对比。任何失败都不影响主链。"""
+        """主链分析成功后并行执行影子链路，结果仅写评估资产库。任何失败都不影响主链。"""
         definition = self._domain_for_context(ctx)
-        if (not persist or self._shadow_recorder is None
-                or definition.subsystems.shadow is None):
+        settings = definition.subsystems.shadow
+        if not persist or self._shadow_recorder is None or settings is None:
+            return
+        versions = tuple(getattr(settings, "versions", ()) or ())
+        enabled = bool(getattr(settings, "enabled", False))
+        sample_rate = float(getattr(settings, "sample_rate", 0.0) or 0.0)
+        comparison_mode = str(getattr(settings, "comparison_mode", "same_model"))
+        client_group = getattr(settings, "client_group", None)
+        if not versions and self._legacy_shadow_compat:
+            versions = tuple(self._shadow_versions)
+            enabled = bool(versions)
+            sample_rate = self._shadow_sample_rate
+            client_group = self._shadow_client_group
+            comparison_mode = "different_model" if client_group else "same_model"
+        if not enabled or not versions:
             return
         if self._control_state is not None and self._control_state.is_paused("shadow"):
             return
-        # 抽样判定对整次事件做一次：命中时该事件的所有影子版本都执行，保证配对完整。
-        if self._shadow_sample_rate < 1.0 and random.random() >= self._shadow_sample_rate:
+        # Shadow 是“当前正式池 vs 候选池”的单变量实验。历史 cache 为保持归因会继续
+        # 使用当时已分配、但现已退出正式池的 Prompt；这类恢复任务可以正常归档，
+        # 却不能再与当前候选版本配对，否则会产生 v2→v5 一类污染样本。
+        production_versions = set(definition.prompt_catalog.sampling_versions())
+        if primary_version not in production_versions:
+            logger.info(
+                "shadow skipped for historical primary prompt: domain=%s primary=v%s "
+                "production=%s",
+                ctx.name, primary_version, sorted(production_versions),
+            )
             return
-        for version in self._shadow_versions:
+        # 抽样判定对整次事件做一次：命中时该事件的所有影子版本都执行，保证配对完整。
+        if sample_rate < 1.0 and random.random() >= sample_rate:
+            return
+        for version in versions:
             # 未定向分组时跳过与主链同版本（同 prompt+随机模型≈重复劳动）；
             # 定向分组时同版本恰恰意味着“同 prompt 不同模型”，必须执行。
-            if version == primary_version and not self._shadow_client_group:
+            if version == primary_version and comparison_mode == "same_model":
                 continue
             try:
-                analysis, _, service, model, _ = self._analyze_v4_with_retry(
+                same_model = comparison_mode == "same_model"
+                analysis, _, service, model, shadow_client_name = self._analyze_v4_with_retry(
                     ctx, event, original_data,
                     analyzer=self._analyzer,
                     prompt_version=version,
-                    client_group=self._shadow_client_group,
-                    avoid_client_names={primary_client_name} if primary_client_name else None,
-                    avoid_model=primary_model or None,
+                    client_group=client_group if not same_model else None,
+                    preferred_client_name=(primary_client_name if same_model else None),
+                    avoid_client_names=(
+                        {primary_client_name}
+                        if not same_model and primary_client_name else None),
+                    avoid_model=(primary_model or None) if not same_model else None,
                     shadow=True,
                 )
-                self._shadow_recorder.record(
+                # preferred_client_name 是调度偏好，不是硬约束；结构纠错、网络重试或
+                # 自定义 ClientManager 都可能把后续调用切到其他客户端。same_model
+                # 实验只有在最终成功结果仍来自主链客户端/模型时才是单变量样本。
+                if same_model:
+                    if (primary_client_name and shadow_client_name
+                            and shadow_client_name != primary_client_name):
+                        raise _SameModelError(
+                            "same_model shadow client drifted: "
+                            f"primary={primary_client_name!r}, shadow={shadow_client_name!r}")
+                    if primary_model and model and model != primary_model:
+                        raise _SameModelError(
+                            "same_model shadow model drifted: "
+                            f"primary={primary_model!r}, shadow={model!r}")
+                try:
+                    shadow_total_score = definition.score(
+                        analysis, getattr(ctx, "scoring_config", None))
+                except Exception:
+                    shadow_total_score = None
+                    logger.warning(
+                        "shadow score calculation failed for domain=%s prompt=v%s",
+                        ctx.name, version, exc_info=True)
+                record_id = self._shadow_recorder.record(
                     original_data=original_data,
                     domain_name=ctx.name,
                     primary_prompt_version=primary_version,
@@ -889,7 +946,10 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     ai_service=service,
                     ai_model=model,
                     extraction_quality=self._compute_quality(ctx, analysis, original_data),
+                    total_score=shadow_total_score,
                 )
+                if not record_id:
+                    raise RuntimeError("shadow analysis result was not persisted")
                 with self._shadow_stats_lock:
                     self._shadow_stats["recorded"] += 1
             except Exception:

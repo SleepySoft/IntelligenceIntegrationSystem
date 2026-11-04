@@ -14,6 +14,7 @@ def create_domain(
     prompt_table: Mapping[int, str] | None = None,
     extra_prompt_versions: Mapping[int, str] | None = None,
     extraction_modes: Mapping[int, str] | None = None,
+    subsystem_config: Mapping[str, Any] | None = None,
     scorer_factory: Callable[[dict | None], Any] | None = None,
     archive_repository: Any = None,
 ) -> DomainDefinition:
@@ -47,7 +48,7 @@ def create_domain(
         event_registry=registry,
         subsystems=DomainSubsystems(
             batch=NewsBatchSupport(),
-            shadow=NewsShadowSupport(),
+            shadow=NewsShadowSupport.from_config(subsystem_config),
         ),
     )
 

@@ -27,7 +27,7 @@
 2. **Prompt 层**（`prompts_event_v4.py`）：新增 **v45**（= v44 + 议题槽与角色名
    指引：topic 只填抽象事项实体；已登记谓词禁止改用开放兜底角色）。注册为
    `sampling=False` 灰度版本，生产抽样仍为 v44；可经
-   `intelligence_hub.shadow_analysis.versions` 影子链路对比后再切换。
+   对应领域的 `subsystems.shadow` 影子链路对比后再切换。
 
 3. **Registry 层**（`event_engine/domains/news/config.py`，news 包 1.5→1.6）：
    补齐高频自然角色——`agree`+`topic`、`regulate`+`object`、`terminate`+`actor`、
@@ -47,16 +47,15 @@
 
 ## 影子对比工具
 
-- 影子记录落盘：`_data/analysis_shadow/`（每样本一个 JSON，含 source_uuid、
-  主链/影子版本、analysis 全文与 extraction_quality；最多保留 1000 个）。
+- 影子记录按领域写入 MongoDB `analysis_shadow`（含 source_uuid、主链/影子版本、
+  analysis 全文与 extraction_quality，并建立领域/UUID/版本/模型索引）。
 - 配对对比：`Scripts/compare_shadow_records.py` 按 source_uuid 把影子记录与
   Mongo 归档配对，并排输出版本/模型/质量指标，可选 `--events` 查看事件结构、
   `--uuid` 过滤单条、`--limit` 只看最近 N 对，末尾聚合“更优/持平/更差”。
 
 ## 后续建议
 
-- 将 v45 配置进影子分析链路积累对比数据（`hub.shadow_versions: [45]`，可用
-  `hub.shadow_sample_rate` 控制灰度 Token 成本，如 0.1 只跑约 10% 样本）；
+- 在新闻领域配置的 `subsystems.shadow` 中启用 v45 并设置采样率；
   若 `__EXTRACTION_QUALITY__` 的未登记角色/角色类型冲突指标优于 v44，再把
   sampling 切到 v45。
 - 其余长尾未登记角色组合（`remove/organization`、`adjudicate/object` 等）

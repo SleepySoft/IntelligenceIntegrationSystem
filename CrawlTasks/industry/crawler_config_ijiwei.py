@@ -49,7 +49,18 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25,
         "scroll_pages": 0,
     },
-    "extractor_kwargs": {},
+    "extractor_kwargs": {
+        # 页面 article_data 是该文自身的权威数据；Trafilatura 会误把站内弱日期
+        # 推断成 1 月 1 日。强证据缺失或格式错误时 pub_time 保持 null。
+        "date_extraction": {
+            "pattern": (
+                r'\barticle_data\s*=\s*\{[^;]*?'
+                r'"published_time":"(?P<value>\d{14})"'
+            ),
+            "format": "%Y%m%d%H%M%S",
+            "timezone": "Asia/Shanghai",
+        },
+    },
     "url_filter": {
         "allowed_hosts": ["www.laoyaoba.com"],
         "include_subdomains": False,

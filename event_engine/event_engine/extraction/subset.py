@@ -252,6 +252,34 @@ def _repair_event_times(event: SubsetEvent) -> None:
             _repair_time_expression(qualifier.time)
 
 
+def _normalize_empty_optional_objects(data: Any) -> Any:
+    """移除核心子集中不携带信息的空可选对象。
+
+    LLM 偶尔会为可选的 time/context/attributes 输出 ``{}``。这些对象没有任何
+    语义，等价于省略字段；在严格模型校验前删除属于无损格式归一化。roles 等
+    必填结构以及非空但畸形的对象仍交给 Pydantic 拒绝，避免猜测模型意图。
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("events"), list):
+        return data
+    normalized = dict(data)
+    events: list[Any] = []
+    changed = False
+    for raw_event in data["events"]:
+        if not isinstance(raw_event, dict):
+            events.append(raw_event)
+            continue
+        event = dict(raw_event)
+        for field in ("time", "context", "attributes"):
+            if event.get(field) == {}:
+                event.pop(field)
+                changed = True
+        events.append(event)
+    if changed:
+        normalized["events"] = events
+        return normalized
+    return data
+
+
 class _EntityTable:
     """按规范化名称合并内联实体提及，并分配 ENT 局部 ID。"""
 
@@ -324,7 +352,7 @@ def complete_core_extraction(data: Any, registry) -> EventExtractionResult:
     """把核心子集确定性补齐为完整 event-extraction/1.0 结果并校验。"""
     subset = (
         data if isinstance(data, CoreExtractionSubset)
-        else CoreExtractionSubset.model_validate(data)
+        else CoreExtractionSubset.model_validate(_normalize_empty_optional_objects(data))
     )
     primaries = [index for index, event in enumerate(subset.events) if event.is_primary]
     if len(primaries) > 1:

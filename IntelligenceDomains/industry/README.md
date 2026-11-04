@@ -3,25 +3,36 @@
 `industry` 是面向公司行动的独立情报域。它复用公共 Event V4 流程、Event Engine、
 Mongo 查询和前端展示，但独立拥有：
 
-- `prompt.py`：行业 Prompt v1/v2、Event Engine 核心子集桥接和协议注册；
+- `prompt.py`：行业 Prompt v1–v6、Event Engine 核心子集桥接和协议注册；
 - `predicates.py`：行业专用公司行动谓词定义及 Registry 注入；
 - `schema.py`：行业分类、八维 RATE 等级词和结果校验；
 - `scoring.py`：决策价值/故事兴趣双轨评分；
 - `storage.py`：行业归档 DTO 与存储投影；
 - `enrichment.py`：未来公司重要性资料库和 Arachne 异步评估的接口。
 
-当前 v1/v2 各占一个生产抽样槽。v1 是冻结对照；v2 在相同 schema、谓词目录和评分器上，
-增加公司行动、经营状态冲击、经营相关冲突、可执行产业政策四类信号的跨类型证据标尺，
-避免把“官方发布”“行业代表性”或故事性同时扩散到所有价值维度。首次分配仍写入 cache，
-持久化重试不会跨版本。灰度设计与首轮配对结果见
-`doc/prompt_versions/reports/20261028_industry_prompt_v2_gray_design.md`。
+当前正式与 Shadow 版本池分离：v4 是唯一正式生产版本；v6 是当前 Shadow 候选；v1–v3、v5 保留为
+历史可选版本。v3 保留 v2 对公司行动、经营状态冲击、经营相关冲突、可执行产业政策四类信号的
+覆盖和详细 REASON，消除财报边界冲突，并用准入门槛、逐维保守升档和事件优先级取代较长的校准
+说明；v4 不改变这些价值判断，仅增加 REASON 长度、角色数组和空可选对象的强制自检。v5 曾尝试
+通过缩短字段预算和强化容器约束提高首过率，但首轮效果更差，已退出当前 Shadow。v6 不继承 v5，
+而是从 v4 直接派生，只针对已观测到的顶层字段、attributes 键/类型和实体类型自造问题增加闭集约束。
+新情报固定由 v4 归档，命中 Shadow 抽样时由同一模型追加运行 v6。已有 cache 的版本分配
+继续保持，持久化重试不会跨版本。设计与灰度记录见
+`doc/prompt_versions/reports/20261028_industry_prompt_v2_gray_design.md` 和
+`doc/prompt_versions/reports/20261029_industry_prompt_v3_shadow_design.md`；v3 首次运行失败及 v4 修正
+记录在 `doc/prompt_versions/reports/20261029_industry_prompt_v4_validation_fix.md`；v4 转正与 v5 设计见
+`doc/prompt_versions/reports/20261030_industry_prompt_v4_promotion_v5_first_pass.md`。首次运行审计、历史
+cache 污染原因和灰度准入修复见
+`doc/prompt_versions/reports/20261101_industry_v4_v5_shadow_audit.md`；v6 设计与灰度边界见
+`doc/prompt_versions/reports/20261101_industry_prompt_v6_schema_gray.md`。
 
 两个版本都只根据正文评价。不得由 LLM 猜测公司重要性、市场份额、产业链关系或供应链传播。
 `company_importance_bonus` 与 `arachne_network_bonus` 默认且实际均为 0；只有未来显式传入
 版本化增强结果时，评分器才会计算受限后置加分。
 
-领域暂不提供 Batch 和 Shadow 实现，因此 `DomainSubsystems` 对应端口为空。新增实现时
-必须放在本目录，并由 `create_domain()` 显式注册，不能借用新闻领域实现。
+领域暂不提供 Batch。Shadow 由 `subsystems/shadow.py` 独立注册，版本、采样率和比较模式读取
+`_config/domains/industry.json` 的 `subsystems.shadow`；结果写入 MongoDB `analysis_shadow`
+集合，不进入正式归档、事件索引或向量库。
 
 ## 生产数据源
 

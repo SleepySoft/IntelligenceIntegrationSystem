@@ -65,6 +65,26 @@ def test_invalid_collected_data_is_a_summarized_skip():
     assert 'content:string_too_short' in warnings[0]
 
 
+def test_missing_published_time_remains_null_in_collected_data():
+    submitted = []
+    context = SimpleNamespace(
+        logger=SimpleNamespace(warning=lambda *_args: None),
+        submit_collected_data=lambda _group, data: submitted.append(data),
+    )
+    result = ExtractionResult(
+        markdown_content='Long enough article body.',
+        metadata={'title': 'Article title'},
+    )
+
+    intelligence_crawler_result_handler(
+        'https://example.test/no-date', 'news/world', result, context,
+    )
+
+    assert len(submitted) == 1
+    assert submitted[0].pub_time is None
+    assert submitted[0].collect_time is not None
+
+
 def test_empty_feed_logs_one_summary_without_traceback(caplog):
     logger_name = 'Tools.RSSFetcher'
     with caplog.at_level(logging.WARNING, logger=logger_name):

@@ -168,7 +168,7 @@
 | `prompts_event_v4.py` | 新增 V42、`EVENT_ANALYSIS_EXTRA_PROMPTS`、`PROMPT_EXTRACTION_MODES`、模式常量 |
 | `ServiceComponent/adapters/event_v4_pipeline.py` | 新增 extra_prompt_versions/extraction_modes 参数、按版本的校验分派、调试 prompt 表暴露额外版本；新增 shadow_versions/shadow_recorder/quality_enabled 参数、影子链路执行、归档质量统计 |
 | `ServiceComponent/extraction_quality.py` | 新增：未登记角色名、角色-实体类型兼容性、surface 接地率三类确定性检查（仅统计） |
-| `ServiceComponent/analysis_shadow.py` | 新增：`ShadowAnalysisRecorder` 影子分析落盘（JSON 文件，超量淘汰） |
+| `ServiceComponent/analysis_shadow.py` | `ShadowAnalysisRecorder` 将领域化影子结果作为评估资产写入 MongoDB |
 | `ServiceComponent/intelligence_contracts.py` | 新增 APPENDIX 键 `__EXTRACTION_QUALITY__` |
 | `IntelligenceHubStartup.py` | 装配影子链路（`intelligence_hub.shadow_analysis.*` 配置） |
 | `event_engine/tests/test_extraction_subset.py` | 新增 12 个桥接单元测试 |
@@ -182,14 +182,14 @@
 两条同构输出的分析链路并存：
 
 - **主链（v41 直出）**：生产抽样表不变，归档数据全部来自 v41；
-- **影子链（v42 + 桥接后处理）**：主链分析成功后，对同一输入并行执行 v42 分析（走同一重试与校验通道，经桥接补齐为完整契约），结果由 `ShadowAnalysisRecorder` 写入 `_data/analysis_shadow/`（每样本一个 JSON，含影子分析结果、质量指标、主/影子版本号、模型信息），**不进入归档、事件索引、向量库等任何下游**。
+- **影子链（v42 + 桥接后处理）**：主链分析成功后，对同一输入并行执行 v42 分析（走同一重试与校验通道，经桥接补齐为完整契约），结果由 `ShadowAnalysisRecorder` 写入 MongoDB `analysis_shadow` 集合（含领域、分析结果、质量指标、主/影子版本号、模型信息），**不进入正式归档、事件索引、向量库等任何下游**。
 
 特性：
 
 - 影子链路的任何失败（AI 调用、校验、落盘）都被隔离，仅记录日志与 `shadow_statistics` 计数，绝不影响主链；
 - 影子分析在分析 worker 内同步执行，自然受 `ai_analysis_thread` 与客户端调度容量节流，不需要额外线程模型；
 - 影子记录与归档 APPENDIX 中的 `__EXTRACTION_QUALITY__` 使用同一检查器，两条链路的指标口径一致，可直接按版本对比；
-- 配置开关：`intelligence_hub.shadow_analysis.versions`（默认空=关闭；评佽新版本时填入其版本号即可与生产版本并行对比）。2026-10-12 v42 已按此路径完成评估并切换为生产版本。
+- 当前配置开关位于 `_config/domains/<name>.json` 的 `subsystems.shadow`；版本号在各领域自己的 Prompt Catalog 内解释。2026-10-12 v42 曾通过已经移除的全局配置完成评估并切换为生产版本。
 
 ## 6.2 质量统计（仅参考，不拦截）
 

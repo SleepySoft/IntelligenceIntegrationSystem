@@ -25,7 +25,9 @@ CRAWLER_CONFIG = {
         "extraction_mode": "card",
         "same_host_only": True,
     },
-    "extractor_name": "Trafilatura",
+    # 该站 Next.js 页面标题不被 Trafilatura 元数据识别；Readability 能同时
+    # 提取稳定的 <title> 与正文。
+    "extractor_name": "Readability",
     "extractor_init_param": {"verbose": False},
     "entry_points": {
         "technology_companies": "https://www.chinastarmarket.cn/",

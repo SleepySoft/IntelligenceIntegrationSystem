@@ -75,3 +75,25 @@ def test_public_query_returns_effective_clamped_pagination():
 
     assert payload["page"] == 2
     assert payload["per_page"] == DEFAULT_PUBLIC_SEARCH_LIMITS["mongo_max_per_page"]
+
+
+def test_logged_in_query_marks_shadow_results_in_one_batch():
+    class Recorder:
+        def existing_source_uuids(self, uuids, *, domain_name):
+            assert uuids == ["one", "two"]
+            assert domain_name == "industry"
+            return {"two"}
+
+    service = IntelligenceHubWebService.__new__(IntelligenceHubWebService)
+    service.intelligence_hub = SimpleNamespace(
+        default_domain_name="news",
+        get_service=lambda name: Recorder() if name == "shadow_recorder" else None,
+    )
+    results = [{"UUID": "one"}, {"UUID": "two"}]
+
+    service._annotate_shadow_availability(results, "industry")
+
+    assert results == [
+        {"UUID": "one", "has_shadow": False},
+        {"UUID": "two", "has_shadow": True},
+    ]

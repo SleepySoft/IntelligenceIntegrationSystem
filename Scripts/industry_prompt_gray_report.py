@@ -118,7 +118,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=27017)
     parser.add_argument("--database", default="IntelligenceIntegrationSystem")
     parser.add_argument("--prefix", default="industry_intelligence_")
-    parser.add_argument("--versions", default="1,2", help="逗号分隔的 Prompt 版本")
+    parser.add_argument("--versions", default="1,3", help="逗号分隔的 Prompt 版本")
     parser.add_argument("--since", help="只统计该 ISO 时间之后归档的结果")
     parser.add_argument("--json", action="store_true", help="输出 JSON 而不是 Markdown")
     return parser.parse_args()

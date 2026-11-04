@@ -5,7 +5,9 @@
 # 避免首次接入把整页历史存量一次性灌入分析队列。
 ARTICLE_SELECTOR = (
     'a.swiper-slide[href*="/ART-"], '
-    '.deep_read_cont_title a[href*="/ART-"]'
+    '.deep_read_cont_title a[href*="/ART-"], '
+    # 半导体首页的高频主列表独立于轮播和 deep_read 区域。
+    '.newsListContentUl a[href*="/ART-"]'
 )
 
 
@@ -51,7 +53,8 @@ CRAWLER_CONFIG = {
         "wait_for_timeout_s": 25,
         "scroll_pages": 0,
     },
-    "extractor_kwargs": {},
+    # OFweek 正文响应明确声明 GBK；显式转码可避免部分标题被误判为西里尔乱码。
+    "extractor_kwargs": {"input_encoding": "gbk"},
     "url_filter": {
         "allowed_hosts": [
             "semi.ofweek.com",

@@ -165,7 +165,8 @@ class WebServiceAccessManager:
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if 'logged_in' not in session or not session['logged_in']:
-                return redirect(url_for('login'))
+                next_target = request.full_path if request.query_string else request.path
+                return redirect(url_for('login', next=next_target))
             return f(*args, **kwargs)
         return decorated_function
 
@@ -710,6 +711,31 @@ class IntelligenceHubWebService:
         summary_result = exclude_raw_data(results)
         return {'results': summary_result, 'total': total}
 
+    def _annotate_shadow_availability(
+            self, results: List[dict], domain_name: Optional[str]) -> None:
+        """为已登录用户的当前页结果批量标注 Shadow；查询失败不影响正常列表。"""
+        if not results:
+            return
+        for item in results:
+            item['has_shadow'] = False
+        recorder = self.intelligence_hub.get_service("shadow_recorder")
+        if recorder is None:
+            return
+        resolved_domain = str(
+            domain_name or self.intelligence_hub.default_domain_name).strip()
+        uuids = [str(item.get('UUID') or '') for item in results]
+        try:
+            existing = recorder.existing_source_uuids(
+                uuids, domain_name=resolved_domain)
+        except Exception:
+            logger.warning(
+                "shadow list annotation failed: domain=%s", resolved_domain,
+                exc_info=True,
+            )
+            return
+        for item in results:
+            item['has_shadow'] = str(item.get('UUID') or '') in existing
+
     def _query_api(self, domain_name: Optional[str] = None) -> Any:
         """CARD：列表/搜索接口；具名领域与默认领域共用。"""
         try:
@@ -777,6 +803,9 @@ class IntelligenceHubWebService:
                 # 不把标题、正文、查询词等情报内容写进性能日志。
                 with self._perf_logger.timed('search_query', **perf_extra) as perf_span:
                     data = self._perform_search_logic(params, domain_name)
+                    if is_logged_in:
+                        self._annotate_shadow_availability(
+                            data.get('results', []), domain_name)
                     # 游客请求可能被服务端限额收紧；把实际分页值返回给前端，
                     # 否则前端继续用请求前的 per_page 会算错总页数。
                     data['page'] = params.get('page', 1)
@@ -884,6 +913,24 @@ class IntelligenceHubWebService:
             return self._intelligence_detail_json(
                 intelligence_uuid, domain_name=domain_name)
 
+        @bp.route('/api/intelligence/<string:intelligence_uuid>/shadow', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def intelligence_shadow_api(intelligence_uuid: str):
+            return self._shadow_comparison_response(
+                intelligence_uuid, domain_name=domain_name)
+
+        @bp.route('/api/shadow/record', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def shadow_record_api():
+            return self._shadow_record_response(domain_name=domain_name)
+
+        @bp.route('/shadow/compare/<string:intelligence_uuid>', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def shadow_compare_page(intelligence_uuid: str):
+            return render_template(
+                'shadow_compare.html', uuid=intelligence_uuid,
+                base_path=base_path, domain_name=domain_name)
+
         @bp.route('/assets/<path:filename>', methods=['GET'])
         def domain_assets(filename: str):
             """??????????????ui_plugin.js?assets/*?????????"""
@@ -918,6 +965,52 @@ class IntelligenceHubWebService:
         return bp
 
     # ---------------------------------------------------- Routers -----------------------------------------------------
+
+    def _shadow_comparison_response(self, intelligence_uuid: str, *, domain_name: str):
+        from ServiceComponent.shadow_compare import build_comparison_sides
+
+        recorder = self.intelligence_hub.get_service("shadow_recorder")
+        if recorder is None:
+            return jsonify({"available": False, "reason": "shadow_not_configured",
+                            "sides": [], "pairs": []})
+        document = self.intelligence_hub.get_intelligence(
+            intelligence_uuid, domain_name=domain_name, include_appendix=True)
+        if not document:
+            return jsonify({"error": "not_found"}), 404
+        appendix = document.get("APPENDIX") or {}
+        primary = {
+            "prompt_version": appendix.get("__PROMPT_VERSION__"),
+            "model": appendix.get("__AI_MODEL__"),
+        }
+        shadows = recorder.list_by_uuid(
+            intelligence_uuid, domain_name=domain_name)
+        result = build_comparison_sides(primary, shadows)
+        result["available"] = bool(shadows)
+        result["title"] = document.get("EVENT_TITLE")
+        result["primary"] = primary
+        result["primary_document"] = {
+            "EVENT_TITLE": document.get("EVENT_TITLE"),
+            "EVENT_BRIEF": document.get("EVENT_BRIEF"),
+            "TAXONOMY": document.get("TAXONOMY"),
+            "RATE": document.get("RATE"),
+            "EVENT_EXTRACTION": document.get("EVENT_EXTRACTION"),
+            "APPENDIX": {
+                "__TOTAL_SCORE__": appendix.get("__TOTAL_SCORE__"),
+                "__EXTRACTION_QUALITY__": appendix.get("__EXTRACTION_QUALITY__"),
+            },
+        }
+        return jsonify(result)
+
+    def _shadow_record_response(self, *, domain_name: str):
+        recorder = self.intelligence_hub.get_service("shadow_recorder")
+        if recorder is None:
+            return jsonify({"error": "shadow_not_configured"}), 503
+        record = recorder.read_record(
+            request.args.get("id") or request.args.get("file", ""),
+            domain_name=domain_name)
+        if record is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify(record)
 
     def register_routers(self, app: Flask):
 
@@ -1569,56 +1662,22 @@ class IntelligenceHubWebService:
         @WebServiceAccessManager.login_required
         def intelligence_shadow_api(intelligence_uuid):
             """某条情报的影子对比候选与配对（同模型比 prompt / 同 prompt 比模型）。"""
-            from ServiceComponent.shadow_compare import build_comparison_sides
-
-            recorder = self.intelligence_hub.get_service("shadow_recorder")
-            if recorder is None:
-                return jsonify({"available": False, "reason": "shadow_not_configured",
-                                "sides": [], "pairs": []})
-            document = self.intelligence_hub.get_intelligence(
-                intelligence_uuid, include_appendix=True)
-            if not document:
-                return jsonify({"error": "not_found"}), 404
-            appendix = document.get("APPENDIX") or {}
-            primary = {
-                "prompt_version": appendix.get("__PROMPT_VERSION__"),
-                "model": appendix.get("__AI_MODEL__"),
-            }
-            shadows = recorder.list_by_uuid(intelligence_uuid)
-            result = build_comparison_sides(primary, shadows)
-            result["available"] = bool(shadows)
-            result["title"] = document.get("EVENT_TITLE")
-            result["primary"] = primary
-            # 对比页左/右栏直接使用的主链全文（质量指标与总分在 APPENDIX 中）
-            result["primary_document"] = {
-                "EVENT_TITLE": document.get("EVENT_TITLE"),
-                "EVENT_BRIEF": document.get("EVENT_BRIEF"),
-                "TAXONOMY": document.get("TAXONOMY"),
-                "RATE": document.get("RATE"),
-                "EVENT_EXTRACTION": document.get("EVENT_EXTRACTION"),
-                "APPENDIX": {
-                    "__TOTAL_SCORE__": appendix.get("__TOTAL_SCORE__"),
-                    "__EXTRACTION_QUALITY__": appendix.get("__EXTRACTION_QUALITY__"),
-                },
-            }
-            return jsonify(result)
+            return self._shadow_comparison_response(
+                intelligence_uuid, domain_name=self.intelligence_hub.default_domain_name)
 
         @app.route('/api/shadow/record', methods=['GET'])
         @WebServiceAccessManager.login_required
         def shadow_record_api():
-            """读取单个影子记录全文（file 必须是索引中登记的文件名）。"""
-            recorder = self.intelligence_hub.get_service("shadow_recorder")
-            if recorder is None:
-                return jsonify({"error": "shadow_not_configured"}), 503
-            record = recorder.read_record(request.args.get("file", ""))
-            if record is None:
-                return jsonify({"error": "not_found"}), 404
-            return jsonify(record)
+            """按 Mongo ObjectId 读取默认领域的单个影子记录全文。"""
+            return self._shadow_record_response(
+                domain_name=self.intelligence_hub.default_domain_name)
 
         @app.route('/shadow/compare/<string:intelligence_uuid>', methods=['GET'])
         @WebServiceAccessManager.login_required
         def shadow_compare_page(intelligence_uuid):
-            return render_template('shadow_compare.html', uuid=intelligence_uuid)
+            return render_template(
+                'shadow_compare.html', uuid=intelligence_uuid, base_path='',
+                domain_name=self.intelligence_hub.default_domain_name)
 
         @app.route('/statistics/score_distribution.html', methods=['GET'])
         @WebServiceAccessManager.login_required

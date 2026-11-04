@@ -914,13 +914,14 @@ class FakeShadowRecorder:
 
     def record(self, **kwargs):
         self.records.append(kwargs)
+        return f"shadow-{len(self.records)}"
 
 
 def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0,
                        client_manager=None):
     return EventV4PipelinePorts(
         FakeRegistry(FakeContext()),
-        client_manager or RotatingClientManager(["fake-v4", "glm-shadow"]),
+        client_manager or RotatingClientManager(["fake-v4", "fake-v4"]),
         archive_repository=FakeArchiveRepository(),
         prompt_table={41: "full prompt"},
         extra_prompt_versions={42: "shadow prompt"},
@@ -955,11 +956,46 @@ def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
     record = shadow_recorder.records[0]
     assert record["primary_prompt_version"] == 41
     assert record["shadow_prompt_version"] == 42
+    assert record["total_score"] == 6.5
     shadow_extraction = record["analysis"]["EVENT_EXTRACTION"]
     assert shadow_extraction["schema_version"] == "event-extraction/1.0"
     assert [entity["id"] for entity in shadow_extraction["entities"]] == ["ENT1", "ENT2"]
     assert record["extraction_quality"] is not None
     assert ports.shadow_statistics == {"recorded": 1, "failed": 0}
+
+
+def test_different_prompt_shadow_prefers_primary_client_for_clean_comparison():
+    manager = RotatingClientManager(["fake-v4", "fake-v4"])
+    recorder = FakeShadowRecorder()
+    ports = _ports_with_shadow(
+        lambda client, prompt, original, record_meta=None: (
+            _valuable_core_subset() if prompt == "shadow prompt" else _valuable()),
+        recorder,
+        client_manager=manager,
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted
+    assert manager.requests[1].get("target_client_name") == "client-fake-v4"
+    assert recorder.records[0]["ai_model"] == "fake-v4"
+
+
+def test_same_model_shadow_discards_result_if_client_or_model_drifts():
+    manager = RotatingClientManager(["fake-v4", "glm-shadow"])
+    recorder = FakeShadowRecorder()
+    ports = _ports_with_shadow(
+        lambda client, prompt, original, record_meta=None: (
+            _valuable_core_subset() if prompt == "shadow prompt" else _valuable()),
+        recorder,
+        client_manager=manager,
+    )
+
+    result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+
+    assert result.accepted
+    assert not recorder.records
+    assert ports.shadow_statistics == {"recorded": 0, "failed": 1}
 
 
 def test_v4_shadow_failure_does_not_affect_primary_chain():
@@ -1005,7 +1041,7 @@ def test_v4_shadow_sample_rate_partial_uses_single_draw_per_event(monkeypatch):
     shadow_recorder = FakeShadowRecorder()
     ports = _ports_with_shadow(
         analyzer, shadow_recorder, shadow_sample_rate=0.5,
-        client_manager=RotatingClientManager(["fake-v4", "glm-a", "glm-b"]))
+        client_manager=RotatingClientManager(["fake-v4", "fake-v4", "fake-v4"]))
 
     import ServiceComponent.adapters.event_v4_pipeline as pipeline_module
     monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.6)
@@ -1017,6 +1053,39 @@ def test_v4_shadow_sample_rate_partial_uses_single_draw_per_event(monkeypatch):
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
     assert analyzed.accepted
     assert len(shadow_recorder.records) == 1  # 0.4 < 0.5，命中
+
+
+def test_shadow_skips_persisted_primary_version_that_left_production_pool():
+    calls = []
+
+    def analyzer(client, prompt, original, record_meta=None):
+        calls.append(prompt)
+        return _valuable()
+
+    recorder = FakeShadowRecorder()
+    ports = EventV4PipelinePorts(
+        FakeRegistry(FakeContext()), FakeClientManager(),
+        archive_repository=FakeArchiveRepository(),
+        prompt_table={41: "production prompt"},
+        extra_prompt_versions={40: "historical prompt", 42: "shadow prompt"},
+        extraction_modes={40: "full", 41: "full", 42: "full"},
+        shadow_versions=[42],
+        shadow_recorder=recorder,
+        shadow_sample_rate=1.0,
+        analyzer=analyzer,
+        scorer_factory=lambda _: FakeScorer(),
+        retry_wait=wait_none(),
+    )
+    original = _original()
+    original["APPENDIX"] = {"__PROMPT_VERSION__": 40}
+
+    analyzed = ports.analyze(HubEvent("analysis.requested", original, "news"))
+
+    assert analyzed.accepted
+    assert analyzed.payload.archive.APPENDIX["__PROMPT_VERSION__"] == 40
+    assert calls == ["historical prompt"]
+    assert not recorder.records
+    assert ports.shadow_statistics == {"recorded": 0, "failed": 0}
 
 
 def test_v4_archive_appendix_carries_extraction_quality_stats():

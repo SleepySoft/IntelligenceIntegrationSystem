@@ -4,6 +4,7 @@
 """
 
 from .contracts import (
+    DomainShadowSettings,
     DomainDefinition,
     DomainPreparedResult,
     DomainSubsystems,
@@ -12,6 +13,7 @@ from .contracts import (
 from .registry import DomainRegistry, build_domain_registry
 
 __all__ = [
+    "DomainShadowSettings",
     "DomainDefinition",
     "DomainPreparedResult",
     "DomainRegistry",

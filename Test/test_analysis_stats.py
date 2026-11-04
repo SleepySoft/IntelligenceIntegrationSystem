@@ -90,7 +90,7 @@ class TestAnalysisStats:
         assert g["sensitive_rate"] == round(1 / 3, 4)
         assert g["attempts_per_item"] == round(4 / 3, 2)
         assert g["errors"] == {"schema_shape": 1, "content_safety": 1}
-        assert g["first_pass_rate"] == round(1 - 2 / 4, 4)  # 4 次调用 2 次首试出错
+        assert g["first_pass_rate"] == round(1 / 3, 4)  # 3 件任务中仅 a1 首次成功
         with sqlite3.connect(db_path) as conn:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
         assert "domain_name" in columns
@@ -134,3 +134,26 @@ class TestAnalysisStats:
         group = recorder.aggregate_by_model(days=1)[0]
         assert group["ai_model"] == "model-x"
         assert group["outcome_dist"] == {"failed": 1}
+
+    def test_cross_model_retry_stays_in_first_model_task_cohort(self, tmp_path):
+        recorder = AnalysisStatsRecorder(tmp_path / "cross-model.db")
+        recorder.record_attempt(
+            uuid="x", domain_name="industry", shadow=False, prompt_version=2,
+            ai_service="svc-a", ai_model="model-a", attempt_no=1,
+            latency_ms=10, error_class=AnalysisErrorClass.SCHEMA_SHAPE)
+        recorder.record_attempt(
+            uuid="x", domain_name="industry", shadow=False, prompt_version=2,
+            ai_service="svc-b", ai_model="model-b", attempt_no=2,
+            latency_ms=20, error_class=None)
+        recorder.record_outcome(
+            uuid="x", domain_name="industry", shadow=False, prompt_version=2,
+            ai_service="svc-b", ai_model="model-b", outcome=OUTCOME_SUCCESS,
+            attempts_used=2)
+
+        groups = recorder.aggregate_by_model(days=1)
+        assert len(groups) == 1
+        assert groups[0]["ai_model"] == "model-a"
+        assert groups[0]["items"] == 1
+        assert groups[0]["success_rate"] == 1.0
+        assert groups[0]["first_pass_rate"] == 0.0
+        assert groups[0]["attempts_per_item"] == 2.0

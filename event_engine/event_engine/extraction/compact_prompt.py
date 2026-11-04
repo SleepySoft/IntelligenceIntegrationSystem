@@ -75,7 +75,10 @@ def build_compact_core_extraction_section(registry) -> str:
 attributes 是 JSON 对象，禁止数组；允许键 {attribute_keys}，每键最多一次：
 - amount：{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}。
 - quantity、value_before、value_after、delta、level：{{"type":"number","value":5000,"unit":"人","surface":"5000人"}}。
-- ratio：{{"type":"ratio","value":0.25,"surface":"25%"}}，value 在 0 至 1 之间。
+- ratio 只表示占比本身：{{"type":"ratio","value":0.25,"surface":"占25%"}}，value 在 0 至 1 之间。
+  增长率、降幅和倍数不得写入 ratio：“同比增长783%”用
+  delta={{"type":"number","value":783,"unit":"%","surface":"同比增长783%"}}；“增至原来的2.5倍”用
+  value_after={{"type":"number","value":2.5,"unit":"倍","surface":"增至原来的2.5倍"}}。
 - duration：{{"type":"duration","value":3,"unit":"年","surface":"三年"}}。
 
 ## 限定词与信息状态

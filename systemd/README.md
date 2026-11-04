@@ -70,21 +70,23 @@ sudo journalctl -u iis-web -f
 sudo systemctl show iis-web --property=WatchdogTimestamp
 ```
 
-备份不由 IIS/APScheduler 触发。复制 `_config/backup_example.yaml` 为
-`_config/backup.yaml`、配置独立目标磁盘并设置 `IIS_MAINTENANCE_TOKEN` 后，再安装和启用 timer：
+备份不由 IIS/APScheduler 触发。当前默认只安装 unit、手工执行，不启用 timer，以免完整快照
+在尚未配置保留与容量上限时撑满磁盘。复制 `_config/backup_example.yaml` 为
+`_config/backup.yaml`、配置目标磁盘并设置 `IIS_MAINTENANCE_TOKEN` 后：
 
 ```bash
 sudo ln -s /home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis-backup.service /etc/systemd/system/
 sudo ln -s /home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now iis-backup.timer
 
-# 不等定时器，立即演练一次
+# 手工执行一次
 sudo systemctl start iis-backup.service
 sudo journalctl -u iis-backup.service -n 100 --no-pager
 ```
 
-默认每日 03:30，随机延迟不超过30分钟，错过计划会在下次开机补跑。修改计划使用
+只有在目标容量、保留数量和自动清理策略均已验证后，才执行
+`sudo systemctl enable --now iis-backup.timer`。启用后默认每日 03:30，随机延迟不超过30分钟，
+错过计划会在下次开机补跑。修改计划使用
 `systemctl edit iis-backup.timer` 覆盖 `OnCalendar`，无需修改 IIS 主配置或重启 IIS。
 
 ## systemd watchdog

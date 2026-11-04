@@ -9,9 +9,20 @@ from IntelligenceDomains.industry import create_domain
 from IntelligenceDomains.industry.prompt import (
     INDUSTRY_BASELINE_PROMPT_VERSION,
     INDUSTRY_DISAMBIGUATION,
+    INDUSTRY_PRODUCTION_PROMPT_VERSION,
     INDUSTRY_PROMPT_VERSION,
+    INDUSTRY_PROMPT_V2_VERSION,
+    INDUSTRY_PROMPT_V3_VERSION,
+    INDUSTRY_PROMPT_V4_VERSION,
+    INDUSTRY_PROMPT_V5_VERSION,
+    INDUSTRY_PROMPT_V6_VERSION,
+    INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS,
     build_industry_prompt,
     build_industry_prompt_v2,
+    build_industry_prompt_v3,
+    build_industry_prompt_v4,
+    build_industry_prompt_v5,
+    build_industry_prompt_v6,
     validate_industry_core_result,
 )
 from IntelligenceDomains.industry.schema import RATE_DIMENSIONS
@@ -78,11 +89,18 @@ def test_industry_factory_registers_own_prompt_schema_scorer_and_no_news_subsyst
 
     assert domain.name == "industry"
     assert domain.prompt_catalog.sampling_versions() == [
+        INDUSTRY_PRODUCTION_PROMPT_VERSION,
+    ]
+    assert domain.prompt_catalog.selectable_versions() == [
         INDUSTRY_BASELINE_PROMPT_VERSION,
+        INDUSTRY_PROMPT_V2_VERSION,
+        INDUSTRY_PROMPT_V3_VERSION,
+        INDUSTRY_PROMPT_V4_VERSION,
+        INDUSTRY_PROMPT_V5_VERSION,
         INDUSTRY_PROMPT_VERSION,
     ]
     assert domain.subsystems.batch is None
-    assert domain.subsystems.shadow is None
+    assert domain.subsystems.shadow.enabled is False
     assert domain.event_registry.get("layoff").label == "裁员"
     assert domain.event_registry.get("reduce_output").label == "减少产量"
     assert domain.event_registry.get("reduce_capacity").label == "削减产能"
@@ -90,6 +108,25 @@ def test_industry_factory_registers_own_prompt_schema_scorer_and_no_news_subsyst
     assert domain.event_registry.get("close_facility").required_roles == (
         "operator", "facility")
     assert "不得把减产自动写成削减产能" in INDUSTRY_DISAMBIGUATION
+
+
+def test_industry_factory_reads_domain_scoped_shadow_config():
+    domain = create_domain(subsystem_config={"shadow": {
+        "enabled": True, "versions": [3], "sample_rate": 0.25,
+        "comparison_mode": "same_model",
+    }})
+
+    assert domain.subsystems.shadow.enabled is True
+    assert domain.subsystems.shadow.versions == (3,)
+    assert domain.subsystems.shadow.sample_rate == 0.25
+
+
+def test_industry_rejects_overlap_between_formal_and_same_model_shadow_pools():
+    with pytest.raises(ValueError, match="正式与 shadow Prompt 池重叠"):
+        create_domain(subsystem_config={"shadow": {
+            "enabled": True, "versions": [4, 6], "sample_rate": 0.25,
+            "comparison_mode": "same_model",
+        }})
 
 
 def test_industry_predicate_growth_does_not_change_news_v48_registry():
@@ -110,7 +147,7 @@ def test_builtin_industry_factory_is_resolved_from_domain_config_name():
 
     registry = build_domain_registry(contexts, default_name="news")
 
-    assert registry.require("industry").prompt_catalog.sampling_versions() == [1, 2]
+    assert registry.require("industry").prompt_catalog.sampling_versions() == [4]
     assert registry.require("industry").storage.__class__.__name__ == "IndustryStorage"
 
 
@@ -226,9 +263,10 @@ def test_industry_prompt_forbids_company_and_supply_chain_guessing():
 def test_industry_v1_baseline_text_is_frozen_for_attributable_gray_test():
     prompt = build_industry_prompt()
 
-    assert len(prompt) == 23903
+    # v1/v2 共用的 Event Extraction 数值协议修正后重新冻结；价值校准文本仍不变。
+    assert len(prompt) == 24121
     assert hashlib.sha256(prompt.encode()).hexdigest() == (
-        "a85f028de8c0c6adfbe51b3733a55a71546d03f42db00529a00dbea021b73e8f"
+        "3d90cb1598fd8a940610cb7d0457fbd126610d02b859bc472a25ed570d000c01"
     )
 
 
@@ -247,7 +285,83 @@ def test_industry_v2_adds_cross_type_evidence_calibration_only_in_gray_prompt():
 
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(1) is catalog.protocol_for(2)
-    assert catalog.sampling_versions() == [1, 2]
+    assert catalog.sampling_versions() == [4]
+    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
+
+
+def test_industry_v3_is_stricter_shorter_and_keeps_detailed_reasoning():
+    baseline = build_industry_prompt()
+    v2 = build_industry_prompt_v2()
+    v3 = build_industry_prompt_v3()
+
+    assert len(v3) < len(v2)
+    assert "逐维从低档开始" in v3
+    assert "财报是信息载体，不是自动收录或自动排除理由" in v3
+    assert "信号类型；决定性新增事实；影响的经营或投资变量；最关键限制" in v3
+    assert "不得为了凑满三项混入无关公司或宏观背景" in v3
+    assert "decision_relevant 还须影响核心假设并有近期可验证里程碑" in v3
+    assert "逐维从低档开始" not in baseline
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(1) is catalog.protocol_for(2)
+    assert catalog.protocol_for(2) is catalog.protocol_for(3)
+
+
+def test_industry_v4_adds_output_guardrails_without_changing_v3_identity():
+    v3 = build_industry_prompt_v3()
+    v4 = build_industry_prompt_v4()
+
+    assert v4 != v3
+    assert "REASON 必须在 100 个字符以内（包含标点）" in v4
+    assert "即使只有一个实体也写成" in v4
+    assert "禁止输出空对象" in v4
+    assert "输出前强制自检" not in v3
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(3) is catalog.protocol_for(4)
+
+
+def test_industry_v5_adds_first_pass_guards_without_changing_v4_judgment():
+    v4 = build_industry_prompt_v4()
+    v5 = build_industry_prompt_v5()
+
+    assert v5 != v4
+    assert "EVENT_TITLE 最多 24 个字符" in v5
+    assert "各最多 80 个字符" in v5
+    assert "epistemic 限定词必须带非空 by 实体对象数组" in v5
+    assert "禁止依赖接收端截断" in v5
+    assert "首次校验通过自检" not in v4
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(4) is catalog.protocol_for(5)
+    assert catalog.sampling_versions() == [4]
+
+
+def test_industry_v6_restarts_from_v4_with_only_closed_schema_guards():
+    v4 = build_industry_prompt_v4()
+    v5 = build_industry_prompt_v5()
+    v6 = build_industry_prompt_v6()
+
+    expected = v4.replace(
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS}\n# 有价值输出结构\n",
+        1,
+    )
+    assert v6 == expected
+    assert v6 != v5
+    assert "EVENT_TITLE 最多 24 个字符" not in v6
+    assert "SUB_CATEGORY_NOTE" in v6
+    assert "“用途”“原因”“备注”“描述”等文本不得自造为属性键" in v6
+    assert "duration.type 只能是 duration" in v6
+    assert "禁止输出 market" in v6
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(4) is catalog.protocol_for(6)
+    assert catalog.sampling_versions() == [4]
+    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
+
+
+def test_industry_prompt_distinguishes_share_from_growth_and_multiplier():
+    prompt = build_industry_prompt_v2()
+    assert "增长率、降幅和倍数绝不能写入 ratio" in prompt
+    assert '"value":783,"unit":"%"' in prompt
+    assert '"value":2.5,"unit":"倍"' in prompt
 
 
 def test_industry_prompt_keeps_system_prefix_static_and_dynamic_data_in_user():

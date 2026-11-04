@@ -14,9 +14,9 @@
 | Manufacturing Dive | 美国 | `https://www.manufacturingdive.com/feeds/news/` | RSS + Requests；正文用 Playwright + Trafilatura | RSS 约 10 条滚动窗口；只收 `/news/`，排除 sponsored 与 press release | `manufacturingdive` | 生产运行中 |
 | 界面新闻 | 中国 | `https://www.jiemian.com/lists/2.html`（商业） | 静态列表 + Requests + Trafilatura | 每轮约 20 张文章卡片；聚焦公司战略、管理层、产品和组织变化，以中国商业报道为主并包含国际公司 | `jiemian_business` | 生产运行中 |
 | 界面新闻 | 中国 | `https://www.jiemian.com/lists/28.html`（工业） | 静态列表 + Requests + Trafilatura | 每轮约 30 张文章卡片；覆盖扩产、基地、并购、定增、产能和产业链动态，以中国产业视角为主并包含国际产业事件 | `jiemian_business` | 生产运行中 |
-| 科创板日报 | 中国 | `https://www.chinastarmarket.cn/` | 静态首页 + Requests + Trafilatura | 只收 `/detail/`；覆盖科技公司、半导体、AI、硬科技融资与经营动作，排除电报、话题和活动页 | `chinastarmarket` | 生产运行中 |
-| 爱集微 | 中国/全球 | `https://www.laoyaoba.com/` | 静态首页 + Requests + Trafilatura | 只取最新资讯和焦点区的 `/n/` 正文；覆盖半导体、ICT、AI 硬件及科技公司组织动作，排除视频、活动、专题和 API | `ijiwei` | 生产运行中 |
-| OFweek | 中国 | `https://semi.ofweek.com/`、`https://ee.ofweek.com/`、`https://robot.ofweek.com/` | 三个静态频道 + Requests + Trafilatura | 只收 `ART` 正文；覆盖半导体、电子工程和机器人公司动态，查询链接、专题及活动页不进入采集 | `ofweek_industry` | 已接入，待重启采集服务生效 |
+| 科创板日报 | 中国 | `https://www.chinastarmarket.cn/` | 静态首页 + Requests + Readability | 只收 `/detail/`；覆盖科技公司、半导体、AI、硬科技融资与经营动作，排除电报、话题和活动页；Readability 负责提取 Next.js 页面标题 | `chinastarmarket` | 修正待重启生效 |
+| 爱集微 | 中国/全球 | `https://www.laoyaoba.com/` | 静态首页 + Requests + Trafilatura | 只取最新资讯和焦点区的 `/n/` 正文；发布时间取页面 `article_data.published_time` 强证据，缺失时保持 null；排除视频、活动、专题和 API | `ijiwei` | 修正待重启生效 |
+| OFweek | 中国 | `https://semi.ofweek.com/`、`https://ee.ofweek.com/`、`https://robot.ofweek.com/` | 三个静态频道 + Requests + Trafilatura | 只收 `ART` 正文；半导体频道加入高频主列表，正文按站点声明的 GBK 转码；查询链接、专题及活动页不进入采集 | `ofweek_industry` | 修正待重启生效 |
 | IndustryWeek | 美国 | 官方 Brightspot 首页 RSS | RSS + Requests + Trafilatura | 只收制造企业经营、财务、工厂和工业技术相关路径；明确排除 podcast、图集、视频及 supply-chain 栏目 | `industryweek` | 已接入，待重启采集服务生效 |
 | TechCrunch | 美国/全球 | `https://techcrunch.com/category/startups/feed/` | RSS + Requests + Trafilatura | 科技公司融资、并购、管理层和战略变化；排除 Founder Summit、优惠推广、播客和视频 | `techcrunch_startups` | 已接入，待重启采集服务生效 |
 
@@ -52,6 +52,18 @@
 
 三个来源的 Feed/列表在验证时均更新到 2026-10-28，至少两个正文样本可直接获取，不需要
 登录、付费墙、验证码或绕过访问控制。任务新增后需要重启 Crawler 才会进入生产调度。
+
+### 2026-10-30 低产量故障修正
+
+- 科创板日报一夜处理 17 篇但全部因 Trafilatura 未返回标题而在提交前失效；改用 Readability
+  后有界验证 2/2 标题与正文正常，发布时间保持未知而非伪造采集时间。
+- 爱集微 5 篇被通用日期算法误判为 1 月 1 日并触发 7 天年龄上限；改为读取正文脚本中的
+  `article_data.published_time`。有界验证 2/2 得到带 `Asia/Shanghai` 时区的页面发布时间。
+- OFweek 半导体首页原选择器只发现 3 个轮播项，遗漏 20 个高频主列表项；加入
+  `.newsListContentUl` 后发现数由 3 增至 23。正文响应声明 GBK，显式转码后 2/2 样本标题与
+  正文正常。
+- 公共采集处理不再用当前时间填充缺失 `pub_time`。未知发布时间保存为 null；`collect_time`
+  仍作为独立审计字段，并由主时间解析明确标注 `content_time_source=collected`。
 
 进一步核查后没有接入 Semiconductor Engineering：当前 10 条 Feed 中 5 条是厂商白皮书，
 其余主要是技术论文、综述和研究汇编，几乎没有独立公司行动。它会消耗分析调用但很少形成

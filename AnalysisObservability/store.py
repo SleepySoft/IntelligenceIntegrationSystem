@@ -188,32 +188,68 @@ class AnalysisStatsRecorder:
         return str(domain_name or subsystem or "").strip()
 
     def aggregate_by_model(self, *, days: int = 7) -> list[dict[str, Any]]:
-        """兼容原离线报告：按模型与 Prompt 聚合基础结果。"""
+        """按任务首个模型与 Prompt 聚合结果，跨模型重试仍归入原始任务队列。
+
+        首过率必须以任务为分母，而不是以调用为分母。否则一次任务的多个失败调用会
+        重复稀释首过率，且跨模型兜底成功会把终态归给最后一个模型。
+        """
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self._lock, self._connect() as conn:
             self._initialize(conn)
             attempts = conn.execute(
-                "SELECT ai_model, prompt_version, attempt_no, latency_ms, error_class"
+                "SELECT id, uuid, ai_model, prompt_version, attempt_no, latency_ms, error_class"
                 " FROM attempts WHERE ts >= ?", (since,),
             ).fetchall()
             outcomes = conn.execute(
-                "SELECT ai_model, prompt_version, outcome, attempts_used"
+                "SELECT uuid, ai_model, prompt_version, outcome, attempts_used"
                 " FROM outcomes WHERE ts >= ?", (since,),
             ).fetchall()
+
         groups: dict[tuple, dict[str, Any]] = {}
-        for model, version, attempt_no, latency, error_class in attempts:
+        attempts_by_uuid: dict[str, list[tuple]] = {}
+        for row in attempts:
+            uuid = str(row[1] or "")
+            if uuid:
+                attempts_by_uuid.setdefault(uuid, []).append(row)
+
+        cohort_by_uuid: dict[str, tuple] = {}
+        for uuid, task_attempts in attempts_by_uuid.items():
+            task_attempts.sort(key=lambda row: int(row[0]))
+            first = task_attempts[0]
+            model, version = first[2], first[3]
+            key = (model or "", version)
+            cohort_by_uuid[uuid] = key
+            group = groups.setdefault(key, _empty_group(model, version))
+            group["started_items"] += 1
+            if not first[6]:
+                group["first_pass_items"] += 1
+            for _id, _uuid, _model, _version, _attempt_no, latency, error_class in task_attempts:
+                group["attempts"] += 1
+                if latency is not None:
+                    group["latency_ms"].append(latency)
+                if error_class:
+                    group["errors"][error_class] = group["errors"].get(error_class, 0) + 1
+
+        # 兼容没有 UUID 的旧调用：保留调用与错误统计，但不伪造任务首过率。
+        for _id, uuid, model, version, _attempt_no, latency, error_class in attempts:
+            if uuid:
+                continue
             group = groups.setdefault((model or "", version), _empty_group(model, version))
             group["attempts"] += 1
             if latency is not None:
                 group["latency_ms"].append(latency)
             if error_class:
                 group["errors"][error_class] = group["errors"].get(error_class, 0) + 1
-                if attempt_no == 1:
-                    group["first_attempt_errors"] += 1
-        for model, version, outcome, attempts_used in outcomes:
-            group = groups.setdefault((model or "", version), _empty_group(model, version))
+
+        for uuid, model, version, outcome, attempts_used in outcomes:
+            key = cohort_by_uuid.get(str(uuid or ""), (model or "", version))
+            cohort_model, cohort_version = key
+            group = groups.setdefault(
+                key, _empty_group(cohort_model, cohort_version))
             group["outcomes"][outcome] = group["outcomes"].get(outcome, 0) + 1
-            group["attempts_used_total"] += int(attempts_used or 0)
+            task_attempts = attempts_by_uuid.get(str(uuid or ""), ())
+            group["attempts_used_total"] += (
+                len(task_attempts) if task_attempts else int(attempts_used or 0))
         result = [_finish_group(group) for group in groups.values()]
         result.sort(key=lambda item: (item["ai_model"] or "", item["prompt_version"] or 0))
         return result
@@ -222,7 +258,8 @@ class AnalysisStatsRecorder:
 def _empty_group(model: str | None, version: int | None) -> dict[str, Any]:
     return {
         "ai_model": model, "prompt_version": version, "attempts": 0,
-        "first_attempt_errors": 0, "errors": {}, "latency_ms": [],
+        "started_items": 0, "first_pass_items": 0,
+        "errors": {}, "latency_ms": [],
         "models_shadow": 0, "outcomes": {}, "attempts_used_total": 0,
     }
 
@@ -238,13 +275,13 @@ def _finish_group(group: dict[str, Any]) -> dict[str, Any]:
     group["sensitive_rate"] = (
         round(outcomes.get(OUTCOME_SENSITIVE, 0) / total, 4) if total else None)
     group["first_pass_rate"] = (
-        round(1 - group["first_attempt_errors"] / group["attempts"], 4)
-        if group["attempts"] else None)
+        round(group["first_pass_items"] / group["started_items"], 4)
+        if group["started_items"] else None)
     group["attempts_per_item"] = (
         round(group.pop("attempts_used_total") / total, 2) if total else None)
     group["latency_p50_ms"] = latencies[len(latencies) // 2] if latencies else None
     group["latency_p95_ms"] = (
         latencies[min(int(len(latencies) * 0.95), len(latencies) - 1)]
         if latencies else None)
-    group.pop("first_attempt_errors", None)
+    group.pop("first_pass_items", None)
     return group

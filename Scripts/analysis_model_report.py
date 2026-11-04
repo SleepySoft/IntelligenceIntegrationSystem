@@ -1,4 +1,4 @@
-"""AI 分析效果离线报告：按 模型 × prompt版本 聚合成功率/敏感率/首过率/延迟。
+"""AI 分析效果离线报告：按首个模型 × prompt版本 聚合任务成功率/首过率/延迟。
 
 数据源：_data/analysis_stats.db（IIS 侧持久统计，独立于 AIClientCenter 观测库）。
 用法：
@@ -29,7 +29,7 @@ def main() -> None:
         print(f"近 {args.days} 天无分析统计记录。")
         return
 
-    print(f"=== 近 {args.days} 天 按 模型×prompt版本 的分析效果 ===\n")
+    print(f"=== 近 {args.days} 天 按首个模型×prompt版本 的任务效果 ===\n")
     header = (f"{'模型':28s} {'pv':>3s} {'件数':>5s} {'成功率':>7s} {'首过率':>7s} "
               f"{'敏感率':>7s} {'调用/件':>7s} {'P50ms':>7s} {'P95ms':>7s}  错误分布")
     print(header)

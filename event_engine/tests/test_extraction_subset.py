@@ -204,6 +204,28 @@ class CoreSubsetBridgeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CoreExtractionSubset.model_validate(payload)
 
+    def test_completion_losslessly_omits_empty_optional_objects(self):
+        payload = _attack_subset()
+        payload["events"][0].update({
+            "time": {},
+            "context": {},
+            "attributes": {},
+        })
+
+        result = self.complete(payload)
+
+        core = result.events[0].core
+        self.assertIsNone(core.time)
+        self.assertIsNone(core.context)
+        self.assertIsNone(core.attributes)
+
+    def test_completion_still_rejects_malformed_nonempty_optional_objects(self):
+        payload = _attack_subset()
+        payload["events"][0]["attributes"] = {"amount": {}}
+
+        with self.assertRaises(ValueError):
+            self.complete(payload)
+
 
 if __name__ == "__main__":
     unittest.main()

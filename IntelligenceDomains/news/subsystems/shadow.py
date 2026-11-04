@@ -1,7 +1,31 @@
-"""新闻领域的 Shadow 能力声明。"""
+"""新闻领域的 Shadow 配置。"""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from IntelligenceDomains.contracts import DomainShadowSettings
 
 
 class NewsShadowSupport:
-    """存在该对象表示新闻领域允许执行同协议影子分析。"""
+    """新闻领域只读取自己的 ``subsystems.shadow`` 配置。"""
 
-    enabled = True
+    @staticmethod
+    def from_config(config: Mapping[str, Any] | None) -> DomainShadowSettings:
+        raw = dict((config or {}).get("shadow") or {})
+        if not raw:
+            return DomainShadowSettings()
+        enabled = bool(raw.get("enabled", False))
+        versions = tuple(int(item) for item in raw.get("versions", ()))
+        mode = str(raw.get("comparison_mode") or "same_model").strip()
+        if mode not in {"same_model", "different_model"}:
+            raise ValueError(f"unsupported news shadow comparison_mode: {mode!r}")
+        if enabled and not versions:
+            raise ValueError("news shadow enabled but versions is empty")
+        return DomainShadowSettings(
+            enabled=enabled,
+            versions=versions,
+            sample_rate=max(0.0, min(1.0, float(raw.get("sample_rate", 0.0)))),
+            comparison_mode=mode,
+            client_group=str(raw.get("client_group") or "").strip() or None,
+        )

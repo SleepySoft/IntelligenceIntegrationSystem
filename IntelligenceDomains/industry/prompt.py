@@ -16,7 +16,13 @@ from .schema import (
 
 
 INDUSTRY_BASELINE_PROMPT_VERSION = 1
-INDUSTRY_PROMPT_VERSION = 2
+INDUSTRY_PROMPT_V2_VERSION = 2
+INDUSTRY_PROMPT_V3_VERSION = 3
+INDUSTRY_PROMPT_V4_VERSION = 4
+INDUSTRY_PROMPT_V5_VERSION = 5
+INDUSTRY_PROMPT_V6_VERSION = 6
+INDUSTRY_PRODUCTION_PROMPT_VERSION = INDUSTRY_PROMPT_V4_VERSION
+INDUSTRY_PROMPT_VERSION = INDUSTRY_PROMPT_V6_VERSION
 INDUSTRY_PROTOCOL = "industry_core_subset_levels_v1"
 
 
@@ -233,6 +239,115 @@ INDUSTRY_V2_CALIBRATION = r"""
 """
 
 
+INDUSTRY_V3_TASK = """你是产业决策信号与公司经营情报分析师。只保留能够改变对经营状态、资源配置、
+战略方向、产业投入、竞争格局或投资变量判断的新增事实。信号可来自公司行动、经营状态冲击、经营
+相关冲突或可执行产业政策；不得因为主体知名、数字很大、官方发布或题材热门而自动收录或升档。
+
+允许保留具有商业意义的故事性信息，例如大规模裁员、核心高管突然离任、工厂关闭、项目取消、
+战略反转和内部重组；故事性只影响关注价值，不得替代经营证据。"""
+
+
+INDUSTRY_V3_JUDGMENT = """按以下顺序判断，不得跳步：
+
+1. 先排除空正文、模板页、宣传稿、无新增进展的回顾、无法归因的传闻和纯观点。
+2. 确定唯一主要信号类型及决定性新增事实：
+   - 公司行动：必须有明确对象，以及资源承诺、执行动作、阶段变化或结果之一；
+   - 经营状态冲击：核心经营指标须有明确比较基线和显著变化，或量化资源配置变化并能连接经营变量；
+   - 经营相关冲突：须有具名可靠来源、具体行为或公司应对，并能指出受影响的经营变量；
+   - 产业政策：须为正式政策，有明确产业对象，并至少具备量化目标、实施机制、资源安排或执行进展之一。
+3. 写出“新增事实→收入、成本、资本开支、供需、能力、风险或竞争位置”的直接路径。只有泛泛可能性
+   而没有正文证据时降档；四类门槛均不满足时输出 NonIntelligence。
+
+财报是信息载体，不是自动收录或自动排除理由。仅有例行数字、股价反应或延续既有趋势时属于普通
+财报；出现盈利转折、历史极值、显著偏离目标，或研发、资本开支、人员、产能等资源配置发生量化
+变化并影响经营判断时，可作为经营状态冲击。"""
+
+
+INDUSTRY_V3_OUTPUT_AND_EVENT_RULES = r"""
+## 解释与事件选择
+
+- REASON 必须按“信号类型；决定性新增事实；影响的经营或投资变量；最关键限制”组织，具体说明为何
+  收录及为何没有更高评级。不得只复述标题，不得使用“意义重大”“值得关注”等空泛结论。
+- 有价值结果只保留一至三项决定性事件：先选主要经营变化，再选导致它的资源配置或公司行动，最后
+  才是可验证承诺。背景数据、一般行业趋势和无直接关系的政策不得挤占事件名额。
+- 汇编文章围绕同一决策信号选事件；不得为了凑满三项混入无关公司或宏观背景。存在具体行动或状态
+  变化时，不得用 communicate 代替真实谓词。
+"""
+
+
+INDUSTRY_V4_OUTPUT_GUARDRAILS = r"""
+## 输出前强制自检
+
+- REASON 必须在 100 个字符以内（包含标点）。用分号压缩表达“信号类型、决定性新增事实、受影响
+  变量、关键限制”，不得扩写背景；输出前必须检查长度，超过时删减修饰和重复事实。
+- roles 的每个值都必须是实体对象数组，即使只有一个实体也写成 `[{"name":"...","type":"..."}]`；
+  禁止把实体对象直接作为角色值，金额、数量等数值必须写入 attributes，不得充当角色实体。
+- time、context、attributes 没有内容时必须省略整个键，禁止输出空对象 `{}`。qualifiers 和 relations
+  没有内容时仍输出空数组。
+"""
+
+
+INDUSTRY_V5_FIRST_PASS_GUARDRAILS = r"""
+## 首次校验通过自检
+
+保持上述判断、评级和事件选择不变，仅按以下更保守的输出预算生成 JSON：
+
+- EVENT_TITLE 最多 24 个字符；REASON、EVENT_BRIEF、IMPACT、TIPS 各最多 80 个字符；
+  EVENT_TEXT 最多 1600 个字符。中文、英文、数字、空格和标点都各计一个字符；不能确定长度时继续缩短，
+  优先删除背景、形容词和重复数字，不得删除决定性事实、阶段和关键限制。
+- NonIntelligence 的 REASON 同样最多 80 个字符，只保留“内容类型、缺少的准入证据、结论”。
+- 输出前逐项检查必填字段、字符预算和 JSON 类型；检查过程不得输出。字段超过预算时先改写再输出，
+  禁止依赖接收端截断。
+- epistemic 限定词必须带非空 by 实体对象数组。正文使用“知情人士”“公司”“法院”等称谓时，
+  by 使用该原文称谓对应的实体；无法从正文确定陈述主体时不得编造主体或把不确定事实写成已确认：
+  若它是决定性事实则输出 NonIntelligence，否则排除该非决定性事件。phase、polarity 禁止携带 by。
+- qualifiers、relations 必须是数组；roles 的每个值和 qualifier.by 都必须是非空实体对象数组。
+  time、context、attributes 要么省略，要么包含至少一个有效字段，禁止空对象和空数组冒充对象。
+"""
+
+
+INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS = r"""
+## 闭集 Schema 自检
+
+保持 v4 的准入、评级、事件选择和字段长度不变。生成 JSON 前只检查以下闭集规则：
+
+- 有价值结果的顶层键只能是 TAXONOMY、SUB_CATEGORY、REASON、EVENT_TITLE、EVENT_BRIEF、
+  EVENT_TEXT、IMPACT、RATE、TIPS、EVENT_EXTRACTION。禁止新增 SUB_CATEGORY_NOTE、备注、说明等
+  任何键，即使其值为 null 或空字符串也禁止输出。
+- attributes 只能使用 amount、quantity、ratio、value_before、value_after、delta、duration、level；
+  “用途”“原因”“备注”“描述”等文本不得自造为属性键，应保留在事件 surface 或正文简报中。
+- amount.type 只能是 money，ratio.type 只能是 ratio，duration.type 只能是 duration；quantity、
+  value_before、value_after、delta、level 的 type 只能是 number。
+- 实体 type 必须取自后文协议列出的闭集。市场、赛道、行业等概念使用 topic，禁止输出 market、
+  industry、company 等未登记 type；公司仍使用 organization。
+"""
+
+
+INDUSTRY_V3_CALIBRATION = r"""
+## 保守评级：逐维从低档开始
+
+每个维度先选择正文证据能够支持的最低合理档，再逐级检查升档条件。八维独立判断；一个强证据不能
+整组抬分。没有明确证据时使用 unknown/none/background 等低档，不得用“行业重要”“公司知名”补证。
+
+1. 行动实质性：披露、评论和报警本身通常不高于 concrete。只有人员、资产、设施、产销、核心指标
+   或约束性政策已经发生显著状态变化，才可 material；根本转型、清算或存续变化才可 transformative。
+2. 规模与力度：substantial 必须有金额、人数、比例、产量或设施证据且对相关业务明显；large 还须
+   覆盖核心业务、多设施或多地区；massive 仅用于接近全公司或产业核心范围，不按绝对数字自动判定。
+3. 事实确定性：正式文件最高先评 official；只有行动或结果已经发生并有结果证据才可 realized。
+   计划、目标和预测即使由官方发布也不是 realized。
+4. 认知增量：新增一个细节通常为 incremental；明确改变经营状态认识才可 meaningful；修正既有核心
+   假设且正文给出比较基线才可 thesis_changing；fundamental 极少使用。
+5. 预期差与异常性：没有正文比较基线必须 unknown，不得擅自判 expected。surprising 以上须有历史值、
+   原目标、先前承诺或明确常态作为基线；普通波动不得升档。
+6. 经营与战略影响：必须写出直接传导路径。局部团队、门店、产品通常为 local；影响核心收入、成本、
+   资本开支、产能或竞争位置才可 material/major；existential 仅用于企业存续风险。
+7. 投资可用性：能形成跟踪项为 watchlist；同时具备量化变量、因果路径和后续验证点才可 thesis_input；
+   decision_relevant 还须影响核心假设并有近期可验证里程碑；time_sensitive 极少使用。
+8. 关注度与故事性：只评价经营相关的冲突、转折和人事信号。它不得反向抬高行动、规模、经营影响或
+   投资可用性，也不能使本应 NonIntelligence 的内容入选。
+"""
+
+
 def build_industry_prompt_v2(registry=DEFAULT_EVENT_REGISTRY) -> str:
     """在 v1 输出协议上增加跨类型价值判断与证据标尺。"""
 
@@ -272,6 +387,87 @@ def build_industry_prompt_v2(registry=DEFAULT_EVENT_REGISTRY) -> str:
     return prompt
 
 
+def build_industry_prompt_v3(registry=DEFAULT_EVENT_REGISTRY) -> str:
+    """精简 v2 的跨类型能力，以硬准入和逐维升档证据形成更严格的 Shadow 候选。"""
+
+    prompt = build_industry_prompt(registry)
+    prompt = _replace_once(
+        prompt,
+        """你是公司行动与产业投资情报分析师。识别公司真实发生、正式决定、明确计划或被可靠报道的经营行动，
+判断它是否刷新了对公司经营状态、战略方向、资产配置、组织变化或投资逻辑的认识。
+
+允许保留具有商业意义的故事性信息，例如大规模裁员、核心高管突然离任、工厂关闭、项目取消、
+战略反转和内部重组；不得收录与经营无关的猎奇内容。""",
+        INDUSTRY_V3_TASK,
+        section="role_and_task",
+    )
+    prompt = _replace_once(
+        prompt,
+        """依次判断：正文是否有明确公司；是否有具体行动；行动是否改变产品、产量、产能、设施、人员、资产、
+市场或战略方向；正文提供了什么新增事实；这些事实能否修正收入、成本、资本开支、竞争力、风险或
+管理状态的认识；是否存在值得关注的组织、人事、冲突或反常信号。
+
+没有具体公司行动，或者行动只有无法归因的传闻时，输出 NonIntelligence。""",
+        INDUSTRY_V3_JUDGMENT,
+        section="judgment_order",
+    )
+    prompt = _replace_once(
+        prompt,
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V3_OUTPUT_AND_EVENT_RULES}\n# 有价值输出结构\n",
+        section="explanation_and_event_selection",
+    )
+    prompt = _replace_once(
+        prompt,
+        "以下内容通常不是行业情报：没有具体公司行动的行业评论；普通财报数字或股价变化；",
+        "以下内容通常不是行业情报：未满足上述四类准入门槛的行业评论；普通且没有经营判断增量的财报数字或股价变化；",
+        section="non_intelligence_scope",
+    )
+    prompt = _replace_once(
+        prompt,
+        "# 评级词表\n\n",
+        f"# 评级词表\n{INDUSTRY_V3_CALIBRATION}\n",
+        section="rating_calibration",
+    )
+    return prompt
+
+
+def build_industry_prompt_v4(registry=DEFAULT_EVENT_REGISTRY) -> str:
+    """在 v3 价值判断不变的前提下收紧可执行的输出边界。"""
+
+    prompt = build_industry_prompt_v3(registry)
+    return _replace_once(
+        prompt,
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V4_OUTPUT_GUARDRAILS}\n# 有价值输出结构\n",
+        section="output_guardrails",
+    )
+
+
+def build_industry_prompt_v5(registry=DEFAULT_EVENT_REGISTRY) -> str:
+    """在 v4 语义不变的前提下为长度和限定词结构预留校验余量。"""
+
+    prompt = build_industry_prompt_v4(registry)
+    return _replace_once(
+        prompt,
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V5_FIRST_PASS_GUARDRAILS}\n# 有价值输出结构\n",
+        section="first_pass_guardrails",
+    )
+
+
+def build_industry_prompt_v6(registry=DEFAULT_EVENT_REGISTRY) -> str:
+    """从正式 v4 派生，只封闭已观测到的 Schema 自造空间。"""
+
+    prompt = build_industry_prompt_v4(registry)
+    return _replace_once(
+        prompt,
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS}\n# 有价值输出结构\n",
+        section="closed_schema_guardrails",
+    )
+
+
 def validate_industry_core_result(raw: Any, *, registry=DEFAULT_EVENT_REGISTRY):
     if not isinstance(raw, dict):
         return validate_industry_analysis_result(raw, registry=registry)
@@ -295,19 +491,50 @@ def build_industry_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
         INDUSTRY_BASELINE_PROMPT_VERSION,
         build_industry_prompt(registry),
         protocol=INDUSTRY_PROTOCOL,
+        # v1 是历史冻结基线，转正后不再接收新生产样本。
+        sampling=False,
+    )
+    catalog.register_prompt(
+        INDUSTRY_PROMPT_V2_VERSION,
+        build_industry_prompt_v2(registry),
+        protocol=INDUSTRY_PROTOCOL,
+        # v2 是历史 Shadow 候选：可显式选择和回看，但不参与正式归档随机抽样。
+        sampling=False,
+    )
+    catalog.register_prompt(
+        INDUSTRY_PROMPT_V3_VERSION,
+        build_industry_prompt_v3(registry),
+        protocol=INDUSTRY_PROTOCOL,
+        # v3 保留失败样本和历史回看，不再作为当前 Shadow 候选。
+        sampling=False,
+    )
+    catalog.register_prompt(
+        INDUSTRY_PROMPT_V4_VERSION,
+        build_industry_prompt_v4(registry),
+        protocol=INDUSTRY_PROTOCOL,
+        # v4 灰度通过，成为唯一正式生产版本。
         sampling=True,
     )
     catalog.register_prompt(
-        INDUSTRY_PROMPT_VERSION,
-        build_industry_prompt_v2(registry),
+        INDUSTRY_PROMPT_V5_VERSION,
+        build_industry_prompt_v5(registry),
         protocol=INDUSTRY_PROTOCOL,
-        sampling=True,
+        # v5 首轮未改善首过率，仅保留历史回看。
+        sampling=False,
+    )
+    catalog.register_prompt(
+        INDUSTRY_PROMPT_V6_VERSION,
+        build_industry_prompt_v6(registry),
+        protocol=INDUSTRY_PROTOCOL,
+        # v6 从正式 v4 派生，只由 Shadow 验证闭集 Schema 首过率。
+        sampling=False,
     )
     return catalog
 
 
 INDUSTRY_PROMPT_CATALOG = build_industry_prompt_catalog()
-INDUSTRY_ANALYSIS_PROMPT = INDUSTRY_PROMPT_CATALOG.text_for(INDUSTRY_PROMPT_VERSION)
+INDUSTRY_ANALYSIS_PROMPT = INDUSTRY_PROMPT_CATALOG.text_for(
+    INDUSTRY_PRODUCTION_PROMPT_VERSION)
 
 
 __all__ = [
@@ -316,8 +543,18 @@ __all__ = [
     "INDUSTRY_DISAMBIGUATION",
     "INDUSTRY_PROMPT_CATALOG",
     "INDUSTRY_PROMPT_VERSION",
+    "INDUSTRY_PROMPT_V2_VERSION",
+    "INDUSTRY_PROMPT_V3_VERSION",
+    "INDUSTRY_PROMPT_V4_VERSION",
+    "INDUSTRY_PROMPT_V5_VERSION",
+    "INDUSTRY_PROMPT_V6_VERSION",
+    "INDUSTRY_PRODUCTION_PROMPT_VERSION",
     "build_industry_prompt",
     "build_industry_prompt_v2",
+    "build_industry_prompt_v3",
+    "build_industry_prompt_v4",
+    "build_industry_prompt_v5",
+    "build_industry_prompt_v6",
     "build_industry_prompt_catalog",
     "validate_industry_core_result",
 ]

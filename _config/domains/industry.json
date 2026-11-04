@@ -5,5 +5,14 @@
   "url_prefix": "/industry",
   "collection_prefix": "industry_intelligence_",
   "ai_client_group": null,
-  "scoring": null
+  "scoring": null,
+  "subsystems": {
+    "shadow": {
+      "enabled": true,
+      "versions": [6],
+      "sample_rate": 0.25,
+      "comparison_mode": "same_model",
+      "client_group": null
+    }
+  }
 }

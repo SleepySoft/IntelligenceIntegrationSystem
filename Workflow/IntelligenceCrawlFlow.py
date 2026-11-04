@@ -4,7 +4,6 @@
 #   - Implement CrawlPipeline's handlers                    #
 # --------------------------------------------------------- #
 
-import datetime
 import threading
 from uuid import uuid4
 from typing import Optional
@@ -57,7 +56,9 @@ def intelligence_crawler_result_handler(
             title=result.metadata.get('title', ''),
             authors=result.metadata.get('authors', []),
             content=result.markdown_content,
-            pub_time=result.metadata.get('date', datetime.datetime.now()),
+            # 缺失发布时间就是未知；采集时间由 CollectedData 独立生成。不得把
+            # 当前时间伪装成来源发布时间。
+            pub_time=result.metadata.get('date'),
             informant=url
         )
         context.submit_collected_data(group, collected_data)

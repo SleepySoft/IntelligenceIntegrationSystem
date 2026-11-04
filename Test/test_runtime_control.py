@@ -366,6 +366,7 @@ def test_replay_unarchived_endpoint_triggers_service():
 
 
 class FakeHubWithShadow(FakeHub):
+    default_domain_name = "news"
     def __init__(self, recorder, document):
         self._recorder = recorder
         self._document = document
@@ -375,7 +376,8 @@ class FakeHubWithShadow(FakeHub):
             return self._recorder
         return default
 
-    def get_intelligence(self, uuid, light_weight=False, include_appendix=False):
+    def get_intelligence(self, uuid, light_weight=False, domain_name=None,
+                         include_appendix=False):
         return self._document if self._document.get("UUID") == uuid else None
 
 
@@ -402,8 +404,28 @@ def _build_app_with_shadow(recorder, document):
 
 def test_shadow_endpoints_pairing_and_record(tmp_path):
     from ServiceComponent.analysis_shadow import ShadowAnalysisRecorder
+    from bson import ObjectId
+    from types import SimpleNamespace
 
-    recorder = ShadowAnalysisRecorder(tmp_path, max_files=10)
+    class Cursor(list):
+        def sort(self, key, direction):
+            super().sort(key=lambda item: item.get(key), reverse=direction < 0)
+            return self
+
+    class Collection:
+        def __init__(self): self.docs = []
+        def create_index(self, *_args, **_kwargs): return None
+        def insert_one(self, document):
+            value = dict(document); value['_id'] = ObjectId(); self.docs.append(value)
+            return SimpleNamespace(inserted_id=value['_id'])
+        def find(self, query, projection=None):
+            return Cursor([dict(item) for item in self.docs
+                           if all(item.get(k) == v for k, v in query.items())])
+        def find_one(self, query):
+            return next((dict(item) for item in self.docs
+                         if all(item.get(k) == v for k, v in query.items())), None)
+
+    recorder = ShadowAnalysisRecorder(Collection())
     recorder.record(
         original_data={"UUID": "u-9"}, domain_name="news",
         primary_prompt_version=44, shadow_prompt_version=45,

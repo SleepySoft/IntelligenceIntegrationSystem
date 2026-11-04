@@ -130,6 +130,13 @@ class ArticleRenderer {
         // 1.2 ID 获取
         const uuid = this.escapeHTML(article.UUID || IIS_I18N.t('unknown_uuid'));
         const intelUrl = `${window.IIS_BASE_PATH || ''}/intelligence/${uuid}`;
+        const shadowUrl = `${window.IIS_BASE_PATH || ''}/shadow/compare/${uuid}`;
+        const shadowLink = article.has_shadow ? `
+            <a href="${shadowUrl}" class="shadow-compare-link" target="_blank" rel="noopener"
+               title="${IIS_I18N.t('shadow_comparison')}"
+               aria-label="${IIS_I18N.t('shadow_comparison')}">
+                <i class="bi bi-columns-gap"></i> ${IIS_I18N.t('shadow_comparison')}
+            </a>` : '';
 
         const informant_val = article.INFORMANT || "";
         const informant = this.escapeHTML(informant_val);
@@ -193,10 +200,11 @@ class ArticleRenderer {
         // 4. 返回最终 HTML
         return `
         <div class="article-card">
-            <h3>
+            <h3 class="article-title-row">
               <a href="${intelUrl}" class="article-title" data-uuid="${uuid}">
                 ${this.escapeHTML(article.EVENT_TITLE || IIS_I18N.t('untitled'))}
               </a>
+              ${shadowLink}
             </h3>
             <div class="article-meta">
                 ${time_html}

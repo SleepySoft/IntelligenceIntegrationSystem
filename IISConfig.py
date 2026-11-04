@@ -119,16 +119,6 @@ class HubSettings(_StrictModel):
         "Automatically replay unfinished cached items when IIS starts. Disable for manual replay."))
     conversation_retention_days: int = Field(7, ge=1, description=iis_msg(
         "Number of days to retain stored AI conversation diagnostics."))
-    shadow_versions: list[int] = Field(default_factory=list, description=iis_msg(
-        "Prompt versions run as shadow analysis after the main result succeeds. Shadow results are not archived."))
-    # 影子链路采样率：1.0 = 每条主链成功样本都跑影子；0.1 = 约 10% 样本跑影子，
-    # 用于控制灰度 Token 成本。仅对 shadow_versions 非空时生效。
-    shadow_sample_rate: float = Field(1.0, ge=0.0, le=1.0, description=iis_msg(
-        "Fraction of successful main analyses selected for all configured shadow versions, from 0 to 1."))
-    # 影子链路定向 AI 客户端分组（ai_clients.yaml 的 group）；固定后可与主链形成
-    # 受控的 同模型比 prompt / 同 prompt 比模型 对比。空 = 随机分配。
-    shadow_client_group: str = Field("", description=iis_msg(
-        "AI client group reserved for shadow analysis. Leave empty for normal client selection."))
     # 新鲜度阈值（小时）：超过该年龄的情报进 REPLAY 低优先级车道，防止冷启动/久停后
     # 旧情报淹没问题主队列。0 = 不启用（全部进主队列）。
     max_live_age_hours: float = Field(0, ge=0, description=iis_msg(
@@ -475,14 +465,6 @@ class IISConfig:
                 "max_live_age_hours": settings.hub.max_live_age_hours,
                 "max_analysis_age_hours": settings.hub.max_analysis_age_hours,
                 "replay_newest_first": settings.hub.replay_newest_first,
-                "shadow_analysis": {
-                    "enabled": bool(settings.hub.shadow_versions),
-                    "versions": settings.hub.shadow_versions,
-                    "sample_rate": settings.hub.shadow_sample_rate,
-                    "client_group": settings.hub.shadow_client_group,
-                    "directory": "_data/analysis_shadow",
-                    "max_files": 1000,
-                },
                 "analysis_failure_dump": {
                     "enabled": True,
                     "directory": "_data/analysis_failures",

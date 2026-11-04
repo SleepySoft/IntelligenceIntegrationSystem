@@ -125,6 +125,40 @@ body {
     line-height: 1.35;
 }
 
+.article-card .article-title-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.article-card .article-title-row .article-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.shadow-compare-link {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    padding: 3px 8px;
+    border: 1px solid #6f42c1;
+    border-radius: 999px;
+    color: #6f42c1;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.4;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.shadow-compare-link:hover {
+    background: #6f42c1;
+    color: #fff;
+    text-decoration: none;
+}
+
 .article-title {
     display: block;
     margin: 0;

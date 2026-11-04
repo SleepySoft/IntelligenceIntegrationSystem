@@ -27,7 +27,11 @@ def test_technology_sources_use_narrow_static_lists_and_requests():
         assert config["discoverer_init_param"]["same_host_only"] is True
         assert config["d_fetcher_name"] == "RequestsFetcher"
         assert config["e_fetcher_name"] == "RequestsFetcher"
-        assert config["extractor_name"] == "Trafilatura"
+    assert CHINASTARMARKET_CONFIG["extractor_name"] == "Readability"
+    assert IJIWEI_CONFIG["extractor_name"] == "Trafilatura"
+    date_extraction = IJIWEI_CONFIG["extractor_kwargs"]["date_extraction"]
+    assert date_extraction["format"] == "%Y%m%d%H%M%S"
+    assert date_extraction["timezone"] == "Asia/Shanghai"
 
 
 def test_technology_source_filters_and_handlers_are_safe():

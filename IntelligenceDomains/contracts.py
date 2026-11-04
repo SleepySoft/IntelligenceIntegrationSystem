@@ -9,6 +9,17 @@ from ServiceComponent.prompt_protocols import PromptCatalog
 
 
 @dataclass(frozen=True, slots=True)
+class DomainShadowSettings:
+    """领域自己的影子分析策略；版本号只在该领域 Prompt Catalog 内解释。"""
+
+    enabled: bool = False
+    versions: tuple[int, ...] = ()
+    sample_rate: float = 0.0
+    comparison_mode: str = "same_model"
+    client_group: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class DomainSubsystems:
     """领域可选择提供的附属能力；缺失即表示该领域不执行对应机制。"""
 
@@ -54,6 +65,22 @@ class DomainDefinition:
     storage: Any
     event_registry: Any = None
     subsystems: DomainSubsystems = field(default_factory=DomainSubsystems)
+
+    def __post_init__(self) -> None:
+        """启动期校验领域版本池，避免正式 Prompt 与同模型 Shadow 候选混用。"""
+        settings = self.subsystems.shadow
+        if settings is None or not bool(getattr(settings, "enabled", False)):
+            return
+        versions = tuple(int(item) for item in (getattr(settings, "versions", ()) or ()))
+        unknown = [version for version in versions if not self.prompt_catalog.has(version)]
+        if unknown:
+            raise ValueError(
+                f"领域 {self.name!r} 的 shadow prompt 未注册: {unknown}")
+        if str(getattr(settings, "comparison_mode", "same_model")) == "same_model":
+            overlap = sorted(set(versions) & set(self.prompt_catalog.sampling_versions()))
+            if overlap:
+                raise ValueError(
+                    f"领域 {self.name!r} 的正式与 shadow Prompt 池重叠: {overlap}")
 
     def score(self, result: Any, config: dict | None = None) -> float:
         scorer = self.scorer_factory(config)

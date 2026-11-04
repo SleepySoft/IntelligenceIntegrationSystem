@@ -300,8 +300,8 @@ python VectorDB/VectorDBBService.py \
 - cache 的处理终态协议仍使用 `APPENDIX.__ARCHIVED__`；该字段属于运行状态，不是 V1/V2 归档 DTO，恢复器不得另造判定字段。
 - `/collect` 应答契约：`resp` ∈ `queued`（已接收）/ `rejected`（明确拒绝，必带 `reason`，如 `collected_data_duplicated`、`validation_error:*`、`invalid_token`，重试无意义）/ `error`（可重试的传输或内部错误）；采集端经 `Workflow.CollectorSubmission.normalize_collect_response` 解析，拒绝记 SKIPPED、错误缓存重试。
 - intake 拒绝（校验失败、重复）会写入 `{集合前缀}intake_rejected` 审计集合（uuid/informant/source/title/reason/rejected_at），不进 cache 队列，仅用于离线审计；写入失败不影响 intake。
-- 影子分析链路（保守灰度）：配置 `intelligence_hub.shadow_analysis.versions` 后，主链分析成功会对同一输入并行执行影子 prompt 版本的分析，结果只写入 `_data/analysis_shadow/` 供离线对比，不进入归档与索引；影子失败绝不影响主链。`sample_rate`（0-1，默认 1.0）控制影子采样率；`client_group`（默认空）把影子调用定向到指定 AI 客户端分组——定向后即使影子版本与主链相同也会执行（同 prompt 不同模型对比），且影子调用会避开主链所用客户端以保证模型不同；未定向时同版本跳过（避免重复劳动）。抽样判定对整次事件做一次，保证多影子版本配对完整。
-- 影子对比界面：recorder 写 JSON 的同时维护 SQLite 索引（`index.sqlite`，启动时回填）；有影子数据的情报在详情页显示「影子对比」入口，对比页 `/shadow/compare/<uuid>` 按单变量规则配对（同模型比 prompt / 同 prompt 比模型；双变量标“不可归因”仅供参考），并排展示 RATE/事件结构/抽取质量差异。CLI 版为 `Scripts/compare_shadow_records.py`。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 为抽取质量统计（未登记角色、角色-类型冲突、surface 接地率），仅供聚合参考，不参与归档判定。
+- 影子分析链路（保守灰度）按领域配置：在 `_config/domains/<name>.json` 的 `subsystems.shadow` 声明 `enabled`、`versions`、`sample_rate`、`comparison_mode` 和可选 `client_group`。版本号只在该领域 Prompt Catalog 内解释；没有配置的领域不执行 shadow。主链成功后对同一输入执行影子版本，失败绝不影响主链。`same_model` 用同一客户端比较不同 prompt，且其 Shadow 版本不得与 `sampling=True` 的正式版本池重叠；`different_model` 可用同一 prompt 对比不同模型。抽样判定对整次事件只做一次，保证多版本配对完整。
+- 影子结果作为领域化评估资产统一写入 MongoDB `analysis_shadow` 集合，以 `domain_name + source_uuid` 查询并建立索引，不进入正式归档、事件索引或向量库。有影子数据的情报在详情页显示「影子对比」入口；默认领域页面为 `/shadow/compare/<uuid>`，其他领域为 `/<domain>/shadow/compare/<uuid>`，按单变量规则配对并展示 RATE、事件结构和抽取质量差异。CLI 为 `Scripts/compare_shadow_records.py`。归档 APPENDIX 的 `__EXTRACTION_QUALITY__` 仅供聚合参考，不参与归档判定。
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）

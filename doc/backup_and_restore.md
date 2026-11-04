@@ -35,6 +35,10 @@ MongoDB Database Tools 的 `mongodump`、`mongorestore` 必须位于 `PATH`。�
 备份使用独立 `_config/backup.yaml`，示例为 `_config/backup_example.yaml`。主配置
 `iis.yaml` 不包含备份调度；`iis-backup.timer` 是唯一自动触发方，避免 IIS 故障同时使调度失效。
 
+当前运维决定是**只手工备份，不启用 `iis-backup.timer`**，避免完整 SQLite 快照在容量治理完成前
+按日累积撑满磁盘。安装 timer unit 不等于启用调度；确认备份目标容量、保留策略和自动清理机制
+以前，应保持其 `inactive`，并用下面的手工命令按需执行。
+
 ```bash
 export IIS_MAINTENANCE_TOKEN='从 iis.env 安全读取的值'
 /path/to/iis-python Scripts/iis_backup.py backup --config _config/backup.yaml
@@ -71,3 +75,26 @@ systemctl start iis.target
 
 恢复后必须检查 Mongo 集合数量、SQLite `integrity_check`、登录、查询和一条测试采集，再把恢复
 结果记入演练记录。当前第一阶段尚未覆盖 VectorDB（可重建）、日志、`_export` 和异地上传。
+
+## 后续议题：记录性 SQLite 的保留与归档（暂缓）
+
+MongoDB 中长期暂不规划归档；当前容量问题主要来自 SQLite 中持续追加的记录性表，例如
+`crawl_log`、`entry_rounds`、AI 调用观测和分析尝试记录。讨论过按时间把这些表写入独立
+SQLite 文件，并由统一封装负责写入路由、跨桶查询、排序分页、封桶及备份状态。该方向可以让
+活跃文件高频备份、不可变历史文件只复制一次，但会引入跨文件查询、聚合、迁移、schema 演进
+和恢复编排，实质上接近维护一个小型分片数据库层。
+
+**当前没有决定采用该方案，也不进入实现。** 时间桶只应视为候选存储边界，不能改变历史数据
+可查询的产品语义。现成组件也尚未形成明确选型：SQLite `ATTACH`、SQLAlchemy sharding 和
+DuckDB 多文件查询分别只覆盖部分需求；同一文件内的表分区不能解决大文件反复备份问题。
+
+后续评估应先用真实增长率、历史查询频率、备份耗时和恢复目标比较更简单的方案，包括：
+
+- 单库按保留期分批清理，低频使用 `VACUUM INTO` 重建压缩；
+- 仅把当前状态与追加历史拆成两个普通数据库，不做通用跨文件透明查询；
+- 保持现有库结构，改用支持块级去重或增量传输的备份工具；
+- 将大体量历史记录迁到更适合分区查询的存储，而非扩展 SQLite；
+- 针对各业务表分别制定保留期，避免为了统一封装而过度抽象。
+
+在完成上述测量和取舍前，第一阶段备份继续把 SQLite 作为完整在线快照处理，不自动删除、迁移
+或切分任何运行数据。

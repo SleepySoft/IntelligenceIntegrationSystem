@@ -14,6 +14,10 @@
             --muted: light-dark(#66748a, #93a3bb);
             --accent: #4f7cff;
             --diff: light-dark(#fff3cd, #4a3d12);
+            --higher: light-dark(#dbeafe, #17345c);
+            --higher-text: light-dark(#1d4ed8, #93c5fd);
+            --lower: light-dark(#ffedd5, #4a2d18);
+            --lower-text: light-dark(#c2410c, #fdba74);
         }
         * { box-sizing: border-box; }
         body { margin: 0; background: var(--bg); color: var(--text);
@@ -28,18 +32,69 @@
         select { font: inherit; padding: 6px 8px; border-radius: 6px;
                  border: 1px solid var(--border); background: var(--panel); color: var(--text); }
         .warn { color: #b8860b; font-size: 12px; }
-        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .low-value { color: #b45309; font-weight: 700; }
         .side-head { font-weight: 700; padding: 8px 10px; border-radius: 8px;
                      background: color-mix(in srgb, var(--accent) 10%, transparent); }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
-                 vertical-align: top; }
+                 vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
         th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+        .comparison-table { width: 100%; table-layout: fixed; }
+        .comparison-table col.description-col { width: 18%; }
+        .comparison-table col.result-col { width: 41%; }
+        .comparison-table > tbody > tr > th:first-child,
+        .comparison-table > tr > th:first-child { background: color-mix(in srgb, var(--border) 28%, transparent); }
+        .comparison-table .side-cell { padding: 10px 8px; }
+        .comparison-table .side-cell .muted { margin-top: 5px; overflow-wrap: anywhere; }
+        .comparison-table .event-cell > table { table-layout: fixed; }
         td.diff { background: var(--diff); }
+        td.metric-higher { background: var(--higher); color: var(--higher-text); }
+        td.metric-lower { background: var(--lower); color: var(--lower-text); }
+        .metric-direction { display: inline-block; margin-left: 6px; font-weight: 700; white-space: nowrap; }
+        .comparison-legend { color: var(--muted); font-size: 12px; }
+        .legend-higher { color: var(--higher-text); font-weight: 700; }
+        .legend-lower { color: var(--lower-text); font-weight: 700; }
+        .diff-removed { background: light-dark(#fee2e2, #481f24); color: light-dark(#991b1b, #fca5a5); text-decoration: line-through; }
+        .diff-added { background: light-dark(#dbeafe, #17345c); color: light-dark(#1d4ed8, #93c5fd); }
+        .diff-removed, .diff-added { border-radius: 3px; padding: 0 2px; }
+        .prompt-diff-table td { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+        .prompt-diff-table .prompt-status { font-family: system-ui, sans-serif; color: var(--muted); white-space: nowrap; }
+        .prompt-diff-table tr.prompt-context { opacity: .72; }
+        .prompt-diff-table tr.prompt-only-left td:nth-child(2) { background: light-dark(#fee2e2, #481f24); }
+        .prompt-diff-table tr.prompt-only-right td:nth-child(3) { background: light-dark(#dbeafe, #17345c); }
+        .secondary-btn { font: inherit; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+        .secondary-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .prompt-diff-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 13px;
+            border: 1px solid #5b21b6;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #6d28d9, #4f46e5);
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 3px 10px color-mix(in srgb, #5b21b6 38%, transparent);
+            transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+        }
+        .prompt-diff-btn:hover {
+            color: #fff;
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 14px color-mix(in srgb, #5b21b6 48%, transparent);
+        }
+        .prompt-diff-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 2px; }
+        .prompt-diff-btn .open-mark { font-size: 1.05em; }
         .roles { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
         .section-title { font-weight: 700; margin: 12px 0 6px; }
         .error { color: #d64545; padding: 12px; }
-        @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+        @media (max-width: 700px) {
+            .comparison-table col.description-col { width: 24%; }
+            .comparison-table col.result-col { width: 38%; }
+            th, td { padding: 6px 5px; }
+        }
     </style>
 </head>
 <body>
@@ -52,13 +107,28 @@
     <div class="panel pair-bar">
         <strong>对比配对：</strong>
         <select id="pair-select"></select>
+        <button type="button" class="prompt-diff-btn" id="prompt-diff-toggle">
+            <span aria-hidden="true">⇄</span><span>打开 Prompt Diff 对照窗</span><span class="open-mark" aria-hidden="true">↗</span>
+        </button>
         <span class="warn" id="pair-warn"></span>
+        <span class="comparison-legend" id="result-diff-legend"><span class="legend-higher">蓝色 ↑ = 数值变高</span>；<span class="legend-lower">橙色 ↓ = 数值变低</span>；不表示好坏</span>
     </div>
 
     <div id="content" style="display:none">
-        <div class="cols">
-            <div class="panel"><div class="side-head" id="left-head"></div><div id="left-meta" class="muted"></div></div>
-            <div class="panel"><div class="side-head" id="right-head"></div><div id="right-meta" class="muted"></div></div>
+        <div class="panel">
+            <table class="comparison-table">
+                <colgroup><col class="description-col"><col class="result-col"><col class="result-col"></colgroup>
+                <thead><tr>
+                    <th>内容描述</th>
+                    <th class="side-cell"><div class="side-head" id="left-head"></div></th>
+                    <th class="side-cell"><div class="side-head" id="right-head"></div></th>
+                </tr></thead>
+                <tbody><tr>
+                    <th>记录来源</th>
+                    <td class="side-cell"><div id="left-meta" class="muted"></div></td>
+                    <td class="side-cell"><div id="right-meta" class="muted"></div></td>
+                </tr></tbody>
+            </table>
         </div>
 
         <div class="panel">
@@ -71,15 +141,22 @@
             <table id="text-table"></table>
         </div>
 
-        <div class="cols">
-            <div class="panel">
-                <div class="section-title" id="left-events-title">事件结构（左）</div>
-                <div id="left-events"></div>
-            </div>
-            <div class="panel">
-                <div class="section-title" id="right-events-title">事件结构（右）</div>
-                <div id="right-events"></div>
-            </div>
+        <div class="panel">
+            <div class="section-title">价值判定与分析说明</div>
+            <table id="verdict-table"></table>
+        </div>
+
+        <div class="panel">
+            <div class="section-title">事件结构</div>
+            <table class="comparison-table">
+                <colgroup><col class="description-col"><col class="result-col"><col class="result-col"></colgroup>
+                <thead id="events-head"></thead>
+                <tbody><tr>
+                    <th>事件、谓词与角色</th>
+                    <td id="left-events" class="event-cell"></td>
+                    <td id="right-events" class="event-cell"></td>
+                </tr></tbody>
+            </table>
         </div>
 
         <div class="panel">
@@ -87,13 +164,26 @@
             <table id="quality-table"></table>
         </div>
     </div>
+
+    <div class="panel" id="prompt-diff-panel" style="display:none">
+        <div class="section-title">Prompt 行级 Diff</div>
+        <div class="muted" id="prompt-diff-summary"></div>
+        <div style="overflow:auto; margin-top:8px">
+            <table class="comparison-table prompt-diff-table" id="prompt-diff-table"></table>
+        </div>
+    </div>
     <div class="error" id="error" style="display:none"></div>
 </div>
 
 <script>
 const UUID = {{ uuid|tojson }};
+const BASE_PATH = {{ base_path|default('')|tojson }};
+const INITIAL_PARAMS = new URLSearchParams(window.location.search);
+const PROMPT_ONLY = INITIAL_PARAMS.get('view') === 'prompt';
 document.getElementById('uuid').textContent = UUID;
 let SIDES = [], PAIRS = [], PRIMARY_DOC = null, cache = {};
+let ACTIVE_PAIR = null;
+let PROMPT_WINDOW = null;
 
 function esc(s) {
     return String(s ?? '').replace(/[&<>"]/g, c =>
@@ -104,8 +194,147 @@ function sideLabel(side) {
     return `影子 · v${side.prompt_version} · ${side.model}`;
 }
 
+function comparisonColumns() {
+    return '<colgroup><col class="description-col"><col class="result-col"><col class="result-col"></colgroup>';
+}
+
+function comparisonHead(left, right) {
+    return `<thead><tr><th>内容描述</th><th>${esc(sideLabel(left))}</th>` +
+        `<th>${esc(sideLabel(right))}</th></tr></thead>`;
+}
+
+function sequenceDiff(leftItems, rightItems) {
+    const n = leftItems.length, m = rightItems.length;
+    const matrix = Array.from({length: n + 1}, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+        for (let j = m - 1; j >= 0; j--) {
+            matrix[i][j] = leftItems[i] === rightItems[j]
+                ? matrix[i + 1][j + 1] + 1
+                : Math.max(matrix[i + 1][j], matrix[i][j + 1]);
+        }
+    }
+    const operations = [];
+    let i = 0, j = 0;
+    while (i < n || j < m) {
+        if (i < n && j < m && leftItems[i] === rightItems[j]) {
+            operations.push({kind: 'same', value: leftItems[i++]});
+            j++;
+        } else if (j >= m || (i < n && matrix[i + 1][j] >= matrix[i][j + 1])) {
+            operations.push({kind: 'removed', value: leftItems[i++]});
+        } else {
+            operations.push({kind: 'added', value: rightItems[j++]});
+        }
+    }
+    return operations;
+}
+
+function textTokens(value) {
+    return String(value ?? '').match(/[\p{Script=Han}]|[A-Za-z0-9_]+|\s+|[^\s]/gu) || [];
+}
+
+function inlineTextDiff(leftValue, rightValue) {
+    const leftText = String(leftValue ?? '—');
+    const rightText = String(rightValue ?? '—');
+    if (leftText === rightText) return {left: esc(leftText), right: esc(rightText), changed: false};
+    const operations = sequenceDiff(textTokens(leftText), textTokens(rightText));
+    const left = operations.filter(op => op.kind !== 'added').map(op =>
+        op.kind === 'removed' ? `<span class="diff-removed">${esc(op.value)}</span>` : esc(op.value)).join('');
+    const right = operations.filter(op => op.kind !== 'removed').map(op =>
+        op.kind === 'added' ? `<span class="diff-added">${esc(op.value)}</span>` : esc(op.value)).join('');
+    return {left, right, changed: true};
+}
+
+function textDiffRow(label, leftValue, rightValue) {
+    const diff = inlineTextDiff(leftValue, rightValue);
+    return `<tr><th>${esc(label)}</th><td>${diff.left}</td><td>${diff.right}</td></tr>`;
+}
+
+function updateComparisonUrl(left, right, promptDiffOpen = null) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('left', left.id);
+    url.searchParams.set('right', right.id);
+    if (promptDiffOpen === true) url.searchParams.set('prompt_diff', '1');
+    if (promptDiffOpen === false) url.searchParams.delete('prompt_diff');
+    history.replaceState(null, '', url);
+}
+
+function openPromptDiffWindow() {
+    if (!ACTIVE_PAIR) return;
+    const left = SIDES.find(side => side.id === ACTIVE_PAIR.left);
+    const right = SIDES.find(side => side.id === ACTIVE_PAIR.right);
+    const url = new URL(window.location.href);
+    url.searchParams.set('left', left.id);
+    url.searchParams.set('right', right.id);
+    url.searchParams.set('view', 'prompt');
+    url.searchParams.set('prompt_diff', '1');
+    PROMPT_WINDOW = window.open(
+        url.toString(),
+        `shadow-prompt-diff-${UUID}`,
+        'popup=yes,width=1280,height=900,resizable=yes,scrollbars=yes'
+    );
+}
+
+function syncPromptDiffWindow(left, right) {
+    if (PROMPT_ONLY || !PROMPT_WINDOW || PROMPT_WINDOW.closed) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('left', left.id);
+    url.searchParams.set('right', right.id);
+    url.searchParams.set('view', 'prompt');
+    url.searchParams.set('prompt_diff', '1');
+    PROMPT_WINDOW.location.replace(url.toString());
+}
+
+function pairIndexFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const left = params.get('left'), right = params.get('right');
+    return PAIRS.findIndex(pair => pair.left === left && pair.right === right);
+}
+
+function finiteNumber(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+function formatDelta(value) {
+    const rounded = Math.round(Math.abs(value) * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+function quantitativeRow(label, leftValue, rightValue, options = {}) {
+    const leftNumber = finiteNumber(leftValue);
+    const rightNumber = finiteNumber(rightValue);
+    const leftDisplay = options.leftDisplay ?? leftValue ?? '—';
+    const rightDisplay = options.rightDisplay ?? rightValue ?? '—';
+    if (leftNumber === null || rightNumber === null) {
+        const changed = leftDisplay !== rightDisplay;
+        return `<tr><th>${esc(label)}</th><td>${esc(leftDisplay)}</td>` +
+            `<td${changed ? ' class="diff"' : ''}>${esc(rightDisplay)}</td></tr>`;
+    }
+    if (leftNumber === rightNumber) {
+        return `<tr><th>${esc(label)}</th><td>${esc(leftDisplay)}</td><td>${esc(rightDisplay)}</td></tr>`;
+    }
+    const increased = rightNumber > leftNumber;
+    const className = increased ? 'metric-higher' : 'metric-lower';
+    const arrow = increased ? '↑' : '↓';
+    const delta = rightNumber - leftNumber;
+    const deltaLabel = `${delta > 0 ? '+' : '−'}${formatDelta(delta)}`;
+    return `<tr><th>${esc(label)}</th><td>${esc(leftDisplay)}</td>` +
+        `<td class="${className}">${esc(rightDisplay)}` +
+        `<span class="metric-direction">${arrow} ${esc(deltaLabel)}</span></td></tr>`;
+}
+
+function groundingMetric(quality) {
+    const predicate = (quality.surface_grounding || {}).predicate || {};
+    const hit = finiteNumber(predicate.hit);
+    const total = finiteNumber(predicate.total);
+    if (hit === null || total === null || total <= 0) return {value: null, display: '—'};
+    const ratio = hit / total;
+    return {value: ratio, display: `${hit}/${total} (${Math.round(ratio * 100)}%)`};
+}
+
 async function init() {
-    const resp = await fetch(`/api/intelligence/${encodeURIComponent(UUID)}/shadow`);
+    const resp = await fetch(`${BASE_PATH}/api/intelligence/${encodeURIComponent(UUID)}/shadow`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
     document.getElementById('title').textContent =
@@ -113,7 +342,7 @@ async function init() {
     if (!data.available) {
         document.getElementById('error').style.display = '';
         document.getElementById('error').textContent =
-            '该情报没有影子分析数据（需配置 shadow_analysis 且该样本被抽样）。';
+            '该情报没有影子分析数据（需为当前领域启用 shadow，且该样本被抽样）。';
         return;
     }
     SIDES = data.sides; PAIRS = data.pairs;
@@ -124,16 +353,34 @@ async function init() {
         return `<option value="${i}">[${p.kind_label}] ${sideLabel(l)} ⇄ ${sideLabel(r)}</option>`;
     }).join('');
     select.onchange = () => renderPair(PAIRS[select.value]);
-    if (PAIRS.length) renderPair(PAIRS[0]);
+    const requestedPair = pairIndexFromUrl();
+    const promptDiffRequested = PROMPT_ONLY;
+    const initialIndex = requestedPair >= 0 ? requestedPair : 0;
+    select.value = String(initialIndex);
+    if (PAIRS.length) {
+        await renderPair(PAIRS[initialIndex]);
+        if (promptDiffRequested) {
+            await setPromptDiffOpen(true);
+        }
+        if (PROMPT_ONLY) {
+            document.getElementById('content').style.display = 'none';
+            document.getElementById('prompt-diff-toggle').style.display = 'none';
+            document.getElementById('result-diff-legend').style.display = 'none';
+            document.getElementById('title').textContent = `Prompt Diff · ${data.title || ''}`;
+        }
+    }
 }
 
 async function loadSide(side) {
     if (side.id === '__primary__') return PRIMARY_DOC;
     if (!cache[side.id]) {
-        const resp = await fetch(`/api/shadow/record?file=${encodeURIComponent(side.id)}`);
+        const resp = await fetch(`${BASE_PATH}/api/shadow/record?id=${encodeURIComponent(side.id)}`);
         const record = await resp.json();
+        if (!resp.ok) throw new Error(record.error || `HTTP ${resp.status}`);
         const analysis = record.analysis || {};
         analysis.__shadow_quality = record.extraction_quality || null;
+        analysis.__total_score__ = record.total_score;
+        analysis.__shadow_record_id__ = record.record_id;
         cache[side.id] = analysis;
     }
     return cache[side.id];
@@ -165,40 +412,132 @@ function renderEvents(el, analysis) {
         : '<span class="muted">无事件抽取</span>';
 }
 
+async function fetchPrompt(version) {
+    const response = await fetch(`${BASE_PATH}/prompt?version=${encodeURIComponent(version)}`);
+    if (!response.ok) throw new Error(`Prompt HTTP ${response.status}`);
+    return response.text();
+}
+
+function renderPromptDiff(left, right, leftText, rightText) {
+    const table = document.getElementById('prompt-diff-table');
+    const summary = document.getElementById('prompt-diff-summary');
+    if (left.prompt_version === right.prompt_version) {
+        summary.textContent = '两侧 Prompt 版本相同，没有 Prompt 文本差异；当前配对用于比较模型。';
+        table.innerHTML = '';
+        return;
+    }
+    const operations = sequenceDiff(leftText.split('\n'), rightText.split('\n'));
+    let leftLine = 0, rightLine = 0, changed = 0;
+    const rows = operations.map(operation => {
+        if (operation.kind === 'same') {
+            leftLine++; rightLine++;
+            return `<tr class="prompt-context"><td class="prompt-status">${leftLine} / ${rightLine}</td>` +
+                `<td>${esc(operation.value)}</td><td>${esc(operation.value)}</td></tr>`;
+        }
+        changed++;
+        if (operation.kind === 'removed') {
+            leftLine++;
+            return `<tr class="prompt-only-left"><td class="prompt-status">仅第一栏 · L${leftLine}</td>` +
+                `<td>${esc(operation.value)}</td><td></td></tr>`;
+        }
+        rightLine++;
+        return `<tr class="prompt-only-right"><td class="prompt-status">仅第二栏 · L${rightLine}</td>` +
+            `<td></td><td>${esc(operation.value)}</td></tr>`;
+    });
+    summary.textContent = `共 ${changed} 个新增或删除的行级片段；未表达好坏。`;
+    table.innerHTML = comparisonColumns() + comparisonHead(left, right) + `<tbody>${rows.join('')}</tbody>`;
+}
+
+async function setPromptDiffOpen(open) {
+    const panel = document.getElementById('prompt-diff-panel');
+    const button = document.getElementById('prompt-diff-toggle');
+    if (!open) {
+        panel.style.display = 'none';
+        button.textContent = '查看 Prompt Diff';
+        if (ACTIVE_PAIR) {
+            const left = SIDES.find(side => side.id === ACTIVE_PAIR.left);
+            const right = SIDES.find(side => side.id === ACTIVE_PAIR.right);
+            updateComparisonUrl(left, right, false);
+        }
+        return;
+    }
+    if (!ACTIVE_PAIR) return;
+    const left = SIDES.find(side => side.id === ACTIVE_PAIR.left);
+    const right = SIDES.find(side => side.id === ACTIVE_PAIR.right);
+    panel.style.display = '';
+    button.textContent = '收起 Prompt Diff';
+    document.getElementById('prompt-diff-summary').textContent = '正在加载 Prompt…';
+    updateComparisonUrl(left, right, true);
+    try {
+        const [leftText, rightText] = await Promise.all([
+            fetchPrompt(left.prompt_version), fetchPrompt(right.prompt_version),
+        ]);
+        renderPromptDiff(left, right, leftText, rightText);
+    } catch (error) {
+        document.getElementById('prompt-diff-summary').textContent = `Prompt Diff 加载失败：${error.message}`;
+    }
+}
+
+document.getElementById('prompt-diff-toggle').addEventListener('click', () => {
+    openPromptDiffWindow();
+});
+
 async function renderPair(pair) {
+    ACTIVE_PAIR = pair;
     const left = SIDES.find(s => s.id === pair.left);
     const right = SIDES.find(s => s.id === pair.right);
+    const promptDiffWasOpen = document.getElementById('prompt-diff-panel').style.display !== 'none';
+    updateComparisonUrl(left, right, promptDiffWasOpen);
+    syncPromptDiffWindow(left, right);
     document.getElementById('pair-warn').textContent =
         pair.kind === 'confounded' ? '⚠ 双变量配对：以下差异无法归因到单一因素' : '';
 
     const [la, ra] = await Promise.all([loadSide(left), loadSide(right)]);
-    document.getElementById('content').style.display = '';
+    document.getElementById('content').style.display = PROMPT_ONLY ? 'none' : '';
     document.getElementById('left-head').textContent = sideLabel(left);
     document.getElementById('right-head').textContent = sideLabel(right);
-    document.getElementById('left-meta').textContent = left.id === '__primary__' ? '生产归档' : `影子文件: ${left.id}`;
-    document.getElementById('right-meta').textContent = right.id === '__primary__' ? '生产归档' : `影子文件: ${right.id}`;
+    document.getElementById('left-meta').textContent = left.id === '__primary__' ? '生产归档' : `影子记录: ${left.id}`;
+    document.getElementById('right-meta').textContent = right.id === '__primary__' ? '生产归档' : `影子记录: ${right.id}`;
+    document.getElementById('events-head').innerHTML =
+        `<tr><th>内容描述</th><th>${esc(sideLabel(left))}</th><th>${esc(sideLabel(right))}</th></tr>`;
 
     // RATE 对比
     const dims = new Set([...Object.keys(la.RATE || {}), ...Object.keys(ra.RATE || {})]);
     const lt = (la.APPENDIX || {}).__TOTAL_SCORE__ ?? la.__total_score__;
     const rt = (ra.APPENDIX || {}).__TOTAL_SCORE__ ?? ra.__total_score__;
-    const rows = [...dims].map(d => {
-        const lv = (la.RATE || {})[d], rv = (ra.RATE || {})[d];
-        const diff = lv !== rv ? ' class="diff"' : '';
-        return `<tr><th>${esc(d)}</th><td${diff}>${esc(lv)}</td><td${diff}>${esc(rv)}</td></tr>`;
-    });
-    rows.push(`<tr><th>总分</th><td${lt !== rt ? ' class="diff"' : ''}>${esc(lt)}</td>` +
-              `<td${lt !== rt ? ' class="diff"' : ''}>${esc(rt)}</td></tr>`);
+    const rows = [...dims].map(d => quantitativeRow(
+        d, (la.RATE || {})[d], (ra.RATE || {})[d]));
+    rows.push(quantitativeRow('总分', lt, rt));
     document.getElementById('rate-table').innerHTML =
-        `<tr><th>维度</th><th>${esc(sideLabel(left))}</th><th>${esc(sideLabel(right))}</th></tr>` + rows.join('');
+        comparisonColumns() + comparisonHead(left, right) + `<tbody>${rows.join('')}</tbody>`;
+    document.getElementById('rate-table').classList.add('comparison-table');
 
     // 文本对比
-    const textRows = ['EVENT_TITLE', 'EVENT_BRIEF', 'TAXONOMY'].map(k => {
-        const lv = la[k], rv = ra[k];
-        return `<tr><th>${esc(k)}</th><td${lv !== rv ? ' class="diff"' : ''}>${esc(lv)}</td>` +
-               `<td${lv !== rv ? ' class="diff"' : ''}>${esc(rv)}</td></tr>`;
+    const textRows = ['EVENT_TITLE', 'EVENT_BRIEF', 'TAXONOMY'].map(k =>
+        textDiffRow(k, la[k], ra[k]));
+    document.getElementById('text-table').innerHTML =
+        comparisonColumns() + comparisonHead(left, right) + `<tbody>${textRows.join('')}</tbody>`;
+    document.getElementById('text-table').classList.add('comparison-table');
+
+    // 低价值结果按契约没有标题、摘要和事件结构，必须显式展示判定及理由。
+    const verdictRows = [
+        ['分类', 'TAXONOMY'],
+        ['低价值原因代码', 'NON_INTELLIGENCE_REASON'],
+        ['判定说明', 'REASON'],
+        ['影响分析', 'IMPACT'],
+        ['行动提示', 'TIPS'],
+    ].map(([label, key]) => {
+        const lv = la[key], rv = ra[key];
+        const leftLow = key === 'TAXONOMY' && lv === 'NonIntelligence' ? ' low-value' : '';
+        const rightLow = key === 'TAXONOMY' && rv === 'NonIntelligence' ? ' low-value' : '';
+        const diff = inlineTextDiff(lv, rv);
+        return `<tr><th>${esc(label)}</th>` +
+            `<td class="${leftLow.trim()}">${diff.left}</td>` +
+            `<td class="${rightLow.trim()}">${diff.right}</td></tr>`;
     });
-    document.getElementById('text-table').innerHTML = textRows.join('');
+    document.getElementById('verdict-table').innerHTML =
+        comparisonColumns() + comparisonHead(left, right) + `<tbody>${verdictRows.join('')}</tbody>`;
+    document.getElementById('verdict-table').classList.add('comparison-table');
 
     // 事件结构
     renderEvents(document.getElementById('left-events'), la);
@@ -206,16 +545,20 @@ async function renderPair(pair) {
 
     // 质量指标
     const lq = qualityOf(left, la) || {}, rq = qualityOf(right, ra) || {};
+    const lg = groundingMetric(lq), rg = groundingMetric(rq);
     const qRows = [
-        ['未登记角色', lq.unregistered_role_count, rq.unregistered_role_count],
-        ['角色类型冲突', lq.role_type_conflict_count, rq.role_type_conflict_count],
-        ['谓词接地率',
-         lq.surface_grounding ? `${lq.surface_grounding.predicate.hit}/${lq.surface_grounding.predicate.total}` : '—',
-         rq.surface_grounding ? `${rq.surface_grounding.predicate.hit}/${rq.surface_grounding.predicate.total}` : '—'],
-    ].map(([k, lv, rv]) =>
-        `<tr><th>${esc(k)}</th><td${lv !== rv ? ' class="diff"' : ''}>${esc(lv ?? '—')}</td>` +
-        `<td${lv !== rv ? ' class="diff"' : ''}>${esc(rv ?? '—')}</td></tr>`);
-    document.getElementById('quality-table').innerHTML = qRows.join('');
+        quantitativeRow('未登记角色', lq.unregistered_role_count,
+            rq.unregistered_role_count),
+        quantitativeRow('角色类型冲突', lq.role_type_conflict_count,
+            rq.role_type_conflict_count),
+        quantitativeRow('谓词接地率', lg.value, rg.value, {
+            leftDisplay: lg.display, rightDisplay: rg.display,
+        }),
+    ];
+    document.getElementById('quality-table').innerHTML =
+        comparisonColumns() + comparisonHead(left, right) + `<tbody>${qRows.join('')}</tbody>`;
+    document.getElementById('quality-table').classList.add('comparison-table');
+    if (promptDiffWasOpen) await setPromptDiffOpen(true);
 }
 
 init().catch(e => {

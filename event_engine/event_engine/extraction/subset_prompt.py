@@ -90,7 +90,10 @@ country_code 用于保留原文明示的国别或地理关联。对于 facility�
 - `attributes` 必须是以 amount、quantity、ratio、value_before、value_after、delta、duration、level 为键的 JSON 对象，绝不能是数组；每种键最多出现一次。
 - amount 使用 `{{"type":"money","value":8500000000,"currency":"CAD","unit":"元","surface":"85亿加元"}}`。
 - quantity、value_before、value_after、delta、level 使用 `{{"type":"number","value":5000,"unit":"人","surface":"5000人"}}`。
-- ratio 使用 `{{"type":"ratio","value":0.25,"surface":"25%"}}`，value 范围为 0 至 1。
+- ratio 只表示“占比/比例本身”，使用 `{{"type":"ratio","value":0.25,"surface":"占25%"}}`，
+  value 范围为 0 至 1。增长率、降幅和倍数绝不能写入 ratio：如“同比增长783%”写入
+  delta=`{{"type":"number","value":783,"unit":"%","surface":"同比增长783%"}}`；
+  “增至原来的2.5倍”写入 value_after=`{{"type":"number","value":2.5,"unit":"倍","surface":"增至原来的2.5倍"}}`。
 - duration 使用 `{{"type":"duration","value":3,"unit":"年","surface":"三年"}}`。
 
 ## 限定词

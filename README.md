@@ -413,7 +413,7 @@ URL 前缀，例如 `news`、`industry`；不带领域前缀的路径始终使�
 | `/entity-alias/manage` | 全局实体与固定别名管理 |
 | `/intelligence/graph/view` | 默认领域兼容图谱页 |
 | `/vector/graph` | 向量子系统图谱页 |
-| `/shadow/compare/<uuid>` | 有影子记录时，从情报详情进入主链/灰度结果对比 |
+| `/shadow/compare/<uuid>`、`/<domain>/shadow/compare/<uuid>` | 有影子记录时，从默认/指定领域情报详情进入主链与灰度结果对比 |
 
 `/situation/embed/map`、`/situation/embed/entities` 和 `/situation/embed/timeline` 是统一视图
 内部使用的默认领域子页面；指定领域对应 `/<domain>/situation/embed/...`。它们可以单独打开，
@@ -530,8 +530,8 @@ Event V4 分析机制及对应 Prompt 版本，Prompt 覆盖只对本次任务�
   内容安全先尝试带 `low_sensitivity` 标签的 Client，再进入终态。
 
 + 每次调用与每件终态的 IIS 侧效果数据写入 `_data/analysis_stats.db`，用于比较模型 × Prompt
-  版本的一次成功率、错误分布、敏感率、延迟和 Token；影子分析结果写入
-  `_data/analysis_shadow/`，只供灰度对比，不进入归档或索引。Provider Batch 是可关闭的
+  版本的一次成功率、错误分布、敏感率、延迟和 Token；领域化影子分析结果写入 MongoDB
+  `analysis_shadow` 集合，作为灰度评估资产，但不进入正式归档、事件索引或向量库。Provider Batch 是可关闭的
   独立子系统，状态写入 `_data/analysis_batch.db`。
 
 ### 内容发布
@@ -627,7 +627,7 @@ Event V4 分析机制及对应 Prompt 版本，Prompt 覆盖只对本次任务�
 + 用户与运行状态
   > 登录用户保存在 `_config/Authentication.db`。AI 调用观测、IIS 分析效果、影子灰度和
   > Batch 状态分别位于 `_data/ai_client_observations.db`、`_data/analysis_stats.db`、
-  > `_data/analysis_shadow/` 和 `_data/analysis_batch.db`（后两者仅在对应功能使用时产生）。
+  > MongoDB `analysis_shadow` 和 `_data/analysis_batch.db`。
 
 
 ## 意见和建议

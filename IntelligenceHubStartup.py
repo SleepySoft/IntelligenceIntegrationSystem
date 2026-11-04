@@ -193,31 +193,29 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         enabled=config.get('intelligence_hub.analysis_failure_dump.enabled', True),
         max_files=config.get('intelligence_hub.analysis_failure_dump.max_files', 500),
     )
-    # 影子链路：保守灰度。生产归档仍由抽样表版本产生，影子版本并行分析同一输入，
-    # 结果只写入 analysis_shadow 目录供离线对比，不进入归档与索引。
-    shadow_versions = config.get('intelligence_hub.shadow_analysis.versions', [])
+    # 影子链路：由各领域独立配置。生产归档仍由主版本产生，影子版本并行分析同一输入，
+    # 结果作为评估资产写入 MongoDB analysis_shadow，不进入正式归档与下游索引。
+    shadow_domains = {}
+    for domain_name in domain_registry.names():
+        definition = domain_registry.require(domain_name)
+        settings = definition.subsystems.shadow
+        versions = tuple(getattr(settings, "versions", ()) or ())
+        enabled = bool(getattr(settings, "enabled", False))
+        if enabled and versions:
+            shadow_domains[domain_name] = list(versions)
     shadow_recorder = None
-    if shadow_versions:
-        shadow_directory = config.get(
-            'intelligence_hub.shadow_analysis.directory',
-            os.path.join(DATA_PATH, 'analysis_shadow'),
-        )
-        if not os.path.isabs(shadow_directory):
-            shadow_directory = os.path.join(self_path, shadow_directory)
+    if shadow_domains:
+        shadow_collection = domain_resources.default().mongo_db_cache.db[
+            "analysis_shadow"]
         shadow_recorder = ShadowAnalysisRecorder(
-            shadow_directory,
-            enabled=config.get('intelligence_hub.shadow_analysis.enabled', True),
-            max_files=config.get('intelligence_hub.shadow_analysis.max_files', 1000),
+            shadow_collection,
+            enabled=True,
         )
-        backfilled = shadow_recorder.rebuild_index_if_stale()
         services["shadow_recorder"] = shadow_recorder
         logger.info(
-            f'Shadow analysis enabled for prompt versions: {shadow_versions}'
-            + (f' (index backfilled {backfilled})' if backfilled else ''))
+            'Mongo shadow analysis enabled by domain: %s', shadow_domains)
     # 运行控制开关：组合根创建唯一实例，分别注入 pipeline 与 Web 层。
     control_state = RuntimeControlState()
-    shadow_sample_rate = float(config.get(
-        'intelligence_hub.shadow_analysis.sample_rate', 1.0))
     pipeline_ports = EventV4PipelinePorts(
         domain_resources,
         client_manager,
@@ -225,12 +223,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         client_wait_timeout=ai_client_wait_timeout,
         analysis_worker_count=ai_analysis_thread,
         failure_recorder=failure_recorder,
-        shadow_versions=shadow_versions,
         shadow_recorder=shadow_recorder,
-        shadow_sample_rate=shadow_sample_rate,
-        shadow_client_group=(
-            str(config.get('intelligence_hub.shadow_analysis.client_group', '') or '')
-            or None),
         analysis_stats=AnalysisStatsRecorder(
             os.path.join(DATA_PATH, 'analysis_stats.db')),
         max_live_age_hours=float(config.get(

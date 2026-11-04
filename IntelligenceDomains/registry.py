@@ -72,7 +72,11 @@ def build_domain_registry(
         name = str(ctx.name)
         factory = overrides.get(name) or _load_factory(
             getattr(ctx, "domain_factory", "news"))
-        definition = factory(name=name, **shared_kwargs)
+        definition = factory(
+            name=name,
+            subsystem_config=dict(getattr(ctx, "subsystem_config", {}) or {}),
+            **shared_kwargs,
+        )
         if definition.name != name:
             raise ValueError(
                 f"domain factory returned mismatched name: {definition.name!r} != {name!r}")
