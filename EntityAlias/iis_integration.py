@@ -87,6 +87,25 @@ def create_entity_alias(config, *, vector_client=None) -> EntityAliasService | N
         return None
 
 
+def create_auto_enrichment_extension(config, service: EntityAliasService, *,
+                                     archive_collections=()):
+    """按配置创建归档后自动增长扩展；在线源关闭时不创建。"""
+    if service.suggester is None or not config.get(
+            "entity_alias.wikidata.auto_enrich", True):
+        return None
+    from EntityAlias.extension import EntityAliasAutoEnrichmentExtension
+    extension = EntityAliasAutoEnrichmentExtension(
+        service,
+        queue_size=int(config.get(
+            "entity_alias.wikidata.auto_enrich_queue_size", 1000)),
+        archive_collections=archive_collections,
+        backfill_limit=int(config.get(
+            "entity_alias.wikidata.auto_enrich_backfill_limit", 1000)),
+    )
+    service.auto_enrichment = extension
+    return extension
+
+
 def mount_to_iis(app, *, config, wrapper, vector_client=None,
                  url_prefix: str = None,
                  service: EntityAliasService | None = None) -> EntityAliasService | None:

@@ -29,6 +29,12 @@ def test_example_is_valid_and_projects_component_settings():
     assert config.get(
         "intelligence_hub_web_service.intelligence_views.situation.public_window_days"
     ) is None
+    assert config.get(
+        "intelligence_hub_web_service.situation_views.snapshot.enabled"
+    ) is True
+    assert config.get(
+        "intelligence_hub_web_service.situation_views.snapshot.context_hops"
+    ) == 2
     assert config.get("intelligence_hub_web_service.i18n") == {
         "enabled": True,
         "default_locale": "zh-CN",

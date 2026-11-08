@@ -327,6 +327,17 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             for _ctx in domain_resources.enabled_domains():
                 _ctx.event_v4_query_engine.alias_expander = entity_alias_service.expand_names
             services["entity_alias"] = entity_alias_service
+            from EntityAlias.iis_integration import create_auto_enrichment_extension
+            entity_alias_enrichment = create_auto_enrichment_extension(
+                config, entity_alias_service,
+                archive_collections=[
+                    ctx.event_v4_intelligence_collection
+                    for ctx in domain_resources.enabled_domains()
+                    if ctx.event_v4_intelligence_collection is not None
+                ])
+            if entity_alias_enrichment is not None:
+                extensions.append(entity_alias_enrichment)
+                services["entity_alias_auto_enrichment"] = entity_alias_enrichment
     except Exception:
         logger.exception("实体别名模块装配失败，IIS 主服务继续运行。")
 
@@ -342,6 +353,24 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
             services["entity_resolution"] = entity_resolution_service
     except Exception:
         logger.exception("EntityResolution 装配失败，实体图继续使用只读降级模式。")
+
+    # 实体图文字快照：每日 dump 当前窗口完整图及相对上次状态的结构增量；
+    # 只读 MongoDB、只写 _export/_data，不调用 AI，也不改实体解析结果。
+    entity_graph_snapshot_dumper = None
+    try:
+        from SituationViews.snapshot import create_snapshot_dumper
+        entity_graph_snapshot_dumper = create_snapshot_dumper(
+            config=config,
+            domain_resources=domain_resources,
+            entity_resolution_service=entity_resolution_service,
+            entity_alias_service=entity_alias_service,
+            export_root=EXPORT_PATH,
+            data_root=DATA_PATH,
+        )
+        if entity_graph_snapshot_dumper is not None:
+            services["entity_graph_snapshot"] = entity_graph_snapshot_dumper
+    except Exception:
+        logger.exception("实体图快照导出器初始化失败，IIS 主服务继续运行。")
 
     # 实体统计、导出和聚合触发均为外围维护能力，不参与主处理链。
     from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
@@ -388,7 +417,15 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         for _ in entity_frequency_engine.build_cache_with_progress(end - datetime.timedelta(days=1), end):
             pass
 
+    def dump_entity_graph_snapshot():
+        if entity_graph_snapshot_dumper is not None:
+            try:
+                entity_graph_snapshot_dumper.dump()
+            except Exception:
+                logger.exception("实体图文字快照生成失败，不影响其他维护任务。")
+
     def bootstrap_maintenance():
+        dump_entity_graph_snapshot()
         end = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         for _ in entity_frequency_engine.build_cache_with_progress(end - datetime.timedelta(days=30), end):
             pass
@@ -398,6 +435,15 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         scheduler.add_monthly_task(export_monthly, task_id="export_mongodb_monthly_task", day=1, use_new_thread=True)
         scheduler.add_hourly_task(run_aggregation, task_id="summary_aggregation_hourly", use_new_thread=True)
         scheduler.add_hourly_task(build_entity_frequency, task_id="entity_frequency_hourly", use_new_thread=True)
+        if entity_graph_snapshot_dumper is not None:
+            snapshot_settings = config.get(
+                "intelligence_hub_web_service.situation_views.snapshot", {}) or {}
+            scheduler.add_daily_task(
+                dump_entity_graph_snapshot,
+                task_id="entity_graph_snapshot_daily",
+                hour=int(snapshot_settings.get("hour", 3)),
+                use_new_thread=True,
+            )
         # 对话记录按周归档：散文件保留 7 天，周日将超过保留期的记录 append 进其所在周的 zip。
         retention_days = config.get('intelligence_hub.conversation_retention_days', 7)
 

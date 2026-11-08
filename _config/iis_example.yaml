@@ -50,6 +50,12 @@ optional_subsystems:
     # max_articles: 5000        # 单次分析的最大文章数
     # primary_only: true        # 只用主事件构图
     # keep_high_score_singletons: true  # 保留高评分（≥8）单次关系
+    snapshot:
+      enabled: true             # 每天输出完整文本图、结构增量图及稳定短 ID 映射，不调用 AI
+      hour: 3                   # 本地时间 03:00 执行；服务启动时也会生成一次
+      context_hops: 2           # 增量 CORE 周围补充几跳七日图上下文
+      community_context_max_nodes: 120
+      retention_days: 30
   intelligence_views:
     enabled: true
     public_access: true  # 公开 /views 及其固定范围只读数据；非 scoped 态势 API 仍需登录
@@ -72,6 +78,9 @@ optional_subsystems:
       min_interval_sec: 0.5
       timeout_sec: 10
       langs: zh,en
+      auto_enrich: true          # 归档后异步查询；仅唯一精确同名候选会自动写入
+      # auto_enrich_queue_size: 1000
+      # auto_enrich_backfill_limit: 1000  # 每次启动最多补扫多少个存量名称；0=关闭
 
 # 常用高级项只在需要覆盖默认值时添加：
 # hub:

@@ -13,6 +13,7 @@ from EntityAlias.index import AliasIndex
 from EntityAlias.model import AliasEntry, AliasError, Entity
 from EntityAlias.store import JSONLStore
 from EntityAlias.vector import NullNearestIndex
+from EntityAlias.normalize import normalize_name
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,30 @@ class EntityAliasService:
         self.store = store
         self.vector = vector_index if vector_index is not None else NullNearestIndex()
         self.suggester = suggester  # 可选在线建议源（WikidataSuggester）
+        self.auto_enrichment = None  # IIS 装配时注入后台扩展，独立使用时保持 None
         self._index = AliasIndex()
         self._lock = threading.RLock()
-        self._index.rebuild(self.store.all())
+        entities = self.store.all()
+        self._validate_loaded_name_ownership(entities)
+        self._index.rebuild(entities)
+
+    @staticmethod
+    def _validate_loaded_name_ownership(entities) -> None:
+        """拒绝事实源中跨实体重名，避免加载顺序悄悄决定名称所属分类。"""
+        owners: Dict[str, tuple[str, str, str]] = {}
+        for entity in entities:
+            for entry in entity.all_names():
+                key = normalize_name(entry.name)
+                if not key:
+                    continue
+                owner = owners.get(key)
+                if owner is not None and owner[0] != entity.id:
+                    raise AliasError(
+                        f"名称 {entry.name!r} 同时属于 {owner[1]!r}({owner[2]}) "
+                        f"和 {entity.canonical!r}({entity.type})",
+                        "conflict",
+                    )
+                owners[key] = (entity.id, entity.canonical, entity.type)
 
     # ------------------------------------------------------------------ 解析
 
@@ -101,6 +123,54 @@ class EntityAliasService:
             if value is not None:
                 prefill[key] = value
         return self.create_entity(prefill.pop("canonical"), **prefill)
+
+    def auto_register_exact(self, name: str, *, entity_type: str = "other",
+                            search_lang: str = "zh", primary_lang: str = "zh",
+                            limit: int = 10) -> Dict[str, Any]:
+        """保守自动增长：只登记 Wikidata 唯一的精确同名候选。
+
+        同名多义或只有模糊候选时不写事实库。若 QID 已登记，则只把当前名称补成
+        该实体别名。返回 ``status`` 便于后台扩展观测而不依赖异常文本。
+        """
+        existing = self.resolve(name)
+        if existing is not None:
+            return {"status": "existing", "entity": existing}
+        if self.suggester is None:
+            return {"status": "not_found"}
+
+        candidates = self.suggester.suggest(
+            name, lang=search_lang, limit=limit)
+        key = normalize_name(name)
+        exact_by_qid = {}
+        for item in candidates:
+            qid = str(item.get("qid") or "").strip()
+            if qid and any(normalize_name(item.get(field, "")) == key
+                           for field in ("matched", "label")):
+                exact_by_qid[qid] = item
+        if not exact_by_qid:
+            return {"status": "not_found", "candidates": candidates}
+        if len(exact_by_qid) != 1:
+            return {"status": "ambiguous", "candidates": list(exact_by_qid.values())}
+
+        qid = next(iter(exact_by_qid))
+        with self._lock:
+            # 单 worker 之外也可能同时经管理 API 注册；写入前再次检查。
+            existing = self.resolve(name)
+            if existing is not None:
+                return {"status": "existing", "entity": existing}
+            entity = next((item for item in self.store.all()
+                           if item.refs.get("wikidata") == qid), None)
+            if entity is not None:
+                created = self.add_alias(entity.id, name, search_lang)
+            else:
+                created = self.register_from_wikidata(
+                    qid, primary_lang=primary_lang,
+                    overrides={"type": entity_type or "other"})
+                if self.resolve(name) is None:
+                    created = self.add_alias(created["id"], name, search_lang)
+        logger.info("EntityAlias 自动补录成功：%r -> %s (%s)",
+                    name, created.get("canonical"), qid)
+        return {"status": "registered", "entity": created, "qid": qid}
 
     # ------------------------------------------------------------------ 模糊查询
 
@@ -340,13 +410,16 @@ class EntityAliasService:
         return len(names)
 
     def status(self) -> Dict[str, Any]:
-        return {
+        result = {
             "entities": self.store.count(),
             "names_indexed": self._index.name_count,
             "vector_available": bool(self.vector.available),
             "online_suggest": self.suggester is not None,
             "data_files": list(self.store.files()),
         }
+        if self.auto_enrichment is not None:
+            result["auto_enrichment"] = self.auto_enrichment.statistics
+        return result
 
     # ------------------------------------------------------------------ 内部
 

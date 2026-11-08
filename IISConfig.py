@@ -176,6 +176,24 @@ class TranslationSettings(_StrictModel):
         return value.strip()
 
 
+class EntityGraphSnapshotSettings(_StrictModel):
+    enabled: bool = Field(True, description=iis_msg(
+        "Dump full and incremental entity graph text snapshots on a daily schedule."))
+    hour: int = Field(3, ge=0, le=23, description=iis_msg(
+        "Local hour used by the daily entity graph snapshot job."))
+    context_hops: int = Field(2, ge=0, le=5, description=iis_msg(
+        "Neighbor depth included around structurally changed graph nodes."))
+    community_context_max_nodes: int = Field(120, ge=1, le=5000, description=iis_msg(
+        "Include a whole visual community when it does not exceed this node count."))
+    retention_days: int = Field(30, ge=1, le=3650, description=iis_msg(
+        "Number of days full, incremental, and ID-map dumps are retained."))
+    directory: str = Field("entity_graph_snapshots", description=iis_msg(
+        "Snapshot directory relative to the IIS export root."))
+    state_file: str = Field(
+        "SituationViews/entity_graph_snapshot.json", description=iis_msg(
+            "Incremental comparison state relative to the IIS data root."))
+
+
 class SituationSettings(_StrictModel):
     enabled: bool = Field(True, description=iis_msg(
         "Enable geographic, entity relationship, and timeline situation views."))
@@ -201,6 +219,9 @@ class SituationSettings(_StrictModel):
         "Build relationship graphs from primary events only."))
     keep_high_score_singletons: bool = Field(True, description=iis_msg(
         "Keep high-scoring relationships even when they have only one supporting event."))
+    snapshot: EntityGraphSnapshotSettings = Field(
+        default_factory=EntityGraphSnapshotSettings, description=iis_msg(
+            "Periodic full and incremental entity graph text dump settings."))
 
 
 class ToggleSettings(_StrictModel):
@@ -235,6 +256,12 @@ class EntityAliasWikidataSettings(_StrictModel):
         "Timeout in seconds for one Wikidata request."))
     langs: str = Field("zh,en", description=iis_msg(
         "Comma-separated language codes fetched when prefilling entity names."))
+    auto_enrich: bool = Field(True, description=iis_msg(
+        "Automatically register unique exact Wikidata matches after archiving."))
+    auto_enrich_queue_size: int = Field(1000, ge=1, description=iis_msg(
+        "Maximum number of archived entity names waiting for Wikidata enrichment."))
+    auto_enrich_backfill_limit: int = Field(1000, ge=0, description=iis_msg(
+        "Maximum number of unique historical names queued on each startup; zero disables backfill."))
 
 
 class EntityAliasSettings(_StrictModel):
@@ -496,6 +523,7 @@ class IISConfig:
                 "situation_views": {
                     "enabled": situation.enabled,
                     "geocoding": {"enabled": situation.geocoding},
+                    "snapshot": situation.snapshot.model_dump(mode="json"),
                     "dashboard": {
                         "domain_name": situation_domain,
                         "window_days": situation.window_days,
@@ -570,6 +598,9 @@ class IISConfig:
                     "min_interval_sec": optional_subsystems.entity_alias.wikidata.min_interval_sec,
                     "timeout_sec": optional_subsystems.entity_alias.wikidata.timeout_sec,
                     "langs": optional_subsystems.entity_alias.wikidata.langs,
+                    "auto_enrich": optional_subsystems.entity_alias.wikidata.auto_enrich,
+                    "auto_enrich_queue_size": optional_subsystems.entity_alias.wikidata.auto_enrich_queue_size,
+                    "auto_enrich_backfill_limit": optional_subsystems.entity_alias.wikidata.auto_enrich_backfill_limit,
                 },
             },
             "batch_analysis": optional_subsystems.batch_analysis.model_dump(),

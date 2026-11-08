@@ -84,6 +84,14 @@
 AI 确认候选后调 `POST /api/entities/from_wikidata {"qid": "Q..."}` 将其多语言 label/别名/简介
 预填注册回本地（带 `refs.wikidata` 溯源）。
 
+IIS 挂载时默认安装归档后自动增长扩展：它从 `archive.completed` 提取尚未登记的实体名，
+在独立后台队列查询 Wikidata，并且**只自动写入唯一的精确同名 QID**。模糊候选或同名多义
+候选不会自动合并，仍进入人工/AI 补录流程。写入后 EntityResolution 会立即采用别名表中固定
+的实体 ID 和类型投影新旧情报，避免同一实体因逐篇抽取的类型漂移而显示在多个分类下。
+启动时还会限量补扫存量归档（默认最多 1000 个未登记名称）。可用
+`entity_alias.wikidata.auto_enrich: false` 整体关闭，或把 `auto_enrich_backfill_limit` 设为 0
+只处理后续新归档。
+
 工程约束已内置于 `wikidata.py`：描述性 UA、固定节流（默认 0.5s）、429 按 `Retry-After` 退避、
 SQLite 结果缓存（7 天，`.cache/` 不入 git）、代理可配（默认 `GlobalConfig.APPLIED_PROXY`，
 socks 代理需 PySocks）。网络失败一律静默降级为空结果，不影响本地功能。

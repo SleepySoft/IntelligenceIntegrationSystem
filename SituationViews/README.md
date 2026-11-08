@@ -124,5 +124,25 @@ N 天”明确表示情报收录窗口，不承诺其中描述的所有事件都
 所选情报中的实体生效”后改为多选具体 EntityRef。语境目标必须依赖情报，因此该选项会被
 自动勾选且不能取消。保存后关系图不会自动重载，避免大图阻塞，用户可在提示条中手动刷新。
 
+## 实体图文本快照与增量
+
+启用 `optional_subsystems.situation.snapshot` 后，IIS 在启动维护阶段及每日指定小时生成：
+
+- `entity_graph_full_*.txt`：按当前看板窗口、评分和容量上限生成的完整文字图；
+- `entity_graph_incremental_*.txt`：相对上次运行的结构增量，新增/变化节点和新增/移除边为
+  CORE，并附当前滚动窗口内的邻域上下文；
+- `entity_graph_ids_*.json`：跨快照稳定短 ID 到真实图 ID 的本地映射。
+
+文件默认位于 `_export/entity_graph_snapshots/`，相邻快照的轻量比较状态位于
+`_data/SituationViews/entity_graph_snapshot.json`。该功能不调用 AI、不修改 `ent_*`、
+`ctx_*` 或 EntityResolution。手工执行：
+
+```bash
+python Scripts/export_entity_graph_snapshot.py
+```
+
+增量比较忽略单纯的关系支撑次数变化，只在节点身份属性或边结构变化时把节点列为 CORE；
+首次运行以完整图作为基线增量。短 ID 根据真实图 ID 生成，不会像显示顺序编号一样跨天漂移。
+
 接口字段投影、国家元数据瘦身、视图 bundle 拆分和性能验收计划见
 [`doc/20261021_view_api_projection_and_payload_plan.md`](../doc/20261021_view_api_projection_and_payload_plan.md)。
