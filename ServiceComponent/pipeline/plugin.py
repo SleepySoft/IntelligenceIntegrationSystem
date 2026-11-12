@@ -21,6 +21,7 @@ from ServiceComponent.pipeline.events import (
     INTAKE_ACCEPTED,
     INTAKE_RECEIVED,
     INTAKE_REJECTED,
+    SHADOW_REQUESTED,
 )
 from ServiceComponent.runtime import EventPriority, HubEvent, HubPlugin, HubRuntime
 
@@ -43,11 +44,15 @@ class EventPipelinePlugin(HubPlugin):
         runtime.route_event(ANALYSIS_REQUESTED, "analysis")
         runtime.route_event(ANALYSIS_COMPLETED, "postprocess")
         runtime.route_event(ARCHIVE_REQUESTED, "postprocess")
+        runtime.route_event(SHADOW_REQUESTED, "shadow")
         runtime.subscribe(INTAKE_RECEIVED, self._on_intake_received)
         runtime.subscribe(INTAKE_ACCEPTED, self._on_intake_accepted)
         runtime.subscribe(ANALYSIS_REQUESTED, self._on_analysis_requested)
         runtime.subscribe(ANALYSIS_COMPLETED, self._on_analysis_completed)
+        runtime.subscribe(ANALYSIS_FAILED, self._on_analysis_failed)
         runtime.subscribe(ARCHIVE_REQUESTED, self._on_archive_requested)
+        runtime.subscribe(ARCHIVE_COMPLETED, self._on_archive_completed)
+        runtime.subscribe(SHADOW_REQUESTED, self._on_shadow_requested)
 
     def stop(self, runtime: HubRuntime) -> None:
         """通知可能正在等待外围资源的端口停止。"""
@@ -83,17 +88,40 @@ class EventPipelinePlugin(HubPlugin):
 
     @staticmethod
     def _on_analysis_completed(event: HubEvent, runtime: HubRuntime) -> None:
-        runtime.emit(event.derive(ARCHIVE_REQUESTED, event.payload))
+        runtime.emit(event.derive(
+            ARCHIVE_REQUESTED, event.payload, metadata=event.metadata))
+
+    @staticmethod
+    def _on_analysis_failed(event: HubEvent, runtime: HubRuntime) -> None:
+        # NonIntelligence 已在 analysis 端写入低价值库；其他失败不携带 Shadow 任务。
+        EventPipelinePlugin._emit_shadow_if_present(event, runtime)
 
     def _on_archive_requested(self, event: HubEvent, runtime: HubRuntime) -> None:
         self._run_stage(
             event, runtime, "archive", self._archive.archive,
             accepted_event=ARCHIVE_COMPLETED, rejected_event=ARCHIVE_FAILED,
+            inherited_metadata=event.metadata,
         )
 
     @staticmethod
+    def _on_archive_completed(event: HubEvent, runtime: HubRuntime) -> None:
+        EventPipelinePlugin._emit_shadow_if_present(event, runtime)
+
+    def _on_shadow_requested(self, event: HubEvent, runtime: HubRuntime) -> None:
+        runner = getattr(self._analysis, "run_shadow", None)
+        if callable(runner):
+            runner(event)
+
+    @staticmethod
+    def _emit_shadow_if_present(event: HubEvent, runtime: HubRuntime) -> None:
+        task = (event.metadata or {}).get("shadow_task")
+        if task is not None:
+            runtime.emit(event.derive(SHADOW_REQUESTED, task, metadata={}))
+
+    @staticmethod
     def _run_stage(event: HubEvent, runtime: HubRuntime, stage: str, handler: Any,
-                   *, accepted_event: str, rejected_event: str) -> None:
+                   *, accepted_event: str, rejected_event: str,
+                   inherited_metadata: dict | None = None) -> None:
         try:
             result = handler(event)
             if not isinstance(result, StageResult):
@@ -105,13 +133,15 @@ class EventPipelinePlugin(HubPlugin):
             ))
             return
 
+        metadata = dict(inherited_metadata or {})
+        metadata.update(result.metadata)
         if result.accepted:
             runtime.emit(event.derive(
-                accepted_event, result.payload, metadata=result.metadata,
+                accepted_event, result.payload, metadata=metadata,
             ))
         else:
             runtime.emit(event.derive(
                 rejected_event,
                 payload=PipelineStageFailure(stage, result.reason),
-                metadata=result.metadata,
+                metadata=metadata,
             ))

@@ -61,6 +61,21 @@ logger = logging.getLogger(__name__)
 self_path = os.path.dirname(os.path.abspath(__file__))
 
 
+def _source_revision() -> str:
+    """读取源码 revision；部署包没有 .git 时允许显式环境变量覆盖。"""
+    configured = str(os.environ.get("IIS_BUILD_REVISION") or "").strip()
+    if configured:
+        return configured
+    try:
+        git_dir = Path(self_path) / ".git"
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref: "):
+            return (git_dir / head[5:].strip()).read_text(encoding="utf-8").strip()
+        return head
+    except OSError:
+        return "unknown"
+
+
 def show_intelligence_hub_statistics_forever(
         hub: HubApplication, *, poll_interval: float = 2.0,
         unchanged_log_interval: float = 60.0):
@@ -193,8 +208,8 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         enabled=config.get('intelligence_hub.analysis_failure_dump.enabled', True),
         max_files=config.get('intelligence_hub.analysis_failure_dump.max_files', 500),
     )
-    # 影子链路：由各领域独立配置。生产归档仍由主版本产生，影子版本并行分析同一输入，
-    # 结果作为评估资产写入 MongoDB analysis_shadow，不进入正式归档与下游索引。
+    # 影子链路：由各领域独立配置。正式结果持久化后投递到独立 Shadow worker，
+    # 评估资产写入 MongoDB analysis_shadow，不占用分析 worker、不进入正式下游。
     shadow_domains = {}
     for domain_name in domain_registry.names():
         definition = domain_registry.require(domain_name)
@@ -226,6 +241,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         shadow_recorder=shadow_recorder,
         analysis_stats=AnalysisStatsRecorder(
             os.path.join(DATA_PATH, 'analysis_stats.db')),
+        code_revision=_source_revision(),
         max_live_age_hours=float(config.get(
             'intelligence_hub.max_live_age_hours', 0) or 0),
         max_analysis_age_hours=float(config.get(
@@ -340,6 +356,26 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 services["entity_alias_auto_enrichment"] = entity_alias_enrichment
     except Exception:
         logger.exception("实体别名模块装配失败，IIS 主服务继续运行。")
+
+    # V2 只做影子观察：独立 SQLite、队列和 Wikidata 缓存，不注入查询、图、Web
+    # 或 EntityResolution。初始化失败也不影响 V1 和主链。
+    try:
+        from EntityAliasV2.iis_integration import create_entity_alias_v2_shadow
+        entity_alias_v2_shadow = create_entity_alias_v2_shadow(
+            config,
+            v1_service=entity_alias_service,
+            archive_collections=[
+                ctx.event_v4_intelligence_collection
+                for ctx in domain_resources.enabled_domains()
+                if ctx.event_v4_intelligence_collection is not None
+            ],
+        )
+        if entity_alias_v2_shadow is not None:
+            extensions.append(entity_alias_v2_shadow.extension)
+            services["entity_alias_v2"] = entity_alias_v2_shadow.service
+            services["entity_alias_v2_shadow"] = entity_alias_v2_shadow.extension
+    except Exception:
+        logger.exception("EntityAliasV2 影子装配失败，IIS 主服务继续运行。")
 
     # ------------------------- 情报实体解析（非破坏性旁表） -------------------------
     entity_resolution_service = None

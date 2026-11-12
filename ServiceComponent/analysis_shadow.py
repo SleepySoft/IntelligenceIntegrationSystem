@@ -9,9 +9,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from bson import ObjectId
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, ReturnDocument
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ShadowAnalysisRecorder:
     """Persist and query domain-scoped shadow analyses in one Mongo collection."""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, collection: Any, *, enabled: bool = True):
         self.collection = collection
@@ -38,13 +39,25 @@ class ShadowAnalysisRecorder:
              ("ai_model", ASCENDING), ("captured_at", DESCENDING)],
             name="shadow_domain_prompt_model_time",
         )
+        self.collection.create_index(
+            [("domain_name", ASCENDING), ("source_uuid", ASCENDING),
+             ("experiment_id", ASCENDING), ("shadow_prompt_version", ASCENDING)],
+            name="shadow_experiment_result_unique",
+            unique=True,
+            partialFilterExpression={"experiment_id": {"$type": "string"}},
+        )
 
     def record(self, *, original_data: Mapping[str, Any], domain_name: str = "",
                subsystem: str | None = None,
                primary_prompt_version: int, shadow_prompt_version: int,
                analysis: Any, ai_service: str, ai_model: str,
                extraction_quality: Any = None,
-               total_score: float | None = None) -> str | None:
+               total_score: float | None = None,
+               experiment_id: str = "", sampling_key: str = "",
+               primary_prompt_sha256: str = "", shadow_prompt_sha256: str = "",
+               code_revision: str = "", primary_ai_service: str = "",
+               primary_ai_model: str = "", primary_client_name: str = "",
+               shadow_client_name: str = "") -> str | None:
         if not self.enabled:
             return None
         try:
@@ -54,6 +67,10 @@ class ShadowAnalysisRecorder:
             source_uuid = str(original_data.get("UUID") or "").strip()
             if not resolved_domain or not source_uuid:
                 raise ValueError("shadow record requires domain_name and source UUID")
+            resolved_experiment = str(experiment_id or "").strip() or (
+                f"legacy:{resolved_domain}:p{int(primary_prompt_version)}:"
+                f"s{int(shadow_prompt_version)}")
+            informant = str(original_data.get("informant") or "")
             document = {
                 "schema_version": self.SCHEMA_VERSION,
                 "captured_at": datetime.now(timezone.utc),
@@ -61,19 +78,45 @@ class ShadowAnalysisRecorder:
                 "domain_name": resolved_domain,
                 "primary_prompt_version": int(primary_prompt_version),
                 "shadow_prompt_version": int(shadow_prompt_version),
+                "experiment_id": resolved_experiment,
+                "sampling_key": str(sampling_key or ""),
+                "primary_prompt_sha256": str(primary_prompt_sha256 or ""),
+                "shadow_prompt_sha256": str(shadow_prompt_sha256 or ""),
+                "code_revision": str(code_revision or ""),
                 "ai_service": str(ai_service or ""),
                 "ai_model": str(ai_model or ""),
+                "primary_ai_service": str(primary_ai_service or ""),
+                "primary_ai_model": str(primary_ai_model or ""),
+                "primary_client_name": str(primary_client_name or ""),
+                "shadow_client_name": str(shadow_client_name or ""),
                 "input": {
                     "title": original_data.get("title"),
-                    "informant": original_data.get("informant"),
+                    "informant": informant,
+                    "source_host": urlparse(informant).netloc.lower(),
                     "source": original_data.get("source"),
                 },
                 "analysis": analysis,
                 "extraction_quality": extraction_quality,
                 "total_score": total_score,
             }
-            result = self.collection.insert_one(document)
-            return str(result.inserted_id)
+            identity = {
+                "domain_name": resolved_domain,
+                "source_uuid": source_uuid,
+                "experiment_id": resolved_experiment,
+                "shadow_prompt_version": int(shadow_prompt_version),
+            }
+            updater = getattr(self.collection, "find_one_and_update", None)
+            if callable(updater):
+                stored = updater(
+                    identity, {"$setOnInsert": document}, upsert=True,
+                    return_document=ReturnDocument.AFTER,
+                )
+            else:  # 轻量测试存根兼容；生产 Mongo 始终走原子 upsert。
+                stored = self.collection.find_one(identity)
+                if stored is None:
+                    inserted = self.collection.insert_one(document)
+                    stored = dict(document, _id=inserted.inserted_id)
+            return str((stored or {}).get("_id") or "") or None
         except Exception:
             logger.exception("Failed to persist shadow analysis record.")
             return None
@@ -89,6 +132,7 @@ class ShadowAnalysisRecorder:
             "domain_name": document.get("domain_name"),
             "shadow_prompt_version": document.get("shadow_prompt_version"),
             "primary_prompt_version": document.get("primary_prompt_version"),
+            "experiment_id": document.get("experiment_id"),
             "ai_service": document.get("ai_service"),
             "ai_model": document.get("ai_model"),
             "captured_at": captured.isoformat() if hasattr(captured, "isoformat") else captured,

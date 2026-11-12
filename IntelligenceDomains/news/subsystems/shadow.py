@@ -18,7 +18,7 @@ class NewsShadowSupport:
         enabled = bool(raw.get("enabled", False))
         versions = tuple(int(item) for item in raw.get("versions", ()))
         mode = str(raw.get("comparison_mode") or "same_model").strip()
-        if mode not in {"same_model", "different_model"}:
+        if mode not in {"same_model", "different_model", "replicate"}:
             raise ValueError(f"unsupported news shadow comparison_mode: {mode!r}")
         if enabled and not versions:
             raise ValueError("news shadow enabled but versions is empty")
@@ -28,4 +28,5 @@ class NewsShadowSupport:
             sample_rate=max(0.0, min(1.0, float(raw.get("sample_rate", 0.0)))),
             comparison_mode=mode,
             client_group=str(raw.get("client_group") or "").strip() or None,
+            experiment_id=str(raw.get("experiment_id") or "").strip(),
         )

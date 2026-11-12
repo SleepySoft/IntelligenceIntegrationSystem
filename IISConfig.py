@@ -286,6 +286,24 @@ class EntityAliasSettings(_StrictModel):
         return value
 
 
+class EntityAliasV2ShadowSettings(_StrictModel):
+    """EntityAlias V2 独立影子运行；不注入查询、图或 EntityResolution。"""
+
+    enabled: bool = Field(False, description=iis_msg(
+        "Observe archived entity mentions with EntityAlias V2 without changing production results."))
+    database: str = Field("", description=iis_msg(
+        "V2 SQLite fact database. Leave empty to use _data/entity_alias_v2/entities.db."))
+    observations_database: str = Field("", description=iis_msg(
+        "Independent V2 shadow observation database. Leave empty to use _data/entity_alias_v2/shadow.db."))
+    queue_size: int = Field(1000, ge=1, description=iis_msg(
+        "Maximum number of V2 shadow enrichment jobs waiting in memory."))
+    backfill_limit: int = Field(1000, ge=0, description=iis_msg(
+        "Maximum number of unique historical typed names queued on startup."))
+    wikidata: EntityAliasWikidataSettings = Field(
+        default_factory=EntityAliasWikidataSettings, description=iis_msg(
+            "Dedicated Wikidata settings for V2 shadow; its cache is never shared with V1."))
+
+
 class OptionalSubsystemSettings(_StrictModel):
     translation: TranslationSettings = Field(default_factory=TranslationSettings, description=iis_msg(
         "Asynchronous intelligence translation settings."))
@@ -298,6 +316,9 @@ class OptionalSubsystemSettings(_StrictModel):
             "Unified intelligence view shell and public access settings."))
     entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings, description=iis_msg(
         "Entity alias resolution settings."))
+    entity_alias_v2_shadow: EntityAliasV2ShadowSettings = Field(
+        default_factory=EntityAliasV2ShadowSettings, description=iis_msg(
+            "Isolated EntityAlias V2 shadow observation settings."))
     batch_analysis: BatchAnalysisSettings = Field(default_factory=BatchAnalysisSettings, description=iis_msg(
         "Provider Batch API backlog analysis settings."))
 
@@ -603,6 +624,7 @@ class IISConfig:
                     "auto_enrich_backfill_limit": optional_subsystems.entity_alias.wikidata.auto_enrich_backfill_limit,
                 },
             },
+            "entity_alias_v2_shadow": optional_subsystems.entity_alias_v2_shadow.model_dump(),
             "batch_analysis": optional_subsystems.batch_analysis.model_dump(),
             "ai_client_center": {
                 "sqlite_db_file": "ai_client_state_log.db",

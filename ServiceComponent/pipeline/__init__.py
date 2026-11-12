@@ -11,6 +11,7 @@ from ServiceComponent.pipeline.events import (
     INTAKE_ACCEPTED,
     INTAKE_RECEIVED,
     INTAKE_REJECTED,
+    SHADOW_REQUESTED,
 )
 from ServiceComponent.pipeline.plugin import EventPipelinePlugin
 
@@ -18,5 +19,5 @@ __all__ = [
     "ANALYSIS_COMPLETED", "ANALYSIS_FAILED", "ANALYSIS_REQUESTED",
     "ARCHIVE_COMPLETED", "ARCHIVE_FAILED", "ARCHIVE_REQUESTED",
     "EventPipelinePlugin", "INTAKE_ACCEPTED", "INTAKE_RECEIVED", "INTAKE_REJECTED",
-    "PipelineStageFailure", "StageResult",
+    "PipelineStageFailure", "SHADOW_REQUESTED", "StageResult",
 ]

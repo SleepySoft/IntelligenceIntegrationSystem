@@ -17,6 +17,7 @@ class DomainShadowSettings:
     sample_rate: float = 0.0
     comparison_mode: str = "same_model"
     client_group: str | None = None
+    experiment_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

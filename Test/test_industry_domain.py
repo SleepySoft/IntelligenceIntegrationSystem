@@ -124,9 +124,20 @@ def test_industry_factory_reads_domain_scoped_shadow_config():
 def test_industry_rejects_overlap_between_formal_and_same_model_shadow_pools():
     with pytest.raises(ValueError, match="正式与 shadow Prompt 池重叠"):
         create_domain(subsystem_config={"shadow": {
-            "enabled": True, "versions": [4, 6], "sample_rate": 0.25,
+            "enabled": True, "versions": [2, 6], "sample_rate": 0.25,
             "comparison_mode": "same_model",
         }})
+
+
+def test_industry_allows_explicit_replicate_aa_of_formal_prompt():
+    domain = create_domain(subsystem_config={"shadow": {
+        "enabled": True, "versions": [2], "sample_rate": 0.25,
+        "comparison_mode": "replicate", "experiment_id": "industry-v2-aa",
+    }})
+
+    assert domain.subsystems.shadow.versions == (2,)
+    assert domain.subsystems.shadow.comparison_mode == "replicate"
+    assert domain.subsystems.shadow.experiment_id == "industry-v2-aa"
 
 
 def test_industry_predicate_growth_does_not_change_news_v48_registry():
@@ -147,7 +158,7 @@ def test_builtin_industry_factory_is_resolved_from_domain_config_name():
 
     registry = build_domain_registry(contexts, default_name="news")
 
-    assert registry.require("industry").prompt_catalog.sampling_versions() == [4]
+    assert registry.require("industry").prompt_catalog.sampling_versions() == [2]
     assert registry.require("industry").storage.__class__.__name__ == "IndustryStorage"
 
 
@@ -285,7 +296,7 @@ def test_industry_v2_adds_cross_type_evidence_calibration_only_in_gray_prompt():
 
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(1) is catalog.protocol_for(2)
-    assert catalog.sampling_versions() == [4]
+    assert catalog.sampling_versions() == [2]
     assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
 
 
@@ -331,7 +342,7 @@ def test_industry_v5_adds_first_pass_guards_without_changing_v4_judgment():
     assert "首次校验通过自检" not in v4
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(4) is catalog.protocol_for(5)
-    assert catalog.sampling_versions() == [4]
+    assert catalog.sampling_versions() == [2]
 
 
 def test_industry_v6_restarts_from_v4_with_only_closed_schema_guards():
@@ -353,7 +364,7 @@ def test_industry_v6_restarts_from_v4_with_only_closed_schema_guards():
     assert "禁止输出 market" in v6
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(4) is catalog.protocol_for(6)
-    assert catalog.sampling_versions() == [4]
+    assert catalog.sampling_versions() == [2]
     assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
 
 

@@ -157,3 +157,37 @@ class TestAnalysisStats:
         assert groups[0]["success_rate"] == 1.0
         assert groups[0]["first_pass_rate"] == 0.0
         assert groups[0]["attempts_per_item"] == 2.0
+
+    def test_primary_and_shadow_outcomes_do_not_overwrite_each_other(self, tmp_path):
+        db_path = tmp_path / "experiment.db"
+        recorder = AnalysisStatsRecorder(db_path)
+        common = dict(
+            uuid="same", domain_name="industry", prompt_version=4,
+            ai_service="svc", ai_model="model", outcome=OUTCOME_SUCCESS,
+            attempts_used=1,
+        )
+        recorder.record_outcome(shadow=False, **common)
+        recorder.record_outcome(
+            shadow=True, experiment_id="industry-v4-aa", **common)
+
+        with sqlite3.connect(db_path) as conn:
+            rows = conn.execute(
+                "SELECT shadow, experiment_id FROM outcomes ORDER BY shadow"
+            ).fetchall()
+        assert rows == [(0, ""), (1, "industry-v4-aa")]
+
+    def test_validation_fingerprint_and_experiment_are_persisted(self, tmp_path):
+        db_path = tmp_path / "fingerprint.db"
+        recorder = AnalysisStatsRecorder(db_path)
+        recorder.record_attempt(
+            uuid="x", domain_name="industry", shadow=True, prompt_version=4,
+            ai_service="svc", ai_model="model", attempt_no=1, latency_ms=10,
+            error_class=AnalysisErrorClass.SCHEMA_SHAPE,
+            experiment_id="industry-v4-aa",
+            validation_fingerprint="EVENT_TITLE:string_too_long",
+        )
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT experiment_id, validation_fingerprint FROM attempts"
+            ).fetchone()
+        assert row == ("industry-v4-aa", "EVENT_TITLE:string_too_long")

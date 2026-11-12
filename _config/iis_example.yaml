@@ -81,6 +81,17 @@ optional_subsystems:
       auto_enrich: true          # 归档后异步查询；仅唯一精确同名候选会自动写入
       # auto_enrich_queue_size: 1000
       # auto_enrich_backfill_limit: 1000  # 每次启动最多补扫多少个存量名称；0=关闭
+  # entity_alias_v2_shadow:       # V2 与 V1 物理隔离，只观察、不进入查询/图/解析主链
+  #   enabled: false
+  #   # database: _data/entity_alias_v2/entities.db
+  #   # observations_database: _data/entity_alias_v2/shadow.db
+  #   queue_size: 1000
+  #   backfill_limit: 1000
+  #   wikidata:
+  #     enabled: true
+  #     min_interval_sec: 0.5
+  #     timeout_sec: 10
+  #     langs: zh,en
 
 # 常用高级项只在需要覆盖默认值时添加：
 # hub:

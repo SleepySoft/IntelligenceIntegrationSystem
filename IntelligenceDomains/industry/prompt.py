@@ -21,7 +21,7 @@ INDUSTRY_PROMPT_V3_VERSION = 3
 INDUSTRY_PROMPT_V4_VERSION = 4
 INDUSTRY_PROMPT_V5_VERSION = 5
 INDUSTRY_PROMPT_V6_VERSION = 6
-INDUSTRY_PRODUCTION_PROMPT_VERSION = INDUSTRY_PROMPT_V4_VERSION
+INDUSTRY_PRODUCTION_PROMPT_VERSION = INDUSTRY_PROMPT_V2_VERSION
 INDUSTRY_PROMPT_VERSION = INDUSTRY_PROMPT_V6_VERSION
 INDUSTRY_PROTOCOL = "industry_core_subset_levels_v1"
 
@@ -498,8 +498,8 @@ def build_industry_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
         INDUSTRY_PROMPT_V2_VERSION,
         build_industry_prompt_v2(registry),
         protocol=INDUSTRY_PROTOCOL,
-        # v2 是历史 Shadow 候选：可显式选择和回看，但不参与正式归档随机抽样。
-        sampling=False,
+        # v2 于 2026-11-12 重新成为唯一正式版本，用于 25% 同模型 A/A 稳定性实验。
+        sampling=True,
     )
     catalog.register_prompt(
         INDUSTRY_PROMPT_V3_VERSION,
@@ -512,8 +512,8 @@ def build_industry_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
         INDUSTRY_PROMPT_V4_VERSION,
         build_industry_prompt_v4(registry),
         protocol=INDUSTRY_PROTOCOL,
-        # v4 灰度通过，成为唯一正式生产版本。
-        sampling=True,
+        # v4 已完成生产与 v6 Shadow 评估；保留历史回看，不再接收新样本。
+        sampling=False,
     )
     catalog.register_prompt(
         INDUSTRY_PROMPT_V5_VERSION,

@@ -917,6 +917,12 @@ class FakeShadowRecorder:
         return f"shadow-{len(self.records)}"
 
 
+def _run_queued_shadow(ports, analyzed):
+    task = analyzed.metadata.get("shadow_task")
+    if task is not None:
+        ports.run_shadow(HubEvent("analysis.shadow.requested", task, task.domain_name))
+
+
 def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0,
                        client_manager=None):
     return EventV4PipelinePorts(
@@ -935,7 +941,7 @@ def _ports_with_shadow(analyzer, shadow_recorder, shadow_sample_rate=1.0,
     )
 
 
-def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
+def test_v4_shadow_chain_runs_queued_analysis_without_touching_archive():
     def analyzer(client, prompt, original, record_meta=None):
         return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
 
@@ -945,6 +951,7 @@ def test_v4_shadow_chain_runs_parallel_analysis_without_touching_archive():
     ports._archive_repository = repository
 
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, analyzed)
 
     assert analyzed.accepted
     # 主链仍是 v41 直出，归档内容不受影响。
@@ -975,6 +982,7 @@ def test_different_prompt_shadow_prefers_primary_client_for_clean_comparison():
     )
 
     result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, result)
 
     assert result.accepted
     assert manager.requests[1].get("target_client_name") == "client-fake-v4"
@@ -992,6 +1000,7 @@ def test_same_model_shadow_discards_result_if_client_or_model_drifts():
     )
 
     result = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, result)
 
     assert result.accepted
     assert not recorder.records
@@ -1008,6 +1017,7 @@ def test_v4_shadow_failure_does_not_affect_primary_chain():
     ports = _ports_with_shadow(analyzer, shadow_recorder)
 
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, analyzed)
 
     assert analyzed.accepted
     assert analyzed.payload.archive.APPENDIX["__PROMPT_VERSION__"] == 41
@@ -1034,25 +1044,24 @@ def test_v4_shadow_sample_rate_zero_skips_shadow_chain():
     assert ports.shadow_statistics == {"recorded": 0, "failed": 0}
 
 
-def test_v4_shadow_sample_rate_partial_uses_single_draw_per_event(monkeypatch):
+def test_v4_shadow_sample_rate_partial_is_deterministic_per_experiment():
     def analyzer(client, prompt, original, record_meta=None):
         return _valuable_core_subset() if prompt == "shadow prompt" else _valuable()
 
     shadow_recorder = FakeShadowRecorder()
     ports = _ports_with_shadow(
-        analyzer, shadow_recorder, shadow_sample_rate=0.5,
+        analyzer, shadow_recorder, shadow_sample_rate=0.85,
         client_manager=RotatingClientManager(["fake-v4", "fake-v4", "fake-v4"]))
 
-    import ServiceComponent.adapters.event_v4_pipeline as pipeline_module
-    monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.6)
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
     assert analyzed.accepted
-    assert not shadow_recorder.records  # 0.6 >= 0.5，未命中
+    assert "shadow_task" not in analyzed.metadata
 
-    monkeypatch.setattr(pipeline_module.random, "random", lambda: 0.4)
+    ports._shadow_sample_rate = 0.86
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
     assert analyzed.accepted
-    assert len(shadow_recorder.records) == 1  # 0.4 < 0.5，命中
+    _run_queued_shadow(ports, analyzed)
+    assert len(shadow_recorder.records) == 1
 
 
 def test_shadow_skips_persisted_primary_version_that_left_production_pool():
@@ -1230,6 +1239,7 @@ def test_v4_shadow_chain_pins_client_group_when_configured():
     )
 
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, analyzed)
 
     assert analyzed.accepted
     assert len(shadow_recorder.records) == 1
@@ -1295,6 +1305,7 @@ def test_shadow_same_version_runs_with_client_group_and_avoids_primary_client():
         shadow_recorder, client_manager, client_group="other-group")
 
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, analyzed)
 
     assert analyzed.accepted
     assert len(shadow_recorder.records) == 1  # 定向分组时同版本也执行（同 prompt 不同模型）
@@ -1330,6 +1341,7 @@ def test_shadow_aborts_without_burning_call_when_model_matches_primary():
     )
 
     analyzed = ports.analyze(HubEvent("analysis.requested", _original(), "news"))
+    _run_queued_shadow(ports, analyzed)
 
     assert analyzed.accepted          # 主链不受影响
     assert not shadow_recorder.records

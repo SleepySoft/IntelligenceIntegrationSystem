@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
+from statistics import mean, median
+from urllib.parse import urlparse
 import pymongo
 
 
@@ -76,11 +79,13 @@ def main() -> None:
     parser.add_argument("--uuid", default="", help="只看 source_uuid 含该子串的记录")
     parser.add_argument("--primary-version", type=int, help="只比较指定主链 Prompt 版本")
     parser.add_argument("--shadow-version", type=int, help="只比较指定影子 Prompt 版本")
+    parser.add_argument("--experiment-id", default="", help="只比较指定实验 ID")
     parser.add_argument(
         "--same-model-only", action="store_true",
         help="只保留主链与影子最终模型一致的单变量样本",
     )
     parser.add_argument("--events", action="store_true", help="附带事件结构明细")
+    parser.add_argument("--summary-only", action="store_true", help="只输出聚合结果")
     args = parser.parse_args()
 
     mongo = pymongo.MongoClient("mongodb://localhost:27017")[args.database]
@@ -91,6 +96,8 @@ def main() -> None:
         query["primary_prompt_version"] = args.primary_version
     if args.shadow_version is not None:
         query["shadow_prompt_version"] = args.shadow_version
+    if args.experiment_id:
+        query["experiment_id"] = args.experiment_id
     cursor = mongo[args.collection].find(query).sort("captured_at", -1)
     records = list(cursor)
     if not records:
@@ -118,25 +125,58 @@ def main() -> None:
         return
 
     better, worse, tie, missing = 0, 0, 0, 0
+    taxonomy_pairs = Counter()
+    score_deltas = []
+    event_deltas = []
+    entity_deltas = []
+    models = Counter()
+    sources = Counter()
     for index, record in enumerate(records, 1):
         uuid = str(record.get("source_uuid", ""))
         doc = archived.get(uuid)
-        print("=" * 78)
-        print(f"[{index}/{len(records)}] {uuid}  ({record.get('_id')})")
+        if not args.summary_only:
+            print("=" * 78)
+            print(f"[{index}/{len(records)}] {uuid}  ({record.get('_id')})")
         appendix = (doc or {}).get("APPENDIX") or {}
         raw_data = appendix.get("RAW_DATA") or {}
-        print(f"  标题: {(doc or {}).get('EVENT_TITLE') or raw_data.get('title') or '(归档未找到)'}")
-        print(f"  主链: v{record.get('primary_prompt_version')} | "
-              f"影子: v{record.get('shadow_prompt_version')} "
-              f"({record.get('ai_model')})")
+        if not args.summary_only:
+            print(f"  标题: {(doc or {}).get('EVENT_TITLE') or raw_data.get('title') or '(归档未找到)'}")
+            print(f"  主链: v{record.get('primary_prompt_version')} | "
+                  f"影子: v{record.get('shadow_prompt_version')} "
+                  f"({record.get('ai_model')})")
         if doc is None:
             missing += 1
             continue
+        shadow_analysis = record.get("analysis") or {}
+        taxonomy_pairs[(doc.get("TAXONOMY"), shadow_analysis.get("TAXONOMY"))] += 1
+        models[str(record.get("ai_model") or "")] += 1
+        record_input = record.get("input") or {}
+        source_host = (record_input.get("source_host")
+                       or urlparse(str(record_input.get("informant") or "")).netloc
+                       or "(unknown)")
+        sources[source_host] += 1
+        primary_score = appendix.get("__TOTAL_SCORE__")
+        shadow_score = record.get("total_score")
+        if (doc.get("TAXONOMY") != "NonIntelligence"
+                and shadow_analysis.get("TAXONOMY") != "NonIntelligence"
+                and isinstance(primary_score, (int, float))
+                and isinstance(shadow_score, (int, float))):
+            score_deltas.append(float(shadow_score) - float(primary_score))
+        primary_extraction = doc.get("EVENT_EXTRACTION") or {}
+        shadow_extraction = shadow_analysis.get("EVENT_EXTRACTION") or {}
+        if primary_extraction and shadow_extraction:
+            event_deltas.append(
+                len(shadow_extraction.get("events") or [])
+                - len(primary_extraction.get("events") or []))
+            entity_deltas.append(
+                len(shadow_extraction.get("entities") or [])
+                - len(primary_extraction.get("entities") or []))
         primary_quality = ((doc.get("APPENDIX") or {}).get("__EXTRACTION_QUALITY__"))
         shadow_quality = record.get("extraction_quality")
-        print(f"  主链质量: {quality_line(primary_quality)}")
-        print(f"  影子质量: {quality_line(shadow_quality)}")
-        if args.events:
+        if not args.summary_only:
+            print(f"  主链质量: {quality_line(primary_quality)}")
+            print(f"  影子质量: {quality_line(shadow_quality)}")
+        if args.events and not args.summary_only:
             print("  -- 主链事件 --")
             for line in event_summary(doc.get("EVENT_EXTRACTION")):
                 print("   " + line)
@@ -162,6 +202,18 @@ def main() -> None:
         print(f"因最终模型不同排除 {excluded_model} 条")
     print(f"质量对比（未登记角色+角色类型冲突，影子 vs 主链）: "
           f"更优 {better} / 持平 {tie} / 更差 {worse}")
+    agreements = sum(count for (left, right), count in taxonomy_pairs.items()
+                     if left == right)
+    print(f"分类一致: {agreements}/{sum(taxonomy_pairs.values())}；"
+          f"分类配对: {dict(taxonomy_pairs)}")
+    if score_deltas:
+        print(f"双方有价值样本分数差（影子-主链）: n={len(score_deltas)} "
+              f"均值={mean(score_deltas):.3f} 中位数={median(score_deltas):.3f}")
+    if event_deltas:
+        print(f"结构数量差均值（影子-主链）: 事件={mean(event_deltas):.3f} "
+              f"实体={mean(entity_deltas):.3f}")
+    print(f"模型分布: {dict(models)}")
+    print(f"来源分布: {dict(sources)}")
 
 
 if __name__ == "__main__":

@@ -111,3 +111,73 @@ def test_postprocess_worker_runs_while_analysis_worker_is_blocked():
 
     assert worker_names["analysis"].startswith("HubRuntime-analysis-")
     assert worker_names["postprocess"].startswith("HubRuntime-postprocess-")
+
+
+def test_shadow_runs_on_its_own_worker_after_archive_completed():
+    order = []
+    worker_names = {}
+
+    class AnalysisWithShadow(FakeAnalysis):
+        def analyze(self, event):
+            return StageResult.allow(
+                {"domain_specific": event.payload}, shadow_task={"uuid": "one"})
+
+        def run_shadow(self, event):
+            order.append("shadow")
+            worker_names["shadow"] = threading.current_thread().name
+
+    class OrderedArchive(FakeArchive):
+        def archive(self, event):
+            order.append("archive")
+            return super().archive(event)
+
+    runtime = HubRuntime(
+        worker_count=1,
+        worker_groups={"analysis": 1, "postprocess": 1, "shadow": 1},
+    )
+    runtime.install(EventPipelinePlugin(
+        FakeIntake(), AnalysisWithShadow(), OrderedArchive()))
+    runtime.start()
+    try:
+        runtime.emit(HubEvent(ANALYSIS_REQUESTED, {"x": 1}, "industry"))
+        assert runtime.wait_for_idle(timeout=1)
+    finally:
+        runtime.stop()
+
+    assert order == ["archive", "shadow"]
+    assert worker_names["shadow"].startswith("HubRuntime-shadow-")
+
+
+def test_low_value_analysis_can_queue_shadow_without_archive_stage():
+    shadowed = []
+    archived = []
+
+    class LowValueAnalysis(FakeAnalysis):
+        def analyze(self, event):
+            # 真实端口在返回 reject 前已经持久化低价值结果。
+            return StageResult.reject(
+                "non_intelligence", shadow_task={"uuid": "low"})
+
+        def run_shadow(self, event):
+            shadowed.append(event.payload)
+
+    class RecordingArchive(FakeArchive):
+        def archive(self, event):
+            archived.append(event.payload)
+            return super().archive(event)
+
+    runtime = HubRuntime(
+        worker_count=1,
+        worker_groups={"analysis": 1, "postprocess": 1, "shadow": 1},
+    )
+    runtime.install(EventPipelinePlugin(
+        FakeIntake(), LowValueAnalysis(), RecordingArchive()))
+    runtime.start()
+    try:
+        runtime.emit(HubEvent(ANALYSIS_REQUESTED, {"x": 1}, "industry"))
+        assert runtime.wait_for_idle(timeout=1)
+    finally:
+        runtime.stop()
+
+    assert shadowed == [{"uuid": "low"}]
+    assert archived == []

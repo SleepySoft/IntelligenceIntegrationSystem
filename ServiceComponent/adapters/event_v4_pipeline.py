@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
+import os
 import random
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 
@@ -58,6 +61,25 @@ from ServiceComponent.runtime.events import HubEvent
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class ShadowAnalysisTask:
+    """正式结果持久化后交给独立 Shadow worker 的不可变任务。"""
+
+    domain_name: str
+    original_data: dict[str, Any]
+    primary_prompt_version: int
+    primary_ai_service: str
+    primary_ai_model: str
+    primary_client_name: str
+    shadow_versions: tuple[int, ...]
+    comparison_mode: str
+    client_group: str | None
+    experiment_id: str
+    sampling_key: str
+    primary_prompt_sha256: str
+    code_revision: str
+
+
 class EventV4PipelinePorts(BasePipelinePorts):
     """Event V4 的 intake、analysis、archive 三端口实现。
 
@@ -100,6 +122,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         quality_enabled: bool = True,
         control_state: Any = None,
         entity_name_normalizer: Callable[[str], str | None] | None = None,
+        code_revision: str | None = None,
     ):
         scorer_factory_override = scorer_factory
         super().__init__(
@@ -182,6 +205,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # 兼容保留旧构造参数，但不再改写权威 EVENT_EXTRACTION 的原始实体名。
         # 名称归一和上下文消歧由非破坏性的 EntityResolution 解析视图完成。
         self._entity_name_normalizer = entity_name_normalizer
+        self._code_revision = str(
+            code_revision or os.environ.get("IIS_BUILD_REVISION") or "unknown").strip()
 
     def set_entity_name_normalizer(
         self, normalizer: Callable[[str], str | None] | None,
@@ -332,17 +357,29 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     prompt_override=prompt_override,
                 )
             )
-            self._run_shadow_analysis(
-                ctx, event, original_data,
-                primary_version=prompt_version, persist=persist,
-                primary_client_name=primary_client, primary_model=ai_model,
-            )
-            return self.prepare_analysis_outcome(
+            outcome = self.prepare_analysis_outcome(
                 ctx, original_data, analysis,
                 prompt_version=prompt_version, ai_service=ai_service,
                 ai_model=ai_model, intelligence_uuid=intelligence_uuid,
                 informant=informant, persist=persist,
                 prompt_override=prompt_override,
+            )
+            shadow_task = self._prepare_shadow_task(
+                ctx, original_data,
+                primary_version=prompt_version, persist=persist,
+                primary_client_name=primary_client,
+                primary_service=ai_service,
+                primary_model=ai_model,
+            )
+            if shadow_task is None:
+                return outcome
+            metadata = dict(outcome.metadata)
+            metadata["shadow_task"] = shadow_task
+            return StageResult(
+                accepted=outcome.accepted,
+                payload=outcome.payload,
+                metadata=metadata,
+                reason=outcome.reason,
             )
         except _SensitiveAnalysisError as exc:
             self._change_runtime_stat("failed")
@@ -548,7 +585,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                                  model: str, attempt: int, latency_ms: int,
                                  error_class: str | None,
                                  request_id: str | None = None,
-                                 client_name: str | None = None) -> None:
+                                 client_name: str | None = None,
+                                 experiment_id: str = "",
+                                 validation_fingerprint: str = "") -> None:
         """每次 AI 调用落一条统计；任何失败都不影响主链。"""
         recorder = self._analysis_stats
         if recorder is None:
@@ -559,13 +598,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 domain_name=getattr(ctx, "name", ""), shadow=shadow,
                 prompt_version=prompt_version, ai_service=service, ai_model=model,
                 attempt_no=attempt, latency_ms=latency_ms, error_class=error_class,
-                request_id=request_id, client_name=client_name)
+                request_id=request_id, client_name=client_name,
+                experiment_id=experiment_id,
+                validation_fingerprint=validation_fingerprint)
         except Exception:
             pass
 
     def _record_analysis_outcome(self, *, original_data: dict, ctx: Any,
                                  shadow: bool, prompt_version: int, service: str,
-                                 model: str, outcome: str, attempts_used: int) -> None:
+                                 model: str, outcome: str, attempts_used: int,
+                                 experiment_id: str = "") -> None:
         recorder = self._analysis_stats
         if recorder is None:
             return
@@ -574,7 +616,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 uuid=str(original_data.get("UUID") or ""),
                 domain_name=getattr(ctx, "name", ""), shadow=shadow,
                 prompt_version=prompt_version, ai_service=service, ai_model=model,
-                outcome=outcome, attempts_used=attempts_used)
+                outcome=outcome, attempts_used=attempts_used,
+                experiment_id=experiment_id)
         except Exception:
             pass
 
@@ -586,6 +629,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
         avoid_client_names: set[str] | None = None,
         avoid_model: str | None = None,
         shadow: bool = False,
+        experiment_id: str = "",
     ) -> tuple[Any, int, str, str, str]:
         catalog = self._domain_for_context(ctx).prompt_catalog
         if prompt_version is None:
@@ -708,7 +752,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         attempt=attempt, latency_ms=call_ms,
                         error_class=AnalysisErrorClass.CONTENT_SAFETY,
                         request_id=request_id,
-                        client_name=getattr(ai_client, "name", ""))
+                        client_name=getattr(ai_client, "name", ""),
+                        experiment_id=experiment_id)
                     attempt_recorded = True
                     # 敏感兑底：换一个带 low_sensitivity 标签的客户端再试一次（有的话）
                     if not sensitive_fallback_tried and attempt < 3:
@@ -720,7 +765,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     self._record_analysis_outcome(
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
-                        outcome=OUTCOME_SENSITIVE, attempts_used=attempt)
+                        outcome=OUTCOME_SENSITIVE, attempts_used=attempt,
+                        experiment_id=experiment_id)
                     raise _SensitiveAnalysisError(str(raw_result["error"]))
                 last_error = api_error
                 failed_client_names.add(getattr(ai_client, "name", ""))
@@ -738,12 +784,14 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
                         error_class=None, request_id=request_id,
-                        client_name=getattr(ai_client, "name", ""))
+                        client_name=getattr(ai_client, "name", ""),
+                        experiment_id=experiment_id)
                     attempt_recorded = True
                     self._record_analysis_outcome(
                         original_data=original_data, ctx=ctx, shadow=shadow,
                         prompt_version=prompt_version, service=service, model=model,
-                        outcome=OUTCOME_SUCCESS, attempts_used=attempt)
+                        outcome=OUTCOME_SUCCESS, attempts_used=attempt,
+                        experiment_id=experiment_id)
                     return (
                         validated,
                         prompt_version,
@@ -775,7 +823,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         prompt_version=prompt_version, service=service, model=model,
                         attempt=attempt, latency_ms=call_ms,
                         error_class=attempt_error_class, request_id=request_id,
-                        client_name=getattr(ai_client, "name", ""))
+                        client_name=getattr(ai_client, "name", ""),
+                        experiment_id=experiment_id,
+                        validation_fingerprint=_validation_fingerprint(exc))
                     attempt_recorded = True
                     self._report_client_feedback(
                         ai_client, request_id, valid=False,
@@ -808,6 +858,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     error_class=attempt_error_class or AnalysisErrorClass.UNKNOWN,
                     request_id=request_id,
                     client_name=getattr(ai_client, "name", ""),
+                    experiment_id=experiment_id,
                 )
             if attempt == 3:
                 break
@@ -820,7 +871,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         self._record_analysis_outcome(
             original_data=original_data, ctx=ctx, shadow=shadow,
             prompt_version=prompt_version, service=service, model=model,
-            outcome=OUTCOME_RETRY_SCHEDULED, attempts_used=3)
+            outcome=OUTCOME_RETRY_SCHEDULED, attempts_used=3,
+            experiment_id=experiment_id)
         raise last_error
 
     def _report_client_feedback(
@@ -859,15 +911,16 @@ class EventV4PipelinePorts(BasePipelinePorts):
             logger.exception("extraction quality check failed; ignored")
             return None
 
-    def _run_shadow_analysis(self, ctx: Any, event: HubEvent, original_data: dict, *,
-                             primary_version: int, persist: bool,
-                             primary_client_name: str = "",
-                             primary_model: str = "") -> None:
-        """主链分析成功后并行执行影子链路，结果仅写评估资产库。任何失败都不影响主链。"""
+    def _prepare_shadow_task(
+            self, ctx: Any, original_data: dict, *, primary_version: int,
+            persist: bool, primary_client_name: str = "",
+            primary_service: str = "", primary_model: str = "",
+    ) -> ShadowAnalysisTask | None:
+        """确定性抽样并冻结实验参数；此阶段不调用 AI。"""
         definition = self._domain_for_context(ctx)
         settings = definition.subsystems.shadow
         if not persist or self._shadow_recorder is None or settings is None:
-            return
+            return None
         versions = tuple(getattr(settings, "versions", ()) or ())
         enabled = bool(getattr(settings, "enabled", False))
         sample_rate = float(getattr(settings, "sample_rate", 0.0) or 0.0)
@@ -880,9 +933,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
             client_group = self._shadow_client_group
             comparison_mode = "different_model" if client_group else "same_model"
         if not enabled or not versions:
-            return
-        if self._control_state is not None and self._control_state.is_paused("shadow"):
-            return
+            return None
         # Shadow 是“当前正式池 vs 候选池”的单变量实验。历史 cache 为保持归因会继续
         # 使用当时已分配、但现已退出正式池的 Prompt；这类恢复任务可以正常归档，
         # 却不能再与当前候选版本配对，否则会产生 v2→v5 一类污染样本。
@@ -893,42 +944,96 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 "production=%s",
                 ctx.name, primary_version, sorted(production_versions),
             )
+            return None
+        explicit_id = str(getattr(settings, "experiment_id", "") or "").strip()
+        experiment_id = explicit_id or (
+            f"{ctx.name}:p{primary_version}:s{','.join(map(str, versions))}:"
+            f"{comparison_mode}"
+        )
+        source_uuid = str(original_data.get("UUID") or "").strip()
+        if not source_uuid:
+            return None
+        sampling_key = hashlib.sha256(
+            f"{experiment_id}\0{ctx.name}\0{source_uuid}".encode("utf-8")
+        ).hexdigest()
+        # 取前 64 bit 映射到 [0, 1)，跨进程、重启和 Python 版本均稳定。
+        bucket = int(sampling_key[:16], 16) / float(1 << 64)
+        if sample_rate < 1.0 and bucket >= sample_rate:
+            return None
+        prompt_text = definition.prompt_catalog.text_for(primary_version)
+        return ShadowAnalysisTask(
+            domain_name=str(ctx.name),
+            original_data=dict(original_data),
+            primary_prompt_version=int(primary_version),
+            primary_ai_service=str(primary_service or ""),
+            primary_ai_model=str(primary_model or ""),
+            primary_client_name=str(primary_client_name or ""),
+            shadow_versions=tuple(int(version) for version in versions),
+            comparison_mode=comparison_mode,
+            client_group=str(client_group or "").strip() or None,
+            experiment_id=experiment_id,
+            sampling_key=sampling_key,
+            primary_prompt_sha256=hashlib.sha256(
+                prompt_text.encode("utf-8")).hexdigest(),
+            code_revision=self._code_revision,
+        )
+
+    def run_shadow(self, event: HubEvent) -> None:
+        """在独立 Shadow worker 中执行已冻结的实验任务。"""
+        task = event.payload
+        if not isinstance(task, ShadowAnalysisTask):
+            logger.warning("ignore invalid shadow task payload: %r", type(task))
             return
-        # 抽样判定对整次事件做一次：命中时该事件的所有影子版本都执行，保证配对完整。
-        if sample_rate < 1.0 and random.random() >= sample_rate:
+        if self._control_state is not None and self._control_state.is_paused("shadow"):
             return
-        for version in versions:
+        ctx = self._domain_resources.resolve(task.domain_name)
+        if ctx is None:
+            logger.warning("shadow task domain is unavailable: %s", task.domain_name)
+            return
+        self._run_shadow_analysis(ctx, event, task)
+
+    def _run_shadow_analysis(
+            self, ctx: Any, event: HubEvent, task: ShadowAnalysisTask) -> None:
+        """执行异步影子链路；任何失败只影响实验统计。"""
+        definition = self._domain_for_context(ctx)
+        original_data = dict(task.original_data)
+        for version in task.shadow_versions:
             # 未定向分组时跳过与主链同版本（同 prompt+随机模型≈重复劳动）；
             # 定向分组时同版本恰恰意味着“同 prompt 不同模型”，必须执行。
-            if version == primary_version and comparison_mode == "same_model":
+            if (version == task.primary_prompt_version
+                    and task.comparison_mode == "same_model"):
                 continue
             try:
-                same_model = comparison_mode == "same_model"
+                same_model = task.comparison_mode in {"same_model", "replicate"}
                 analysis, _, service, model, shadow_client_name = self._analyze_v4_with_retry(
                     ctx, event, original_data,
                     analyzer=self._analyzer,
                     prompt_version=version,
-                    client_group=client_group if not same_model else None,
-                    preferred_client_name=(primary_client_name if same_model else None),
+                    client_group=task.client_group if not same_model else None,
+                    preferred_client_name=(
+                        task.primary_client_name if same_model else None),
                     avoid_client_names=(
-                        {primary_client_name}
-                        if not same_model and primary_client_name else None),
-                    avoid_model=(primary_model or None) if not same_model else None,
+                        {task.primary_client_name}
+                        if not same_model and task.primary_client_name else None),
+                    avoid_model=(task.primary_ai_model or None) if not same_model else None,
                     shadow=True,
+                    experiment_id=task.experiment_id,
                 )
                 # preferred_client_name 是调度偏好，不是硬约束；结构纠错、网络重试或
                 # 自定义 ClientManager 都可能把后续调用切到其他客户端。same_model
                 # 实验只有在最终成功结果仍来自主链客户端/模型时才是单变量样本。
                 if same_model:
-                    if (primary_client_name and shadow_client_name
-                            and shadow_client_name != primary_client_name):
+                    if (task.primary_client_name and shadow_client_name
+                            and shadow_client_name != task.primary_client_name):
                         raise _SameModelError(
                             "same_model shadow client drifted: "
-                            f"primary={primary_client_name!r}, shadow={shadow_client_name!r}")
-                    if primary_model and model and model != primary_model:
+                            f"primary={task.primary_client_name!r}, "
+                            f"shadow={shadow_client_name!r}")
+                    if (task.primary_ai_model and model
+                            and model != task.primary_ai_model):
                         raise _SameModelError(
                             "same_model shadow model drifted: "
-                            f"primary={primary_model!r}, shadow={model!r}")
+                            f"primary={task.primary_ai_model!r}, shadow={model!r}")
                 try:
                     shadow_total_score = definition.score(
                         analysis, getattr(ctx, "scoring_config", None))
@@ -940,13 +1045,24 @@ class EventV4PipelinePorts(BasePipelinePorts):
                 record_id = self._shadow_recorder.record(
                     original_data=original_data,
                     domain_name=ctx.name,
-                    primary_prompt_version=primary_version,
+                    primary_prompt_version=task.primary_prompt_version,
                     shadow_prompt_version=version,
                     analysis=analysis.model_dump(mode="json", by_alias=True),
                     ai_service=service,
                     ai_model=model,
                     extraction_quality=self._compute_quality(ctx, analysis, original_data),
                     total_score=shadow_total_score,
+                    experiment_id=task.experiment_id,
+                    sampling_key=task.sampling_key,
+                    primary_prompt_sha256=task.primary_prompt_sha256,
+                    shadow_prompt_sha256=hashlib.sha256(
+                        definition.prompt_catalog.text_for(version).encode("utf-8")
+                    ).hexdigest(),
+                    code_revision=task.code_revision,
+                    primary_ai_service=task.primary_ai_service,
+                    primary_ai_model=task.primary_ai_model,
+                    primary_client_name=task.primary_client_name,
+                    shadow_client_name=shadow_client_name,
                 )
                 if not record_id:
                     raise RuntimeError("shadow analysis result was not persisted")
@@ -1035,6 +1151,19 @@ class _SensitiveAnalysisError(RuntimeError):
 
 class _SameModelError(RuntimeError):
     """影子链路取到与主链相同的模型；放弃本次影子（不产生无意义对比）。"""
+
+
+def _validation_fingerprint(exc: Exception) -> str:
+    """保留可聚合的字段路径/错误类型，不保存响应正文。"""
+    if isinstance(exc, ValidationError):
+        values = []
+        for item in exc.errors(include_url=False, include_input=False):
+            location = ".".join(str(part) for part in item.get("loc") or ())
+            values.append(f"{location}:{item.get('type') or 'validation_error'}")
+        return "|".join(sorted(set(values)))[:1000]
+    text = str(exc).replace("\n", " ").strip()
+    return f"{type(exc).__name__}:{text}"[:1000]
+
 
 def _compact_validation_error(exc: Exception) -> str:
     if isinstance(exc, ValidationError):

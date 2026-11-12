@@ -10,14 +10,15 @@ Mongo 查询和前端展示，但独立拥有：
 - `storage.py`：行业归档 DTO 与存储投影；
 - `enrichment.py`：未来公司重要性资料库和 Arachne 异步评估的接口。
 
-当前正式与 Shadow 版本池分离：v4 是唯一正式生产版本；v6 是当前 Shadow 候选；v1–v3、v5 保留为
-历史可选版本。v3 保留 v2 对公司行动、经营状态冲击、经营相关冲突、可执行产业政策四类信号的
+当前为稳定性基线阶段：v2 是唯一正式生产版本，并以 25% 确定性抽样执行同模型、同 Prompt 的
+A/A 重复分析；v1、v3–v6 保留为历史可选版本。已有 cache 的 v4 分配继续按 v4 完成，但不进入
+v2 A/A。v3 保留 v2 对公司行动、经营状态冲击、经营相关冲突、可执行产业政策四类信号的
 覆盖和详细 REASON，消除财报边界冲突，并用准入门槛、逐维保守升档和事件优先级取代较长的校准
 说明；v4 不改变这些价值判断，仅增加 REASON 长度、角色数组和空可选对象的强制自检。v5 曾尝试
 通过缩短字段预算和强化容器约束提高首过率，但首轮效果更差，已退出当前 Shadow。v6 不继承 v5，
 而是从 v4 直接派生，只针对已观测到的顶层字段、attributes 键/类型和实体类型自造问题增加闭集约束。
-新情报固定由 v4 归档，命中 Shadow 抽样时由同一模型追加运行 v6。已有 cache 的版本分配
-继续保持，持久化重试不会跨版本。设计与灰度记录见
+本轮 A/A 不比较 Prompt 优劣，只测量分类、评分、实体、事件和首过率的模型固有波动。
+历史版本设计与灰度记录见
 `doc/prompt_versions/reports/20261028_industry_prompt_v2_gray_design.md` 和
 `doc/prompt_versions/reports/20261029_industry_prompt_v3_shadow_design.md`；v3 首次运行失败及 v4 修正
 记录在 `doc/prompt_versions/reports/20261029_industry_prompt_v4_validation_fix.md`；v4 转正与 v5 设计见
@@ -25,6 +26,10 @@ Mongo 查询和前端展示，但独立拥有：
 cache 污染原因和灰度准入修复见
 `doc/prompt_versions/reports/20261101_industry_v4_v5_shadow_audit.md`；v6 设计与灰度边界见
 `doc/prompt_versions/reports/20261101_industry_prompt_v6_schema_gray.md`。
+
+Shadow 实验必须设置稳定的 `experiment_id`。抽样由
+`SHA256(experiment_id + domain_name + UUID)` 确定，重启与重试不会改变分组；
+`comparison_mode=replicate` 专用于正式 Prompt 的同模型 A/A 重复实验。
 
 两个版本都只根据正文评价。不得由 LLM 猜测公司重要性、市场份额、产业链关系或供应链传播。
 `company_importance_bonus` 与 `arachne_network_bonus` 默认且实际均为 0；只有未来显式传入

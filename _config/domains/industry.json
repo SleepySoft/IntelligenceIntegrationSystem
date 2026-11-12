@@ -9,9 +9,10 @@
   "subsystems": {
     "shadow": {
       "enabled": true,
-      "versions": [6],
+      "versions": [2],
       "sample_rate": 0.25,
-      "comparison_mode": "same_model",
+      "comparison_mode": "replicate",
+      "experiment_id": "industry-v2-aa-20261112",
       "client_group": null
     }
   }

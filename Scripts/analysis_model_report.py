@@ -21,10 +21,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=7)
     parser.add_argument("--db", default="_data/analysis_stats.db")
+    parser.add_argument("--domain", default=None)
+    parser.add_argument("--shadow", action="store_true", help="统计 Shadow 调用；默认只看正式主链")
+    parser.add_argument("--experiment-id", default=None)
     args = parser.parse_args()
 
     recorder = AnalysisStatsRecorder(args.db)
-    groups = recorder.aggregate_by_model(days=args.days)
+    groups = recorder.aggregate_by_model(
+        days=args.days,
+        domain_name=args.domain,
+        shadow=args.shadow,
+        experiment_id=args.experiment_id,
+    )
     if not groups:
         print(f"近 {args.days} 天无分析统计记录。")
         return

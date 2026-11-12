@@ -30,16 +30,19 @@ class AnalysisStatsRecorder:
         " ts TEXT NOT NULL, uuid TEXT, domain_name TEXT, shadow INTEGER DEFAULT 0,"
         " prompt_version INTEGER, ai_service TEXT, ai_model TEXT,"
         " attempt_no INTEGER, latency_ms INTEGER, error_class TEXT,"
-        " request_id TEXT, client_name TEXT);"
+        " request_id TEXT, client_name TEXT, experiment_id TEXT NOT NULL DEFAULT '',"
+        " validation_fingerprint TEXT NOT NULL DEFAULT '');"
         "CREATE TABLE IF NOT EXISTS outcomes ("
-        " uuid TEXT PRIMARY KEY, ts TEXT NOT NULL, domain_name TEXT, shadow INTEGER DEFAULT 0,"
-        " prompt_version INTEGER, ai_service TEXT, ai_model TEXT,"
-        " outcome TEXT NOT NULL, attempts_used INTEGER);"
+        " uuid TEXT NOT NULL, ts TEXT NOT NULL, domain_name TEXT NOT NULL DEFAULT '',"
+        " shadow INTEGER NOT NULL DEFAULT 0, prompt_version INTEGER NOT NULL DEFAULT -1,"
+        " experiment_id TEXT NOT NULL DEFAULT '', ai_service TEXT, ai_model TEXT,"
+        " outcome TEXT NOT NULL, attempts_used INTEGER,"
+        " PRIMARY KEY (uuid, domain_name, shadow, prompt_version, experiment_id));"
         "CREATE TABLE IF NOT EXISTS outcome_events ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, uuid TEXT,"
         " domain_name TEXT, shadow INTEGER DEFAULT 0, prompt_version INTEGER,"
         " ai_service TEXT, ai_model TEXT, outcome TEXT NOT NULL,"
-        " attempts_used INTEGER);"
+        " attempts_used INTEGER, experiment_id TEXT NOT NULL DEFAULT '');"
         "CREATE INDEX IF NOT EXISTS idx_attempts_ts ON attempts(ts);"
         "CREATE INDEX IF NOT EXISTS idx_outcome_events_ts ON outcome_events(ts);"
         "CREATE INDEX IF NOT EXISTS idx_outcome_events_uuid ON outcome_events(uuid);"
@@ -62,6 +65,7 @@ class AnalysisStatsRecorder:
 
     def _initialize(self, conn: sqlite3.Connection) -> None:
         conn.executescript(self._SCHEMA)
+        self._migrate_outcomes_primary_key(conn)
         for table in ("attempts", "outcomes", "outcome_events"):
             table_columns = {
                 row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
@@ -72,9 +76,18 @@ class AnalysisStatsRecorder:
                     f"UPDATE {table} SET domain_name = subsystem "
                     "WHERE (domain_name IS NULL OR domain_name = '')")
         columns = {row[1] for row in conn.execute("PRAGMA table_info(attempts)")}
-        for name, sql_type in (("request_id", "TEXT"), ("client_name", "TEXT")):
+        for name, sql_type in (
+                ("request_id", "TEXT"), ("client_name", "TEXT"),
+                ("experiment_id", "TEXT NOT NULL DEFAULT ''"),
+                ("validation_fingerprint", "TEXT NOT NULL DEFAULT ''")):
             if name not in columns:
                 conn.execute(f"ALTER TABLE attempts ADD COLUMN {name} {sql_type}")
+        event_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(outcome_events)")}
+        if "experiment_id" not in event_columns:
+            conn.execute(
+                "ALTER TABLE outcome_events ADD COLUMN experiment_id "
+                "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_attempts_request_id ON attempts(request_id)")
         # 旧 outcomes 是覆盖表；首次升级时复制为事件基线，之后新终态双写。
@@ -86,12 +99,40 @@ class AnalysisStatsRecorder:
                 " ai_model, outcome, attempts_used FROM outcomes"
             )
 
+    @staticmethod
+    def _migrate_outcomes_primary_key(conn: sqlite3.Connection) -> None:
+        """把历史 UUID 单列主键迁为实验感知复合主键。"""
+        columns = list(conn.execute("PRAGMA table_info(outcomes)"))
+        primary = [row[1] for row in columns if row[5]]
+        if primary != ["uuid"]:
+            return
+        names = {row[1] for row in columns}
+        domain_expr = "COALESCE(domain_name, '')" if "domain_name" in names else "''"
+        conn.execute("ALTER TABLE outcomes RENAME TO outcomes_uuid_legacy")
+        conn.execute(
+            "CREATE TABLE outcomes ("
+            " uuid TEXT NOT NULL, ts TEXT NOT NULL, domain_name TEXT NOT NULL DEFAULT '',"
+            " shadow INTEGER NOT NULL DEFAULT 0,"
+            " prompt_version INTEGER NOT NULL DEFAULT -1,"
+            " experiment_id TEXT NOT NULL DEFAULT '', ai_service TEXT, ai_model TEXT,"
+            " outcome TEXT NOT NULL, attempts_used INTEGER,"
+            " PRIMARY KEY (uuid, domain_name, shadow, prompt_version, experiment_id))")
+        conn.execute(
+            "INSERT OR REPLACE INTO outcomes "
+            "(uuid, ts, domain_name, shadow, prompt_version, experiment_id,"
+            " ai_service, ai_model, outcome, attempts_used) "
+            f"SELECT uuid, ts, {domain_expr}, COALESCE(shadow, 0),"
+            " COALESCE(prompt_version, -1), '', ai_service, ai_model, outcome,"
+            " attempts_used FROM outcomes_uuid_legacy")
+        conn.execute("DROP TABLE outcomes_uuid_legacy")
+
     def record_attempt(
             self, *, uuid: str, domain_name: str = "",
             subsystem: str | None = None, shadow: bool,
             prompt_version: int | None, ai_service: str, ai_model: str,
             attempt_no: int, latency_ms: int, error_class: str | None,
             request_id: str | None = None, client_name: str | None = None,
+            experiment_id: str = "", validation_fingerprint: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -102,13 +143,15 @@ class AnalysisStatsRecorder:
                 conn.execute(
                     "INSERT INTO attempts (ts, uuid, domain_name, shadow,"
                     " prompt_version, ai_service, ai_model, attempt_no, latency_ms,"
-                    " error_class, request_id, client_name)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " error_class, request_id, client_name, experiment_id,"
+                    " validation_fingerprint)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         datetime.now(timezone.utc).isoformat(), uuid, domain,
                         int(shadow), prompt_version, ai_service, ai_model,
                         attempt_no, int(latency_ms), error_class,
-                        request_id, client_name,
+                        request_id, client_name, str(experiment_id or ""),
+                        str(validation_fingerprint or ""),
                     ),
                 )
         except Exception:
@@ -119,6 +162,7 @@ class AnalysisStatsRecorder:
             subsystem: str | None = None, shadow: bool,
             prompt_version: int | None, ai_service: str, ai_model: str,
             outcome: str, attempts_used: int,
+            experiment_id: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -126,21 +170,23 @@ class AnalysisStatsRecorder:
             domain = self._resolve_domain(domain_name, subsystem)
             now = datetime.now(timezone.utc).isoformat()
             values = (
-                uuid, now, domain, int(shadow), prompt_version,
+                uuid, now, domain, int(shadow),
+                int(prompt_version) if prompt_version is not None else -1,
+                str(experiment_id or ""),
                 ai_service, ai_model, outcome, int(attempts_used),
             )
             with self._lock, self._connect() as conn:
                 self._initialize(conn)
                 conn.execute(
                     "INSERT OR REPLACE INTO outcomes (uuid, ts, domain_name, shadow,"
-                    " prompt_version, ai_service, ai_model, outcome, attempts_used)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
+                    " prompt_version, experiment_id, ai_service, ai_model, outcome,"
+                    " attempts_used) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     values,
                 )
                 conn.execute(
                     "INSERT INTO outcome_events (uuid, ts, domain_name, shadow,"
-                    " prompt_version, ai_service, ai_model, outcome, attempts_used)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
+                    " prompt_version, experiment_id, ai_service, ai_model, outcome,"
+                    " attempts_used) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     values,
                 )
         except Exception:
@@ -160,11 +206,13 @@ class AnalysisStatsRecorder:
                 self._initialize(conn)
                 previous = conn.execute(
                     "SELECT prompt_version, ai_service, ai_model, attempts_used"
-                    " FROM outcomes WHERE uuid = ?", (uuid,),
+                    " FROM outcomes WHERE uuid = ? AND domain_name = ? AND shadow = ?"
+                    " ORDER BY ts DESC LIMIT 1", (uuid, domain, int(shadow)),
                 ).fetchone()
                 values = (
                     uuid, now, domain, int(shadow),
-                    previous[0] if previous else None,
+                    previous[0] if previous else -1,
+                    "",
                     previous[1] if previous else "",
                     previous[2] if previous else "",
                     OUTCOME_FAILED,
@@ -172,12 +220,12 @@ class AnalysisStatsRecorder:
                 )
                 conn.execute(
                     "INSERT OR REPLACE INTO outcomes (uuid, ts, domain_name, shadow,"
-                    " prompt_version, ai_service, ai_model, outcome, attempts_used)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)", values)
+                    " prompt_version, experiment_id, ai_service, ai_model, outcome,"
+                    " attempts_used) VALUES (?,?,?,?,?,?,?,?,?,?)", values)
                 conn.execute(
                     "INSERT INTO outcome_events (uuid, ts, domain_name, shadow,"
-                    " prompt_version, ai_service, ai_model, outcome, attempts_used)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)", values)
+                    " prompt_version, experiment_id, ai_service, ai_model, outcome,"
+                    " attempts_used) VALUES (?,?,?,?,?,?,?,?,?,?)", values)
         except Exception:
             logger.warning("analysis stats terminal outcome write failed", exc_info=True)
 
@@ -187,43 +235,64 @@ class AnalysisStatsRecorder:
             raise ValueError("domain_name and legacy subsystem disagree")
         return str(domain_name or subsystem or "").strip()
 
-    def aggregate_by_model(self, *, days: int = 7) -> list[dict[str, Any]]:
+    def aggregate_by_model(
+            self, *, days: int = 7, domain_name: str | None = None,
+            shadow: bool | None = False, experiment_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """按任务首个模型与 Prompt 聚合结果，跨模型重试仍归入原始任务队列。
 
         首过率必须以任务为分母，而不是以调用为分母。否则一次任务的多个失败调用会
         重复稀释首过率，且跨模型兜底成功会把终态归给最后一个模型。
         """
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        conditions = ["ts >= ?"]
+        parameters: list[Any] = [since]
+        if domain_name is not None:
+            conditions.append("domain_name = ?")
+            parameters.append(str(domain_name))
+        if shadow is not None:
+            conditions.append("shadow = ?")
+            parameters.append(int(shadow))
+        if experiment_id is not None:
+            conditions.append("experiment_id = ?")
+            parameters.append(str(experiment_id))
+        where = " AND ".join(conditions)
         with self._lock, self._connect() as conn:
             self._initialize(conn)
             attempts = conn.execute(
-                "SELECT id, uuid, ai_model, prompt_version, attempt_no, latency_ms, error_class"
-                " FROM attempts WHERE ts >= ?", (since,),
+                "SELECT id, uuid, domain_name, shadow, experiment_id, ai_model,"
+                " prompt_version, attempt_no, latency_ms, error_class"
+                f" FROM attempts WHERE {where}", parameters,
             ).fetchall()
             outcomes = conn.execute(
-                "SELECT uuid, ai_model, prompt_version, outcome, attempts_used"
-                " FROM outcomes WHERE ts >= ?", (since,),
+                "SELECT uuid, domain_name, shadow, experiment_id, ai_model,"
+                " prompt_version, outcome, attempts_used"
+                f" FROM outcomes WHERE {where}", parameters,
             ).fetchall()
 
         groups: dict[tuple, dict[str, Any]] = {}
-        attempts_by_uuid: dict[str, list[tuple]] = {}
+        attempts_by_task: dict[tuple[str, str, int, int, str], list[tuple]] = {}
         for row in attempts:
             uuid = str(row[1] or "")
             if uuid:
-                attempts_by_uuid.setdefault(uuid, []).append(row)
+                identity = (uuid, str(row[2] or ""), int(row[3] or 0),
+                            int(row[6] if row[6] is not None else -1),
+                            str(row[4] or ""))
+                attempts_by_task.setdefault(identity, []).append(row)
 
-        cohort_by_uuid: dict[str, tuple] = {}
-        for uuid, task_attempts in attempts_by_uuid.items():
+        cohort_by_task: dict[tuple[str, str, int, int, str], tuple] = {}
+        for identity, task_attempts in attempts_by_task.items():
             task_attempts.sort(key=lambda row: int(row[0]))
             first = task_attempts[0]
-            model, version = first[2], first[3]
+            model, version = first[5], first[6]
             key = (model or "", version)
-            cohort_by_uuid[uuid] = key
+            cohort_by_task[identity] = key
             group = groups.setdefault(key, _empty_group(model, version))
             group["started_items"] += 1
-            if not first[6]:
+            if not first[9]:
                 group["first_pass_items"] += 1
-            for _id, _uuid, _model, _version, _attempt_no, latency, error_class in task_attempts:
+            for row in task_attempts:
+                latency, error_class = row[8], row[9]
                 group["attempts"] += 1
                 if latency is not None:
                     group["latency_ms"].append(latency)
@@ -231,7 +300,9 @@ class AnalysisStatsRecorder:
                     group["errors"][error_class] = group["errors"].get(error_class, 0) + 1
 
         # 兼容没有 UUID 的旧调用：保留调用与错误统计，但不伪造任务首过率。
-        for _id, uuid, model, version, _attempt_no, latency, error_class in attempts:
+        for row in attempts:
+            uuid, model, version, latency, error_class = (
+                row[1], row[5], row[6], row[8], row[9])
             if uuid:
                 continue
             group = groups.setdefault((model or "", version), _empty_group(model, version))
@@ -241,13 +312,17 @@ class AnalysisStatsRecorder:
             if error_class:
                 group["errors"][error_class] = group["errors"].get(error_class, 0) + 1
 
-        for uuid, model, version, outcome, attempts_used in outcomes:
-            key = cohort_by_uuid.get(str(uuid or ""), (model or "", version))
+        for row in outcomes:
+            uuid, domain, is_shadow, experiment, model, version, outcome, attempts_used = row
+            identity = (str(uuid or ""), str(domain or ""), int(is_shadow or 0),
+                        int(version if version is not None else -1),
+                        str(experiment or ""))
+            key = cohort_by_task.get(identity, (model or "", version))
             cohort_model, cohort_version = key
             group = groups.setdefault(
                 key, _empty_group(cohort_model, cohort_version))
             group["outcomes"][outcome] = group["outcomes"].get(outcome, 0) + 1
-            task_attempts = attempts_by_uuid.get(str(uuid or ""), ())
+            task_attempts = attempts_by_task.get(identity, ())
             group["attempts_used_total"] += (
                 len(task_attempts) if task_attempts else int(attempts_used or 0))
         result = [_finish_group(group) for group in groups.values()]
