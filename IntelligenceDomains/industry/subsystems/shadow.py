@@ -15,7 +15,9 @@ class IndustryShadowSupport:
         versions = tuple(int(item) for item in raw.get("versions", ()))
         sample_rate = max(0.0, min(1.0, float(raw.get("sample_rate", 0.0))))
         mode = str(raw.get("comparison_mode") or "same_model").strip()
-        if mode not in {"same_model", "different_model", "replicate"}:
+        if mode not in {
+            "same_model", "different_model", "replicate", "replicate_and_compare",
+        }:
             raise ValueError(f"unsupported industry shadow comparison_mode: {mode!r}")
         if enabled and not versions:
             raise ValueError("industry shadow enabled but versions is empty")

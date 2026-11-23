@@ -21,8 +21,9 @@ INDUSTRY_PROMPT_V3_VERSION = 3
 INDUSTRY_PROMPT_V4_VERSION = 4
 INDUSTRY_PROMPT_V5_VERSION = 5
 INDUSTRY_PROMPT_V6_VERSION = 6
+INDUSTRY_PROMPT_V7_VERSION = 7
 INDUSTRY_PRODUCTION_PROMPT_VERSION = INDUSTRY_PROMPT_V2_VERSION
-INDUSTRY_PROMPT_VERSION = INDUSTRY_PROMPT_V6_VERSION
+INDUSTRY_PROMPT_VERSION = INDUSTRY_PROMPT_V7_VERSION
 INDUSTRY_PROTOCOL = "industry_core_subset_levels_v1"
 
 
@@ -323,6 +324,15 @@ INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS = r"""
 """
 
 
+INDUSTRY_V7_OUTPUT_RELIABILITY_GUARDRAILS = r"""
+## 输出最终检查
+
+- 不得为满足长度或 Schema 改变 TAXONOMY、RATE、决定性事实或事件阶段；超长时只压缩表达。
+- 每个 predicate 必须含 surface；frame 只用当前协议字段，禁止旧字段 agentive 或把 frame 放入 predicate。
+- roles 值必须是非空实体数组，数值只写 attributes；空的可选对象省略；不得自造协议外的键或类型。
+"""
+
+
 INDUSTRY_V3_CALIBRATION = r"""
 ## 保守评级：逐维从低档开始
 
@@ -468,6 +478,37 @@ def build_industry_prompt_v6(registry=DEFAULT_EVENT_REGISTRY) -> str:
     )
 
 
+def build_industry_prompt_v7(registry=DEFAULT_EVENT_REGISTRY) -> str:
+    """从 v2 直接派生，只提高输出可靠性，不继承 v3-v6 的判断语义。"""
+
+    prompt = build_industry_prompt_v2(registry)
+    replacements = (
+        ('"REASON":"100字以内具体原因"', '"REASON":"80字以内具体原因"',
+         "non_intelligence_reason_budget"),
+        ('"REASON": "100字以内，说明信息增量与评级依据"',
+         '"REASON": "80字以内，说明信息增量与评级依据"', "reason_budget"),
+        ('"EVENT_TITLE": "30字以内，只描述公司和核心行动"',
+         '"EVENT_TITLE": "24字以内，只描述公司和核心行动"', "title_budget"),
+        ('"EVENT_BRIEF": "100字以内，概括行动、规模、阶段和关键对象"',
+         '"EVENT_BRIEF": "80字以内，概括行动、规模、阶段和关键对象"', "brief_budget"),
+        ('"EVENT_TEXT": "2000字以内的去重事实简报，不得补充正文未支持的事实"',
+         '"EVENT_TEXT": "1600字以内的去重事实简报，不得补充正文未支持的事实"', "text_budget"),
+        ('"IMPACT": "100字以内，只说明正文事实可支持的经营或投资含义"',
+         '"IMPACT": "80字以内，只说明正文事实可支持的经营或投资含义"', "impact_budget"),
+        ('"TIPS": "100字以内的后续观察变量，不得给出买卖或目标价建议；无则为空字符串"',
+         '"TIPS": "80字以内的后续观察变量，不得给出买卖或目标价建议；无则为空字符串"',
+         "tips_budget"),
+    )
+    for old, new, section in replacements:
+        prompt = _replace_once(prompt, old, new, section=section)
+    return _replace_once(
+        prompt,
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V7_OUTPUT_RELIABILITY_GUARDRAILS}\n# 有价值输出结构\n",
+        section="v7_output_reliability_guardrails",
+    )
+
+
 def validate_industry_core_result(raw: Any, *, registry=DEFAULT_EVENT_REGISTRY):
     if not isinstance(raw, dict):
         return validate_industry_analysis_result(raw, registry=registry)
@@ -529,6 +570,13 @@ def build_industry_prompt_catalog(registry=DEFAULT_EVENT_REGISTRY) -> PromptCata
         # v6 从正式 v4 派生，只由 Shadow 验证闭集 Schema 首过率。
         sampling=False,
     )
+    catalog.register_prompt(
+        INDUSTRY_PROMPT_V7_VERSION,
+        build_industry_prompt_v7(registry),
+        protocol=INDUSTRY_PROTOCOL,
+        # v7 从正式 v2 直接派生，只验证长度预算和闭集输出可靠性。
+        sampling=False,
+    )
     return catalog
 
 
@@ -548,6 +596,7 @@ __all__ = [
     "INDUSTRY_PROMPT_V4_VERSION",
     "INDUSTRY_PROMPT_V5_VERSION",
     "INDUSTRY_PROMPT_V6_VERSION",
+    "INDUSTRY_PROMPT_V7_VERSION",
     "INDUSTRY_PRODUCTION_PROMPT_VERSION",
     "build_industry_prompt",
     "build_industry_prompt_v2",
@@ -555,6 +604,7 @@ __all__ = [
     "build_industry_prompt_v4",
     "build_industry_prompt_v5",
     "build_industry_prompt_v6",
+    "build_industry_prompt_v7",
     "build_industry_prompt_catalog",
     "validate_industry_core_result",
 ]

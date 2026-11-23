@@ -10,9 +10,14 @@ Mongo 查询和前端展示，但独立拥有：
 - `storage.py`：行业归档 DTO 与存储投影；
 - `enrichment.py`：未来公司重要性资料库和 Arachne 异步评估的接口。
 
-当前为稳定性基线阶段：v2 是唯一正式生产版本，并以 25% 确定性抽样执行同模型、同 Prompt 的
-A/A 重复分析；v1、v3–v6 保留为历史可选版本。已有 cache 的 v4 分配继续按 v4 完成，但不进入
-v2 A/A。v3 保留 v2 对公司行动、经营状态冲击、经营相关冲突、可执行产业政策四类信号的
+当前正式版本仍为 v2。v2/v2 A/A 首个检查点已于 2026-11-23 以 133 组严格配对完成，分类翻转
+基线为 5.3%；完整结果及与此前 v4/v6 Shadow 的联合解释见
+`doc/prompt_versions/reports/20261112_industry_v2_aa_stability.md`。随后进入 v2/v2/v7 三臂实验：
+25% 确定性抽样同时执行 v2 重复组与 v7 候选组。v7 从 v2 直接派生，只增加安全文字预算、闭集
+Schema 和当前事件字段纪律，不继承 v3-v6 的判断语义。设计见
+`doc/prompt_versions/reports/20261123_industry_prompt_v7_output_reliability.md`。v1、v3–v6 保留为历史可选版本。
+已有 cache 的 v4 分配继续按 v4 完成，但不进入 v2 A/A。v3 保留 v2 对公司行动、经营状态冲击、
+经营相关冲突、可执行产业政策四类信号的
 覆盖和详细 REASON，消除财报边界冲突，并用准入门槛、逐维保守升档和事件优先级取代较长的校准
 说明；v4 不改变这些价值判断，仅增加 REASON 长度、角色数组和空可选对象的强制自检。v5 曾尝试
 通过缩短字段预算和强化容器约束提高首过率，但首轮效果更差，已退出当前 Shadow。v6 不继承 v5，
@@ -29,7 +34,8 @@ cache 污染原因和灰度准入修复见
 
 Shadow 实验必须设置稳定的 `experiment_id`。抽样由
 `SHA256(experiment_id + domain_name + UUID)` 确定，重启与重试不会改变分组；
-`comparison_mode=replicate` 专用于正式 Prompt 的同模型 A/A 重复实验。
+`comparison_mode=replicate` 专用于正式 Prompt 的同模型 A/A 重复实验；
+`comparison_mode=replicate_and_compare` 用于同一抽样内同时运行正式复本和同模型候选版本。
 
 两个版本都只根据正文评价。不得由 LLM 猜测公司重要性、市场份额、产业链关系或供应链传播。
 `company_importance_bonus` 与 `arachne_network_bonus` 默认且实际均为 0；只有未来显式传入

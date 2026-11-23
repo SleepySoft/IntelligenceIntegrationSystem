@@ -77,11 +77,20 @@ class DomainDefinition:
         if unknown:
             raise ValueError(
                 f"领域 {self.name!r} 的 shadow prompt 未注册: {unknown}")
-        if str(getattr(settings, "comparison_mode", "same_model")) == "same_model":
-            overlap = sorted(set(versions) & set(self.prompt_catalog.sampling_versions()))
+        mode = str(getattr(settings, "comparison_mode", "same_model"))
+        production = set(self.prompt_catalog.sampling_versions())
+        overlap = sorted(set(versions) & production)
+        candidates = sorted(set(versions) - production)
+        if mode == "same_model":
             if overlap:
                 raise ValueError(
                     f"领域 {self.name!r} 的正式与 shadow Prompt 池重叠: {overlap}")
+        elif mode == "replicate" and candidates:
+            raise ValueError(
+                f"领域 {self.name!r} 的 replicate 只允许正式 Prompt 复本: {candidates}")
+        elif mode == "replicate_and_compare" and (not overlap or not candidates):
+            raise ValueError(
+                f"领域 {self.name!r} 的 replicate_and_compare 必须同时包含正式复本和候选版本")
 
     def score(self, result: Any, config: dict | None = None) -> float:
         scorer = self.scorer_factory(config)

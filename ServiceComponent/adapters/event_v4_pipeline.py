@@ -1004,7 +1004,9 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     and task.comparison_mode == "same_model"):
                 continue
             try:
-                same_model = task.comparison_mode in {"same_model", "replicate"}
+                same_model = task.comparison_mode in {
+                    "same_model", "replicate", "replicate_and_compare",
+                }
                 analysis, _, service, model, shadow_client_name = self._analyze_v4_with_retry(
                     ctx, event, original_data,
                     analyzer=self._analyzer,

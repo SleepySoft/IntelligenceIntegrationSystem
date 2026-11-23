@@ -16,13 +16,16 @@ from IntelligenceDomains.industry.prompt import (
     INDUSTRY_PROMPT_V4_VERSION,
     INDUSTRY_PROMPT_V5_VERSION,
     INDUSTRY_PROMPT_V6_VERSION,
+    INDUSTRY_PROMPT_V7_VERSION,
     INDUSTRY_V6_CLOSED_SCHEMA_GUARDRAILS,
+    INDUSTRY_V7_OUTPUT_RELIABILITY_GUARDRAILS,
     build_industry_prompt,
     build_industry_prompt_v2,
     build_industry_prompt_v3,
     build_industry_prompt_v4,
     build_industry_prompt_v5,
     build_industry_prompt_v6,
+    build_industry_prompt_v7,
     validate_industry_core_result,
 )
 from IntelligenceDomains.industry.schema import RATE_DIMENSIONS
@@ -88,6 +91,7 @@ def test_industry_factory_registers_own_prompt_schema_scorer_and_no_news_subsyst
     domain = create_domain()
 
     assert domain.name == "industry"
+    assert INDUSTRY_PROMPT_VERSION == INDUSTRY_PROMPT_V7_VERSION
     assert domain.prompt_catalog.sampling_versions() == [
         INDUSTRY_PRODUCTION_PROMPT_VERSION,
     ]
@@ -97,7 +101,8 @@ def test_industry_factory_registers_own_prompt_schema_scorer_and_no_news_subsyst
         INDUSTRY_PROMPT_V3_VERSION,
         INDUSTRY_PROMPT_V4_VERSION,
         INDUSTRY_PROMPT_V5_VERSION,
-        INDUSTRY_PROMPT_VERSION,
+        INDUSTRY_PROMPT_V6_VERSION,
+        INDUSTRY_PROMPT_V7_VERSION,
     ]
     assert domain.subsystems.batch is None
     assert domain.subsystems.shadow.enabled is False
@@ -138,6 +143,35 @@ def test_industry_allows_explicit_replicate_aa_of_formal_prompt():
     assert domain.subsystems.shadow.versions == (2,)
     assert domain.subsystems.shadow.comparison_mode == "replicate"
     assert domain.subsystems.shadow.experiment_id == "industry-v2-aa"
+
+
+def test_industry_replicate_rejects_non_production_candidate():
+    with pytest.raises(ValueError, match="replicate 只允许正式 Prompt 复本"):
+        create_domain(subsystem_config={"shadow": {
+            "enabled": True, "versions": [2, 7], "sample_rate": 0.25,
+            "comparison_mode": "replicate", "experiment_id": "invalid-mixed-mode",
+        }})
+
+
+def test_industry_allows_replicate_and_compare_three_arm_experiment():
+    domain = create_domain(subsystem_config={"shadow": {
+        "enabled": True, "versions": [2, 7], "sample_rate": 0.25,
+        "comparison_mode": "replicate_and_compare",
+        "experiment_id": "industry-v2-v7-output",
+    }})
+
+    assert domain.subsystems.shadow.versions == (2, 7)
+    assert domain.subsystems.shadow.comparison_mode == "replicate_and_compare"
+
+
+@pytest.mark.parametrize("versions", ([2], [7]))
+def test_industry_replicate_and_compare_requires_replica_and_candidate(versions):
+    with pytest.raises(ValueError, match="必须同时包含正式复本和候选版本"):
+        create_domain(subsystem_config={"shadow": {
+            "enabled": True, "versions": versions, "sample_rate": 0.25,
+            "comparison_mode": "replicate_and_compare",
+            "experiment_id": "incomplete-three-arm",
+        }})
 
 
 def test_industry_predicate_growth_does_not_change_news_v48_registry():
@@ -297,7 +331,7 @@ def test_industry_v2_adds_cross_type_evidence_calibration_only_in_gray_prompt():
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(1) is catalog.protocol_for(2)
     assert catalog.sampling_versions() == [2]
-    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
+    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_industry_v3_is_stricter_shorter_and_keeps_detailed_reasoning():
@@ -365,7 +399,55 @@ def test_industry_v6_restarts_from_v4_with_only_closed_schema_guards():
     catalog = create_domain().prompt_catalog
     assert catalog.protocol_for(4) is catalog.protocol_for(6)
     assert catalog.sampling_versions() == [2]
-    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6]
+    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_industry_v7_starts_from_v2_and_only_adds_output_reliability_guards():
+    v2 = build_industry_prompt_v2()
+    v3 = build_industry_prompt_v3()
+    v7 = build_industry_prompt_v7()
+
+    expected = v2
+    for old, new in (
+        ('"REASON":"100字以内具体原因"', '"REASON":"80字以内具体原因"'),
+        ('"REASON": "100字以内，说明信息增量与评级依据"',
+         '"REASON": "80字以内，说明信息增量与评级依据"'),
+        ('"EVENT_TITLE": "30字以内，只描述公司和核心行动"',
+         '"EVENT_TITLE": "24字以内，只描述公司和核心行动"'),
+        ('"EVENT_BRIEF": "100字以内，概括行动、规模、阶段和关键对象"',
+         '"EVENT_BRIEF": "80字以内，概括行动、规模、阶段和关键对象"'),
+        ('"EVENT_TEXT": "2000字以内的去重事实简报，不得补充正文未支持的事实"',
+         '"EVENT_TEXT": "1600字以内的去重事实简报，不得补充正文未支持的事实"'),
+        ('"IMPACT": "100字以内，只说明正文事实可支持的经营或投资含义"',
+         '"IMPACT": "80字以内，只说明正文事实可支持的经营或投资含义"'),
+        ('"TIPS": "100字以内的后续观察变量，不得给出买卖或目标价建议；无则为空字符串"',
+         '"TIPS": "80字以内的后续观察变量，不得给出买卖或目标价建议；无则为空字符串"'),
+    ):
+        expected = expected.replace(old, new, 1)
+    expected = expected.replace(
+        "# 有价值输出结构\n",
+        f"{INDUSTRY_V7_OUTPUT_RELIABILITY_GUARDRAILS}\n# 有价值输出结构\n",
+        1,
+    )
+    assert v7 == expected
+    assert v7 != v3
+    assert "公司行动、经营状态冲击、经营相关冲突还是产业政策" in v7
+    assert "逐维从低档开始" not in v7
+    assert '"EVENT_TITLE": "24字以内，只描述公司和核心行动"' in v7
+    assert '"EVENT_BRIEF": "80字以内，概括行动、规模、阶段和关键对象"' in v7
+    assert '"EVENT_TEXT": "1600字以内的去重事实简报' in v7
+    assert '"REASON":"80字以内具体原因"' in v7
+    assert "禁止旧字段 agentive" in v7
+    assert "把 frame 放入 predicate" in v7
+    assert "不得为满足长度或 Schema 改变 TAXONOMY" in v7
+    assert len(v7) == 26397
+    assert hashlib.sha256(v7.encode()).hexdigest() == (
+        "a755b1059bcd8d94dceb36c23c9e5269c7f8fcebd25c72a63f761feded979d55"
+    )
+    catalog = create_domain().prompt_catalog
+    assert catalog.protocol_for(2) is catalog.protocol_for(7)
+    assert catalog.sampling_versions() == [2]
+    assert catalog.selectable_versions() == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_industry_prompt_distinguishes_share_from_growth_and_multiplier():
