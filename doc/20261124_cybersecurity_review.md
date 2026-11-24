@@ -20,7 +20,8 @@
 
 ### 2.1 结论
 
-当前 Codex/Kimi CLI 不适合直接处理不可信新闻正文，风险等级为 **Critical**。
+调查时 Codex/Kimi CLI 不适合直接处理不可信新闻正文，风险等级为 **Critical**。
+2026-11-24 已先对生产 Kimi 落实无工具专用 Agent；Codex 读取暴露和共同 OS 权限边界尚未整改。
 
 直接链路如下：
 
@@ -110,6 +111,14 @@ Kimi；专用 Agent 更适合 IIS。
 已在本机 Kimi 2.6.0 做受控验证：恶意提示要求创建文件时，无工具 Agent 没有产生任何工具
 事件，文件未创建，并明确返回无法访问工具、文件、命令或网络。该限制方法在当前版本有效。
 
+2026-11-24 生产处置记录：
+
+- AIClientCenter 增加可选 `agent_file` 参数，并在启动时严格校验文件存在和协议兼容性；
+- IIS Kimi 配置绑定 `ServiceComponent/agent_profiles/kimi_iis_json_analyzer.md`；
+- 该 Agent 使用 `tools: []`、`subagents: []`，不继承通用编码 Agent 的工具集；
+- 正式服务重启预检通过；Kimi 自然处理一条生产任务并首过归档；
+- 恶意烟测无法读取假环境变量、无法创建文件，正常纯 JSON 请求仍成功。
+
 #### C. Codex CLI
 
 `read-only` 已阻止测试写入，但不会阻止读取环境变量或工作区外文件。可追加
@@ -128,16 +137,46 @@ Kimi；专用 Agent 更适合 IIS。
 7. Agent session/trace 作为敏感日志管理，限制权限、保留期和导出。
 8. 不让运行 Agent 的账号拥有 sudo、Docker socket、LXD、SSH key 或数据库管理凭据。
 
-### 2.6 建议处置顺序
+### 2.6 不可信内容检查与“消毒”评估
 
-1. **立即**：在隔离完成前暂停 Kimi/Codex 处理不可信生产正文，或至少只保留普通 API Client。
-2. **P0**：Kimi 改用 `tools: []` 专用 Agent；CLI 环境改为白名单；工作目录移出项目根。
+正规新闻源可以降低蓄意注入的概率，但不能成为信任边界：媒体站点可能被入侵，正文可能混入
+广告、转载、用户生成内容或抓取模板污染。内容消毒有价值，但不能可靠判断一句自然语言究竟是
+新闻引语还是给模型的恶意指令，更不能替代工具隔离。
+
+当前链路已有：来源级 scrubber/正文抽取、Pydantic 字段类型校验、system/user 消息分层、
+temperature 0、JSON 修复、领域 schema 与语义校验。当前缺口是：
+
+- `CollectedData.content` 和生产 `AIMessage.content` 没有统一最大长度；
+- 没有中央控制字符、非法 Unicode、换行和异常 HTML 比例规范化；
+- Agent CLI 会把多角色消息展平成带 `[system]`/`[user]` 标记的一段文本；
+- 没有 Prompt Injection 可疑度审计、来源隔离或统计；
+- schema 合法不能证明事实没有被注入内容操纵。
+
+建议分三层实施：
+
+1. **确定性规范化**：统一换行；替换 NUL 和危险 C0 控制字符；Unicode NFC；限定标题、作者、
+   正文字符数/字节数/估算 Token；超限拒绝或有审计地截断；确保进入模型的是纯文本而非脚本、
+   样式或活动 HTML。原始正文仍可在隔离存储中保留，不能用“清洗后文本”覆盖取证材料。
+2. **可疑度检测**：识别伪造角色标记、忽略上文、工具/秘密请求、编码载荷和异常指令密度；
+   只做风险标签、日志、抽样 Shadow 或隔离队列，初期不要直接删除命中文本。关键词规则容易
+   被多语言、拆词、编码绕过，也会误伤报道 Prompt Injection 事件的正规新闻。
+3. **结果侧验证**：继续严格 schema/Registry 校验；对高风险输入要求关键实体、谓词和时间在
+   原文有 surface 证据；必要时用另一个无工具模型复核。输出页面仍必须独立做 HTML 转义，
+   LLM 输入清洗不能替代 XSS 防护。
+
+优先级建议：先实现中央长度/控制字符规范化和只记录不拦截的风险扫描；积累真实命中样本后，
+再决定是否按来源、分数或模型复核进行阻断。
+
+### 2.7 建议处置顺序
+
+1. **立即**：Codex 在隔离完成前暂停处理不可信生产正文，或至少只保留普通 API Client。
+2. **已完成一部分**：Kimi 已改用 `tools: []` 专用 Agent；环境白名单和独立工作目录仍待完成。
 3. **P0**：把 Agent 从 `sleepy` 和 `NOPASSWD sudo` 权限域中分离。
 4. **P1**：为 Codex/Kimi 建立容器/systemd 独立服务，落实只读挂载、网络白名单和资源限制。
 5. **P1**：增加间接 Prompt Injection 回归测试，验证不能读文件、环境、联网或写入。
 6. **P2**：统一收紧配置与 session 文件权限，配置日志保留和密钥轮换。
 
-### 2.7 主要依据
+### 2.8 主要依据
 
 - Kimi `--prompt` 权限语义：<https://moonshotai.github.io/kimi-code/en/reference/kimi-command.html>
 - Kimi 工具与审批模型：<https://moonshotai.github.io/kimi-code/en/reference/tools>

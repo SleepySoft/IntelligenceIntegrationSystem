@@ -42,6 +42,8 @@ clients:
   #   name: Kimi CLI Stateless
   #   group: kimi_cli
   #   mode: stateless
+  #   # 生产正文属于不可信输入；务必使用 tools: [] 的专用 Agent，禁止文件/Shell/网络工具。
+  #   agent_file: ServiceComponent/agent_profiles/kimi_iis_json_analyzer.md
 
   # - factory: openclaw
   #   name: OpenClaw Main
