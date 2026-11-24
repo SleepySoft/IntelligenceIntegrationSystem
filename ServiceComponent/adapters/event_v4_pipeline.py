@@ -9,6 +9,7 @@ import os
 import random
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
@@ -657,6 +658,8 @@ class EventV4PipelinePorts(BasePipelinePorts):
         # 敏感拒绝兑底：优先换 low_sensitivity 标签的客户端再试一次（有的话）
         sensitive_fallback_tried = False
         sensitive_tags: set[str] | None = None
+        # 多次纠错尝试属于同一次逻辑分析，供持久观测聚合最终结果。
+        analysis_run_id = uuid.uuid4().hex
 
         for attempt in range(1, 4):
             request_id = None
@@ -776,7 +779,11 @@ class EventV4PipelinePorts(BasePipelinePorts):
                     validated = self._validate_analysis(ctx, raw_result, prompt_version)
                     self._report_client_feedback(
                         ai_client, request_id, valid=True,
-                        labels={"stage": "event_v4_validation", "attempt": attempt},
+                        labels={
+                            "stage": "event_v4_validation",
+                            "attempt": attempt,
+                            "analysis_run_id": analysis_run_id,
+                        },
                     )
                     self._change_runtime_stat("validated")
                     self._record_analysis_attempt(
@@ -832,6 +839,7 @@ class EventV4PipelinePorts(BasePipelinePorts):
                         labels={
                             "stage": "event_v4_validation",
                             "attempt": attempt,
+                            "analysis_run_id": analysis_run_id,
                             "error": _compact_validation_error(exc),
                             "error_class": attempt_error_class,
                         },
