@@ -1693,17 +1693,18 @@ function graphCanvasHit(event) {
     const pointer = source?.touches?.[0] || source?.changedTouches?.[0] || source;
     if (!Number.isFinite(pointer?.clientX) || !Number.isFinite(pointer?.clientY)) return null;
     const point = graphTransform.invert([pointer.clientX - rect.left, pointer.clientY - rect.top]);
-    const tolerance = 9 / graphTransform.k;
+    const nodeTolerance = 9 / graphTransform.k;
     let bestNode = null, bestDistance = Infinity;
     for (const node of graphRenderState.nodes) {
         if (node._timeVisible === false || !Number.isFinite(node.x)) continue;
         const distance = Math.hypot(point[0] - node.x, point[1] - node.y);
-        if (distance <= graphNodeDrawRadius(node) + tolerance && distance < bestDistance) {
+        if (distance <= graphNodeDrawRadius(node) + nodeTolerance && distance < bestDistance) {
             bestNode = node; bestDistance = distance;
         }
     }
     if (bestNode) return {type: 'node', value: bestNode};
-    let bestEdge = null; bestDistance = tolerance;
+    // 完整图很密，边命中范围过大会让视觉空白也总选中某条边，无法清除选择。
+    let bestEdge = null; bestDistance = 4.5 / graphTransform.k;
     for (const edge of graphRenderState.edges) {
         if (edge._timeVisible === false || !edge.source || !edge.target) continue;
         const distance = graphPointSegmentDistance(
@@ -1798,8 +1799,15 @@ function renderGraph() {
         if (event.defaultPrevented) return;
         const hit = graphCanvasHit(event);
         if (!hit) clearGraphSelection();
-        else if (hit.type === 'node') selectGraphNode(hit.value);
-        else selectGraphEdge(hit.value);
+        else if (hit.type === 'node') {
+            if (selectedGraphElement?.type === 'node'
+                    && selectedGraphElement.entity_id === hit.value.id) clearGraphSelection();
+            else selectGraphNode(hit.value);
+        } else {
+            if (selectedGraphElement?.type === 'edge'
+                    && graphEdgeMatches(hit.value, selectedGraphElement)) clearGraphSelection();
+            else selectGraphEdge(hit.value);
+        }
     };
     canvas.onmousemove = event => {
         const hit = graphCanvasHit(event);
@@ -2569,9 +2577,14 @@ document.addEventListener('keydown', event => {
     }
     if (event.key === 'Escape' && !$('map-search-panel').hidden && !$('entity-editor').open) {
         closeMapSearch();
+        return;
     }
     if (event.key === 'Escape' && !$('graph-search-panel').hidden && !$('entity-editor').open) {
         closeGraphSearch();
+        return;
+    }
+    if (event.key === 'Escape' && selectedGraphElement && !$('entity-editor').open) {
+        clearGraphSelection();
     }
 });
 document.querySelectorAll('.side-toggle').forEach(button => button.addEventListener('click', () => {
