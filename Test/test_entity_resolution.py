@@ -182,3 +182,25 @@ def test_invalid_reference_and_target_are_rejected():
         service.assign_global(
             EntityRef("news", "article-a", "ENT1"), "ent_missing", actor="alice")
     assert missing_target.value.code == "not_found"
+
+
+def test_registry_can_receive_full_reference_context():
+    class ContextRegistry(Registry):
+        def resolve_reference(self, request):
+            assert request["country_code"] == "US"
+            return {
+                "entity_id": "ent_jfk", "canonical": "约翰·肯尼迪",
+                "type": "person", "status": "verified", "method": "v2_direct",
+            }
+
+    service, _ = make_service()
+    service.entity_registry = ContextRegistry()
+    ref = EntityRef("news", "article-a", "ENT1")
+
+    resolved = service.resolve_many([{
+        **ref.to_dict(), "surface": "肯尼迪", "type": "person",
+        "country_code": "US",
+    }])[ref.key]
+
+    assert resolved["target_id"] == "ent_jfk"
+    assert resolved["method"] == "v2_direct"

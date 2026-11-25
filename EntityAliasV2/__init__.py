@@ -11,6 +11,11 @@ from .model import (
     ResolutionResult,
 )
 from .service import EntityAliasV2Service
+from .production import (
+    EntityAliasV2ProductionAdapter,
+    EntityRegistryRouter,
+    ProductionPolicy,
+)
 from .store import SQLiteAliasV2Store
 from .types import CANONICAL_TYPES, normalize_entity_type
 
@@ -18,10 +23,13 @@ __all__ = [
     "AliasV2Error",
     "CANONICAL_TYPES",
     "EntityAliasV2Service",
+    "EntityAliasV2ProductionAdapter",
+    "EntityRegistryRouter",
     "EntityName",
     "EntityRecord",
     "ResolutionCandidate",
     "ResolutionResult",
+    "ProductionPolicy",
     "SQLiteAliasV2Store",
     "normalize_entity_type",
 ]

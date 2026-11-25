@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import yaml
@@ -304,6 +304,24 @@ class EntityAliasV2ShadowSettings(_StrictModel):
             "Dedicated Wikidata settings for V2 shadow; its cache is never shared with V1."))
 
 
+class EntityAliasV2Settings(_StrictModel):
+    """V2 正式解析开关；事实库与影子观察可独立启停。"""
+
+    mode: Literal["shadow", "prefer_v2", "v2_only"] = Field(
+        "shadow", description=iis_msg(
+            "Production routing mode: observe only, prefer V2 with V1 fallback, or V2 only."))
+    database: str = Field("", description=iis_msg(
+        "V2 SQLite fact database. Leave empty to use _data/entity_alias_v2/entities.db."))
+    trust_wikidata: bool = Field(True, description=iis_msg(
+        "Treat a unique exact entity carrying a Wikidata QID as trusted external evidence."))
+    contextual_person_aliases: bool = Field(True, description=iis_msg(
+        "Allow a unique Wikidata-backed person alias when request context is sufficient."))
+    require_country_for_contextual_person: bool = Field(True, description=iis_msg(
+        "Require an ISO country context before binding a contextual person alias."))
+    min_contextual_name_length: int = Field(2, ge=2, le=32, description=iis_msg(
+        "Minimum normalized name length accepted for contextual person aliases."))
+
+
 class OptionalSubsystemSettings(_StrictModel):
     translation: TranslationSettings = Field(default_factory=TranslationSettings, description=iis_msg(
         "Asynchronous intelligence translation settings."))
@@ -316,6 +334,9 @@ class OptionalSubsystemSettings(_StrictModel):
             "Unified intelligence view shell and public access settings."))
     entity_alias: EntityAliasSettings = Field(default_factory=EntityAliasSettings, description=iis_msg(
         "Entity alias resolution settings."))
+    entity_alias_v2: EntityAliasV2Settings = Field(
+        default_factory=EntityAliasV2Settings, description=iis_msg(
+            "EntityAlias V2 production routing and conservative binding policy."))
     entity_alias_v2_shadow: EntityAliasV2ShadowSettings = Field(
         default_factory=EntityAliasV2ShadowSettings, description=iis_msg(
             "Isolated EntityAlias V2 shadow observation settings."))
@@ -625,6 +646,7 @@ class IISConfig:
                 },
             },
             "entity_alias_v2_shadow": optional_subsystems.entity_alias_v2_shadow.model_dump(),
+            "entity_alias_v2": optional_subsystems.entity_alias_v2.model_dump(),
             "batch_analysis": optional_subsystems.batch_analysis.model_dump(),
             "ai_client_center": {
                 "sqlite_db_file": "ai_client_state_log.db",

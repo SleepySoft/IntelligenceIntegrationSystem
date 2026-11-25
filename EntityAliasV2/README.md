@@ -1,7 +1,8 @@
-# EntityAlias V2（实验实现）
+# EntityAlias V2（事实库、影子观察与正式解析）
 
-V2 是与现有 `EntityAlias/` 完全并行的 SQLite 实现。目前不装配到 IIS 主链，不读取、迁移或
-修改 V1 JSONL。未来切换时可以直接丢弃 V1 别名数据，从空 V2 数据库重新建立事实库。
+V2 是与现有 `EntityAlias/` 数据隔离的 SQLite 实现，不读取、迁移或修改 V1 JSONL。它可按
+`shadow / prefer_v2 / v2_only` 三种模式接入 EntityResolution；推荐先用 `prefer_v2`，让 V2
+处理满足安全策略的候选，其余回退 V1。
 
 ## 核心模型
 
@@ -53,24 +54,54 @@ service = EntityAliasV2Service(store)
 
 数据库约束只禁止同一实体内部的重复名称。跨实体重名是合法数据，查询结果自然成为候选集。
 
+## 正式解析策略
+
+事实层的 `verified/unverified` 与单次名称绑定是两个判断。生产适配器当前只接受：
+
+- V2 原本已返回 `resolved` 的唯一直接名称；
+- 唯一、类型匹配、带 Wikidata QID 的直接名称，即使实体仍是 `unverified`；
+- 唯一、带 Wikidata QID、长度不少于 2 且请求携带 ISO 国家上下文的人物简称。
+
+同名同类型多候选、类型冲突、缺少类型、缺少国家上下文的人物简称，以及所有
+`context_required` 的组织/地点/转喻仍然弃权。这个规则是首版安全边界，不会批量改写事实库，
+后续可根据具体误合并/漏合并样本调整。
+
+配置示例：
+
+```yaml
+optional_subsystems:
+  entity_alias_v2:
+    mode: prefer_v2
+    trust_wikidata: true
+    contextual_person_aliases: true
+    require_country_for_contextual_person: true
+    min_contextual_name_length: 2
+```
+
+模式含义：
+
+- `shadow`：V2 不进入正式解析；
+- `prefer_v2`：V2 命中优先，未命中或弃权时回退 V1；
+- `v2_only`：正式解析只使用 V2，适合完成观察后收口。
+
 ## 当前边界
 
 - 没有 V1 导入器，这是有意设计。
 - 没有 Web/API、模糊/向量查询。
-- 没有上下文规则引擎；V2 遇到 `context_required` 会交还给上层。
-- 切换生产前需要单独设计 EntityResolution 适配器；shadow 不会进入正式查询或图。
+- 上下文策略目前只处理带国家码的唯一人物别名；复杂语义仍交还给人工解析。
+- 查询时别名展开和管理 Web 仍由 V1 承担；V2 正式入口当前是 EntityResolution 及其实体图消费者。
 
 ## IIS Shadow
 
-`optional_subsystems.entity_alias_v2_shadow.enabled` 打开后，组合根只安装归档观察扩展：
+`optional_subsystems.entity_alias_v2_shadow.enabled` 打开后，组合根安装归档观察扩展：
 
 - V2 事实库：`_data/entity_alias_v2/entities.db`
 - 影子观察与补录 ledger：`_data/entity_alias_v2/shadow.db`
 - Wikidata 缓存：`_data/entity_alias_v2/wikidata_cache.sqlite`
 - 内存队列：`EntityAliasV2ShadowEnrichment`
 
-以上资源都不与 V1 共享。组合根不会把 V2 注入别名查询展开、EntityResolution、态势图、
-Web 管理页或权威归档。Wikidata 唯一精确同名候选只会创建 `unverified` 实体；Wikidata aliases
+以上资源都不与 V1 共享。是否注入 EntityResolution 仅由 `entity_alias_v2.mode` 决定，shadow
+开关本身不会改变正式结果。V2 不注入查询展开、Web 管理页或权威归档。Wikidata 唯一精确同名候选只会创建 `unverified` 实体；Wikidata aliases
 默认标为 `context_required`。同一 QID 后续出现不同 canonical type 时记为 `type_conflict`，
 不会修改已有实体类型或建立第二个实体。补录终态写入持久化 ledger，服务重启不会重复查询。
 
@@ -83,5 +114,5 @@ python Scripts/entity_alias_v2_shadow_report.py
 运行测试：
 
 ```bash
-pytest -q Test/test_entity_alias_v2.py Test/test_entity_alias_v2_shadow.py
+pytest -q Test/test_entity_alias_v2.py Test/test_entity_alias_v2_production.py Test/test_entity_alias_v2_shadow.py
 ```

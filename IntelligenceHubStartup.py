@@ -357,10 +357,16 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
     except Exception:
         logger.exception("实体别名模块装配失败，IIS 主服务继续运行。")
 
-    # V2 只做影子观察：独立 SQLite、队列和 Wikidata 缓存，不注入查询、图、Web
-    # 或 EntityResolution。初始化失败也不影响 V1 和主链。
+    # V2 事实服务由影子观察和正式解析共用；正式路由仍可一键退回 shadow。
+    entity_alias_v2_service = None
+    entity_registry = entity_alias_service
     try:
-        from EntityAliasV2.iis_integration import create_entity_alias_v2_shadow
+        from EntityAliasV2.iis_integration import (
+            create_entity_alias_v2,
+            create_entity_alias_v2_shadow,
+            create_production_registry,
+        )
+        entity_alias_v2_service = create_entity_alias_v2(config)
         entity_alias_v2_shadow = create_entity_alias_v2_shadow(
             config,
             v1_service=entity_alias_service,
@@ -369,13 +375,17 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
                 for ctx in domain_resources.enabled_domains()
                 if ctx.event_v4_intelligence_collection is not None
             ],
+            service=entity_alias_v2_service,
         )
         if entity_alias_v2_shadow is not None:
             extensions.append(entity_alias_v2_shadow.extension)
-            services["entity_alias_v2"] = entity_alias_v2_shadow.service
             services["entity_alias_v2_shadow"] = entity_alias_v2_shadow.extension
+        if entity_alias_v2_service is not None:
+            services["entity_alias_v2"] = entity_alias_v2_service
+        entity_registry = create_production_registry(
+            config, service=entity_alias_v2_service, legacy=entity_alias_service)
     except Exception:
-        logger.exception("EntityAliasV2 影子装配失败，IIS 主服务继续运行。")
+        logger.exception("EntityAliasV2 装配失败，正式解析退回 V1。")
 
     # ------------------------- 情报实体解析（非破坏性旁表） -------------------------
     entity_resolution_service = None
@@ -383,7 +393,7 @@ def start_intelligence_hub_service(config) -> Tuple[HubApplication, Intelligence
         from EntityResolution.iis_integration import create_entity_resolution
         entity_resolution_service = create_entity_resolution(
             domain_resources=domain_resources,
-            entity_registry=entity_alias_service,
+            entity_registry=entity_registry,
         )
         if entity_resolution_service is not None:
             services["entity_resolution"] = entity_resolution_service

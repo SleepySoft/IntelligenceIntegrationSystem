@@ -67,7 +67,13 @@ class EntityResolutionService:
             if hit:
                 continue
             surface = str(request.get("surface") or "").strip()
-            exact = self.entity_registry.resolve(surface) if self.entity_registry and surface else None
+            exact = None
+            if self.entity_registry and surface:
+                resolver = getattr(self.entity_registry, "resolve_reference", None)
+                exact = (
+                    resolver(request) if callable(resolver)
+                    else self.entity_registry.resolve(surface)
+                )
             if exact:
                 resolved[ref.key] = {
                     "kind": "global",
@@ -75,7 +81,7 @@ class EntityResolutionService:
                     "name": exact["canonical"],
                     "type": exact.get("type") or request.get("type") or "other",
                     "status": exact.get("status"),
-                    "method": "fixed_alias",
+                    "method": exact.get("method") or "fixed_alias",
                 }
         return resolved
 
