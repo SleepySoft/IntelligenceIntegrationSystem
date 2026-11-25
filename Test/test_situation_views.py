@@ -797,8 +797,9 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert ".call(graphDragBehavior).call(graphZoomBehavior)" in embedded_html
     assert 'id="release-pinned-nodes" disabled' in embedded_html
     assert "const pinnedGraphPositions = new Map();" in embedded_html
-    assert "event.sourceEvent?.shiftKey || pinnedGraphPositions.has(node.id)" in embedded_html
-    assert "if (!node._pinAfterDrag && !event.active)" in embedded_html
+    assert "function toggleGraphNodePin(node)" in embedded_html
+    assert "node._keepPinnedAfterDrag = pinnedGraphPositions.has(node.id)" in embedded_html
+    assert "if (event.shiftKey)" in embedded_html
     assert "bestDistance = 4.5 / graphTransform.k" in embedded_html
     assert "selectedGraphElement.entity_id === hit.value.id" in embedded_html
     assert "event.key === 'Escape' && selectedGraphElement" in embedded_html

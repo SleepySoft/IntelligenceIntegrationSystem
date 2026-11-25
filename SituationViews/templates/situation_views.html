@@ -361,7 +361,7 @@
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
                     <label>{{ _('Network size ≥') }} <input id="component-min-size" type="number" min="{{ 1 if viewer_logged_in else 5 }}" max="200" value="5" style="width:52px"> {{ _('nodes') }}</label>
                     <label>{{ _('Corroboration ≥') }} <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> {{ _('independent events') }}</label>
-                    <span class="muted">{{ _('Shift+drag a node to move it without disturbing the layout and pin it. Double-click a pinned node to release it.') }}</span>
+                    <span class="muted">{{ _('Shift+click a node to pin or release it. Pinned nodes stay in place while normal dragging continues to move the surrounding network.') }}</span>
                     <button type="button" id="release-pinned-nodes" disabled>{{ _('Release pinned nodes') }}</button>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
@@ -1556,6 +1556,14 @@ function updatePinnedGraphControls() {
     $('release-pinned-nodes').disabled = pinnedGraphPositions.size === 0;
 }
 
+function pinGraphNode(node) {
+    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+    pinnedGraphPositions.set(node.id, {x: node.x, y: node.y});
+    node.fx = node.x; node.fy = node.y;
+    updatePinnedGraphControls();
+    scheduleGraphCanvasDraw();
+}
+
 function releaseGraphNode(node, restart = true) {
     if (!node) return;
     pinnedGraphPositions.delete(node.id);
@@ -1563,6 +1571,11 @@ function releaseGraphNode(node, restart = true) {
     updatePinnedGraphControls();
     if (restart) graphSimulation?.alpha(.35).restart();
     scheduleGraphCanvasDraw();
+}
+
+function toggleGraphNodePin(node) {
+    if (pinnedGraphPositions.has(node.id)) releaseGraphNode(node);
+    else pinGraphNode(node);
 }
 
 function releaseAllGraphNodes() {
@@ -1757,11 +1770,9 @@ function renderGraph() {
         })
         .on('start', event => {
             const node = event.subject;
-            node._pinAfterDrag = Boolean(
-                event.sourceEvent?.shiftKey || pinnedGraphPositions.has(node.id));
-            // 固定拖动是局部检查动作：不重新加热仿真，避免其它高连接节点跟随贴近。
-            if (node._pinAfterDrag) graphSimulation?.stop();
-            else if (!event.active) graphSimulation?.alphaTarget(.25).restart();
+            node._keepPinnedAfterDrag = pinnedGraphPositions.has(node.id);
+            // 拖动始终维持力导向响应；固定节点只是不被其它力移动，仍可作为锚点牵引周边。
+            if (!event.active) graphSimulation?.alphaTarget(.25).restart();
             const [x, y] = graphCanvasWorldPoint(event);
             node.x = x; node.y = y; node.fx = x; node.fy = y;
             canvas.style.cursor = 'grabbing';
@@ -1775,14 +1786,14 @@ function renderGraph() {
         })
         .on('end', event => {
             const node = event.subject;
-            if (!node._pinAfterDrag && !event.active) graphSimulation?.alphaTarget(0);
-            if (node._pinAfterDrag) {
+            if (!event.active) graphSimulation?.alphaTarget(0);
+            if (node._keepPinnedAfterDrag) {
                 pinnedGraphPositions.set(node.id, {x: node.x, y: node.y});
                 node.fx = node.x; node.fy = node.y;
             } else {
                 node.fx = null; node.fy = null;
             }
-            delete node._pinAfterDrag;
+            delete node._keepPinnedAfterDrag;
             updatePinnedGraphControls();
             canvas.style.cursor = 'grab';
             scheduleGraphCanvasDraw();
@@ -1800,6 +1811,10 @@ function renderGraph() {
         const hit = graphCanvasHit(event);
         if (!hit) clearGraphSelection();
         else if (hit.type === 'node') {
+            if (event.shiftKey) {
+                toggleGraphNodePin(hit.value);
+                return;
+            }
             if (selectedGraphElement?.type === 'node'
                     && selectedGraphElement.entity_id === hit.value.id) clearGraphSelection();
             else selectGraphNode(hit.value);

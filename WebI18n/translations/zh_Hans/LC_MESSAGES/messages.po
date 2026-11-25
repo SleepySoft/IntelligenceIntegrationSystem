@@ -1897,9 +1897,9 @@ msgstr "起独立事件"
 
 #: SituationViews/templates/situation_views.html:364
 msgid ""
-"Shift+drag a node to move it without disturbing the layout and pin it. "
-"Double-click a pinned node to release it."
-msgstr "按住 Shift 拖动节点可在不扰动整体布局的情况下移动并固定；双击固定节点可解除固定。"
+"Shift+click a node to pin or release it. Pinned nodes stay in place while "
+"normal dragging continues to move the surrounding network."
+msgstr "按住 Shift 单击节点可固定或解除固定；固定节点保持原位，普通拖动仍会带动周边网络调整。"
 
 #: SituationViews/templates/situation_views.html:365
 msgid "Release pinned nodes"
