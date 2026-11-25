@@ -964,6 +964,18 @@ def test_sparse_entity_graph_adapts_initial_component_filter():
     assert "graphFilterCustomized = true" in template
 
 
+def test_all_edge_labels_are_unlimited_and_suppressed_while_graph_moves():
+    template = Path("SituationViews/templates/situation_views.html").read_text(
+        encoding="utf-8")
+
+    assert ".slice(0, showAllEdgeLabels ? edges.length : 150)" in template
+    assert "showAllEdgeLabels ? 800" not in template
+    assert "return graphSimulationActive || graphDragActive || graphZoomActive" in template
+    assert "if (!labelsMoving && (showAllEdgeLabels" in template
+    assert "Graph moving · edge labels hidden (0/{total})" in template
+    assert "Edge labels {shown}/{total}" in template
+
+
 def test_frontend_asset_uses_verified_persistent_cache_when_upstream_is_down(
         monkeypatch, tmp_path):
     import SituationViews.web as web_module

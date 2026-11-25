@@ -482,6 +482,8 @@ window.IIS_I18N_MESSAGES = Object.assign(window.IIS_I18N_MESSAGES || {}, {
     edge_color_event_category: {{ _('Edge color · Event category')|tojson }},
     dashed_edge_negation: {{ _('Dashed edge · Contains negated events (✗ all / ◐ some)')|tojson }},
     show_all_edge_labels: {{ _('Show all edge labels (useful for inspection, but may look crowded)')|tojson }},
+    edge_labels_count: {{ _('Edge labels {shown}/{total}')|tojson }},
+    edge_labels_moving: {{ _('Graph moving · edge labels hidden (0/{total})')|tojson }},
     all_selected: {{ _('All selected')|tojson }},
     select_all_count: {{ _('Select all ({selected}/{total} selected)')|tojson }},
     expand: {{ _('Expand')|tojson }},
@@ -668,6 +670,8 @@ const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='c
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
+let graphSimulationActive = false, graphDragActive = false, graphZoomActive = false;
+let graphEdgeLabelStatusText = '';
 let graphZoomBehavior = null, graphTransform = d3.zoomIdentity, graphRenderState = null;
 let graphRenderFrame = 0, renderedGraphNodes = new Map();
 let graphDetailPromise = null, graphRequestOptions = null, graphRequestRevision = 0;
@@ -791,7 +795,7 @@ function graphLegendHtml() {
         <span class="legend-heading">${tr('dashed_edge_negation')}</span>
         <label class="legend-heading" style="cursor:pointer;display:inline-flex;gap:6px;align-items:center">
             <input type="checkbox" id="show-all-edge-labels" ${showAllEdgeLabels ? 'checked' : ''}> ${tr('show_all_edge_labels')}
-        </label>`;
+        </label><span class="muted" id="edge-label-count" style="font-size:11px"></span>`;
 }
 
 function syncCategoryFilters() {
@@ -1513,6 +1517,26 @@ function scheduleGraphCanvasDraw() {
     });
 }
 
+function graphEdgeLabelsMoving() {
+    return graphSimulationActive || graphDragActive || graphZoomActive;
+}
+
+function setGraphMotion(source, moving) {
+    if (source === 'simulation') graphSimulationActive = moving;
+    else if (source === 'drag') graphDragActive = moving;
+    else if (source === 'zoom') graphZoomActive = moving;
+    scheduleGraphCanvasDraw();
+}
+
+function updateGraphEdgeLabelStatus(shown, total, moving = false) {
+    const element = $('edge-label-count');
+    const text = !showAllEdgeLabels ? '' : tr(
+        moving ? 'edge_labels_moving' : 'edge_labels_count', {shown, total});
+    if (text === graphEdgeLabelStatusText) return;
+    graphEdgeLabelStatusText = text;
+    if (element) element.textContent = text;
+}
+
 function graphCanvasSize(canvas) {
     const width = canvas.clientWidth || 900, height = canvas.clientHeight || 680;
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
@@ -1569,7 +1593,10 @@ function releaseGraphNode(node, restart = true) {
     pinnedGraphPositions.delete(node.id);
     node.fx = null; node.fy = null;
     updatePinnedGraphControls();
-    if (restart) graphSimulation?.alpha(.35).restart();
+    if (restart && graphSimulation) {
+        setGraphMotion('simulation', true);
+        graphSimulation.alpha(.35).restart();
+    }
     scheduleGraphCanvasDraw();
 }
 
@@ -1582,7 +1609,10 @@ function releaseAllGraphNodes() {
     pinnedGraphPositions.clear();
     (graphRenderState?.nodes || []).forEach(node => { node.fx = null; node.fy = null; });
     updatePinnedGraphControls();
-    graphSimulation?.alpha(.45).restart();
+    if (graphSimulation) {
+        setGraphMotion('simulation', true);
+        graphSimulation.alpha(.45).restart();
+    }
     scheduleGraphCanvasDraw();
 }
 
@@ -1673,11 +1703,15 @@ function drawGraphCanvas() {
         context.strokeStyle = panel; context.strokeText(label, node.x, y);
         context.fillStyle = text; context.fillText(label, node.x, y);
     }
-    if (showAllEdgeLabels || transform.k >= 1.35) {
+    const visibleEdges = edges.filter(edge => edge._timeVisible !== false
+        && edge.source && edge.target);
+    const labelsMoving = graphEdgeLabelsMoving();
+    if (!labelsMoving && (showAllEdgeLabels || transform.k >= 1.35)) {
         const candidates = edges.filter(edge => edge._timeVisible !== false
+            && edge.source && edge.target
             && (showAllEdgeLabels || edge.support >= 2))
             .sort((a, b) => b.support - a.support)
-            .slice(0, showAllEdgeLabels ? 800 : 150);
+            .slice(0, showAllEdgeLabels ? edges.length : 150);
         context.textBaseline = 'bottom';
         for (const edge of candidates) {
             const relevant = !selection.selected || selection.edges.has(edge);
@@ -1688,6 +1722,9 @@ function drawGraphCanvas() {
             context.strokeStyle = panel; context.strokeText(label, x, y);
             context.fillStyle = text; context.fillText(label, x, y);
         }
+        updateGraphEdgeLabelStatus(candidates.length, visibleEdges.length);
+    } else {
+        updateGraphEdgeLabelStatus(0, visibleEdges.length, labelsMoving);
     }
     context.globalAlpha = 1;
 }
@@ -1748,6 +1785,7 @@ function renderGraph() {
     renderedGraphNodes = new Map(nodes.map(item => [item.id, item]));
     renderGraphSearchResults();
     if (graphSimulation) graphSimulation.stop();
+    graphSimulationActive = graphDragActive = graphZoomActive = false;
     graphTransform = d3.zoomIdentity;
     const radius = d3.scaleSqrt()
         .domain([1, d3.max(nodes, d => d.importance) || 1]).range([4, 16]);
@@ -1759,10 +1797,13 @@ function renderGraph() {
         applyGraphTemporalFilter = () => {};
         return;
     }
-    graphZoomBehavior = d3.zoom().scaleExtent([.12, 8]).on('zoom', event => {
-        graphTransform = event.transform;
-        scheduleGraphCanvasDraw();
-    });
+    graphZoomBehavior = d3.zoom().scaleExtent([.12, 8])
+        .on('start', () => setGraphMotion('zoom', true))
+        .on('zoom', event => {
+            graphTransform = event.transform;
+            scheduleGraphCanvasDraw();
+        })
+        .on('end', () => setGraphMotion('zoom', false));
     const graphDragBehavior = d3.drag()
         .subject(event => {
             const hit = graphCanvasHit(event.sourceEvent);
@@ -1770,9 +1811,13 @@ function renderGraph() {
         })
         .on('start', event => {
             const node = event.subject;
+            setGraphMotion('drag', true);
             node._keepPinnedAfterDrag = pinnedGraphPositions.has(node.id);
             // 拖动始终维持力导向响应；固定节点只是不被其它力移动，仍可作为锚点牵引周边。
-            if (!event.active) graphSimulation?.alphaTarget(.25).restart();
+            if (!event.active && graphSimulation) {
+                setGraphMotion('simulation', true);
+                graphSimulation.alphaTarget(.25).restart();
+            }
             const [x, y] = graphCanvasWorldPoint(event);
             node.x = x; node.y = y; node.fx = x; node.fy = y;
             canvas.style.cursor = 'grabbing';
@@ -1794,6 +1839,7 @@ function renderGraph() {
                 node.fx = null; node.fy = null;
             }
             delete node._keepPinnedAfterDrag;
+            setGraphMotion('drag', false);
             updatePinnedGraphControls();
             canvas.style.cursor = 'grab';
             scheduleGraphCanvasDraw();
@@ -1840,6 +1886,7 @@ function renderGraph() {
         }
     };
     canvas.onmouseleave = () => hideTooltip('graph-tooltip');
+    graphSimulationActive = true;
     graphSimulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(edges).id(d => d.id)
             .distance(d => 55 + Math.min(70, 130 / Math.max(1, d.support))).strength(.3))
@@ -1848,7 +1895,7 @@ function renderGraph() {
         .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 5).strength(.7))
         .alphaDecay(.06).velocityDecay(.48)
         .on('tick', scheduleGraphCanvasDraw)
-        .on('end', scheduleGraphCanvasDraw);
+        .on('end', () => setGraphMotion('simulation', false));
     relabelGraphEdges = scheduleGraphCanvasDraw;
     scheduleGraphCanvasDraw();
 

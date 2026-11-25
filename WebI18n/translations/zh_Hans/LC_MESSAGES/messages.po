@@ -2073,6 +2073,16 @@ msgstr "虚线边 · 含否定事件（✗ 全部否定 / ◐ 部分）"
 msgid "Show all edge labels (useful for inspection, but may look crowded)"
 msgstr "显示全部边标签（便于查看，但可能比较拥挤）"
 
+#: SituationViews/templates/situation_views.html
+#, python-brace-format
+msgid "Edge labels {shown}/{total}"
+msgstr "边标签 {shown}/{total}"
+
+#: SituationViews/templates/situation_views.html
+#, python-brace-format
+msgid "Graph moving · edge labels hidden (0/{total})"
+msgstr "图谱移动中 · 暂时隐藏边标签（0/{total}）"
+
 #: SituationViews/templates/situation_views.html:482
 #, python-brace-format
 msgid "Select all ({selected}/{total} selected)"
