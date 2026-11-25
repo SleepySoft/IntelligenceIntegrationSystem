@@ -795,6 +795,10 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "edge.source = source; edge.target = target;" in embedded_html
     assert "const graphDragBehavior = d3.drag()" in embedded_html
     assert ".call(graphDragBehavior).call(graphZoomBehavior)" in embedded_html
+    assert 'id="release-pinned-nodes" disabled' in embedded_html
+    assert "const pinnedGraphPositions = new Map();" in embedded_html
+    assert "event.sourceEvent?.shiftKey || pinnedGraphPositions.has(node.id)" in embedded_html
+    assert "if (!node._pinAfterDrag && !event.active)" in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden' in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden' in embedded_html
     assert 'data-drawer-summary="map-intelligence-panel" aria-expanded="false"' in embedded_html

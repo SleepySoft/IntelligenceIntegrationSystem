@@ -1895,6 +1895,16 @@ msgstr "印证 ≥"
 msgid "independent events"
 msgstr "起独立事件"
 
+#: SituationViews/templates/situation_views.html:364
+msgid ""
+"Shift+drag a node to move it without disturbing the layout and pin it. "
+"Double-click a pinned node to release it."
+msgstr "按住 Shift 拖动节点可在不扰动整体布局的情况下移动并固定；双击固定节点可解除固定。"
+
+#: SituationViews/templates/situation_views.html:365
+msgid "Release pinned nodes"
+msgstr "解除全部固定"
+
 #: SituationViews/templates/situation_views.html:372
 msgid "Select an entity or relationship to show its intelligence count"
 msgstr "选择实体或关系后显示情报数量"

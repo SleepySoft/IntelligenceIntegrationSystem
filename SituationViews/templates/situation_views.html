@@ -361,6 +361,8 @@
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
                     <label>{{ _('Network size ≥') }} <input id="component-min-size" type="number" min="{{ 1 if viewer_logged_in else 5 }}" max="200" value="5" style="width:52px"> {{ _('nodes') }}</label>
                     <label>{{ _('Corroboration ≥') }} <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> {{ _('independent events') }}</label>
+                    <span class="muted">{{ _('Shift+drag a node to move it without disturbing the layout and pin it. Double-click a pinned node to release it.') }}</span>
+                    <button type="button" id="release-pinned-nodes" disabled>{{ _('Release pinned nodes') }}</button>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
                 <div class="legend" id="graph-legend"></div>
@@ -669,6 +671,7 @@ let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
 let graphZoomBehavior = null, graphTransform = d3.zoomIdentity, graphRenderState = null;
 let graphRenderFrame = 0, renderedGraphNodes = new Map();
 let graphDetailPromise = null, graphRequestOptions = null, graphRequestRevision = 0;
+const pinnedGraphPositions = new Map();
 let mapSearchContext = null;
 let applyMapTemporalFilter = null, applyGraphTemporalFilter = null;
 const temporalRanges = {map: null, graph: null};
@@ -1549,6 +1552,27 @@ function graphNodeDrawRadius(node, transform = graphTransform) {
     return Math.max(base, 4.5 / Math.max(transform?.k || 1, .001));
 }
 
+function updatePinnedGraphControls() {
+    $('release-pinned-nodes').disabled = pinnedGraphPositions.size === 0;
+}
+
+function releaseGraphNode(node, restart = true) {
+    if (!node) return;
+    pinnedGraphPositions.delete(node.id);
+    node.fx = null; node.fy = null;
+    updatePinnedGraphControls();
+    if (restart) graphSimulation?.alpha(.35).restart();
+    scheduleGraphCanvasDraw();
+}
+
+function releaseAllGraphNodes() {
+    pinnedGraphPositions.clear();
+    (graphRenderState?.nodes || []).forEach(node => { node.fx = null; node.fy = null; });
+    updatePinnedGraphControls();
+    graphSimulation?.alpha(.45).restart();
+    scheduleGraphCanvasDraw();
+}
+
 function drawGraphCanvas() {
     if (!graphRenderState) return;
     const {canvas, context, nodes, edges, radius, edgeScale} = graphRenderState;
@@ -1606,6 +1630,15 @@ function drawGraphCanvas() {
         context.lineWidth = (selection.selected && node.id === selection.selected.entity_id ? 4 : 2) / transform.k;
         context.beginPath(); context.arc(node.x, node.y, graphNodeDrawRadius(node, transform), 0, Math.PI * 2);
         context.fill(); context.stroke();
+        if (pinnedGraphPositions.has(node.id)) {
+            context.strokeStyle = '#f59e0b';
+            context.lineWidth = 2 / transform.k;
+            context.setLineDash([3 / transform.k, 2 / transform.k]);
+            context.beginPath();
+            context.arc(node.x, node.y, graphNodeDrawRadius(node, transform) + 4 / transform.k, 0, Math.PI * 2);
+            context.stroke();
+            context.setLineDash([]);
+        }
     }
 
     // 标签按缩放级别和视口绘制；拓扑仍完整，避免为不可读文字制造数千 DOM。
@@ -1692,6 +1725,12 @@ function renderGraph() {
     const context = canvas.getContext('2d');
     const {width, height} = graphCanvasSize(canvas);
     const {nodes, edges} = filterGraphData();
+    nodes.forEach(node => {
+        const pinned = pinnedGraphPositions.get(node.id);
+        if (!pinned) return;
+        node.x = pinned.x; node.y = pinned.y;
+        node.fx = pinned.x; node.fy = pinned.y;
+    });
     renderedGraphNodes = new Map(nodes.map(item => [item.id, item]));
     renderGraphSearchResults();
     if (graphSimulation) graphSimulation.stop();
@@ -1717,26 +1756,44 @@ function renderGraph() {
         })
         .on('start', event => {
             const node = event.subject;
-            if (!event.active) graphSimulation?.alphaTarget(.25).restart();
+            node._pinAfterDrag = Boolean(
+                event.sourceEvent?.shiftKey || pinnedGraphPositions.has(node.id));
+            // 固定拖动是局部检查动作：不重新加热仿真，避免其它高连接节点跟随贴近。
+            if (node._pinAfterDrag) graphSimulation?.stop();
+            else if (!event.active) graphSimulation?.alphaTarget(.25).restart();
             const [x, y] = graphCanvasWorldPoint(event);
-            node.fx = x; node.fy = y;
+            node.x = x; node.y = y; node.fx = x; node.fy = y;
             canvas.style.cursor = 'grabbing';
             hideTooltip('graph-tooltip');
         })
         .on('drag', event => {
             const node = event.subject;
             const [x, y] = graphCanvasWorldPoint(event);
-            node.fx = x; node.fy = y;
+            node.x = x; node.y = y; node.fx = x; node.fy = y;
             scheduleGraphCanvasDraw();
         })
         .on('end', event => {
             const node = event.subject;
-            if (!event.active) graphSimulation?.alphaTarget(0);
-            node.fx = null; node.fy = null;
+            if (!node._pinAfterDrag && !event.active) graphSimulation?.alphaTarget(0);
+            if (node._pinAfterDrag) {
+                pinnedGraphPositions.set(node.id, {x: node.x, y: node.y});
+                node.fx = node.x; node.fy = node.y;
+            } else {
+                node.fx = null; node.fy = null;
+            }
+            delete node._pinAfterDrag;
+            updatePinnedGraphControls();
             canvas.style.cursor = 'grab';
+            scheduleGraphCanvasDraw();
         });
     // drag 先注册：命中节点时由 drag 接管；未命中时 subject 返回 null，事件继续交给 zoom 平移。
     d3.select(canvas).call(graphDragBehavior).call(graphZoomBehavior).on('dblclick.zoom', null);
+    canvas.ondblclick = event => {
+        const hit = graphCanvasHit(event);
+        if (hit?.type !== 'node' || !pinnedGraphPositions.has(hit.value.id)) return;
+        event.preventDefault(); event.stopPropagation();
+        releaseGraphNode(hit.value);
+    };
     canvas.onclick = event => {
         if (event.defaultPrevented) return;
         const hit = graphCanvasHit(event);
@@ -2128,6 +2185,7 @@ $('component-min-size').addEventListener('change', e => {
     e.target.value = componentMinSize;
     renderGraph();
 });
+$('release-pinned-nodes').addEventListener('click', releaseAllGraphNodes);
 const _supportInput = $('graph-support-min');
 _supportInput.min = DASHBOARD_PROFILE.min_support || 1;
 _supportInput.value = graphSupportMin;
