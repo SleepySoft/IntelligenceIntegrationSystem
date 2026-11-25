@@ -99,7 +99,8 @@ class ViewQuery:
     min_score: float = 6.0
     categories: frozenset[str] | None = None
     primary_only: bool = True
-    max_articles: int = 5000
+    # 0 表示完整读取时间窗口；正数只作为显式的资源保护上限。
+    max_articles: int = 0
 
 
 class SituationViewEngine:
@@ -368,8 +369,8 @@ class SituationViewEngine:
         query: ViewQuery,
         *,
         min_support: int = 2,
-        max_nodes: int = 80,
-        max_edges: int = 240,
+        max_nodes: int = 0,
+        max_edges: int = 0,
         keep_high_score_singletons: bool = True,
         entity_types: frozenset[str] | None = None,
     ) -> dict[str, Any]:
@@ -468,11 +469,17 @@ class SituationViewEngine:
         for edge in retained:
             importance[edge["source"]] += edge["support"]
             importance[edge["target"]] += edge["support"]
-        selected_nodes = {key for key, _ in importance.most_common(max_nodes)}
+        selected_nodes = (
+            set(importance)
+            if max_nodes <= 0
+            else {key for key, _ in importance.most_common(max_nodes)}
+        )
         retained = [
             edge for edge in retained
             if edge["source"] in selected_nodes and edge["target"] in selected_nodes
-        ][:max_edges]
+        ]
+        if max_edges > 0:
+            retained = retained[:max_edges]
         selected_nodes = {value for edge in retained for value in (edge["source"], edge["target"])}
 
         # 剔除被节点/边上限淘汰后已经没有任何引用的时间记录，并重排为连续下标。
@@ -1136,9 +1143,21 @@ class SituationViewEngine:
                 appendix_path(APPENDIX_TIME_GOT): 1,
                 appendix_path(APPENDIX_TIME_ARCHIVED): 1,
             })
-        cursor = self.intelligence_collection.find(archive_filter, projection).limit(query.max_articles + 1)
+        cursor = self.intelligence_collection.find(archive_filter, projection)
+        # 完整窗口仍必须有稳定顺序；显式设置保护上限时保留最新文章，不能依赖
+        # MongoDB 的自然顺序随机截取。
+        try:
+            cursor = cursor.sort([
+                (appendix_path(APPENDIX_CONTENT_TIME), -1),
+                ("UUID", -1),
+            ])
+        except (AttributeError, TypeError):
+            # 测试替身和少数兼容集合没有 pymongo Cursor.sort。
+            pass
+        if query.max_articles > 0:
+            cursor = cursor.limit(query.max_articles + 1)
         archives = list(cursor)
-        truncated = len(archives) > query.max_articles
+        truncated = query.max_articles > 0 and len(archives) > query.max_articles
         if truncated:
             archives = archives[:query.max_articles]
 

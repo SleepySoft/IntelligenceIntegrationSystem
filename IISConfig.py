@@ -209,12 +209,12 @@ class SituationSettings(_StrictModel):
     # 态势看板细节参数（与 SituationViews._dashboard_profile 的界限保持一致）
     min_support: int = Field(2, ge=1, le=50, description=iis_msg(
         "Minimum number of independent events required to display an entity relationship."))
-    max_nodes: int = Field(80, ge=10, le=5000, description=iis_msg(
-        "Maximum entity nodes returned by one relationship graph calculation."))
-    max_edges: int = Field(240, ge=10, le=20000, description=iis_msg(
-        "Maximum relationship edges returned by one graph calculation."))
-    max_articles: int = Field(5000, ge=100, le=20000, description=iis_msg(
-        "Maximum intelligence articles scanned by one situation calculation."))
+    max_nodes: int = Field(0, ge=0, le=5000, description=iis_msg(
+        "Maximum entity nodes returned by one relationship graph calculation; 0 keeps all nodes."))
+    max_edges: int = Field(0, ge=0, le=20000, description=iis_msg(
+        "Maximum relationship edges returned by one graph calculation; 0 keeps all edges."))
+    max_articles: int = Field(0, ge=0, le=20000, description=iis_msg(
+        "Maximum intelligence articles scanned by one situation calculation; 0 scans the full time window."))
     primary_only: bool = Field(True, description=iis_msg(
         "Build relationship graphs from primary events only."))
     keep_high_score_singletons: bool = Field(True, description=iis_msg(

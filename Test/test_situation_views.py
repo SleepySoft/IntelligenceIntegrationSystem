@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +23,17 @@ from SituationViews.web import SituationViewsService
 class FakeCursor(list):
     def limit(self, count):
         return FakeCursor(self[:count])
+
+    def sort(self, fields):
+        def nested(item, path):
+            value = item
+            for part in path.split("."):
+                value = (value or {}).get(part)
+            return value
+        assert all(direction == -1 for _path, direction in fields)
+        return FakeCursor(sorted(
+            self, key=lambda item: tuple(nested(item, path) for path, _ in fields),
+            reverse=True))
 
 
 class FakeCollection:
@@ -121,6 +133,46 @@ def test_situation_uses_separate_fixed_event_projections():
     assert "EVENT_BRIEF" not in archives.projections[0]
     assert "EVENT_BRIEF" not in archives.projections[1]
     assert archives.projections[2]["EVENT_BRIEF"] == 1
+
+
+def test_zero_article_limit_reads_the_complete_window():
+    now = datetime.now(timezone.utc)
+    archives = [_archive(str(index), now - timedelta(minutes=index), 7)
+                for index in range(120)]
+    events = [_attack(f"e{index}", str(index), f"行动方{index}", f"目标{index}")
+              for index in range(120)]
+    engine = SituationViewEngine(
+        FakeCollection(archives), FakeCollection(events), DEFAULT_EVENT_REGISTRY)
+
+    result = engine.map_view(ViewQuery(
+        now - timedelta(days=1), now + timedelta(minutes=1), max_articles=0))
+
+    assert result["meta"]["event_count"] == 120
+    assert result["meta"]["truncated"] is False
+
+
+def test_positive_article_limit_keeps_the_latest_documents_stably():
+    now = datetime.now(timezone.utc)
+    archives = [
+        _archive("old", now - timedelta(hours=3), 7),
+        _archive("new", now, 7),
+        _archive("middle", now - timedelta(hours=1), 7),
+    ]
+    events = [
+        _attack("old-event", "old", "旧行动方", "旧目标"),
+        _attack("new-event", "new", "新行动方", "新目标"),
+        _attack("middle-event", "middle", "中行动方", "中目标"),
+    ]
+    engine = SituationViewEngine(
+        FakeCollection(archives), FakeCollection(events), DEFAULT_EVENT_REGISTRY)
+
+    result = engine.map_view(ViewQuery(
+        now - timedelta(days=1), now + timedelta(minutes=1), max_articles=2))
+
+    assert result["meta"]["truncated"] is True
+    assert {row[1] for hotspot in result["hotspots"] for row in hotspot["timeline"]} == {
+        "new-event", "middle-event",
+    }
 
 
 def test_map_view_accepts_multiple_event_categories():
@@ -646,6 +698,12 @@ def test_web_service_serves_both_views_with_injected_collections():
     })
     map_payload = client.get("/situation/api/map", query_string=params)
     graph_payload = client.get("/situation/api/entity-graph", query_string=params)
+    topology_payload = client.get(
+        "/situation/api/entity-graph",
+        query_string={**params, "detail_level": "topology"},
+    )
+    detail_payload = client.get(
+        "/situation/api/entity-graph/details", query_string=params)
     large_graph_payload = client.get(
         "/situation/api/entity-graph",
         query_string={**params, "max_nodes": "5000", "max_edges": "20000"},
@@ -726,7 +784,17 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "cdn.jsdelivr.net" not in embedded_html
     assert '"min_score": 6.0' in embedded_html
     assert 'id="graph-selection-detail" hidden' in embedded_html
-    assert 'id="max-nodes" type="number" min="10" max="5000"' in embedded_html
+    assert 'id="max-nodes" type="number" min="0" max="5000"' in embedded_html
+    assert 'id="component-min-size" type="number" min="5" max="200" value="5"' in embedded_html
+    assert "const GRAPH_COMPONENT_MIN_FLOOR = 5;" in embedded_html
+    assert "let componentMinSize = 5" in embedded_html
+    assert '<canvas id="graph-svg"' in embedded_html
+    assert "function drawGraphCanvas()" in embedded_html
+    assert "function graphNodeDrawRadius(" in embedded_html
+    assert "function mergeGraphEdgeDetails(" in embedded_html
+    assert "edge.source = source; edge.target = target;" in embedded_html
+    assert "const graphDragBehavior = d3.drag()" in embedded_html
+    assert ".call(graphDragBehavior).call(graphZoomBehavior)" in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="map-intelligence-panel" hidden' in embedded_html
     assert 'class="intelligence-panel is-collapsed" id="graph-intelligence-panel" hidden' in embedded_html
     assert 'data-drawer-summary="map-intelligence-panel" aria-expanded="false"' in embedded_html
@@ -814,9 +882,8 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert "const lookupName = String(d.wiki_name || d.name || '').trim()" in embedded_html
     assert "$('graph-detail').innerHTML" not in embedded_html
     assert "detail.innerHTML = ''" in embedded_html
-    assert ".attr('class','edge-arrow').attr('marker-end','url(#arrow)')" in embedded_html
-    assert embedded_html.index("const labels = root.append('g')") < embedded_html.index(
-        "const arrowLines = root.append('g')")
+    assert "if (edge.directed && relevant)" in embedded_html
+    assert "context.closePath(); context.fill();" in embedded_html
     assert scoped_map.status_code == 200
     assert scoped_map.get_json()["meta"]["hotspot_count"] == 1
     assert map_payload.status_code == 200
@@ -826,11 +893,18 @@ def test_web_service_serves_both_views_with_injected_collections():
     assert graph_payload.get_json()["meta"]["edge_count"] == 1
     assert graph_payload.get_json()["edges"][0]["event_refs"] == [0]
     assert graph_payload.get_json()["temporal_events"][0][1] == "a"
+    assert topology_payload.status_code == 200
+    assert topology_payload.get_json()["meta"]["detail_level"] == "topology"
+    assert "surfaces" not in topology_payload.get_json()["nodes"][0]
+    assert "event_refs" in topology_payload.get_json()["nodes"][0]
+    assert detail_payload.status_code == 200
+    assert detail_payload.get_json()["meta"]["detail_level"] == "details"
+    assert "surfaces" in next(iter(detail_payload.get_json()["nodes"].values()))
     assert large_graph_payload.status_code == 200
     assert large_graph_payload.get_json()["meta"]["node_count"] == 2
     assert large_graph_payload.get_json()["meta"]["edge_count"] == 1
     assert excessive_graph_payload.status_code == 400
-    assert "10 到 5000" in excessive_graph_payload.get_json()["error"]
+    assert "0 到 5000" in excessive_graph_payload.get_json()["error"]
     assert timeline_payload.status_code == 200
     assert timeline_payload.get_json()["events"][0]["id"] == "e1"
     assert timeline_over_limit.status_code == 400
@@ -866,6 +940,11 @@ def test_frontend_assets_are_same_origin_cached_and_allowlisted(monkeypatch):
     assert response.headers["Cache-Control"] == "public, max-age=604800"
     assert response.headers["Content-Type"] == "application/javascript; charset=utf-8"
     assert client.get("/situation/assets/not-allowed.js").status_code == 404
+
+    compressed = client.get(
+        "/situation/embed/map", headers={"Accept-Encoding": "gzip"})
+    assert compressed.headers["Content-Encoding"] == "gzip"
+    assert b'<section id="map-view"' in gzip.decompress(compressed.data)
 
 
 def test_sparse_entity_graph_adapts_initial_component_filter():

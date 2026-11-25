@@ -145,7 +145,9 @@
         .entity-title-row button { min-height: 28px; padding: 3px 8px; font-size: 12px; white-space: nowrap; }
         .status { position: absolute; inset: 0; display: none; place-items: center; background: color-mix(in srgb, var(--panel) 82%, transparent); z-index: 5; }
         .status.show { display: grid; }
-        svg { width: 100%; height: 680px; display: block; touch-action: none; }
+        svg, #graph-svg { width: 100%; height: 680px; display: block; touch-action: none; }
+        #graph-svg { cursor: grab; }
+        #graph-svg:active { cursor: grabbing; }
         .sphere { fill: light-dark(#bfe3ff, #0b3557); stroke: light-dark(#76b8e8, #3279a8); }
         .country { fill: light-dark(#b9d99b, #3c6b4a); stroke: light-dark(#f6fff0, #83aa8d); stroke-width: .55px; }
         .graticule { fill: none; stroke: light-dark(#78b8e5, #39749b); stroke-width: .45px; opacity: .72; }
@@ -182,7 +184,7 @@
         .viewer-session a:hover { color: var(--text); text-decoration: underline; }
         .dashboard .layout { display: block; position: relative; }
         .dashboard .canvas { min-height: calc(100vh - 94px); }
-        .dashboard svg { height: calc(100vh - 94px); min-height: 620px; }
+        .dashboard svg, .dashboard #graph-svg { height: calc(100vh - 94px); min-height: 620px; }
         .dashboard .side { position: absolute; top: 12px; right: 12px; z-index: 8; width: min(330px, calc(100% - 72px)); min-height: 0; max-height: calc(100vh - 140px); overflow: auto; background: color-mix(in srgb, var(--panel) 78%, transparent); opacity: .78; box-shadow: 0 14px 38px color-mix(in srgb, #000 30%, transparent); backdrop-filter: blur(12px); transition: opacity .18s ease, background-color .18s ease; }
         .dashboard .side:hover, .dashboard .side:focus-within { background: var(--panel); opacity: 1; }
         .dashboard .side.is-collapsed { display: none; }
@@ -199,7 +201,7 @@
         .embedded .layout { min-height: 0; }
         .embedded header { display: none; }
         .embedded .canvas { height: 100%; min-height: 0; border-radius: 0; }
-        .embedded svg { height: 100%; min-height: 0; }
+        .embedded svg, .embedded #graph-svg { height: 100%; min-height: 0; }
         @media (max-width: 950px) {
             .filters { grid-template-columns: repeat(2, 1fr); }
             .layout { grid-template-columns: 1fr; }
@@ -213,7 +215,7 @@
             .header-actions { margin-top: 10px; justify-content: space-between; }
             .filters { grid-template-columns: 1fr; }
             .intelligence-list { grid-template-columns: 1fr; }
-            .canvas, svg { min-height: 520px; height: 520px; }
+            .canvas, svg, #graph-svg { min-height: 520px; height: 520px; }
             .intelligence-panel { bottom: 6px; width: calc(100vw - 12px); max-height: 72vh; }
         }
     </style>
@@ -330,7 +332,7 @@
         <div class="layout">
             <div class="canvas" id="graph-canvas">
                 <div class="status" id="graph-status">{{ _('Aggregating entity relationships…') }}</div>
-                <svg id="graph-svg" role="img" aria-label="{{ _('Entity actor-object relationship graph') }}" lang="{{ ui_locale|default('zh-CN') }}"></svg>
+                <canvas id="graph-svg" role="img" aria-label="{{ _('Entity actor-object relationship graph') }}" lang="{{ ui_locale|default('zh-CN') }}"></canvas>
                 <div class="tooltip" id="graph-tooltip"></div>
                 <button class="graph-search-open" type="button" id="graph-search-open">{{ _('Search') }} Ctrl+F</button>
                 <section class="graph-search-panel" id="graph-search-panel" aria-label="{{ _('Search entities') }}" hidden>
@@ -352,12 +354,12 @@
                 <h2>{{ _('Relationship graph settings') }}</h2>
                 <div class="graph-controls">
                     <label>{{ _('Minimum independent events') }}<input id="min-support" type="number" min="1" max="50" value="2"></label>
-                    <label>{{ _('Maximum nodes') }}<input id="max-nodes" type="number" min="10" max="{{ graph_max_nodes }}" value="80"></label>
+                    <label>{{ _('Maximum nodes') }}<input id="max-nodes" type="number" min="0" max="{{ graph_max_nodes }}" value="0"></label>
                     <label><span><input id="keep-singletons" type="checkbox" checked> {{ _('Keep high-score single relationships') }}</span></label>
                 </div>
                 <div id="graph-summary"></div>
                 <div style="font-size:12px;margin:10px 0;display:grid;gap:6px">
-                    <label>{{ _('Network size ≥') }} <input id="component-min-size" type="number" min="1" max="200" value="5" style="width:52px"> {{ _('nodes') }}</label>
+                    <label>{{ _('Network size ≥') }} <input id="component-min-size" type="number" min="{{ 1 if viewer_logged_in else 5 }}" max="200" value="5" style="width:52px"> {{ _('nodes') }}</label>
                     <label>{{ _('Corroboration ≥') }} <input id="graph-support-min" type="number" min="1" max="20" value="1" style="width:52px"> {{ _('independent events') }}</label>
                     <div class="muted" id="graph-filter-note" style="font-size:11px"></div>
                 </div>
@@ -652,6 +654,7 @@ const DASHBOARD_PROFILE = {{ dashboard_profile|tojson }};
 const API_PREFIX = {{ api_prefix|tojson }};
 const EDIT_API_PREFIX = {{ edit_api_prefix|tojson }};
 const ENTITY_EDIT_ENABLED = {{ entity_edit_enabled|tojson }};
+const GRAPH_COMPONENT_MIN_FLOOR = {{ (1 if viewer_logged_in else 5)|tojson }};
 const ALL_CATEGORY_KEYS = Object.keys(CATEGORY_LABELS);
 const selectedCategories = new Set(ALL_CATEGORY_KEYS);
 const ALL_ENTITY_TYPES = Object.keys(ENTITY_LABELS);
@@ -663,7 +666,9 @@ const COUNTRIES_URL = {{ url_for('situation_views.frontend_asset', asset_name='c
 let activeView = DASHBOARD_VIEW, mapData = null, graphData = null, worldResources = null, selectedCountry = null;
 let selectedGraphElement = null, selectedGraphRole = 'all', graphEvidenceOffset = 0, graphEvidenceRequest = 0;
 let showAllEdgeLabels = false, relabelGraphEdges = null, graphSimulation = null;
-let graphZoomBehavior = null, renderedGraphNodes = new Map();
+let graphZoomBehavior = null, graphTransform = d3.zoomIdentity, graphRenderState = null;
+let graphRenderFrame = 0, renderedGraphNodes = new Map();
+let graphDetailPromise = null, graphRequestOptions = null, graphRequestRevision = 0;
 let mapSearchContext = null;
 let applyMapTemporalFilter = null, applyGraphTemporalFilter = null;
 const temporalRanges = {map: null, graph: null};
@@ -1339,17 +1344,24 @@ function intelligenceDetailUrl(uuid) {
 }
 
 async function refreshGraph() {
+    const requestRevision = ++graphRequestRevision;
     clearGraphSelection();
     $('graph-status').classList.add('show');
     $('graph-status').textContent = tr('aggregating_entity_relations');
     try {
-        graphData = await loadJson(`${API_PREFIX}/entity-graph?${queryParams({
+        graphRequestOptions = {
             min_support: $('min-support').value,
             max_nodes: $('max-nodes').value,
             keep_high_score_singletons: $('keep-singletons').checked,
             entity_types: selectedEntityTypes.size === ALL_ENTITY_TYPES.length
                 ? '' : (selectedEntityTypes.size ? [...selectedEntityTypes].join(',') : '__none__')
+        };
+        const payload = await loadJson(`${API_PREFIX}/entity-graph?${queryParams({
+            ...graphRequestOptions, detail_level: 'topology'
         })}`);
+        if (requestRevision !== graphRequestRevision) return;
+        graphData = payload;
+        graphDetailPromise = null;
         adaptInitialComponentSize();
         temporalRanges.graph = null;
         renderGraph();
@@ -1361,9 +1373,56 @@ async function refreshGraph() {
     $('graph-status').classList.remove('show');
 }
 
+function graphDetailEdgeKey(edge) {
+    return `${graphNodeId(edge.source)}\u0000${graphNodeId(edge.target)}\u0000${edge.predicate}\u0000${edge.directed ? 1 : 0}`;
+}
+
+function mergeGraphEdgeDetails(edge, details) {
+    if (!details) return;
+    // forceLink 会把 source/target 从 ID 解析成节点对象。详情接口仍返回字符串 ID，
+    // 直接 Object.assign 会破坏正在运行的仿真，随后所有边都失去可绘制端点。
+    const source = edge.source, target = edge.target;
+    const sourceId = edge._sourceId, targetId = edge._targetId;
+    Object.assign(edge, details);
+    edge.source = source; edge.target = target;
+    edge._sourceId = sourceId; edge._targetId = targetId;
+}
+
+function ensureGraphDetails() {
+    if (!graphData || graphData.meta?.detail_level === 'full') return Promise.resolve();
+    if (graphDetailPromise) return graphDetailPromise;
+    const requestRevision = graphRequestRevision;
+    graphDetailPromise = loadJson(`${API_PREFIX}/entity-graph/details?${queryParams(graphRequestOptions || {})}`)
+        .then(details => {
+            if (requestRevision !== graphRequestRevision) return;
+            const nodeDetails = details.nodes || {};
+            const edgeDetails = new Map((details.edges || []).map(item => [graphDetailEdgeKey(item), item]));
+            const merge = collection => {
+                (collection?.nodes || []).forEach(node => Object.assign(node, nodeDetails[node.id] || {}));
+                (collection?.edges || []).forEach(edge =>
+                    mergeGraphEdgeDetails(edge, edgeDetails.get(graphDetailEdgeKey(edge))));
+            };
+            merge(graphData); merge(graphRenderState);
+            graphData.meta.detail_level = 'full';
+            renderGraphSearchResults(); scheduleGraphCanvasDraw();
+            if (selectedGraphElement?.type === 'node') {
+                const node = renderedGraphNodes.get(selectedGraphElement.entity_id);
+                if (node) showNodeDetail(node);
+            } else if (selectedGraphElement?.type === 'edge' && graphRenderState) {
+                const edge = graphRenderState.edges.find(item => graphEdgeMatches(item, selectedGraphElement));
+                if (edge) showEdgeDetail(edge);
+            }
+        })
+        .catch(error => {
+            if (requestRevision === graphRequestRevision) graphDetailPromise = null;
+            console.warn('实体图详情加载失败', error);
+        });
+    return graphDetailPromise;
+}
+
 // 前端过滤层：后端按配置出全量节点/边，前端再按“印证”与“连通网规模”过滤。
 // 印证下限 = 配置值（DASHBOARD_PROFILE.min_support），默认 2 且不得低于配置值；
-// 网络规模下限 = componentMinSize（只显示规模达到该值的连通网络）。
+// 网络规模默认 5；未登录视图不得降到 5 以下。
 let componentMinSize = 5, graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
 let graphFilterCustomized = false;
 
@@ -1391,7 +1450,7 @@ function adaptInitialComponentSize() {
     const largest = Math.max(0, ...sizes.values());
     // 新领域早期数据通常是若干 2～4 节点的小网络。默认阈值 5 若把全部
     // 关系过滤为空，就降到当前最大连通分量；用户手工设置后不再自动改写。
-    if (largest > 0 && largest < componentMinSize) {
+    if (GRAPH_COMPONENT_MIN_FLOOR < 5 && largest > 0 && largest < componentMinSize) {
         componentMinSize = largest;
         $('component-min-size').value = componentMinSize;
     }
@@ -1443,117 +1502,276 @@ function filterGraphData() {
     return {nodes: fNodes, edges: fEdges};
 }
 
+function scheduleGraphCanvasDraw() {
+    if (graphRenderFrame) return;
+    graphRenderFrame = requestAnimationFrame(() => {
+        graphRenderFrame = 0;
+        drawGraphCanvas();
+    });
+}
+
+function graphCanvasSize(canvas) {
+    const width = canvas.clientWidth || 900, height = canvas.clientHeight || 680;
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelWidth = Math.max(1, Math.round(width * ratio));
+    const pixelHeight = Math.max(1, Math.round(height * ratio));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+    }
+    return {width, height, ratio};
+}
+
+function graphRelatedSelection() {
+    const selected = selectedGraphElement;
+    const nodes = new Set(), edges = new Set();
+    if (!selected || !graphRenderState) return {selected, nodes, edges};
+    if (selected.type === 'node') {
+        nodes.add(selected.entity_id);
+        graphRenderState.edges.forEach(edge => {
+            if (edge._sourceId === selected.entity_id || edge._targetId === selected.entity_id) {
+                nodes.add(edge._sourceId); nodes.add(edge._targetId); edges.add(edge);
+            }
+        });
+    } else {
+        nodes.add(selected.source_id); nodes.add(selected.target_id);
+        graphRenderState.edges.forEach(edge => {
+            if (graphEdgeMatches(edge, selected)) edges.add(edge);
+        });
+    }
+    return {selected, nodes, edges};
+}
+
+function graphNodeDrawRadius(node, transform = graphTransform) {
+    const base = graphRenderState?.radius(node.importance) || 4;
+    // Canvas 中图元不会像 SVG marker 一样自动保持相同比例。缩小时给节点一个很小的
+    // 屏幕尺寸下限，避免节点消失后只剩固定大小的箭头。
+    return Math.max(base, 4.5 / Math.max(transform?.k || 1, .001));
+}
+
+function drawGraphCanvas() {
+    if (!graphRenderState) return;
+    const {canvas, context, nodes, edges, radius, edgeScale} = graphRenderState;
+    const {width, height, ratio} = graphCanvasSize(canvas);
+    const transform = graphTransform || d3.zoomIdentity;
+    const style = getComputedStyle(document.body);
+    const panel = style.backgroundColor, text = style.color;
+    const selection = graphRelatedSelection();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.setTransform(
+        ratio * transform.k, 0, 0, ratio * transform.k,
+        ratio * transform.x, ratio * transform.y);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+
+    for (const edge of edges) {
+        if (edge._timeVisible === false || !edge.source || !edge.target) continue;
+        const relevant = !selection.selected || selection.edges.has(edge);
+        context.globalAlpha = selection.selected && !relevant ? .08 : .52;
+        context.strokeStyle = CATEGORY_COLORS[edge.category] || CATEGORY_COLORS.other;
+        context.lineWidth = Math.max(.65, edgeScale(edge.support)) / transform.k;
+        context.setLineDash(edge.negated_count ? [6 / transform.k, 4 / transform.k] : []);
+        context.beginPath();
+        context.moveTo(edge.source.x, edge.source.y);
+        context.lineTo(edge.target.x, edge.target.y);
+        context.stroke();
+        if (edge.directed && relevant) {
+            const dx = edge.target.x - edge.source.x, dy = edge.target.y - edge.source.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const ux = dx / distance, uy = dy / distance;
+            const targetRadius = graphNodeDrawRadius(edge.target, transform);
+            const padding = targetRadius + 3 / transform.k;
+            const x = edge.target.x - ux * padding, y = edge.target.y - uy * padding;
+            const targetScreenRadius = targetRadius * transform.k;
+            const arrow = Math.min(6, Math.max(2.5, targetScreenRadius * .45)) / transform.k;
+            context.globalAlpha = selection.selected ? 1 : .72;
+            context.fillStyle = CATEGORY_COLORS[edge.category] || CATEGORY_COLORS.other;
+            context.beginPath();
+            context.moveTo(x, y);
+            context.lineTo(x - ux * arrow * 2 - uy * arrow, y - uy * arrow * 2 + ux * arrow);
+            context.lineTo(x - ux * arrow * 2 + uy * arrow, y - uy * arrow * 2 - ux * arrow);
+            context.closePath(); context.fill();
+        }
+    }
+    context.setLineDash([]);
+
+    for (const node of nodes) {
+        if (node._timeVisible === false || !Number.isFinite(node.x)) continue;
+        const related = !selection.selected || selection.nodes.has(node.id);
+        context.globalAlpha = selection.selected && !related ? .12 : 1;
+        context.fillStyle = entityColor(node.type);
+        context.strokeStyle = selection.selected && node.id === selection.selected.entity_id
+            ? '#4f7cff' : panel;
+        context.lineWidth = (selection.selected && node.id === selection.selected.entity_id ? 4 : 2) / transform.k;
+        context.beginPath(); context.arc(node.x, node.y, graphNodeDrawRadius(node, transform), 0, Math.PI * 2);
+        context.fill(); context.stroke();
+    }
+
+    // 标签按缩放级别和视口绘制；拓扑仍完整，避免为不可读文字制造数千 DOM。
+    const topLeft = transform.invert([0, 0]);
+    const bottomRight = transform.invert([width, height]);
+    const inViewport = node => node.x >= topLeft[0] - 80 && node.x <= bottomRight[0] + 80
+        && node.y >= topLeft[1] - 40 && node.y <= bottomRight[1] + 40;
+    const labelBudget = transform.k >= 1.6 ? 700 : transform.k >= .9 ? 240 : 90;
+    const labelNodes = nodes.filter(node => node._timeVisible !== false && inViewport(node))
+        .sort((a, b) => b.importance - a.importance).slice(0, labelBudget);
+    context.textAlign = 'center'; context.textBaseline = 'top';
+    context.font = `${11 / transform.k}px system-ui, sans-serif`;
+    context.lineWidth = 3 / transform.k;
+    for (const node of labelNodes) {
+        const related = !selection.selected || selection.nodes.has(node.id);
+        context.globalAlpha = selection.selected && !related ? .12 : .92;
+        const label = node.name.length > 22 ? `${node.name.slice(0, 21)}…` : node.name;
+        const y = node.y + graphNodeDrawRadius(node, transform) + 4 / transform.k;
+        context.strokeStyle = panel; context.strokeText(label, node.x, y);
+        context.fillStyle = text; context.fillText(label, node.x, y);
+    }
+    if (showAllEdgeLabels || transform.k >= 1.35) {
+        const candidates = edges.filter(edge => edge._timeVisible !== false
+            && (showAllEdgeLabels || edge.support >= 2))
+            .sort((a, b) => b.support - a.support)
+            .slice(0, showAllEdgeLabels ? 800 : 150);
+        context.textBaseline = 'bottom';
+        for (const edge of candidates) {
+            const relevant = !selection.selected || selection.edges.has(edge);
+            context.globalAlpha = selection.selected && !relevant ? .08 : .78;
+            const label = `${edge.negated_count ? '◐ ' : ''}${edge.predicate_label} ×${edge.support}`;
+            const x = (edge.source.x + edge.target.x) / 2;
+            const y = (edge.source.y + edge.target.y) / 2 - 4 / transform.k;
+            context.strokeStyle = panel; context.strokeText(label, x, y);
+            context.fillStyle = text; context.fillText(label, x, y);
+        }
+    }
+    context.globalAlpha = 1;
+}
+
+function graphPointSegmentDistance(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    if (!dx && !dy) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function graphCanvasHit(event) {
+    if (!graphRenderState) return null;
+    const rect = graphRenderState.canvas.getBoundingClientRect();
+    const source = event?.sourceEvent || event;
+    const pointer = source?.touches?.[0] || source?.changedTouches?.[0] || source;
+    if (!Number.isFinite(pointer?.clientX) || !Number.isFinite(pointer?.clientY)) return null;
+    const point = graphTransform.invert([pointer.clientX - rect.left, pointer.clientY - rect.top]);
+    const tolerance = 9 / graphTransform.k;
+    let bestNode = null, bestDistance = Infinity;
+    for (const node of graphRenderState.nodes) {
+        if (node._timeVisible === false || !Number.isFinite(node.x)) continue;
+        const distance = Math.hypot(point[0] - node.x, point[1] - node.y);
+        if (distance <= graphNodeDrawRadius(node) + tolerance && distance < bestDistance) {
+            bestNode = node; bestDistance = distance;
+        }
+    }
+    if (bestNode) return {type: 'node', value: bestNode};
+    let bestEdge = null; bestDistance = tolerance;
+    for (const edge of graphRenderState.edges) {
+        if (edge._timeVisible === false || !edge.source || !edge.target) continue;
+        const distance = graphPointSegmentDistance(
+            point[0], point[1], edge.source.x, edge.source.y, edge.target.x, edge.target.y);
+        if (distance < bestDistance) { bestEdge = edge; bestDistance = distance; }
+    }
+    return bestEdge ? {type: 'edge', value: bestEdge} : null;
+}
+
+function graphCanvasWorldPoint(event) {
+    const source = event?.sourceEvent || event;
+    const pointer = source?.touches?.[0] || source?.changedTouches?.[0] || source;
+    const rect = graphRenderState.canvas.getBoundingClientRect();
+    return graphTransform.invert([pointer.clientX - rect.left, pointer.clientY - rect.top]);
+}
+
 function renderGraph() {
-    const svg = d3.select('#graph-svg');
-    svg.selectAll('*').remove();
-    const node = svg.node(), width = node.clientWidth || 900, height = node.clientHeight || 680;
+    const canvas = $('graph-svg');
+    const context = canvas.getContext('2d');
+    const {width, height} = graphCanvasSize(canvas);
     const {nodes, edges} = filterGraphData();
     renderedGraphNodes = new Map(nodes.map(item => [item.id, item]));
     renderGraphSearchResults();
+    if (graphSimulation) graphSimulation.stop();
+    graphTransform = d3.zoomIdentity;
+    const radius = d3.scaleSqrt()
+        .domain([1, d3.max(nodes, d => d.importance) || 1]).range([4, 16]);
+    const edgeScale = d3.scaleSqrt()
+        .domain([1, d3.max(edges, d => d.support) || 1]).range([.65, 4]);
+    graphRenderState = {canvas, context, nodes, edges, radius, edgeScale};
     if (!nodes.length) {
-        // 过滤叠加空态：印证过滤把网络切碎，全低于规模下限——给解释而非空白
-        svg.append('text').attr('class', 'map-label').attr('text-anchor', 'middle')
-            .attr('x', width / 2).attr('y', height / 2)
-            .text(tr('no_visible_network', {
-                support: Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin), size: componentMinSize
-            }));
+        drawGraphCanvas();
         applyGraphTemporalFilter = () => {};
-        setupTemporalAxis('graph', graphData.meta,
-            (graphData.temporal_events || []).map(row => row[0]),
-            applyGraphTemporalFilter);
         return;
     }
-    const defs = svg.append('defs');
-    defs.append('marker').attr('id','arrow').attr('viewBox','0 -6 12 12').attr('refX',10).attr('refY',0)
-        .attr('markerWidth',12).attr('markerHeight',12).attr('markerUnits','userSpaceOnUse').attr('orient','auto')
-        .append('path').attr('class','arrow-head').attr('d','M0,-5L10,0L0,5Z');
-    const root = svg.append('g');
-    graphZoomBehavior = d3.zoom().scaleExtent([.25, 4])
-        .on('zoom', event => root.attr('transform', event.transform));
-    svg.call(graphZoomBehavior);
-    svg.on('click', () => clearGraphSelection());
-    const edgeScale = d3.scaleSqrt().domain([1, d3.max(edges, d => d.support) || 1]).range([1, 6]);
-    const radius = d3.scaleSqrt().domain([1, d3.max(nodes, d => d.importance) || 1]).range([7, 23]);
-    const lines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge')
-        .attr('stroke', d => CATEGORY_COLORS[d.category] || CATEGORY_COLORS.other)
-        .attr('stroke-width', d => edgeScale(d.support))
-        .attr('stroke-dasharray', d => d.negated_count ? '6 4' : null)
-        .style('pointer-events', 'none');
-    const hitLines = root.append('g').selectAll('line').data(edges).join('line').attr('class','edge-hit')
-        .on('mouseenter', (event,d) => {
-            const surfaces = d.surface_labels?.slice(0, 3).map(item => item.label).join('、');
-            const negation = d.negated_count ? ` · ⚠${tr('negated_support', {negated: d.negated_count, support: d.support})}` : '';
-            showTooltip('graph-tooltip', event,
-                `${d.predicate_label} (${d.predicate})${surfaces ? ` · ${tr('source_text', {text: surfaces})}` : ''} · ${tr('event_count', {count: d.support})}${negation}`);
-        })
-        .on('mouseleave', () => hideTooltip('graph-tooltip'))
-        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
-    // 标签层一次建好（含全部边），切换只翻 display：预算内显示、超预算隐藏，
-    // 快速切换零 DOM 变动，杜绝重建卡顿造成的“失效”。
-    let edgeLabels = null;
-    const applyLabelVisibility = () => {
-        if (!edgeLabels) return;
-        let shown = 0;
-        edgeLabels.attr('display', (d, i) => {
-            if (d._timeVisible === false) return 'none';
-            if (showAllEdgeLabels) return null;
-            const candidate = i < 40 || d.support >= 2;
-            const visible = candidate && ++shown <= 150;
-            return visible ? null : 'none';
-        });
-    };
-    relabelGraphEdges = applyLabelVisibility;
-    edgeLabels = root.append('g').selectAll('text').data(edges).join('text')
-        .attr('class','node-label edge-label').attr('text-anchor','middle')
-        .text(d => `${d.negated_count === d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`)
-        .on('click', (event,d) => { event.stopPropagation(); selectGraphEdge(d); });
-    applyLabelVisibility();
-    const circles = root.append('g').selectAll('circle').data(nodes).join('circle').attr('class','node')
-        .attr('r', d => radius(d.importance)).attr('fill', d => entityColor(d.type))
-        .on('mouseenter', (event,d) => showTooltip('graph-tooltip', event, `${d.name} · ${tr('event_count', {count: d.event_count})}`))
-        .on('mouseleave', () => hideTooltip('graph-tooltip'))
-        .on('click', (event,d) => {
-            event.stopPropagation();
-            if (!event.defaultPrevented) selectGraphNode(d);
-        });
-    const labels = root.append('g').selectAll('text').data(nodes).join('text').attr('class','node-label')
-        .attr('text-anchor','middle').attr('dy', d => radius(d.importance) + 13).text(d => d.name.length > 18 ? d.name.slice(0,17) + '…' : d.name);
-    // 标签需要保持可读，因此边线仍位于标签下方；箭头头部单独放到标签上层，
-    // 避免从节点下方进入时被标签的背景描边完全遮住。
-    const arrowLines = root.append('g').selectAll('line').data(edges.filter(d => d.directed)).join('line')
-        .attr('class','edge-arrow').attr('marker-end','url(#arrow)');
-    // 停掉上一张图的仿真：旧 tick 会借共享的 edgeLabels 变量污染新标签的位置，
-    // 造成“标签失效/错乱”
-    if (graphSimulation) graphSimulation.stop();
-    const simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(edges).id(d => d.id).distance(d => 80 + Math.min(80, 160 / d.support)).strength(.35))
-        .force('charge', d3.forceManyBody().strength(-240)).force('center', d3.forceCenter(width/2, height/2))
-        .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 22));
-    graphSimulation = simulation;
-    circles.call(d3.drag().on('start', (event,d) => { if (!event.active) simulation.alphaTarget(.25).restart(); d.fx=d.x; d.fy=d.y; })
-        .on('drag', (event,d) => { d.fx=event.x; d.fy=event.y; })
-        .on('end', (event,d) => { if (!event.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
-    simulation.on('tick', () => {
-        const positionEdges = selection => selection.each(function(d) {
-            const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
-            const distance = Math.hypot(dx, dy) || 1;
-            const ux = dx / distance, uy = dy / distance;
-            const sourcePadding = radius(d.source.importance) + 3;
-            const targetPadding = radius(d.target.importance) + (d.directed ? 5 : 3);
-            d3.select(this)
-                .attr('x1', d.source.x + ux * sourcePadding)
-                .attr('y1', d.source.y + uy * sourcePadding)
-                .attr('x2', d.target.x - ux * targetPadding)
-                .attr('y2', d.target.y - uy * targetPadding);
-        });
-        positionEdges(lines);
-        positionEdges(arrowLines);
-        hitLines.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-        edgeLabels.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2-5);
-        circles.attr('cx',d=>d.x).attr('cy',d=>d.y);
-        labels.attr('x',d=>d.x).attr('y',d=>d.y);
+    graphZoomBehavior = d3.zoom().scaleExtent([.12, 8]).on('zoom', event => {
+        graphTransform = event.transform;
+        scheduleGraphCanvasDraw();
     });
+    const graphDragBehavior = d3.drag()
+        .subject(event => {
+            const hit = graphCanvasHit(event.sourceEvent);
+            return hit?.type === 'node' ? hit.value : null;
+        })
+        .on('start', event => {
+            const node = event.subject;
+            if (!event.active) graphSimulation?.alphaTarget(.25).restart();
+            const [x, y] = graphCanvasWorldPoint(event);
+            node.fx = x; node.fy = y;
+            canvas.style.cursor = 'grabbing';
+            hideTooltip('graph-tooltip');
+        })
+        .on('drag', event => {
+            const node = event.subject;
+            const [x, y] = graphCanvasWorldPoint(event);
+            node.fx = x; node.fy = y;
+            scheduleGraphCanvasDraw();
+        })
+        .on('end', event => {
+            const node = event.subject;
+            if (!event.active) graphSimulation?.alphaTarget(0);
+            node.fx = null; node.fy = null;
+            canvas.style.cursor = 'grab';
+        });
+    // drag 先注册：命中节点时由 drag 接管；未命中时 subject 返回 null，事件继续交给 zoom 平移。
+    d3.select(canvas).call(graphDragBehavior).call(graphZoomBehavior).on('dblclick.zoom', null);
+    canvas.onclick = event => {
+        if (event.defaultPrevented) return;
+        const hit = graphCanvasHit(event);
+        if (!hit) clearGraphSelection();
+        else if (hit.type === 'node') selectGraphNode(hit.value);
+        else selectGraphEdge(hit.value);
+    };
+    canvas.onmousemove = event => {
+        const hit = graphCanvasHit(event);
+        canvas.style.cursor = hit ? 'pointer' : 'grab';
+        if (!hit) return hideTooltip('graph-tooltip');
+        if (hit.type === 'node') {
+            showTooltip('graph-tooltip', event,
+                `${hit.value.name} · ${tr('event_count', {count: hit.value.event_count})}`);
+        } else {
+            const edge = hit.value;
+            const negation = edge.negated_count
+                ? ` · ⚠${tr('negated_support', {negated: edge.negated_count, support: edge.support})}` : '';
+            showTooltip('graph-tooltip', event,
+                `${edge.predicate_label} (${edge.predicate}) · ${tr('event_count', {count: edge.support})}${negation}`);
+        }
+    };
+    canvas.onmouseleave = () => hideTooltip('graph-tooltip');
+    graphSimulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(edges).id(d => d.id)
+            .distance(d => 55 + Math.min(70, 130 / Math.max(1, d.support))).strength(.3))
+        .force('charge', d3.forceManyBody().strength(-95).theta(.9))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(d => radius(d.importance) + 5).strength(.7))
+        .alphaDecay(.06).velocityDecay(.48)
+        .on('tick', scheduleGraphCanvasDraw)
+        .on('end', scheduleGraphCanvasDraw);
+    relabelGraphEdges = scheduleGraphCanvasDraw;
+    scheduleGraphCanvasDraw();
+
     const m = graphData.meta;
     $('graph-summary').innerHTML = `<div class="meta">
         <div class="metric"><b>${m.node_count}</b>${tr('retained_nodes')}</div><div class="metric"><b>${m.edge_count}</b>${tr('retained_relations')}</div>
@@ -1567,88 +1785,32 @@ function renderGraph() {
             return row && row[0] * 1000 >= range[0] && row[0] * 1000 <= range[1];
         };
         const supportMin = Math.max(DASHBOARD_PROFILE.min_support || 1, graphSupportMin);
+        const activeNodes = new Set(), visibleEvents = new Set();
         for (const edge of edges) {
-            const rows = edge._eventRefs.filter(active).map(reference => eventTable[reference]);
+            const rows = edge._eventRefs.filter(active).map(reference => {
+                visibleEvents.add(reference); return eventTable[reference];
+            });
             const scores = rows.map(row => Number(row[2]) || 0);
             edge.support = rows.length;
             edge.article_count = new Set(rows.map(row => row[1])).size;
-            edge.average_score = rows.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / rows.length * 100) / 100 : 0;
+            edge.average_score = rows.length
+                ? Math.round(scores.reduce((sum, value) => sum + value, 0) / rows.length * 100) / 100 : 0;
             edge.score_max = scores.length ? Math.max(...scores) : 0;
             edge.negated_count = rows.filter(row => row[3]).length;
             edge._timeVisible = edge.support >= supportMin;
+            if (edge._timeVisible) { activeNodes.add(edge._sourceId); activeNodes.add(edge._targetId); }
         }
-        const parent = new Map(nodes.map(item => [item.id, item.id]));
-        const find = value => {
-            while (parent.get(value) !== value) {
-                parent.set(value, parent.get(parent.get(value)));
-                value = parent.get(value);
-            }
-            return value;
-        };
-        for (const edge of edges.filter(item => item._timeVisible)) {
-            const source = edge._sourceId, target = edge._targetId;
-            const a = find(source), b = find(target);
-            if (a !== b) parent.set(a, b);
-        }
-        const degree = new Map(), componentSizes = new Map();
-        for (const edge of edges.filter(item => item._timeVisible)) {
-            degree.set(edge._sourceId, (degree.get(edge._sourceId) || 0) + 1);
-            degree.set(edge._targetId, (degree.get(edge._targetId) || 0) + 1);
-        }
-        nodes.filter(item => (degree.get(item.id) || 0) > 0).forEach(item => {
-            const rootId = find(item.id);
-            componentSizes.set(rootId, (componentSizes.get(rootId) || 0) + 1);
-        });
-        const keep = new Set(nodes.filter(item => (degree.get(item.id) || 0) > 0
-            && (componentSizes.get(find(item.id)) || 0) >= componentMinSize).map(item => item.id));
-        const importance = new Map();
-        for (const edge of edges) {
-            edge._timeVisible = edge._timeVisible && keep.has(edge._sourceId) && keep.has(edge._targetId);
-            if (!edge._timeVisible) continue;
-            importance.set(edge._sourceId, (importance.get(edge._sourceId) || 0) + edge.support);
-            importance.set(edge._targetId, (importance.get(edge._targetId) || 0) + edge.support);
-        }
-        for (const item of nodes) {
-            const rows = item._eventRefs.filter(active).map(reference => eventTable[reference]);
-            item.event_count = rows.length;
-            item.article_count = new Set(rows.map(row => row[1])).size;
-            item.max_score = rows.length ? Math.max(...rows.map(row => Number(row[2]) || 0)) : 0;
-            item.importance = importance.get(item.id) || 0;
-            item._timeVisible = keep.has(item.id) && item.importance > 0;
-        }
-        const edgeDisplay = d => d._timeVisible ? null : 'none';
-        const nodeDisplay = d => d._timeVisible ? null : 'none';
-        lines.attr('display', edgeDisplay)
-            .attr('stroke-dasharray', d => d.negated_count ? '6 4' : null);
-        hitLines.attr('display', edgeDisplay);
-        arrowLines.attr('display', edgeDisplay);
-        edgeLabels.text(d => `${d.negated_count === d.support && d.support ? '✗ ' : d.negated_count ? '◐ ' : ''}${d.predicate_label} ×${d.support}`);
-        circles.attr('display', nodeDisplay);
-        labels.attr('display', nodeDisplay);
-        applyLabelVisibility();
-        renderedGraphNodes = new Map(nodes.filter(item => item._timeVisible).map(item => [item.id, item]));
-        renderGraphSearchResults();
-        const visibleEdges = edges.filter(item => item._timeVisible);
-        const visibleEvents = new Set(visibleEdges.flatMap(item => item._eventRefs.filter(active)));
+        for (const node of nodes) node._timeVisible = activeNodes.has(node.id);
+        renderedGraphNodes = new Map(nodes.filter(node => node._timeVisible).map(node => [node.id, node]));
+        renderGraphSearchResults(); scheduleGraphCanvasDraw();
+        const visibleEdges = edges.filter(edge => edge._timeVisible);
         $('graph-summary').innerHTML = `<div class="meta">
             <div class="metric"><b>${renderedGraphNodes.size}</b>${tr('current_nodes')}</div><div class="metric"><b>${visibleEdges.length}</b>${tr('current_relations')}</div>
             <div class="metric"><b>${visibleEvents.size}</b>${tr('relation_events')}</div><div class="metric"><b>${m.node_count}</b>${tr('nodes_in_window')}</div></div>
             <div class="warning">${tr('temporal_projection_note')}</div>`;
-        const hiddenEdges = edges.length - visibleEdges.length;
-        $('graph-filter-note').textContent = hiddenEdges > 0 ? tr('relations_hidden', {count: hiddenEdges}) : '';
-        if (selectedGraphElement) {
-            const stillVisible = selectedGraphElement.type === 'node'
-                ? renderedGraphNodes.has(selectedGraphElement.entity_id)
-                : visibleEdges.some(edge => graphEdgeMatches(edge, selectedGraphElement));
-            if (!stillVisible) clearGraphSelection();
-            else if (selectedGraphElement.type === 'node') showNodeDetail(renderedGraphNodes.get(selectedGraphElement.entity_id));
-            else showEdgeDetail(visibleEdges.find(edge => graphEdgeMatches(edge, selectedGraphElement)));
-        }
     };
     setupTemporalAxis('graph', graphData.meta,
-        (graphData.temporal_events || []).map(row => row[0]),
-        applyGraphTemporalFilter);
-    if (selectedGraphElement) updateGraphSelectionStyles();
+        (graphData.temporal_events || []).map(row => row[0]), applyGraphTemporalFilter);
 }
 
 function identityLabels() {
@@ -1700,12 +1862,13 @@ function openGraphSearch() {
     $('graph-search-input').focus();
     $('graph-search-input').select();
     renderGraphSearchResults();
+    ensureGraphDetails();
 }
 function closeGraphSearch() { $('graph-search-panel').hidden = true; }
 function focusGraphNode(entityId, attempt = 0) {
     let node = renderedGraphNodes.get(entityId);
     if (!node) {
-        componentMinSize = 1;
+        componentMinSize = GRAPH_COMPONENT_MIN_FLOOR;
         graphSupportMin = Math.max(1, DASHBOARD_PROFILE.min_support || 1);
         $('component-min-size').value = componentMinSize;
         $('graph-support-min').value = graphSupportMin;
@@ -1753,6 +1916,7 @@ function selectGraphNode(d) {
     showNodeDetail(d);
     updateGraphSelectionStyles();
     loadGraphIntelligences(false);
+    ensureGraphDetails();
 }
 function selectGraphEdge(d) {
     selectedGraphRole = 'all';
@@ -1771,6 +1935,7 @@ function selectGraphEdge(d) {
     showEdgeDetail(d);
     updateGraphSelectionStyles();
     loadGraphIntelligences(false);
+    ensureGraphDetails();
 }
 function clearGraphSelection() {
     selectedGraphElement = null;
@@ -1784,41 +1949,10 @@ function clearGraphSelection() {
         detail.hidden = true;
         detail.innerHTML = '';
     }
-    d3.select('#graph-svg').selectAll('.graph-selected').classed('graph-selected', false);
-    d3.select('#graph-svg').selectAll('.graph-dim').classed('graph-dim', false);
+    scheduleGraphCanvasDraw();
 }
 function updateGraphSelectionStyles() {
-    if (!selectedGraphElement) return;
-    const selected = selectedGraphElement;
-    const relatedNodes = new Set();
-    if (selected.type === 'node') {
-        relatedNodes.add(selected.entity_id);
-        graphData.edges.forEach(edge => {
-            const source = graphNodeId(edge.source), target = graphNodeId(edge.target);
-            if (source === selected.entity_id) relatedNodes.add(target);
-            if (target === selected.entity_id) relatedNodes.add(source);
-        });
-    } else {
-        relatedNodes.add(selected.source_id);
-        relatedNodes.add(selected.target_id);
-    }
-    const edgeRelevant = edge => selected.type === 'node'
-        ? graphNodeId(edge.source) === selected.entity_id || graphNodeId(edge.target) === selected.entity_id
-        : graphEdgeMatches(edge, selected);
-    d3.select('#graph-svg').selectAll('.node')
-        .classed('graph-selected', d => selected.type === 'node' && d.id === selected.entity_id)
-        .classed('graph-dim', d => !relatedNodes.has(d.id));
-    d3.select('#graph-svg').selectAll('.edge')
-        .classed('graph-selected', edgeRelevant)
-        .classed('graph-dim', d => !edgeRelevant(d));
-    d3.select('#graph-svg').selectAll('.edge-arrow')
-        .classed('graph-dim', d => !edgeRelevant(d));
-    d3.select('#graph-svg').selectAll('.edge-hit')
-        .classed('graph-dim', d => !edgeRelevant(d));
-    d3.select('#graph-svg').selectAll('.edge-label')
-        .classed('graph-dim', d => !edgeRelevant(d));
-    d3.select('#graph-svg').selectAll('g > .node-label:not(.edge-label)')
-        .classed('graph-dim', d => d?.id && !relatedNodes.has(d.id));
+    scheduleGraphCanvasDraw();
 }
 function syncGraphRoleFilters() {
     document.querySelectorAll('[data-graph-role]').forEach(button => {
@@ -1984,10 +2118,14 @@ document.querySelectorAll('[data-drawer-close]').forEach(button => button.addEve
     panel.hidden = true;
 }));
 // 前端过滤控件：网络规模与印证下限（下限不得低于服务端配置值）
+$('component-min-size').min = GRAPH_COMPONENT_MIN_FLOOR;
 $('component-min-size').value = componentMinSize;
 $('component-min-size').addEventListener('change', e => {
     graphFilterCustomized = true;
-    componentMinSize = Math.max(1, parseInt(e.target.value) || 1);
+    componentMinSize = Math.max(
+        GRAPH_COMPONENT_MIN_FLOOR,
+        parseInt(e.target.value) || GRAPH_COMPONENT_MIN_FLOOR);
+    e.target.value = componentMinSize;
     renderGraph();
 });
 const _supportInput = $('graph-support-min');

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import gzip
 import hashlib
 import logging
 import os
@@ -42,6 +43,55 @@ GRAPH_MIN_NODES = 10
 GRAPH_MAX_NODES = 5000
 GRAPH_MIN_EDGES = 10
 GRAPH_MAX_EDGES = 20000
+
+_GRAPH_NODE_DETAIL_FIELDS = frozenset({
+    "surfaces", "target_id", "reference_count", "editable", "wiki_name",
+})
+_GRAPH_EDGE_DETAIL_FIELDS = frozenset({"surface_labels"})
+
+
+def _project_entity_graph_payload(payload, detail_level):
+    """把完整聚合结果投影为首屏拓扑或按需详情，不丢弃服务端事实。"""
+    if detail_level == "full":
+        return payload
+    if detail_level == "topology":
+        return {
+            "nodes": [
+                {key: value for key, value in node.items()
+                 if key not in _GRAPH_NODE_DETAIL_FIELDS}
+                for node in payload["nodes"]
+            ],
+            "edges": [
+                {key: value for key, value in edge.items()
+                 if key not in _GRAPH_EDGE_DETAIL_FIELDS}
+                for edge in payload["edges"]
+            ],
+            "temporal_events": payload["temporal_events"],
+            "meta": {**payload["meta"], "detail_level": "topology"},
+        }
+    if detail_level == "details":
+        return {
+            "nodes": {
+                node["id"]: {
+                    key: value for key, value in node.items()
+                    if key in _GRAPH_NODE_DETAIL_FIELDS
+                }
+                for node in payload["nodes"]
+            },
+            "edges": [
+                {
+                    "source": edge["source"], "target": edge["target"],
+                    "predicate": edge["predicate"], "directed": edge["directed"],
+                    **{
+                        key: value for key, value in edge.items()
+                        if key in _GRAPH_EDGE_DETAIL_FIELDS
+                    },
+                }
+                for edge in payload["edges"]
+            ],
+            "meta": {**payload["meta"], "detail_level": "details"},
+        }
+    raise ValueError("detail_level 必须是 topology、details 或 full")
 
 # 浏览器不直接连接公共 CDN：移动网络、DNS 或代理策略经常只让这些请求失败，
 # 随后的内联代码就会表现为 ``d3 is not defined``。IIS 只代理固定版本、固定摘要
@@ -192,6 +242,38 @@ class SituationViewsService:
         protect = wrapper or (lambda func: func)
         embed_protect = (lambda func: func) if public_scoped else protect
 
+        @bp.after_request
+        def compress_situation_response(response):
+            """压缩大体积只读视图响应；不改变实体图的完整性。"""
+            response.vary.add("Accept-Encoding")
+            if (
+                request.method == "HEAD"
+                or response.status_code < 200
+                or response.status_code in {204, 304}
+                or response.headers.get("Content-Encoding")
+                or "gzip" not in request.headers.get("Accept-Encoding", "").lower()
+                or response.is_streamed
+                or response.direct_passthrough
+                or response.mimetype not in {
+                    "application/json", "application/javascript", "text/html", "text/css",
+                }
+            ):
+                return response
+            payload = response.get_data()
+            if len(payload) < 1024:
+                return response
+            compressed = gzip.compress(payload, compresslevel=6)
+            if len(compressed) >= len(payload):
+                return response
+            response.set_data(compressed)
+            response.headers["Content-Encoding"] = "gzip"
+            response.headers["Content-Length"] = str(len(compressed))
+            # 资源内容语义相同但传输表示不同，使用弱 ETag 配合 Vary。
+            etag, _weak = response.get_etag()
+            if etag:
+                response.set_etag(etag, weak=True)
+            return response
+
         def scoped_or_protected(func):
             protected = protect(func)
 
@@ -310,6 +392,8 @@ class SituationViewsService:
         # 实体图主投影、证据和人工编辑所需引用查询保持为连续路由组。
         @bp.get("/api/entity-graph")
         @bp.get("/api/scoped/entity-graph")
+        @bp.get("/api/entity-graph/details")
+        @bp.get("/api/scoped/entity-graph/details")
         @scoped_or_protected
         def entity_graph_api():
             try:
@@ -323,19 +407,24 @@ class SituationViewsService:
                 else:
                     min_support = self._bounded_int("min_support", 2, 1, 50)
                     max_nodes = self._bounded_int(
-                        "max_nodes", 80, GRAPH_MIN_NODES, GRAPH_MAX_NODES)
+                        "max_nodes", 0, 0, GRAPH_MAX_NODES)
                     max_edges = self._bounded_int(
-                        "max_edges", 240, GRAPH_MIN_EDGES, GRAPH_MAX_EDGES)
+                        "max_edges", 0, 0, GRAPH_MAX_EDGES)
                     keep_singletons = self._bool_arg("keep_high_score_singletons", True)
                 entity_types = self._set_arg("entity_types", ENTITY_TYPE_GROUPS)
-                return jsonify(engine.entity_graph(
+                payload = engine.entity_graph(
                     query,
                     min_support=min_support,
                     max_nodes=max_nodes,
                     max_edges=max_edges,
                     keep_high_score_singletons=keep_singletons,
                     entity_types=entity_types,
-                ))
+                )
+                detail_level = (
+                    "details" if request.path.endswith("/details")
+                    else str(request.args.get("detail_level") or "full").strip()
+                )
+                return jsonify(_project_entity_graph_payload(payload, detail_level))
             except ValueError as exc:
                 return jsonify({"error": str(exc)}), 400
 
@@ -679,11 +768,11 @@ class SituationViewsService:
             "min_score": self._coerce_number(values.get("min_score"), 6.0, 0, 10, float),
             "min_support": self._coerce_number(values.get("min_support"), 2, 1, 50, int),
             "max_nodes": self._coerce_number(
-                values.get("max_nodes"), 80, GRAPH_MIN_NODES, GRAPH_MAX_NODES, int),
+                values.get("max_nodes"), 0, 0, GRAPH_MAX_NODES, int),
             "max_edges": self._coerce_number(
-                values.get("max_edges"), 240, GRAPH_MIN_EDGES, GRAPH_MAX_EDGES, int),
+                values.get("max_edges"), 0, 0, GRAPH_MAX_EDGES, int),
             "max_articles": self._coerce_number(
-                values.get("max_articles"), 5000, 100, 20000, int),
+                values.get("max_articles"), 0, 0, 20000, int),
             "primary_only": self._coerce_bool(values.get("primary_only"), True),
             "keep_high_score_singletons": self._coerce_bool(
                 values.get("keep_high_score_singletons"), True),
@@ -766,7 +855,7 @@ class SituationViewsService:
             ),
             max_articles=(
                 self.dashboard["max_articles"] if fixed
-                else self._bounded_int("max_articles", 5000, 100, 20000)
+                else self._bounded_int("max_articles", 0, 0, 20000)
             ),
         )
         key = ctx.name

@@ -491,13 +491,13 @@ def create_snapshot_dumper(*, config, domain_resources,
             end=end,
             min_score=float(dashboard.get("min_score", 6.0)),
             primary_only=bool(dashboard.get("primary_only", True)),
-            max_articles=int(dashboard.get("max_articles", 5000)),
+            max_articles=int(dashboard.get("max_articles", 0)),
         )
         return engine.entity_graph(
             query,
             min_support=int(dashboard.get("min_support", 2)),
-            max_nodes=int(dashboard.get("max_nodes", 80)),
-            max_edges=int(dashboard.get("max_edges", 240)),
+            max_nodes=int(dashboard.get("max_nodes", 0)),
+            max_edges=int(dashboard.get("max_edges", 0)),
             keep_high_score_singletons=bool(
                 dashboard.get("keep_high_score_singletons", True)),
         )
